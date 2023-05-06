@@ -21,12 +21,12 @@ files_audio = sorted(files_audio, key=lambda i: i.stem)
 
 # print(f'{names}')
 
+
 # www.sdfgertg.com
 for f in files_audio:
     stem = f.stem
 
     removes = ['mp3']
-
 
     splits = stem.split(' - ')
     # test = re.split(' feat. | ft. | featuring | ft | & | &amp; | vs. |"," ', splits[0])  # ' and ' too many hits?
@@ -53,6 +53,12 @@ for f in files_audio:
     # if stem != stem_normed:
     #     print(f'{stem}\n{stem_normed}')
     # *************************************************************************** #
+    split_feat = re.split(' feat. ', stem_normed)
+    findall_feats = re.findall('feat.\.*(\)|\,)', stem_normed)
+    if len(split_feat) > 1:
+        print(split_feat)
+        print(findall_feats)
+        print()
 
     # *************************************************************************** #
     # removing features
