@@ -1,11 +1,14 @@
 import re
 from pathlib import Path
+from pydub import utils
+import yaml
 
 p = Path('C:/Users/Simon/Desktop/mp3work/')  # 001 - Die drei Fragezeichen und der Super-Papagei/
 p = Path('C:/Users/Simon/Music/Audials/Audials Music/')
 p = Path('C:/Users/Simon/Desktop/fragezeichen-merge/#raw')
 p = Path('C:/Users/Simon/Music/')
 p = Path('C:/Users/Simon/Music/Simons Musik/')
+p = Path('/home/simon/Schreibtisch/fragezeichen-merge/Hörspiele/')
 
 audiofile_suffixes = ['mp3', 'm4a', 'ogg', 'opus', 'flac', 'aac']  # 'wav', 'aiff', 'wma',
 
@@ -14,6 +17,8 @@ files_audio = []
 for suffix in ['mp3', 'm4a', 'ogg', 'opus', 'flac', 'aac']:
     files_audio.extend([f for f in p.rglob(f'*.{suffix}') if f.is_file()])
 files_audio = sorted(files_audio, key=lambda i: i.stem)
+
+
 # *********************************************************************** #
 
 # x = "\n".join([f"{pt.name}" for pt in files_audio])
@@ -22,15 +27,69 @@ files_audio = sorted(files_audio, key=lambda i: i.stem)
 # print(f'{names}')
 
 
+def stem_guess_artist(stem_normed):
+    split = re.split(r' feat. |\, ', stem_normed)  # both side relevant
+    split = re.split(r'\(feat. ', stem_normed)  # right side relevant
+    split = re.split(r' - ', stem_normed)  # left side artist, right side titlle, middle is problem
+    split = re.split(r'mix|edit|remix', stem_normed)  # left side artist, right side titlle, middle is problem
+
+
+## *************************************************************************** #
+def stem_guess_parentheses_info(stem):
+    parentheses_infos = re.findall('\(\w*\)|\[\w*\]|\{\w*\}', stem_normed)
+    if parentheses_infos:
+        parentheses_infos = [i for i in parentheses_infos]
+        print(f'{parentheses_infos}, at \t{stem_normed}')
+        for klinfo in parentheses_infos:
+            klinfo = klinfo[1:-1]
+            if re.match('^feat\. ', klinfo):
+                klinfo.replace('feat. ', '')
+                print(f'feature info: {klinfo}')
+            if re.match(' (mix|remix|edit)$', klinfo):
+                klinfo = re.sub(' (mix|remix|edit)$', '', klinfo)
+                print(f'MIX                  dsfg: {klinfo}')
+            # '"by" ___'
+            # extended
+
+            # ['[DnB]'], at [DnB] - Feint - We Wo
+            # n't Be Alone feat. Laura Brehm) [Monstercat edit
+
+            # -> leading '.feat'
+            # -> trailing 'remix', 'mix', 'edit'
+    # *************************************************************************** #
+
+
+p_lut = Path.cwd() / 'wa_data/mp3files_lut.yaml'
+try:
+    with p_lut.open('r') as file:
+        lut = yaml.load(file, Loader=yaml.FullLoader)
+except FileNotFoundError:
+    lut = {}
+
+
+def lut_yaml_dump(lut):
+    with p_lut.open('w') as file:
+        yaml.dump(lut, file)
+
+
 # www.sdfgertg.com
-for f in files_audio:
+for c, f in enumerate(files_audio):
     stem = f.stem
+    try:
+        meta = lut[f.as_posix()]
+    except KeyError:
+        meta = utils.mediainfo(f)
+        lut[f.as_posix()] = meta
 
-    removes = ['mp3']
+    meta_title = meta['TAG']['title']  # 'Die deutsche Selbstüberschätzung, Teil 2'
+    meta_artist = meta['TAG']['artist']
+    meta_sample_rate = meta['sample_rate']  # 44100
+    meta_size = meta['size']  # 9629390
+    meta_bit_rate = meta['bit_rate']  # 320992
+    meta_duration = meta['duration']  # 239.990125
 
-    splits = stem.split(' - ')
-    # test = re.split(' feat. | ft. | featuring | ft | & | &amp; | vs. |"," ', splits[0])  # ' and ' too many hits?
-
+    print(f'{f.name}\t{meta_artist}\t{meta_title}')
+    # *************************************************************************** #
     # ==> if no " ", make '-', '_' -> ' '
     if not ' ' in stem:
         print(f'Oh no {stem}')
@@ -42,19 +101,22 @@ for f in files_audio:
     # === save replaces ===
     stem_normed = re.sub('&amp;', '&', stem_normed)
     # === meta replaces Wildfire (128kbit_AAC)
-    stem_normed = re.sub('\(152kbit_Opus\)|\(Official Video\)|\(\d{1,3}kbit\_[A-Z]{2,4}\)', '', stem_normed)
+    stem_normed = re.sub(r'\(152kbit_Opus\)|\(Official Video\)|\(\d{1,3}kbit\_[A-Za-z]{2,4}\)', '', stem_normed,
+                         flags=re.IGNORECASE)
     stem_normed = re.sub('', '', stem_normed)
     # === semantic replaces
-    stem_normed = re.sub('\W(feat\.|ft\.|featuring|ft)\W', ' feat. ', stem_normed)
-    stem_normed = re.sub('(\W&|",")\W', ', ', stem_normed)
+
+    # (feat. mo feat. mo
+    stem_normed = re.sub(r'(?:(\W|\(|\[))(feat\.|feat|ft\.|ft|featuring)\W', 'feat. ', stem_normed, flags=re.IGNORECASE)
+    # stem_normed = re.sub(r'(\W&|",")\W', ', ', stem_normed)
     # potential "and" divide
     # stem_normed = re.sub('_', ' ', stem_normed)
-    stem_normed = re.sub('  ', ' ', stem_normed)
+    stem_normed = re.sub(r' {2}', ' ', stem_normed)
     # if stem != stem_normed:
     #     print(f'{stem}\n{stem_normed}')
     # *************************************************************************** #
-    split_feat = re.split(' feat. ', stem_normed)
-    findall_feats = re.findall('feat.\.*(\)|\,)', stem_normed)
+    split_feat = re.split(' feat.', stem_normed)
+    findall_feats = re.findall(r'feat.\.*(\)|\,)', stem_normed)
     if len(split_feat) > 1:
         print(split_feat)
         print(findall_feats)
@@ -76,40 +138,25 @@ for f in files_audio:
     # if urls:
     #     print(urls, stem)
     # *************************************************************************** #
+    if not (c % 50):
+        lut_yaml_dump(lut)
 
-    # *************************************************************************** #
-    # parentheses_infos = re.findall('\(\w*\)|\[\w*\]|\{\w*\}', stem_normed)
-    # if parentheses_infos:
-    #     parentheses_infos = [i for i in parentheses_infos]
-    #     print(f'{parentheses_infos}, at \t{stem_normed}')
-    #     for klinfo in parentheses_infos:
-    #         klinfo = klinfo[1:-1]
-    #         if re.match('^feat\. ', klinfo):
-    #             klinfo.replace('feat. ', '')
-    #             print(f'feature info: {klinfo}')
-    #         if re.match(' (mix|remix|edit)$', klinfo):
-    #             klinfo = re.sub(' (mix|remix|edit)$', '', klinfo)
-    #             print(f'MIX                  dsfg: {klinfo}')
-    #         # '"by" ___'
-    #         # extended
-    #
-    #         # ['[DnB]'], at [DnB] - Feint - We Wo
-    #         # n't Be Alone feat. Laura Brehm) [Monstercat edit
-    #
-    #         # -> leading '.feat'
-    #         # -> trailing 'remix', 'mix', 'edit'
-    # *************************************************************************** #
 
-    # *************************************************************************** #
+lut_yaml_dump(lut)
 
-    # *************************************************************************** #
 
-    # if len(splits) == 2:
-    #     pass
-    # elif len(splits) == 1:
-    #     print(f'No split?:\t{stem}')
-    # else:
-    #     print(f'Too many splits:\t{stem}')
+# check parentesis
+
+# *************************************************************************** #
+
+# *************************************************************************** #
+
+# if len(splits) == 2:
+#     pass
+# elif len(splits) == 1:
+#     print(f'No split?:\t{stem}')
+# else:
+#     print(f'Too many splits:\t{stem}')
 
 # _2.mp3
 # excluding audio
@@ -129,7 +176,7 @@ for f in files_audio:
 #   - title (only str characters)
 
 
-def doppelte():
+def doppelte(mp3names_smol):
     """Doppelte"""
     seen = set()
     dupes = [x for x in mp3names_smol if x in seen or seen.add(x)]
@@ -137,7 +184,7 @@ def doppelte():
     print(len(dupes))
 
 
-def group_interprets():
+def group_interprets(mp3names):
     mp3names_interpret = [s.split(' - ')[0] for s in mp3names]
     sorted(mp3names_interpret)
     mp3names_interpret = [re.sub('[a-zA-Z]', '', s) for s in mp3names_interpret]
