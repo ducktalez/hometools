@@ -26,32 +26,6 @@ files_audio = sorted(files_audio, key=lambda i: i.stem)
 # print(f'{names}')
 
 
-# *************************************************************************** #
-
-def stem_guess_parentheses_info(stem):
-    parentheses_infos = re.findall('\(\w*\)|\[\w*\]|\{\w*\}', stem_normed)
-    if parentheses_infos:
-        parentheses_infos = [i for i in parentheses_infos]
-        print(f'{parentheses_infos}, at \t{stem_normed}')
-        for klinfo in parentheses_infos:
-            klinfo = klinfo[1:-1]
-            if re.match('^feat\. ', klinfo):
-                klinfo.replace('feat. ', '')
-                print(f'feature info: {klinfo}')
-            if re.match(' (mix|remix|edit|cover)$', klinfo):
-                klinfo = re.sub(' (mix|remix|edit|cover)$', '', klinfo)
-                print(f'MIX                  dsfg: {klinfo}')
-            # '"by" ___'
-            # extended
-
-            # ['[DnB]'], at [DnB] - Feint - We Wo
-            # n't Be Alone feat. Laura Brehm) [Monstercat edit
-
-            # -> leading '.feat'
-            # -> trailing 'remix', 'mix', 'edit'
-    # *************************************************************************** #
-
-
 p_lut = Path.cwd() / 'wa_data/mp3files_lut.yaml'
 try:
     with p_lut.open('r') as file:
@@ -65,8 +39,12 @@ def lut_yaml_dump(lut):
         yaml.dump(lut, f)
 
 
+new_stem_list = []
+
 # www.sdfgertg.com
-for c, f in enumerate(files_audio):
+# for c, f in enumerate(files_audio):  # todo
+for c, f in enumerate(lut.keys()):
+    f = Path(f)
     stem = f.stem
     try:
         meta = lut[f.as_posix()]
@@ -113,35 +91,29 @@ for c, f in enumerate(files_audio):
         # print(f'--> useless replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
-    # tmp = re.sub(r'[\w]*\.(?:com|net|org|co.uk|de|vu|ru)', '', stem_normed, flags=re.IGNORECASE)
-    # if tmp != stem_normed:
-    #     print(f'--> website replace\n{stem_normed}\n{tmp}')  # check [a-zA-Z]{2,5}\W, frei.wild Mollono.Bass
-    #     stem_normed = tmp
-
     tmp = re.sub(r'\(\w*\.[a-zA-Z]{2,5}\)', '', stem_normed, flags=re.IGNORECASE)
-    tmp = re.sub(r'[\w]*\.(?:com|net|org|co.uk|de|vu|ru)', '', tmp, flags=re.IGNORECASE)
+    tmp = re.sub(r'\w*\.(?:com|net|org|co.uk|de|vu|ru)', '', tmp, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        print(f'--> website replace\n{stem_normed}\n{tmp}')  # check [a-zA-Z]{2,5}\W, frei.wild Mollono.Bass
+        # print(f'--> website replace\n{stem_normed}\n{tmp}')  # check [a-zA-Z]{2,5}\W, frei.wild Mollono.Bass, no_4mat
         stem_normed = tmp
 
     tmp = re.sub(u"[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U00002702-\U000027B0\U000024C2-\U0001F251"
                  u"\U0001f926-\U0001f937\U00010000-\U0010ffff\u2640-\u2642\u2600-\u2B55"
                  u"\u200d\u23cf\u23e9\u231a\ufe0f\u3030]+", '', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        print(f'--> unicode replace\n{stem_normed}\n{tmp}')
+        # print(f'--> unicode replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
     # === semantic replaces
-
     # (feat. mo feat. mo
     tmp = re.sub(r'(?<=\W)(featuring|feat\.|feat|ft\.|ft)\W', 'feat. ', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        print(f'--> "feat." replace\n{stem_normed}\n{tmp}')
+        # print(f'--> "feat." replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
-    tmp = re.sub(r'(?<=\W)((produced by|produced|prod\. by|prod by|prod\.|prod))\W', 'prod. ', stem_normed, flags=re.IGNORECASE)
+    tmp = re.sub(r'(?<=\W)(produced by|produced|prod\. by|prod by|prod\.|prod)\W', 'prod. ', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        print(f'--> ".prod" replace\n{stem_normed}\n{tmp}')
+        # print(f'--> ".prod" replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
     tmp = re.sub(r'(?<=\W)(^ )', ' ', stem_normed, flags=re.IGNORECASE)
@@ -151,22 +123,29 @@ for c, f in enumerate(files_audio):
 
     tmp = re.sub(r'(?<=(\W|\(|\[))(vs\.|vs|versus)', 'vs. ', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        print(f'--> .vs replace\n{stem_normed}\n{tmp}')
+        # print(f'--> .vs replace\n{stem_normed}\n{tmp}')
+        stem_normed = tmp
+
+    re.findall(r'\([^\)]*\)|\[[^\]]*\]', stem_normed)
+    if tmp != stem_normed:
+        print(f'--> remove all inside parentheses \n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
     # stem_normed = re.sub(r'(\W&|",")\W', ', ', stem_normed)
     # potential "and" divide
     # stem_normed = re.sub('_', ' ', stem_normed)
-    tmp = re.sub(r' {2,}', ' ', stem_normed)
+    tmp = re.sub(r' ( )+', ' ', stem_normed)
     if tmp != stem_normed:
         # print(f'--> cleaning double space\n{stem_normed}\n{tmp}')
         stem_normed = tmp
+
     tmp = re.sub(r'^ +| +$', '', stem_normed)
     if tmp != stem_normed:
         # print(f'--> cleaning lead/trail space\n{stem_normed}\n{tmp}')
         stem_normed = tmp
-    # if stem != stem_normed:
-    #     print(f'{stem}\n{stem_normed}')
+
+    print(f'{stem_normed}')
+
     # *************************************************************************** #
 
     # split_feat = re.split(' feat.', stem_normed)
@@ -185,16 +164,38 @@ for c, f in enumerate(files_audio):
     ### open \W(feat\.| ft\.| featuring | ft)\W
     # *************************************************************************** #
 
-    # print(f'{test[:-1]} \t{test[-1]}')
+    # # *************************************************************************** #
+    # # def stem_guess_parentheses_info(stem):
+    # parentheses_infos = re.findall(r'\([^\)]*\)|\[[^\]]*\]', stem_normed)
+    # if parentheses_infos:
+    #     # print(f'{parentheses_infos}, at \t{stem_normed}')
+    #     for klinfo in parentheses_infos:
+    #         klinfo = klinfo[1:-1]
+    #         if re.match(r'^feat\. ', klinfo):
+    #             klinfo.replace('feat. ', '')
+    #             print(f'feature info: {klinfo}')
+    #         if re.match(' (radio|original|edit|cover|version)$', klinfo):
+    #             klinfo = re.sub(' (mix|remix|edit|cover)$', '', klinfo)
+    #             print(f'MIX                  dsfg: {klinfo}')
+    #         if re.match(' (remix|mix|edit|cover|version)$', klinfo):
+    #             klinfo = re.sub(' (mix|remix|edit|cover)$', '', klinfo)
+    #             print(f'MIX                  dsfg: {klinfo}')
+    #         # '"by" ___'
+    #         # extended
+    #
+    #         # ['[DnB]'], at [DnB] - Feint - We Wo
+    #         # n't Be Alone feat. Laura Brehm) [Monstercat edit
+    #
+    #         # -> leading '.feat'
+    #         # -> trailing 'remix', 'mix', 'edit'
+    #
+    # # print(f'{test[:-1]} \t{test[-1]}')
+    #
+    # v1 = re.findall(r'(?:\(|\[)\w+ (?:radio|original|edit|cover|version).{0,14}(?:\)|\])', stem_normed, flags=re.IGNORECASE)
 
-    # def stem_guess_artist(stem_normed):
-    # split1 = re.split(r' feat. |\, ', stem_normed, flags=re.IGNORECASE)  # both side relevant
-    # split2 = re.split(r'\(feat. ', stem_normed, flags=re.IGNORECASE)  # right side relevant
-    # split3 = re.split(r' - ', stem_normed, flags=re.IGNORECASE)  # left side artist, right side titlle, middle is problem
-    # split4 = re.split(r'\W-\W', stem_normed, flags=re.IGNORECASE)  # left side artist, right side titlle, middle is problem
-    # split5 = re.split(r'mix|edit|remix', stem_normed, flags=re.IGNORECASE)  # left side artist, right side title, middle is problem
-    split6 = re.split(r'feat\.|prod\.|vs\.|\(|\[| - |\)|\]', stem_normed, flags=re.IGNORECASE)
-    print(f'{split6}')
+    split6 = re.split(r"feat\.|prod\.|vs\.|\(|\[| - | & |\)|]", stem_normed, flags=re.IGNORECASE)
+
+    new_stem_list.append(stem_normed)
 
     # *************************************************************************** #
     # URLS
@@ -204,6 +205,9 @@ for c, f in enumerate(files_audio):
     # *************************************************************************** #
     # if not (c % 200):
     #     lut_yaml_dump(lut)
+
+
+print(new_stem_list.sort())
 
 
 # lut_yaml_dump(lut)
@@ -283,4 +287,4 @@ def fragezeichen_main():
 
 
 if __name__ == '__main__':
-    fragezeichen_main()
+    pass
