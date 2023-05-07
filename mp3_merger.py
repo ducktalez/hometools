@@ -15,7 +15,7 @@ def print_path_stems(p_list):
 
 
 def mp3merge_list(path_list, p_merged: Path, meta_TAG=None):
-    merged = sum([AudioSegment(p) for p in path_list])
+    merged = sum([AudioSegment.from_file(p) for p in path_list])
     if meta_TAG is None:
         meta_TAG = utils.mediainfo(path_list[0])
         meta_TAG_last = utils.mediainfo(path_list[-1])
@@ -24,10 +24,8 @@ def mp3merge_list(path_list, p_merged: Path, meta_TAG=None):
     merged.export(p_merged, format='mp3', bitrate='128k', tags=meta_TAG)
 
 
-
-def merge_mp3files_infolder_pydub(p_input: Path):
-    mp3files = [i for i in p_input.rglob('*.mp3')]
-    mp3dict = {i: {'track': utils.mediainfo(i)['TAG']['track'], 'stem-dlist': re.findall(r'\d+', i.stem)} for i in mp3files}
+def merge_mp3files_infolder_pydub(path_list):
+    mp3dict = {i: {'track': utils.mediainfo(i)['TAG']['track'], 'stem-dlist': re.findall(r'\d+', i.stem)} for i in path_list}
 
     try:
         mp3sorted = [i[0] for i in sorted(mp3dict.items(), key=lambda x: int(x[1]['track']))]
@@ -40,7 +38,7 @@ def merge_mp3files_infolder_pydub(p_input: Path):
             try:
                 mp3sorted = [i[0] for i in sorted(mp3dict.items(), key=lambda x: int(x[1]['stem-dlist'][1]))]
             except Exception as ex:
-                raise Exception(f'Could not determine ranking in: {p_input}')
+                raise Exception(f'Could not determine ranking in: {path_list[1]}')
 
     # print(print_path_stems(mp3files))
     # mp3files.sort(key=lambda x: int(re.findall(r'\d+', x.stem)[-1]))
@@ -48,8 +46,12 @@ def merge_mp3files_infolder_pydub(p_input: Path):
     # check_parts_enum(mp3sorted)
 
 
-nuhrpath = Path('/home/simon/Schreibtisch/fragezeichen-merge/Hörspiele/Nuhr weiter so/')
-test = Path('/home/simon/Schreibtisch/fragezeichen-merge/Hörspiele/')
-for t in test.glob('*'):
+# nuhrpath = Path('/home/simon/Schreibtisch/fragezeichen-merge/Hörspiele/Nuhr weiter so/')
+# test = Path('/home/simon/Schreibtisch/fragezeichen-merge/Hörspiele/')
+test = Path('C:/Users/Simon/Music/Simons Musik')
+test = Path('C:/Users/Simon/Desktop/mp3work/grouped/001 - Die drei Fragezeichen und der Super-Papagei')
+
+for t in test.rglob('*'):
     if t.is_dir():
-        merge_mp3files_infolder_pydub(t)
+        mp3files = [i for i in p_input.rglob('*.mp3')]
+        merge_mp3files_infolder_pydub(mp3files)
