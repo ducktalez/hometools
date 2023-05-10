@@ -272,6 +272,10 @@ def funnytest(p1, p2):
             opt2 = [x for x in opt1 if split[1] in x]
             if opt2:
                 print(f'{p.stem}\n{opt2}')
+                try:
+                    changepaths.append(dir_path[p.stem])
+                except Exception as ex:
+                    pass
                 changepaths.append(dir_path[p.stem])
 
     del_folder = Path('C:/Users/Simon/Music/DELETE_ME')
