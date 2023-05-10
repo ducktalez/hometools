@@ -19,7 +19,7 @@ def yaml_load(p: Path):
 lut = yaml_load(p_lut)
 
 
-def lut_yaml_dump(p: Path, lut):
+def audiofiles_meta_yaml_dump(p: Path, lut):
     delkeys = ['DISPOSITION',
                'codec_name', 'avg_frame_rate', 'bits_per_raw_sample', 'bits_per_sample', 'channel_layout', 'channels',
                'chroma_location', 'closed_captions', 'codec_long_name', 'codec_tag', 'codec_tag_string', 'codec_type',
@@ -78,7 +78,7 @@ def audiopaths_in_folder(p: Path):
     return files_audio
 
 
-def restr_space_fix(ss: str):
+def repath_fix_spaces(ss: str):
     tmp = re.sub(r' ( )+', ' ', ss)
     if tmp != ss:
         # print(f'--> cleaning double space\n{stem_normed}\n{tmp}')
