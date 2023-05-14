@@ -32,4 +32,16 @@ tmp += [re.sub(r'(?<=(\W|\(|\[))(vs\.|vs|versus)', 'vs. ', tmp[-1], flags=re.IGN
 tmp += [re.sub(r'(?<=\W)(^ )', ' ', tmp[-1], flags=re.IGNORECASE)]
 tmp += [re.sub(r'\([^\)]*\)|\[[^\]]*\]', '', tmp[-1])]
 tmp += [re.sub(r'^ +| +$|(?<= ) ', '', tmp[-1])]
+tmp = '\n'.join(tmp)
 print(tmp)
+
+
+
+# ah = [0.85, 0.6, 0.3]
+# ha = [0.3, 0.6, 0.85]
+# test = [0.15, 0.4, 0.7]
+# x = 0.4
+# sum(int(x+i) for i in [.15, .4, .7])
+# a = [sum(int(x+i) for i in [.15, .4, .7]) for x in [0.1, 0.4, 0.7, 1]]
+# b = [sum(int(x+1-i) for i in [.85, .6, .3]) for x in [0.1, 0.4, 0.7, 1]]
+# c = [int(x+.15)+int(x+.4)+int(x+.7) for x in [0.1, 0.4, 0.7, 1]]

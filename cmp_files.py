@@ -1,8 +1,10 @@
+import copy
 import re
 from pathlib import Path
 from pydub import utils
 import yaml
 
+from print_tools import BColors
 
 p_lut = Path.cwd() / 'wa_data/mp3files_lut.yaml'
 
@@ -106,8 +108,7 @@ def stem_normalize(stem):
     if tmp != stem_normed:
         # print(f'--> 152kbit_Opus-group replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
-
-    tmp = re.sub(r'\(Official Video\)', '', stem_normed, flags=re.IGNORECASE)
+    tmp = re.sub(r'\(Official.{0,8}Video\)', '', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
         # print(f'--> useless replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
@@ -182,30 +183,62 @@ def audiofile_get_meta(p: Path):
     try:
         meta = lut[p.as_posix()]
     except KeyError:
-        meta = utils.mediainfo(f)
+        meta = utils.mediainfo(p)
         for dt in delkeys:
             try:
                 meta.pop(dt)
             except KeyError as ex:
                 pass
-        lut[f.as_posix()] = meta
+        lut[p.as_posix()] = meta
     return meta
 
 
+def split_stem(p: Path, min_length=3):
+    split = re.split(r"feat\."
+                     r"|prod\."
+                     r"|vs\."
+                     r"|\(|\["
+                     r"| - "
+                     r"|\, "
+                     r"| & "
+                     r"|\)|\]", stem_normalize(p.stem), flags=re.IGNORECASE)
+    split = [repath_fix_spaces(i) for i in split]
+    split = [i for i in split if len(i) > min_length]
+    # print(f'{split}\t{p.name}')
+    return split
+
+
+def split_extreme(p: Path, min_length=3):
+    split = split_stem(p, min_length=min_length)
+    splitSSS = [re.sub(r'original'
+                       r'|Official'
+                       r'|Extended'
+                       r'|Radio'
+                       r'|vocal'
+                       r'|edit'
+                       r'|remix'
+                       r'|mix'
+                       r'|version'
+                       r'|release', '', i, flags=re.IGNORECASE) for i in split]
+    splitSSS = [re.sub(r'\W|_', '', i) for i in splitSSS]
+    # print(f'{splitSSS}\n{p}')
+    splitSSS = [i for i in set(splitSSS) if len(i) > min_length]
+    return splitSSS
+
+
 def audiofile_get_artist_title(p: Path):
-    split = re.split(r"feat\.|prod\.|vs\.|\(|\[| - | & |\)|]", stem_normalize(p.stem), flags=re.IGNORECASE)
-    split = [restr_space_fix(i) for i in split]
+    split = split_stem(p)
     # artist_options = [[]]
     # title_options = [[]]
 
     try:
-        artist = lut['TAG']['artist']
+        artist = lut[p.as_posix()]['TAG']['artist']
         artist = re.sub('\| - Topic', '', artist)  # youtube-music artist
     except KeyError:
         artist = split[0]
 
     try:
-        title = lut['TAG']['title']
+        title = lut[p.as_posix()]['TAG']['title']
     except KeyError:
         try:
             title = split[1]
@@ -216,9 +249,9 @@ def audiofile_get_artist_title(p: Path):
 
 
 def find_mp3_dupes(p: Path, p_base):
-
     p_base = audiopaths_in_folder(p_base)
     p_new = audiopaths_in_folder(p)
+
     base_artist_dict = {}
 
     for pb in p_base:
@@ -246,17 +279,15 @@ def find_mp3_dupes(p: Path, p_base):
                 if title in base_t_m or base_t_m in title:
                     print(f'Success: {base_t_m} {title}\np1: {f}\np2: {p_b}')
 
-
     # new_stem_list.append(stem_normed)
     # if not (c % 200):
     #     lut_yaml_dump(p_lut, lut)
-
     # print(new_stem_list.sort())
+
     # lut_yaml_dump(p_lut, lut)
 
 
 def funnytest(p1, p2):
-
     base_paths = audiopaths_in_folder(p2)
     base_stems = [stem_normalize(p.stem) for p in base_paths]
 
@@ -316,13 +347,97 @@ def funnytest(p1, p2):
 #   - interprets + title
 #   - title (only str characters)
 
+def funny2(a_folder: Path, b_folder: Path):
 
-def doppelte(mp3names_smol):
-    """Doppelte"""
-    seen = set()
-    dupes = [x for x in mp3names_smol if x in seen or seen.add(x)]
-    print(dupes)
-    print(len(dupes))
+    # aaa = {p: {'split': split_extreme(p), 'matches': {}} for p in audiopaths_in_folder(a_folder)}
+
+    bbb = [[p, ''.join(split_extreme(p)), audiofile_get_meta(p)] for p in audiopaths_in_folder(b_folder)]
+    delete_files = {}
+    maybe_files = {}
+
+    for p in audiopaths_in_folder(a_folder):
+        split = split_extreme(p)
+        for p_main, merge, meta in bbb:
+            matches = [s for s in split if s in merge]
+            b_artist, b_title = audiofile_get_artist_title(p_main)
+            merge_cpy = copy.deepcopy(merge)
+            for s in matches:
+                merge_cpy = merge_cpy.replace(s, '')
+
+            if b_artist in split and b_title in split:
+                print(f'==={b_artist}\t{b_title}\t{matches}')
+                print(f'==={p.stem}\t{p_main.stem}')
+
+            if len(matches) >= 3:
+                if b_title in split:
+                    print('asd')
+                else:
+                    print('xftgh')
+                print(f'{p.stem}, {BColors.OKBLUE}{matches} \t{BColors.OKGREEN} Can be deleted {BColors.RESET}. {p_main.stem}')
+                delete_files[p] = p_main
+
+            elif len(matches) >= 2:
+                merge_cpy = copy.deepcopy(merge)
+                for s in matches:
+                    merge_cpy = merge_cpy.replace(s, '')
+
+                if len(merge_cpy)/len(merge) < 0.25:
+                    print(f'{p.stem}, {BColors.OKBLUE}{matches} \t{BColors.OKGREEN} Overall match sufficient: '
+                          f'{len(merge_cpy) / len(merge):.2f}{BColors.RESET}. {p_main.stem}')
+                    delete_files[p] = p_main
+                else:
+                    # print(f'{p.stem}, {BColors.OKBLUE}{matches} \t{BColors.WARNING} Overall match not sufficient: {len(merge_cpy) / len(merge):.2f}{BColors.RESET}')
+                    maybe_files[p] = p_main
+            # else:
+            #     print(f'{p.stem}, {BColors.OKBLUE}{matches} \t{BColors.RED} no match.{BColors.RESET}')
+
+    print(delete_files)
+
+
+    # changepaths = []
+    # for p, v in aaa.items():
+    #     split = a_val_sp['split']
+    #     matches_dict = {}
+    #     for b_merge, b_split_path in bbb.items():
+    #         bsplit = b_split_path['split']
+    #         matches = [s for s in split if s in b_merge]
+    #         if len(matches) >= 2:
+    #             matches_dict[a_merge] = {'matches': matches}  # 'matches_rev': matches_rev}
+    #             matches_rev = [s for s in bsplit if s in a_merge]
+    #             for b_merge2, v in sorted(matches_dict.items(), key=lambda item: -len(item[1]['matches'])):
+    #                 matches = v['matches']
+    #                 match_rate = len(matches) / len(split)
+    #                 COLR = BColors.OKGREEN if match_rate >= 1.0 else BColors.OKBLUE if match_rate > 0.5 else BColors.RED
+    #                 print(f'{COLR}{len(matches)}/{len(split)} ({match_rate:.02f}%)\033[39m:{split}')
+    #
+    #                 solve_len = len("".join(matches))
+    #                 solve_rate = (len(b_merge)-solve_len)/len(b_merge)
+    #                 COLR2 = [BColors.RED, BColors.WARNING, BColors.OKBLUE, BColors.OKGREEN][sum(int(solve_rate + 1 - i) for i in [.85, .55, .25])]
+    #                 print(f'\t{COLR2}{len(b_merge)-solve_len}/{len(b_merge)} {solve_rate:0.2f}\033[39m: {matches} in {b_merge}')
+    #
+    #                 rev = v['matches_rev']
+    #                 rev_len = len("".join(v['matches_rev']))
+    #                 solve_rate_rev = (len(a_merge)-rev_len)/len(a_merge)
+    #                 if 0.6 > solve_rate > 0.3:
+    #                     COLR3 = [BColors.RED, BColors.WARNING, BColors.OKBLUE, BColors.OKGREEN][sum(int(solve_rate_rev + 1 - i) for i in [.85, .55, .25])]
+    #                 else:
+    #                     COLR3 = BColors.RESET
+    #                 print(f'\t{COLR3}{len(a_merge)-rev_len}/{len(a_merge)} {solve_rate_rev:0.2f}\033[39m: {rev} in {a_merge}')
+    #
+    # # del_folder = Path('C:/Users/Simon/Music/DELETE_ME')
+    # # for n in changepaths:
+    # #     print(f'Moving {n.name}? to \n{del_folder / n.name}')
+    # # for n in changepaths:
+    # #     print(f'Moving {n.name} to {del_folder / n.name}...')
+    # #     n.rename(del_folder / n.name)
+
+
+# def doppelte(a, b):
+#     """Doppelte"""
+#     seen = set()
+#     dupes = [x for x in mp3names_smol if x in seen or seen.add(x)]
+#     print(dupes)
+#     print(len(dupes))
 
 
 def group_interprets(mp3names):
@@ -362,4 +477,5 @@ if __name__ == '__main__':
     p1 = Path('C:/Users/Simon/Music/Simons Musik')
     p2 = Path('C:/Users/Simon/Music/Audials/Audials Music')
     # find_mp3_dupes(p1, p2)
-    funnytest(p1, p2)
+    # funnytest(p1, p2)
+    funny2(p1, p2)
