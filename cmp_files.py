@@ -248,6 +248,10 @@ def audiofile_get_artist_title(p: Path):
     return artist, title
 
 
+def remove_doublespace(p: Path):
+
+
+
 def find_mp3_dupes(p: Path, p_base):
     p_base = audiopaths_in_folder(p_base)
     p_new = audiopaths_in_folder(p)
@@ -255,12 +259,16 @@ def find_mp3_dupes(p: Path, p_base):
     base_artist_dict = {}
 
     for pb in p_base:
+        print(pb)
         artist, title = audiofile_get_artist_title(pb)
         meta = audiofile_get_meta(pb)
         try:
             base_artist_dict[artist][pb]: [title, meta]
         except Exception as ex:
             base_artist_dict[artist] = {pb: [title, meta]}
+
+    print(f'Songs in dict 1:')
+    print(base_artist_dict)
 
     for f in p_new:
         f = Path(f)
@@ -474,8 +482,9 @@ def fragezeichen_main():
 
 
 if __name__ == '__main__':
-    p1 = Path('C:/Users/Simon/Music/Simons Musik')
+    # p1 = Path('C:/Users/Simon/Music/Simons Musik')
+    p1 = Path('C:/Users/Simon/Desktop/asd_mp3')
     p2 = Path('C:/Users/Simon/Music/Audials/Audials Music')
-    # find_mp3_dupes(p1, p2)
+    find_mp3_dupes(p1, p2)
     # funnytest(p1, p2)
     funny2(p1, p2)
