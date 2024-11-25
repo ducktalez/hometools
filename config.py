@@ -1,0 +1,1 @@
+tmdb_api_key = "Get a key at www.themoviedb.org"
