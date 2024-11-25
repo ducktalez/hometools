@@ -1,4 +1,5 @@
 import numpy as np
+from icecream import *
 
 
 class Human:
@@ -7,3 +8,5 @@ class Human:
 
 
 population = [Human]
+
+icecream.ic("asdasdasdasd")

@@ -6,6 +6,7 @@ import yaml
 import music_tag
 
 from print_tools import BColors
+from utils import *
 
 p_lut = Path.cwd() / 'wa_data/mp3files_lut.yaml'
 
@@ -70,34 +71,6 @@ def audiofiles_meta_yaml_dump(p: Path, lut):
 # # print(f'{test[:-1]} \t{test[-1]}')
 #
 # v1 = re.findall(r'(?:\(|\[)\w+ (?:radio|original|edit|cover|version).{0,14}(?:\)|\])', stem_normed, flags=re.IGNORECASE)
-
-
-def get_audiopaths_in_folder(p: Path, print_non_audio=False):
-    """Returns a path-list of all music files"""
-    f_all = [f for f in p.rglob(f'*') if f.is_file()]
-
-    audio_suffix = ['.mp3', '.m4a', '.ogg', '.opus', '.flac', '.aac', '.wav', '.aif', '.aiff', '.aifc', '.wma', '.rm']
-    files_audio = [f for f in f_all if f.suffix in audio_suffix]
-
-    files_audio = sorted(files_audio, key=lambda i: i.stem)
-    if print_non_audio:
-        print(f'Ignoring:')
-        for x in list(set(f_all) - set(files_audio)):
-            print(f'--{x}')
-    return files_audio
-
-
-def repath_fix_spaces(ss: str):
-    tmp = re.sub(r' ( )+', ' ', ss)
-    if tmp != ss:
-        # print(f'--> cleaning double space\n{stem_normed}\n{tmp}')
-        ss = tmp
-
-    tmp = re.sub(r'^ +| +$', '', ss)
-    if tmp != ss:
-        # print(f'--> cleaning lead/trail space\n{stem_normed}\n{tmp}')
-        ss = tmp
-    return ss
 
 
 def stem_sanitized(stem):
@@ -272,8 +245,8 @@ def assume_artist_title_from_pathname(p: Path):
 
 
 def find_mp3_dupes(p: Path, p_base=None):
-    p_base = get_audiopaths_in_folder(p_base)
-    p_new = get_audiopaths_in_folder(p)
+    p_base = get_audio_files_in_folder(p_base)
+    p_new = get_audio_files_in_folder(p)
 
     base_artist_dict = {}
 
@@ -318,10 +291,10 @@ def funny2(new_p, base_p):
     """
 
     """
-    base_paths = get_audiopaths_in_folder(base_p)
+    base_paths = get_audio_files_in_folder(base_p)
     base_stems = [stem_sanitized(p.stem) for p in base_paths]
 
-    new_paths = get_audiopaths_in_folder(new_p)
+    new_paths = get_audio_files_in_folder(new_p)
     new_stems = [stem_sanitized(p.stem) for p in new_paths]
 
     dir_path = {stem_sanitized(p.stem): p for p in new_paths}
@@ -347,50 +320,6 @@ def funny2(new_p, base_p):
     # for n in changepaths:
     #     print(f'Moving {n.name} to {del_folder / n.name}...')
     #     n.rename(del_folder / n.name)
-
-
-def path_make_dir(p: Path):
-    """
-    Creates the folder and files according to run specified through naming (E.g. MTC200_MSE_scratch)
-    """
-    folder = p if len(p.suffix) == 0 else p.parent  # if file -> parent-folder
-    folder.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def attention_deleting_files(paths, delete_dir=Path('C:/Users/Simon/Music/DELETE_ME')):
-    """Moving files to trash dir"""
-    path_make_dir(delete_dir)
-    for p in paths:
-        print(f'{p} ->{delete_dir / p.name}')
-        p.rename(delete_dir / p.name)
-
-
-def hey_delete_song_dupes(base_dir, new_dir):
-    """
-
-    """
-    base_paths = get_audiopaths_in_folder(base_dir)
-    base_names = [stem_sanitized(x.name) for x in base_paths]
-
-    new_paths = get_audiopaths_in_folder(new_dir)
-    new_names = [stem_sanitized(x.name) for x in new_paths]
-
-    dupe_names = set(base_names) & set(new_names)
-
-    print(f'Found these dupes:')
-    for d in dupe_names:
-        print(d)
-
-    new_path_lut = {stem_sanitized(p.name): p for p in new_paths}
-
-    del_folder = Path('C:/Users/Simon/Music/DELETE_ME')
-    del_paths = [new_path_lut[n] for n in dupe_names]
-
-    for p in del_paths:
-        print(f'Moving {p.name}: {p} to {del_folder / p.name}')
-    input('Press Enter to move those files to delete.')
-    attention_deleting_files(del_paths, del_folder)
 
 
 # check parentesis
@@ -427,11 +356,11 @@ def funny2(a_folder: Path, b_folder: Path):
 
     # aaa = {p: {'split': split_extreme(p), 'matches': {}} for p in audiopaths_in_folder(a_folder)}
 
-    bbb = [[p, ''.join(split_extreme(p)), audiofile_get_meta(p)] for p in get_audiopaths_in_folder(b_folder)]
+    bbb = [[p, ''.join(split_extreme(p)), audiofile_get_meta(p)] for p in get_audio_files_in_folder(b_folder)]
     delete_files = {}
     maybe_files = {}
 
-    for p in get_audiopaths_in_folder(a_folder):
+    for p in get_audio_files_in_folder(a_folder):
         split = split_extreme(p)
         for p_main, merge, meta in bbb:
             matches = [s for s in split if s in merge]
@@ -489,22 +418,9 @@ def group_interprets(mp3names):
     print(f'{len(set(mp3names_interpret))} different interprets: {set(mp3names_interpret)}')
 
 
-def fragezeichen_main():
-    # def fragezeichen_raw():
-    p = Path('C:/Users/Simon/Desktop/fragezeichen-merge/#raw')
-    fpaths = list(p.glob('*'))
-    names = [s.name for s in fpaths]
-    nrs = [s.split(' - ')[1] for s in names]
-    titles = [s.split(' - ')[2] for s in names]
-    titles_unique = list(set(titles))
-    print('\n'.join(titles_unique))
-    print(len(titles_unique))
-    nrs_unique = sorted(set([int(re.sub('[ a-zA-Z]', '', s)) for s in nrs]))
-    print(nrs_unique, len(nrs_unique))
-
-
 def hey_get_all_tracks(p: Path):
-    songs_list = get_audiopaths_in_folder(p)
+    """returns paths"""
+    songs_list = get_audio_files_in_folder(p)
     return songs_list
 
 
@@ -528,9 +444,11 @@ def hey_get_all_track_sanitations(p: Path, apply=False):
 
 
 def hey_sanitize_all_track_names(dir: Path):
-    """
-    Sanitizing music file names
-    replacing doublespaces, leading spaces, strailing spaces, "&amp"
+    """Sanitizing music file names, replacing...
+    - doublespaces
+    - leading spaces
+    - trailing spaces
+    - "&amp"
     """
     tracks_list = hey_get_all_tracks(dir)
     change_options = {}
@@ -551,37 +469,6 @@ def hey_sanitize_all_track_names(dir: Path):
         except FileExistsError as ex:
             print(f'Alert! FileExistsError: {k} {v}')
             input('Ignoring. Press Enter to continue.')
-
-
-def rename(f: Path, new: Path):
-    # i think it would be prettier, if this was not a separate function
-    try:
-        f.rename(new)
-    except FileExistsError as ex:
-        input(f'Alert! FileExistsError: {f} {new}\nIgnoring. Press Enter to continue.')
-
-
-def user_rename_file(f: Path, new: Path):
-    x = input(f'Renaming:\n{f}\n{new}\nEnter to continue. \'n\' to skip.')
-    if x == '':
-        rename(f, new)
-    else:
-        print(f'Skipped')
-
-
-def user_rename_files_in_dict(change_filenames: dict, confirm_each=False):
-    if len(change_filenames) == 0:
-        print(f'No files to rename!')
-    else:
-        for k, v in change_filenames.items():
-            print(f'{k}\n{v}')
-        if not confirm_each:
-            input('Press Enter to rename all files above.')
-        for k, v in change_filenames.items():
-            if confirm_each:
-                user_rename_file(k, v)
-            else:
-                rename(k, v)
 
 
 def sanitize_track_to_path(s):
@@ -606,24 +493,76 @@ def sanitize_track_to_path(s):
     return s
 
 
-def hey_find_all_dupes(dir: Path):
+def hey_delete_song_dupes(base_dir, new_dir, check_file_size=False):
+    """
+    Deletes song-dupes in new_dir, if already exists in base_dir
+    """
+    base_paths_dict = dict.fromkeys(get_audio_files_in_folder(base_dir))
+    base_paths_dict = {stem_sanitized(k.name): {'path': k} for k in base_paths_dict}
+
+    new_paths_dict = dict.fromkeys(get_audio_files_in_folder(new_dir))
+    new_paths_dict = {stem_sanitized(k.name): {'path': k} for k in new_paths_dict}
+
+    dupe_names = set(base_paths_dict.keys()) & set(new_paths_dict.keys())
+
+    if check_file_size:
+        for k, v in base_paths_dict.items():
+            base_paths_dict[k]['size'] = get_file_size(v['path'])
+        for k, v in new_paths_dict.items():
+            new_paths_dict[k]['size'] = get_file_size(v['path'])
+        ignoring_dupes = {x for x in dupe_names if (base_paths_dict[x]["size"] != new_paths_dict[x]["size"])}
+        for x in ignoring_dupes:
+            print(f'Ignoring Duplicate with different size: {base_paths_dict[x]["size"]} {new_paths_dict[x]["size"]} in {x}')
+            dupe_names.remove(x)
+
+    print(f'Found these dupes:')
+    for d in dupe_names:
+        print(d)
+
+    del_folder = Path('C:/Users/Simon/Music/DELETE_ME')  # todo: should be parameter
+    del_paths = [new_paths_dict[n]['path'] for n in dupe_names]
+
+    for p in del_paths:
+        print(f'Moving {p.name}: {p} to {del_folder / p.name}')
+    input(f'Press Enter to move those files to {del_folder}.')
+    attention_deleting_files(del_paths, del_folder)
+
+
+def hey_find_all_dupes(dir: Path, delete_dupes=False):
     """Finds dupes, if the song file names are equal, but in different folders.
     Sanitize Names first!"""
+
     # load all track-paths in list
     tracks_list = hey_get_all_tracks(dir)
-    dupes = []
-    p_a = Path('path/stem.mp3')
+    dupes_dict = {x.stem: [] for x in tracks_list}
 
-    # track-list is sorted by stem (aka track filename), so dupes are following each other
     for p in tracks_list:
-        if p.stem == p_a.stem:
-            dupes.append(p_a)
-            dupes.append(p)
-        p_a = p
+        dupes_dict[p.stem].append({'path': p, 'size': get_file_size(p)})
 
-    for d in dupes:
-        print(f'{d}')
-    # todo do this
+    dupes_dict = {k: v for k, v in dupes_dict.items() if len(v) > 1}
+
+    if delete_dupes:
+        for k, v in dupes_dict.items():
+            v = sorted(v, key=lambda key: key['size'], reverse=True)
+            if v[0] == v[-1]:
+                print(f'Found {len(v)} duplicates with same size for {k}.')
+            else:
+                print(f'Found {len(v)} duplicates with different size {k}: {[x["size"] for x in v]} {[x["path"].as_posix() for x in v]}')
+            del_list = v[1:]
+            s = '\n'.join([f'{x["path"].as_posix()} ({x["size"]})' for x in del_list])
+            print(f'Keeping only: \n'
+                  f'{v[0]["path"].as_posix()} (size {v[0]["size"]})\n'
+                  f'Removing:\n'
+                  f'{s}')
+            for x in del_list:
+                deleting_file(x['path'])
+    else:
+        print(delete_dupes)
+
+
+def hey_check_audioformat_duplicates(p: Path):
+    # todo: search .wav/.flac/... and search for matchi9ng .mp3; otherwise convert each song
+    pass
 
 
 def hey_remove_album_in_pathname(dir: Path):
@@ -647,9 +586,9 @@ def hey_remove_album_in_pathname(dir: Path):
 
 
 if __name__ == '__main__':
-    # hey_delete_song_dupes(Path('C:/Users/Simon/Music/GETINHERE'), Path('C:/Users/Simon/Music/Audials/Audials Music FUK'))
+    # hey_delete_song_dupes(Path('C:/Users/Simon/Music/Audials'), Path('C:/Users/Simon/Desktop/DELETE'), check_file_size=True)
+    # todo check, if folder2 is inside folder1. remove those files from the list.
     # hey_get_all_track_sanitations(Path('C:/Users/Simon/Music/GETINHERE'))
     # hey_sanitize_all_track_names(Path('C:/Users/Simon/Music/GETINHERE/Simons Musik'))
     # hey_remove_album_in_pathname(Path("C:/Users/Simon/Music/GETINHERE/Simons Musik/"))
     hey_find_all_dupes(Path("C:/Users/Simon/Music/GETINHERE/Simons Musik/"))
-    # todo: search .wav/.flac/... and search for matchi9ng .mp3; otherwise convert each song
