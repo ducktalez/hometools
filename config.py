@@ -1,1 +1,1 @@
-tmdb_api_key = "Get a key at www.themoviedb.org"
+tmdb_api_key = "15b140e27f878a1746c3b2513da55cbb"

@@ -2,13 +2,26 @@ import os
 import re
 from pathlib import Path
 
+AUDIO_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.flac', '.aac', '.wav', '.aif', '.aiff', '.aifc', '.wma', '.rm']
+VIDEO_SUFFIX = ['.mp4', '.m4v', '.mvg', '.avi', '.mov', '.wmv', '.avchd', '.WebM', '.flv', '.mkv', '.vob', '.ogg', '.ogv']
+
+
+def get_files_in_folder(p: Path, suffix_accepted=None) -> [Path]:
+    """Returns a path-list of all music files"""
+    files = [f for f in p.rglob(f'*') if f.is_file()]
+
+    if suffix_accepted:
+        files = [f for f in files if f.suffix in suffix_accepted]
+
+    files = sorted(files, key=lambda i: i.stem)
+    return files
+
 
 def get_audio_files_in_folder(p: Path, print_non_audio=False):
     """Returns a path-list of all music files"""
     f_all = [f for f in p.rglob(f'*') if f.is_file()]
 
-    audio_suffix = ['.mp3', '.m4a', '.ogg', '.opus', '.flac', '.aac', '.wav', '.aif', '.aiff', '.aifc', '.wma', '.rm']
-    files_audio = [f for f in f_all if f.suffix in audio_suffix]
+    files_audio = [f for f in f_all if f.suffix in AUDIO_SUFFIX]
 
     files_audio = sorted(files_audio, key=lambda i: i.stem)
     if print_non_audio:
@@ -56,7 +69,7 @@ def rename(f: Path, new: Path):
 
 
 def user_rename_file(f: Path, new: Path, ask_user_str=None):
-    x = input(ask_user_str or f'Renaming:\n{f}\n{new}\nEnter to continue. \'n\' to skip.')
+    x = input(ask_user_str or f'Renaming:\n\t{f}\n\t{new}\nEnter to continue. \'n\' to skip.')
     if x == '':
         rename(f, new)
     else:

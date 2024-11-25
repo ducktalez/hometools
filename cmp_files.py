@@ -443,6 +443,11 @@ def hey_get_all_track_sanitations(p: Path, apply=False):
             pass
 
 
+def remove_ugly_spacesDots(s):
+    s = re.sub(r' ( )+', ' ', s)
+    s = re.sub(r'^ +| +$', '', s)
+    return s
+
 def hey_sanitize_all_track_names(dir: Path):
     """Sanitizing music file names, replacing...
     - doublespaces
