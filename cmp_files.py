@@ -86,11 +86,9 @@ def stem_sanitized(stem):
     # === meta replaces Wildfire (128kbit_AAC)
     tmp = re.sub(r'\(152kbit_Opus\)|\(\d{1,3}kbit\_[A-Za-z]+\)', '', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        # print(f'--> 152kbit_Opus-group replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
     tmp = re.sub(r'\(Official.{0,8}Video\)', '', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        # print(f'--> useless replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
     tmp = re.sub(r'\(\w*\.[a-zA-Z]{2,5}\)', '', stem_normed, flags=re.IGNORECASE)
@@ -104,26 +102,20 @@ def stem_sanitized(stem):
                  u"\U0001f926-\U0001f937\U00010000-\U0010ffff\u2640-\u2642\u2600-\u2B55"
                  u"\u200d\u23cf\u23e9\u231a\ufe0f\u3030]+", '', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        # print(f'--> unicode replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
-    # === semantic replaces
-    # (feat. mo feat. mo
     tmp = re.sub(r'(?<=\W)(featuring|feat\.|feat|ft\.|ft)\W', 'feat. ', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        # print(f'--> "feat." replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
         # todo 'introducing', „present(s)“ bzw. „introducing“, „duet with“
 
     tmp = re.sub(r'(?<=\W)(produced by|produced|prod\. by|prod by|prod\.|prod)\W', 'prod. ', stem_normed,
                  flags=re.IGNORECASE)
     if tmp != stem_normed:
-        # print(f'--> ".prod" replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
     tmp = re.sub(r'(?<=(\W|\(|\[))(vs\.|vs|versus)', 'vs. ', stem_normed, flags=re.IGNORECASE)
     if tmp != stem_normed:
-        # print(f'--> .vs replace\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
     tmp = re.sub(r'(?<=\W)(^ )', ' ', stem_normed, flags=re.IGNORECASE)
@@ -136,17 +128,12 @@ def stem_sanitized(stem):
         print(f'--> remove all inside parentheses \n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
-    # stem_normed = re.sub(r'(\W&|",")\W', ', ', stem_normed)
-    # potential "and" divide
-    # stem_normed = re.sub('_', ' ', stem_normed)
     tmp = re.sub(r' ( )+', ' ', stem_normed)
     if tmp != stem_normed:
-        # print(f'--> cleaning double space\n{stem_normed}\n{tmp}')
         stem_normed = tmp
 
     tmp = re.sub(r'^ +| +$', '', stem_normed)
     if tmp != stem_normed:
-        # print(f'--> cleaning lead/trail space\n{stem_normed}\n{tmp}')
         stem_normed = tmp
     return stem_normed
 
@@ -315,7 +302,7 @@ def funny2(new_p, base_p):
 
     del_folder = Path('C:/Users/Simon/Music/DELETE_ME')
     for n in changepaths:
-        print(f'Moving {n.name}? to \n{del_folder / n.name}')
+        print(f'Moving {n.base_name}? to \n{del_folder / n.base_name}')
     input('Press enter to continue')
     # for n in changepaths:
     #     print(f'Moving {n.name} to {del_folder / n.name}...')
@@ -443,10 +430,15 @@ def hey_get_all_track_sanitations(p: Path, apply=False):
             pass
 
 
-def remove_ugly_spacesDots(s):
+def remove_ugly_spaces(s):
     s = re.sub(r' ( )+', ' ', s)
     s = re.sub(r'^ +| +$', '', s)
     return s
+
+
+def remove_ugly_dots(s):
+    return s
+
 
 def hey_sanitize_all_track_names(dir: Path):
     """Sanitizing music file names, replacing...
@@ -463,14 +455,14 @@ def hey_sanitize_all_track_names(dir: Path):
         stem = re.sub(r'^ +| +$', '', stem)
         stem = re.sub('&amp;', '&', stem)
         if stem != p.stem:
-            print(f'{p.name}\n{stem}{p.suffix}')
+            print(f'{p.base_name}\n{stem}{p.suffix}')
             change_options[p] = p.parent / f'{stem}{p.suffix}'
     for k, v in change_options.items():
         print(f'{k}\n{v}')
     input('Press Enter to apply all changes.')
     for k, v in change_options.items():
         try:
-            k.rename(v)
+            k.rename_path(v)
         except FileExistsError as ex:
             print(f'Alert! FileExistsError: {k} {v}')
             input('Ignoring. Press Enter to continue.')
@@ -503,10 +495,10 @@ def hey_delete_song_dupes(base_dir, new_dir, check_file_size=False):
     Deletes song-dupes in new_dir, if already exists in base_dir
     """
     base_paths_dict = dict.fromkeys(get_audio_files_in_folder(base_dir))
-    base_paths_dict = {stem_sanitized(k.name): {'path': k} for k in base_paths_dict}
+    base_paths_dict = {stem_sanitized(k.base_name): {'path': k} for k in base_paths_dict}
 
     new_paths_dict = dict.fromkeys(get_audio_files_in_folder(new_dir))
-    new_paths_dict = {stem_sanitized(k.name): {'path': k} for k in new_paths_dict}
+    new_paths_dict = {stem_sanitized(k.base_name): {'path': k} for k in new_paths_dict}
 
     dupe_names = set(base_paths_dict.keys()) & set(new_paths_dict.keys())
 
@@ -528,7 +520,7 @@ def hey_delete_song_dupes(base_dir, new_dir, check_file_size=False):
     del_paths = [new_paths_dict[n]['path'] for n in dupe_names]
 
     for p in del_paths:
-        print(f'Moving {p.name}: {p} to {del_folder / p.name}')
+        print(f'Moving {p.base_name}: {p} to {del_folder / p.base_name}')
     input(f'Press Enter to move those files to {del_folder}.')
     attention_deleting_files(del_paths, del_folder)
 

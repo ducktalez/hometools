@@ -7,7 +7,9 @@ VIDEO_SUFFIX = ['.mp4', '.m4v', '.mvg', '.avi', '.mov', '.wmv', '.avchd', '.WebM
 
 
 def get_files_in_folder(p: Path, suffix_accepted=None) -> [Path]:
-    """Returns a path-list of all music files"""
+    """Returns a path-list of all files with a suffix
+    e.g. audiofiles
+    e.g. videofiles"""
     files = [f for f in p.rglob(f'*') if f.is_file()]
 
     if suffix_accepted:
@@ -60,7 +62,7 @@ def path_make_dir(p: Path):
     return p
 
 
-def rename(f: Path, new: Path):
+def rename_path(f: Path, new: Path):
     # i think it would be prettier, if this was not a separate function
     try:
         f.rename(new)
@@ -69,37 +71,42 @@ def rename(f: Path, new: Path):
 
 
 def user_rename_file(f: Path, new: Path, ask_user_str=None):
+    """todo save all changes in logfile"""
     x = input(ask_user_str or f'Renaming:\n\t{f}\n\t{new}\nEnter to continue. \'n\' to skip.')
     if x == '':
-        rename(f, new)
+        rename_path(f, new)
     else:
         print(f'Skipped')
 
 
-def user_rename_files_in_dict(change_filenames: dict, confirm_each=False):
-    if len(change_filenames) == 0:
+def user_rename_fromToDict(from_to_dict: dict, confirm_each=True):
+    """{'asd/file.txt': 'asd/new.txt'}"""
+    if len(from_to_dict) == 0:
         print(f'No files to rename!')
     else:
-        for k, v in change_filenames.items():
-            print(f'{k}\n{v}')
         if not confirm_each:
+            for k, v in from_to_dict.items():
+                print(f'{k}\n{v}')
             input('Press Enter to rename all files above.')
-        for k, v in change_filenames.items():
+        for k, v in from_to_dict.items():
             if confirm_each:
                 user_rename_file(k, v)
             else:
-                rename(k, v)
+                rename_path(k, v)
 
 
-def attention_deleting_files(paths, delete_dir=Path('C:/Users/Simon/Music/DELETE_ME')):
+def attention_deleting_files(paths, delete_dir=Path('C:/Users/Simon/Music/DELETE_ME'), soft_delete=True):
     """Moving files to trash dir"""
     path_make_dir(delete_dir)
     for p in paths:
-        print(f'{p} ->{delete_dir / p.name}')
-        p.rename(delete_dir / p.name)
+        if soft_delete:
+            print(f'{p} ->{delete_dir / p.base_name}')
+            p.rename_path(delete_dir / p.base_name)
+        else:
+            Path.unlink(p)
 
 
 def deleting_file(p, delete_dir=Path('C:/Users/Simon/Music/DELETE_ME')):
     """Moving file to trash dir"""
     path_make_dir(delete_dir)
-    user_rename_file(p, delete_dir / p.name, ask_user_str=f'{p} ->{delete_dir / p.name}')
+    user_rename_file(p, delete_dir / p.base_name, ask_user_str=f'{p} ->{delete_dir / p.base_name}')
