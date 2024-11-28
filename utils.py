@@ -2,12 +2,16 @@ import os
 import re
 from pathlib import Path
 
-AUDIO_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.flac', '.aac', '.wav', '.aif', '.aiff', '.aifc', '.wma', '.rm']
+AUDIO_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.aac', '.wma', '.rm', '.wav', '.flac', '.aif', '.aiff', '.aifc']
+AUDIO_LOSS_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.aac', '.wma', '.rm']
+AUDIO_LOSSLESS_SUFFIX = ['.wav', '.flac', '.aif', '.aiff', '.aifc']
 VIDEO_SUFFIX = ['.mp4', '.m4v', '.mvg', '.avi', '.mov', '.wmv', '.avchd', '.WebM', '.flv', '.mkv', '.vob', '.ogg', '.ogv']
+
+DEL_FOLDER_DUMMY = Path('C:/Users/Simon/Music/DELETE_ME')
 
 
 def get_files_in_folder(p: Path, suffix_accepted=None) -> [Path]:
-    """Returns a path-list of all files with a suffix
+    """Returns a path-list of all files with file-ending suffix
     e.g. audiofiles
     e.g. videofiles"""
     files = [f for f in p.rglob(f'*') if f.is_file()]
@@ -19,11 +23,11 @@ def get_files_in_folder(p: Path, suffix_accepted=None) -> [Path]:
     return files
 
 
-def get_audio_files_in_folder(p: Path, print_non_audio=False):
+def get_audio_files_in_folder(p: Path, suffix=AUDIO_SUFFIX, print_non_audio=False):
     """Returns a path-list of all music files"""
     f_all = [f for f in p.rglob(f'*') if f.is_file()]
 
-    files_audio = [f for f in f_all if f.suffix in AUDIO_SUFFIX]
+    files_audio = [f for f in f_all if f.suffix in suffix]
 
     files_audio = sorted(files_audio, key=lambda i: i.stem)
     if print_non_audio:
@@ -71,7 +75,7 @@ def rename_path(f: Path, new: Path):
 
 
 def user_rename_file(f: Path, new: Path, ask_user_str=None):
-    """todo save all changes in logfile"""
+    """"""
     x = input(ask_user_str or f'Renaming:\n\t{f}\n\t{new}\nEnter to continue. \'n\' to skip.')
     if x == '':
         rename_path(f, new)

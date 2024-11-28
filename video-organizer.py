@@ -213,11 +213,12 @@ def series_rename_episodes(dir_p: Path):
     """
     dir_p = //Syn723/Serien/Breaking Bad/
         |-- Breaking.Bad.S02E03.Gedaechnisschwund.GERMAN.BluRay.720p.x264-TSCC.mp4
-    # todo some episodes are much longer, E1034. Also, some have so S01
     """
     series_name = dir_p.name
     series_name = re.sub('#|\(engl\)', '', series_name, flags=re.IGNORECASE)
     tmdb_search = tv.search(series_name)
+    # todo some episodes are much longer, E1034. Also, some have so S01
+    #   - check amount of episodes in movie-db OR maximum number in files
     e_dict = tmdb_serie_infos(tmdb_search['results'][0].id)
     from_to = {}
     for p in get_files_in_folder(dir_p, suffix_accepted=VIDEO_SUFFIX):
@@ -256,10 +257,7 @@ def series_rename_episodes(dir_p: Path):
 
 if __name__ == '__main__':
     """
-    todo
-        Renaming:
-        \\Syn723\Serien\Breaking Bad\Breaking.Bad.S02E03.Gedaechnisschwund.GERMAN.BluRay.720p.x264-TSCC.mp4
-        \\Syn723\Serien\Breaking Bad\Breaking Bad S02E03 Gedächtnisschwund [Gedaechnisschwund GERMAN BluRay 720p x264 TSCC].mp4
+    
     """
     # TMDb-API einrichten
     tmdb = TMDb()
