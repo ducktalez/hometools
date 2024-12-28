@@ -10,10 +10,10 @@ from tmdbv3api import TMDb, Movie, TV, Season
 
 from cmp_files import remove_ugly_spaces, remove_ugly_dots
 from config import tmdb_api_key
-from utils import get_files_in_folder, attention_deleting_files, VIDEO_SUFFIX, user_rename_fromToDict, user_rename_file
+from utils import *
 
 
-def get_tmdb_from_name(search_str):
+def get_tmdb_from_name(search_str, movie):
     tmdb_search = movie.search(search_str)
 
     # exit all, if tmdb does not find results
@@ -117,19 +117,20 @@ def get_leftovers(p, tmdb_result):
         left_final = ''
 
     if len(left_final) > 1:
-        print(f'Leftovers: {left_final}')
+        # print(f'Leftovers: {left_final}')
+        pass
     return left_final
 
-def get_tmbdid_from_path(p: Path):  # -> tmdbv3api.as_obj.AsObj
+def get_tmbdid_from_path(p: Path, movie):  # -> tmdbv3api.as_obj.AsObj
 
     search_split = p.stem
     search_split = split_for_search(search_split)
 
     while search_split:
         search_str = ' '.join(search_split)
-        print(f'Searching for "{search_str}"')
+        # print(f'Searching for "{search_str}"')
         try:
-            compare_search_dict = get_tmdb_from_name(search_str)
+            compare_search_dict = get_tmdb_from_name(search_str, movie)
             tmdb_result = compare_search_dict[0]
 
             tmdb_id = tmdb_result['result']['id']
@@ -148,7 +149,7 @@ def get_tmbdid_from_path(p: Path):  # -> tmdbv3api.as_obj.AsObj
     raise ValueError('No matches found in database')
 
 
-def tmdb_serie_infos(serie_id):
+def tmdb_serie_infos(serie_id, season_api, tv):
     """getting all episodes in a series"""
     tv_show = tv.details(serie_id)
 
@@ -160,7 +161,7 @@ def tmdb_serie_infos(serie_id):
     return e_dict
 
 
-def delete_meta_files(p: Path):
+def delete_jellyfin_meta_files(p: Path):
     """
     Delete all files that e.g. Jellyfin creates
     """
@@ -182,7 +183,7 @@ def delete_meta_files(p: Path):
 
 def serie_path_to_numberss(p: Path):
     p_stem = p.stem
-    print('Trying' + p_stem)
+    # print('Trying: ' + p_stem)
 
     pattern = r"S(\d{1,2})E(\d{1,4})"
     match = re.search(pattern, p_stem, flags=re.IGNORECASE)
@@ -190,9 +191,9 @@ def serie_path_to_numberss(p: Path):
     if match:
         season = int(match.group(1))  # Staffelnummer
         episode = int(match.group(2))  # Episodennummer
-        print(f"Staffel: {season}, Episode: {episode}")
+        # print(f"Staffel: {season}, Episode: {episode}")
     else:
-        print("Kein Staffel-/Episodenmuster gefunden.")
+        raise ValueError("Kein Staffel-/Episodenmuster gefunden:")
     return {'season': season, 'episode': episode}
 
 
@@ -209,56 +210,113 @@ def re_umlaute_replace(s: str, reverse=False):
     return s
 
 
-def series_rename_episodes(dir_p: Path):
+def sanitize_path(path: str, replacement: str = "_") -> str:
+    """
+    Replaces problematic characters in file paths with a safe replacement.
+
+    Args:
+        path (str): The original file path.
+        replacement (str): The string to replace invalid characters with (default: "_").
+
+    Returns:
+        str: The sanitized file path.
+    """
+    # Problematic characters for file names and paths
+    invalid_characters = r'[<>:"/\\|?*\x00-\x1F]'
+
+    # Windows-related reserved names that are not allowed
+    windows_reserved_names = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    }
+
+    sanitized = re.sub(invalid_characters, replacement, path)
+
+    parts = sanitized.split("/")
+    sanitized_parts = [
+        f"{part}{replacement}" if part.upper() in windows_reserved_names else part
+        for part in parts
+    ]
+
+    sanitized_path = "/".join(sanitized_parts)
+    # Ensure that the name does not end with a full stop or space
+    sanitized_path = re.sub(r"[. ]+$", replacement, sanitized_path)
+
+    return sanitized_path
+
+
+def series_rename_episodes(dir_p: Path, season_api, tv, ignore_substrings=None):
     """
     dir_p = //Syn723/Serien/Breaking Bad/
         |-- Breaking.Bad.S02E03.Gedaechnisschwund.GERMAN.BluRay.720p.x264-TSCC.mp4
     """
     series_name = dir_p.name
     series_name = re.sub('#|\(engl\)', '', series_name, flags=re.IGNORECASE)
+    if ignore_substrings is not None:
+        for ss in ignore_substrings:
+            series_name = re.sub(ss, '', series_name)
     tmdb_search = tv.search(series_name)
     # todo some episodes are much longer, E1034. Also, some have so S01
     #   - check amount of episodes in movie-db OR maximum number in files
-    e_dict = tmdb_serie_infos(tmdb_search['results'][0].id)
+    try:
+        e_dict = tmdb_serie_infos(tmdb_search['results'][0].id, season_api, tv)
+    except TypeError as ex:
+        print(f'Alert, Skipping: {series_name}')
+        return
     from_to = {}
     for p in get_files_in_folder(dir_p, suffix_accepted=VIDEO_SUFFIX):
-        print(f'Starting with: {p}')
-        se = serie_path_to_numberss(p)
+        # print(f'Starting with: {p}')
+        if 'noch einmal' in str(p):
+            pass
+        try:
+            se = serie_path_to_numberss(p)
+        except ValueError as ex:
+            print(f'Exception! Could not find season/episode for {p}')
+            continue
         s = se['season']
         e = se['episode']
         p_stem = p.stem
-        p_stem = re.sub(r'\.', ' ', p_stem)
+        p_stem = re.sub(r'\.', ' ', p_stem)  # remove dots as separators My.Series.S01->My Series S01
+        p_stem = re.sub(r'_', ' ', p_stem)  # remove name-placeholder
+        p_stem = re.sub(r'\(\)', ' ', p_stem)  # remove name-placeholder
         p_stem = re.sub(r'\(engl\)', '', p_stem)
         p_stem = re.sub(series_name, '', p_stem, flags=re.IGNORECASE)
         p_stem = re.sub('S\d{1,2}E\d{1,4}', '', p_stem, flags=re.IGNORECASE)
+        # wotking with the actual series name
         db_name = e_dict[s][e]['tmdb'].name
         rmv_splits = set(re.split(r'\W', db_name) + re.split(r'\W', re_umlaute_replace(db_name)))
-        for n in [x for x in rmv_splits if len(x) > 0]:
+        rmv_splits = sorted(list(rmv_splits), key=lambda x: len(x), reverse=True)
+        len_ignore = 1
+        for n in [x for x in rmv_splits if len(x) > len_ignore]:
             p_stem = re.sub(n, '', p_stem, flags=re.IGNORECASE)
             # Levenshtein.distance("foo", "foobar")
+        p_stem = re.sub(rf'\b\w{{1,{len_ignore}}}\b', '', p_stem)
         # p_stem = p_stem.replace(db_name, '')
         p_stem = re.sub(db_name, '', p_stem, flags=re.IGNORECASE)
         p_leftovers = re.split('\W', p_stem)
         p_leftovers = [x for x in p_leftovers if len(x)>0]
         p_leftovers = ' '.join(p_leftovers)
         p_leftovers = f' [{p_leftovers}]' if len(p_leftovers) > 0 else p_leftovers
-        tmdb_p = p.parent / remove_ugly_spaces(f'{series_name} S{s:02d}E{e:02d} {db_name}{p_leftovers}{p.suffix}')
+        tmdb_p = remove_ugly_spaces(f'{series_name} S{s:02d}E{e:02d} {db_name}{p_leftovers}{p.suffix}')
+        tmdb_p = sanitize_path(tmdb_p, replacement='_')
+        tmdb_p = p.parent / tmdb_p
+
         if p == tmdb_p:
-            print(f'No changes at {p}')
+            # print(f'No changes at {p}')
+            pass
         else:
-            print(f'\t{p}\nto\t{tmdb_p}')
+            # print(f'\t{p}\nto\t{tmdb_p}')
             from_to[p] = tmdb_p
             # user_rename_file(p, tmdb_p)
 
-    for k, v in from_to.items():
-        user_rename_fromToDict(from_to, confirm_each=False)
+    user_rename_fromToDict(from_to, confirm_each=False)
+
     return
 
 
-if __name__ == '__main__':
-    """
-    
-    """
+def letsgo_umbenennung_serien():
+
     # TMDb-API einrichten
     tmdb = TMDb()
     tmdb.api_key = tmdb_api_key
@@ -275,44 +333,21 @@ if __name__ == '__main__':
     # Search Episodes
     season_api = Season()
 
-    for dir_p in Path('//Syn723/Serien/').glob('**/*/'):
-        series_rename_episodes(dir_p)
+    for ii, dir_p in enumerate(Path('//Syn723/Serien/').glob('**/*/')):
+        if any([x in str(dir_p) for x in ['#recycle', '#REST']]):
+            continue
+        if not dir_p.is_dir():
+            continue
+
+        try:
+            series_rename_episodes(dir_p, season_api, tv, [r'\(engl, gersub\)', '\(engl\)', '1-8', '9-Rest'])
+        except Exception as ex:
+            print(f'Alert! {ex}')
+            pass
 
 
-    # files_list = get_files_in_folder(Path('//Syn723/Filme/#English (engl)'), suffix_accepted=VIDEO_SUFFIX)
-    # tmdb.language = 'en'
-    #
-    # files_list = get_files_in_folder(Path('//Syn723/Filme/irrelevant'), suffix_accepted=VIDEO_SUFFIX)
-    # # files_list = get_files_in_folder(Path('//Syn723/Filme/#Ski_Surf'), suffix_accepted=VIDEO_SUFFIX)
-    # files_list = get_files_in_folder(Path('//Syn723/Filme/ungesehen'), suffix_accepted=VIDEO_SUFFIX)
-    # files_list = get_files_in_folder(Path('//Syn723/Serien/Doktor Who'), suffix_accepted=VIDEO_SUFFIX)
-    #
-    # tmdb.language = 'de'
-    #
-    # print(files_list)
-    #
-    # files_rename_dict = {}
-    # fails = []
-    # for p in files_list:
-    #     try:
-    #         dct = get_tmbdid_from_path(p)
-    #         files_rename_dict.update(dct)
-    #
-    #     except (TypeError, ValueError) as ex:
-    #         fails.append(p)
-    #     print('--------------------------------------------------------------------')
-    #
-    # for p in fails:
-    #     print(f'Failed Movie: {p.stem}\t{p.as_posix()}')
-    #
-    # for p, v in files_rename_dict.items():
-    #     print(f'\t{p.name} -> \nTo\t{v["rename_as"]}')
-    #
-    # # file_name = "Borat"
-    # # file_name = "Harry Potter und die Heiligtümer des Todes - Teil 1"
-    # # file_name = 'Harry.Potter.(engl).1.Extended.and.the.Sorcerers.Stone.Extended.Edition.(2001).ENGLISCH DD51 720p BluRay x264-JJ.mp4'
-    # # file_name = 'Zootopia.(engl).mp4'
-    # # file_name = 'Johnny English 2.mp4'
-    # # file_name = 'Türkisch Für Anfänger'
-    # # asdf = get_tmbdid_from_path(Path(file_name))
-    # # print(asdf)
+if __name__ == '__main__':
+    """
+    
+    """
+    delete_jellyfin_meta_files(Path('//Syn723/Serien/'))

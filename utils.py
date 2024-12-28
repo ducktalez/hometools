@@ -2,6 +2,8 @@ import os
 import re
 from pathlib import Path
 
+from print_tools import Colors
+
 AUDIO_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.aac', '.wma', '.rm', '.wav', '.flac', '.aif', '.aiff', '.aifc']
 AUDIO_LOSS_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.aac', '.wma', '.rm']
 AUDIO_LOSSLESS_SUFFIX = ['.wav', '.flac', '.aif', '.aiff', '.aifc']
@@ -71,7 +73,7 @@ def rename_path(f: Path, new: Path):
     try:
         f.rename(new)
     except FileExistsError as ex:
-        input(f'Alert! FileExistsError: {f} {new}\nIgnoring. Press Enter to continue.')
+        input(f'Alert! FileExistsError: {f} {new}\nIgnoring. Press Any to continue.')
 
 
 def user_rename_file(f: Path, new: Path, ask_user_str=None):
@@ -90,8 +92,13 @@ def user_rename_fromToDict(from_to_dict: dict, confirm_each=True):
     else:
         if not confirm_each:
             for k, v in from_to_dict.items():
-                print(f'{k}\n{v}')
-            input('Press Enter to rename all files above.')
+                print(f'{Colors.RED}{k}\n'
+                      f'{Colors.GREEN}{v}'
+                      f'{Colors.RESET}')
+            x = input('Press Enter to rename all files above.')
+            if x != '':
+                print(f'Skipped!')
+                return
         for k, v in from_to_dict.items():
             if confirm_each:
                 user_rename_file(k, v)

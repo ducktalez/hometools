@@ -1,6 +1,7 @@
 
 
-class BColors:
+class Colors:
+    # was Bcolors
     RESET = '\033[39m'
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'

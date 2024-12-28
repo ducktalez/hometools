@@ -3,7 +3,7 @@ import yaml
 import music_tag
 
 import utils
-from print_tools import BColors
+from print_tools import Colors
 from utils import *
 
 p_lut = Path.cwd() / 'wa_data/mp3files_lut.yaml'
@@ -210,13 +210,16 @@ def hey_sanitize_all_track_names(dir: Path):
             change_options[p] = p.parent / f'{stem}{p.suffix}'
     for k, v in change_options.items():
         print(f'{k}\n{v}')
-    input('Press Enter to apply all changes.')
-    for k, v in change_options.items():
-        try:
-            k.rename_path(v)
-        except FileExistsError as ex:
-            print(f'Alert! FileExistsError: {k} {v}')
-            input('Ignoring. Press Enter to continue.')
+    x = input('Press Enter to apply all changes.')
+    if x == '':
+        for k, v in change_options.items():
+            try:
+                k.rename_path(v)
+            except FileExistsError as ex:
+                print(f'Alert! FileExistsError: {k} {v}')
+                input('Ignoring. Press Any to continue.')
+    else:
+        print(f'Skipped!')
 
 
 def sanitize_track_to_path(s):
