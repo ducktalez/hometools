@@ -1,24 +1,53 @@
 import copy
+import inspect
+
 import yaml
-import music_tag
+from mutagen.mp3 import MP3
+from mutagen.flac import FLAC
+from mutagen.mp4 import MP4
+from mutagen.easyid3 import EasyID3
 
 import utils
-from print_tools import Colors
 from utils import *
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("hometools.log"),
+        logging.StreamHandler()
+    ]
+)
 
 p_lut = Path.cwd() / 'wa_data/mp3files_lut.yaml'
 
 
 def yaml_load(p: Path):
     try:
-        with p.open('r') as file:
-            loaded = yaml.load(file, Loader=yaml.FullLoader)
+        with p.open('r', encoding='utf-8') as file:
+            return yaml.load(file, Loader=yaml.FullLoader) or {}
     except FileNotFoundError:
-        loaded = {}
-    return loaded
+        logging.warning(f"YAML file not found: {p}")
+        return {}
 
 
 lut = yaml_load(p_lut)
+
+
+def get_audio_metadata(file_path: Path):
+    try:
+        audio = EasyID3(file_path)
+        metadata = {
+            "title": audio.get("title", ["Unknown"])[0],
+            "artist": audio.get("artist", ["Unknown"])[0],
+            "album": audio.get("album", ["Unknown"])[0],
+            "genre": audio.get("genre", ["Unknown"])[0]
+        }
+        return metadata
+    except Exception as e:
+        print(f"Error reading metadata from {file_path}: {e}")
+        return None
 
 
 def audiofiles_meta_yaml_dump(p: Path, lut):
@@ -33,12 +62,10 @@ def audiofiles_meta_yaml_dump(p: Path, lut):
                'width']
     for k, v in lut.items():
         for dt in delkeys:
-            try:
-                v.pop(dt)
-            except KeyError as ex:
-                pass
-    with p.open('w') as f:
-        yaml.dump(lut, f)
+            v.pop(dt, None)  # Verhindert KeyError
+
+    with p.open('w', encoding='utf-8') as f:
+        yaml.dump(lut, f, allow_unicode=True)
 
 
 def stem_identifier(stem):
@@ -85,16 +112,13 @@ def audiofile_get_meta(p: Path):
                'nb_frames', 'nb_programs', 'nb_read_frames', 'nb_read_packets', 'nb_streams', 'pix_fmt', 'probe_score',
                'profile', 'r_frame_rate', 'refs', 'sample_aspect_ratio', 'sample_fmt', 'start_pts', 'time_base',
                'width']
-    try:
-        meta = lut[p.as_posix()]
-    except KeyError:
+    if p.as_posix() in lut:
+        meta = {k: v for k, v in lut[p.as_posix()].items() if k not in delkeys}
+    else:
         meta = utils.mediainfo(p)
-        for dt in delkeys:
-            try:
-                meta.pop(dt)
-            except KeyError as ex:
-                pass
+        meta = {k: v for k, v in meta.items() if k not in delkeys}
         lut[p.as_posix()] = meta
+
     return meta
 
 
@@ -152,6 +176,7 @@ def audiofile_assume_artist_title(p: Path):
             title = split[1]
         except Exception as ex:
             print(f'FUCKIN UGLY: {p}')
+            # still open: sanitize C:\Users\Simon\Music\GETINHERE\Partycrew\Sean Paul -Temperature.mp3
             title = 'MISSING'
     return artist, title
 
@@ -167,7 +192,12 @@ def get_expected_name_from_metainfo(p: Path):
 
 
 def hey_get_all_track_sanitations(p: Path, apply=False):
-    """returns all tracks in a folder, that have obvious flaws like double space, trailing spaces, ..."""
+    """returns all tracks in a folder, that have obvious flaws like double space, trailing spaces, ...
+
+    TODO 05.02.2025
+        XV - Pictures On My Wall [Prod. By Seven]
+        XV - Pictures On My Wall [prod. Seven]
+    """
     songs_list = hey_get_all_tracks(p)
 
     name_changes = {}
@@ -198,6 +228,7 @@ def hey_sanitize_all_track_names(dir: Path):
     - trailing spaces
     - "&amp"
     """
+    logging.info(f"Starting function: {inspect.currentframe().f_code.co_name}")
     tracks_list = hey_get_all_tracks(dir)
     change_options = {}
     for p in tracks_list:
@@ -210,11 +241,11 @@ def hey_sanitize_all_track_names(dir: Path):
             change_options[p] = p.parent / f'{stem}{p.suffix}'
     for k, v in change_options.items():
         print(f'{k}\n{v}')
-    x = input('Press Enter to apply all changes.')
+    x = input('Sanitizing track names? Press Enter to apply all changes.')
     if x == '':
         for k, v in change_options.items():
             try:
-                k.rename_path(v)
+                rename_path(k, v)  # k.rename(v)  <- direct approach
             except FileExistsError as ex:
                 print(f'Alert! FileExistsError: {k} {v}')
                 input('Ignoring. Press Any to continue.')
@@ -249,28 +280,45 @@ def get_audio_dict(p: Path, suffix=None, key='path'):
     for pp in get_files_in_folder(p, suffix_accepted=suffix):
         artist_f, title_f = audiofile_assume_artist_title(pp)
 
-        tags = music_tag.load_file(p)
-        title = tags['tracktitle']
-        artist = tags['artist']
-        album = tags['album']
-        stem = stem_identifier(pp.name)
+        ext = pp.suffix.lower()
+        try:
+            if ext == ".mp3":
+                audio = MP3(pp, ID3=EasyID3)
+            elif ext == ".flac":
+                audio = FLAC(pp)
+            elif ext in [".m4a", ".mp4"]:
+                audio = MP4(pp)
+            else:
+                logging.warning(f"Nicht unterstütztes Format: {ext}")
+                continue
 
-        values = {'path': pp,
-                 'stem': stem,
-                 'suffix': pp.suffix,
-                 'size': get_file_size(p),
-                 'title': title,
-                 'artist': artist,
-                 'album': album,
-                 'artist-path': artist_f,
-                 'title-path': title_f}
+            title = audio.tags.get("title", ["Unknown"])[0]
+            artist = audio.tags.get("artist", ["Unknown"])[0]
+            album = audio.tags.get("album", ["Unknown"])[0]
 
-        d[values[key]] = values
+            stem = stem_identifier(pp.name)
+
+            values = {
+                'path': pp,
+                'stem': stem,
+                'suffix': pp.suffix,
+                'size': get_file_size(pp),
+                'title': title,
+                'artist': artist,
+                'album': album,
+                'artist-path': artist_f,
+                'title-path': title_f
+            }
+
+            d[values[key]] = values
+        except Exception as e:
+            logging.error(f"Fehler beim Lesen von {pp}: {e}")
 
     return d
 
 
 def hey_check_audioformat_duplicates(p: Path):
+    logging.info(f"Starting function: {inspect.currentframe().f_code.co_name}")
     wav_d = get_audio_dict(p, suffix=AUDIO_LOSSLESS_SUFFIX, key='stem')
     mp3_d = get_audio_dict(p, suffix=AUDIO_LOSS_SUFFIX, key='stem')
 
@@ -285,46 +333,36 @@ def hey_check_audioformat_duplicates(p: Path):
     pass
 
 
-def hey_delete_song_dupes(base_dir, new_dir, check_file_size=False):
-    """
-    Deletes song-dupes in new_dir, if already exists in base_dir
-    """
+def hey_delete_song_dupes(base_dir: Path, new_dir: Path, check_file_size=False, dry_run=True):
+    logging.info(f"Starting function: {inspect.currentframe().f_code.co_name}")
+    base_tracks = {stem_identifier(p.name): p for p in get_audio_files_in_folder(base_dir)}
+    new_tracks = {stem_identifier(p.name): p for p in get_audio_files_in_folder(new_dir)}
 
-    new_d = dict.fromkeys(get_audio_files_in_folder(new_dir))
-    new_d = {stem_identifier(k.name): {'path': k} for k in new_d}
-
-    base_d = dict.fromkeys(get_audio_files_in_folder(base_dir))
-    base_d = {stem_identifier(k.name): {'path': k} for k in base_d}
-    # Ignore 'new'-entries in 'base' (...if new_dir is inside base_dir)
-    base_d = {k: v for k, v in base_d if not k in new_d}
-
-    dupe_names = set(base_d.keys()) & set(new_d.keys())
+    duplicates = set(base_tracks.keys()) & set(new_tracks.keys())
 
     if check_file_size:
-        for k, v in base_d.items():
-            base_d[k]['size'] = get_file_size(v['path'])
-        for k, v in new_d.items():
-            new_d[k]['size'] = get_file_size(v['path'])
-        ignoring_dupes = {x for x in dupe_names if (base_d[x]["size"] != new_d[x]["size"])}
-        for x in ignoring_dupes:
-            print(f'Ignoring Duplicate with different size: {base_d[x]["size"]} {new_d[x]["size"]} in {x}')
-            dupe_names.remove(x)
+        size_mismatch = {t for t in duplicates if get_file_size(base_tracks[t]) != get_file_size(new_tracks[t])}
+        duplicates -= size_mismatch
+        if size_mismatch:
+            logging.warning(f"Ignoring {len(size_mismatch)} duplicates with different sizes.")
 
-    print(f'Found these dupes:')
-    for d in dupe_names:
-        print(d)
-
-    del_paths = [new_d[n]['path'] for n in dupe_names]
-
-    for p in del_paths:
-        print(f'Moving {p.name}: {p} to {DEL_FOLDER_DUMMY / p.name}')
-    input(f'Press Enter to move those files to {DEL_FOLDER_DUMMY}.')
-    attention_deleting_files(del_paths, DEL_FOLDER_DUMMY)
+    if dry_run:
+        print("Found duplicates (dry-run, no deletion):")
+        for d in duplicates:
+            print(f" - {new_tracks[d]}")
+    else:
+        for d in duplicates:
+            try:
+                new_tracks[d].unlink()  # Datei löschen
+                logging.info(f"Deleted duplicate: {new_tracks[d]}")
+            except Exception as e:
+                logging.error(f"Failed to delete {new_tracks[d]}: {e}")
 
 
 def hey_find_all_dupes(dir: Path, delete_dupes=False):
     """Finds dupes, if the song file names are equal, but in different folders.
     Sanitize Names first!"""
+    logging.info(f"Starting function: {inspect.currentframe().f_code.co_name}")
 
     # load all track-paths in list
     tracks_list = hey_get_all_tracks(dir)
@@ -359,26 +397,42 @@ def hey_remove_album_in_pathname(dir: Path):
     C:/Users/Simon/Music/GETINHERE/Simons Musik/Rock -Punk, Ska/Talco - Bella Ciao - Combat Circus.mp3
     C:/Users/Simon/Music/GETINHERE/Simons Musik/Rock -Punk, Ska/Talco - Bella Ciao.mp3
     """
+    logging.info(f"Starting function: {inspect.currentframe().f_code.co_name}")
     tracks_list = hey_get_all_tracks(dir)
+
     for p in tracks_list:
-        tags = music_tag.load_file(p)
-        title = tags['tracktitle']
-        artist = tags['artist']
-        album = tags['album']
-        bad_stem = f'{artist} - {title} - {album}'
-        bad_stem = sanitize_track_to_path(bad_stem)
-        if p.stem == bad_stem:
-            p_change = p.parent / f'{artist} - {title}{p.suffix}'
-            # rename_dict[p] = p_change
-            user_rename_file(p, p_change)
+        ext = p.suffix.lower()
+        try:
+            if ext == ".mp3":
+                audio = MP3(p, ID3=EasyID3)
+            elif ext == ".flac":
+                audio = FLAC(p)
+            elif ext in [".m4a", ".mp4"]:
+                audio = MP4(p)
+            else:
+                logging.warning(f"Nicht unterstütztes Format: {ext}")
+                continue
+
+            title = audio.tags.get("title", ["Unknown"])[0]
+            artist = audio.tags.get("artist", ["Unknown"])[0]
+            album = audio.tags.get("album", ["Unknown"])[0]
+
+            bad_stem = f'{artist} - {title} - {album}'
+            bad_stem = sanitize_track_to_path(bad_stem)
+
+            if p.stem == bad_stem:
+                p_change = p.parent / f'{artist} - {title}{p.suffix}'
+                user_rename_file(p, p_change)
+        except Exception as e:
+            logging.error(f"Fehler beim Verarbeiten von {p}: {e}")
 
 
 if __name__ == '__main__':
     p = Path("C:/Users/Simon/Music/GETINHERE/")
-    # hey_delete_song_dupes(Path('C:/Users/Simon/Music/Audials'), Path('C:/Users/Simon/Desktop/DELETE'), check_file_size=True)
+    hey_sanitize_all_track_names(Path('C:/Users/Simon/Music/GETINHERE'))
+    hey_delete_song_dupes(Path('C:/Users/Simon/Music/Audials'), Path('C:/Users/Simon/Music/GETINHERE'), check_file_size=True)
     # todo debug check, if folder2 is inside folder1. remove those files from the list.
     # hey_get_all_track_sanitations(Path('C:/Users/Simon/Music/GETINHERE'))
-    # hey_sanitize_all_track_names(Path('C:/Users/Simon/Music/GETINHERE/Simons Musik'))
-    # hey_remove_album_in_pathname(Path("C:/Users/Simon/Music/GETINHERE/Simons Musik/"))
-    # hey_find_all_dupes(Path("C:/Users/Simon/Music/GETINHERE/Simons Musik/"))
+    hey_remove_album_in_pathname(Path("C:/Users/Simon/Music/GETINHERE"))
+    hey_find_all_dupes(p, delete_dupes=True)
     hey_check_audioformat_duplicates(p)

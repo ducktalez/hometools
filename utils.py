@@ -111,8 +111,8 @@ def attention_deleting_files(paths, delete_dir=Path('C:/Users/Simon/Music/DELETE
     path_make_dir(delete_dir)
     for p in paths:
         if soft_delete:
-            print(f'{p} ->{delete_dir / p.base_name}')
-            p.rename_path(delete_dir / p.base_name)
+            print(f'{p} ->{delete_dir / p.name}')
+            p.rename_path(delete_dir / p.name)
         else:
             Path.unlink(p)
 
@@ -120,4 +120,4 @@ def attention_deleting_files(paths, delete_dir=Path('C:/Users/Simon/Music/DELETE
 def deleting_file(p, delete_dir=Path('C:/Users/Simon/Music/DELETE_ME')):
     """Moving file to trash dir"""
     path_make_dir(delete_dir)
-    user_rename_file(p, delete_dir / p.base_name, ask_user_str=f'{p} ->{delete_dir / p.base_name}')
+    user_rename_file(p, delete_dir / p.name, ask_user_str=f'{p} ->{delete_dir / p.name}')
