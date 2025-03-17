@@ -169,7 +169,7 @@ def delete_jellyfin_meta_files(p: Path):
     p_list = get_files_in_folder(p, suffix_accepted=suffix)
     for pp in p_list:
         print(f'Delete: {pp}')
-    attention_deleting_files(p_list, soft_delete=False)
+    attention_delete_files(p_list, soft_delete=False)
 
     # reversed=True, so that subfolders are deleted first
     dir_list = sorted(Path(p).glob('**/*/'), reverse=True)

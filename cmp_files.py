@@ -333,23 +333,25 @@ def hey_check_audioformat_duplicates(p: Path):
     pass
 
 
-def hey_delete_song_dupes(base_dir: Path, new_dir: Path, check_file_size=False, dry_run=True):
+def hey_delete_song_dupes(main_dir: Path, new_dir: Path, check_file_size=False, dry_run=True):
     logging.info(f"Starting function: {inspect.currentframe().f_code.co_name}")
-    base_tracks = {stem_identifier(p.name): p for p in get_audio_files_in_folder(base_dir)}
+    main_tracks = {stem_identifier(p.name): p for p in get_audio_files_in_folder(main_dir)}
     new_tracks = {stem_identifier(p.name): p for p in get_audio_files_in_folder(new_dir)}
 
-    duplicates = set(base_tracks.keys()) & set(new_tracks.keys())
+    duplicates = set(main_tracks.keys()) & set(new_tracks.keys())
 
     if check_file_size:
-        size_mismatch = {t for t in duplicates if get_file_size(base_tracks[t]) != get_file_size(new_tracks[t])}
+        size_mismatch = {t for t in duplicates if get_file_size(main_tracks[t]) != get_file_size(new_tracks[t])}
         duplicates -= size_mismatch
         if size_mismatch:
             logging.warning(f"Ignoring {len(size_mismatch)} duplicates with different sizes.")
 
+    print("Found duplicates:")
+    for d in duplicates:
+        print(f" - {new_tracks[d]}")
+
     if dry_run:
-        print("Found duplicates (dry-run, no deletion):")
-        for d in duplicates:
-            print(f" - {new_tracks[d]}")
+        pass
     else:
         for d in duplicates:
             try:
@@ -394,7 +396,10 @@ def hey_find_all_dupes(dir: Path, delete_dupes=False):
 
 def hey_remove_album_in_pathname(dir: Path):
     """
+    Entfernt das Album aus dem Dateinamen, falls es redundant ist.
+    Beispiel:
     C:/Users/Simon/Music/GETINHERE/Simons Musik/Rock -Punk, Ska/Talco - Bella Ciao - Combat Circus.mp3
+    wird zu:
     C:/Users/Simon/Music/GETINHERE/Simons Musik/Rock -Punk, Ska/Talco - Bella Ciao.mp3
     """
     logging.info(f"Starting function: {inspect.currentframe().f_code.co_name}")
@@ -413,24 +418,26 @@ def hey_remove_album_in_pathname(dir: Path):
                 logging.warning(f"Nicht unterstütztes Format: {ext}")
                 continue
 
-            title = audio.tags.get("title", ["Unknown"])[0]
-            artist = audio.tags.get("artist", ["Unknown"])[0]
-            album = audio.tags.get("album", ["Unknown"])[0]
+            title = audio.tags.get("title", [None])[0] or "Unknown"
+            artist = audio.tags.get("artist", [None])[0] or "Unknown"
+            album = audio.tags.get("album", [None])[0] or "Unknown"
 
-            bad_stem = f'{artist} - {title} - {album}'
-            bad_stem = sanitize_track_to_path(bad_stem)
+            bad_stem = sanitize_track_to_path(f"{artist} - {title} - {album}")
+            correct_stem = sanitize_track_to_path(f"{artist} - {title}")
 
             if p.stem == bad_stem:
-                p_change = p.parent / f'{artist} - {title}{p.suffix}'
+                p_change = p.with_name(f"{correct_stem}{p.suffix}")
                 user_rename_file(p, p_change)
+                logging.info(f"Datei umbenannt: {p.name} -> {p_change.name}")
         except Exception as e:
             logging.error(f"Fehler beim Verarbeiten von {p}: {e}")
 
 
+
 if __name__ == '__main__':
     p = Path("C:/Users/Simon/Music/GETINHERE/")
-    hey_sanitize_all_track_names(Path('C:/Users/Simon/Music/GETINHERE'))
-    hey_delete_song_dupes(Path('C:/Users/Simon/Music/Audials'), Path('C:/Users/Simon/Music/GETINHERE'), check_file_size=True)
+    # hey_sanitize_all_track_names(Path('C:/Users/Simon/Music/GETINHERE'))
+    hey_delete_song_dupes(Path('C:/Users/Simon/Music/GETINHERE'), Path('C:/Users/Simon/Music/Audials'), dry_run=False)
     # todo debug check, if folder2 is inside folder1. remove those files from the list.
     # hey_get_all_track_sanitations(Path('C:/Users/Simon/Music/GETINHERE'))
     hey_remove_album_in_pathname(Path("C:/Users/Simon/Music/GETINHERE"))

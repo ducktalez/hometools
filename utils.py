@@ -106,7 +106,7 @@ def user_rename_fromToDict(from_to_dict: dict, confirm_each=True):
                 rename_path(k, v)
 
 
-def attention_deleting_files(paths, delete_dir=Path('C:/Users/Simon/Music/DELETE_ME'), soft_delete=True):
+def attention_delete_files(paths, delete_dir=Path('C:/Users/Simon/Music/DELETE_ME'), soft_delete=True):
     """Moving files to trash dir"""
     path_make_dir(delete_dir)
     for p in paths:
