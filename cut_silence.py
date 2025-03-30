@@ -145,7 +145,7 @@ def remove_silence_with_ffmpeg(p: Path, overwrite=False, save_difference_flag=Fa
         logging.info(f"Keine Änderungen für {p.name}, Datei wird nicht gespeichert.")
         return
 
-    popm_value = get_popm_rating(p) TODO # todo wird nmicht korrekt befüllt, metadaten rating geht verloren...
+    popm_value = get_popm_rating(p)  # TODO # todo wird nicht korrekt befüllt, metadaten rating geht verloren...
 
     if overwrite:
         p_source = p.rename(p.with_stem(p.stem + "-ffmpeg-original"))
@@ -157,8 +157,8 @@ def remove_silence_with_ffmpeg(p: Path, overwrite=False, save_difference_flag=Fa
     cmd = [
         "ffmpeg", "-i", str(p_source),
         "-c:a", "copy",
-        "-map_metadata", "0",
-        "-metadata", f"rating={popm_value}",
+        # "-map_metadata", "0",
+        # "-metadata", f"rating={popm_value}",
         "-ss", str(start_trim / 1000),
         "-to", str(end_trim / 1000 + 0.5),
         str(p_new)
