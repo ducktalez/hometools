@@ -4,7 +4,8 @@ from pathlib import Path
 import logging
 import subprocess
 import numpy as np
-import mutagen
+from mutagen.mp3 import MP3
+from mutagen.id3 import ID3, POPM
 from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
 from mutagen.mp4 import MP4
@@ -12,6 +13,7 @@ from mutagen.easyid3 import EasyID3
 import matplotlib.pyplot as plt
 import librosa
 import librosa.beat
+from mutagen import File
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -116,18 +118,121 @@ def trim_audio_fixed_duration(p: Path, start_trim_ms: int = 0, end_trim_ms: int 
 
         logging.info(f"Fixe Stille entfernt mit FFmpeg und gespeichert als: {new_path}")
 
+def read_all_tags(p: Path):
+    """Liest alle Tags als Dictionary."""
+    audio = File(p)
+    if audio is None or not hasattr(audio, "tags") or audio.tags is None:
+        return {}
+    return dict(audio.tags)
+
+def write_all_tags(p: Path, tags: dict):
+    """Schreibt alle Tags aus einem Dictionary zurück."""
+    audio = File(p)
+    if audio is None:
+        logging.error(f"Datei {p.name} konnte nicht gelesen werden.")
+        return False
+    if audio.tags is None:
+        audio.add_tags()
+    for key, value in tags.items():
+        audio.tags[key] = value
+    audio.save()
+    logging.info(f"Metadaten in {p.name} wiederhergestellt.")
+    return True
+
 def get_popm_rating(p: Path):
-    """Liest das `POPM`-Tag aus, um die Bewertung zu extrahieren."""
-    cmd = ["ffprobe", "-i", str(p), "-show_entries", "format_tags=POPM", "-of", "default=nw=1:nk=1", "-v", "quiet"]
+    """
+    Liest das `POPM`-Tag aus einer MP3-Datei.
+    Gibt eine Bewertung als (0–255, 0–5 Sterne) zurück.
+    """
+    try:
+        audio = MP3(p, ID3=ID3)
+        popm_tags = audio.tags.getall("POPM")
+        if not popm_tags:
+            logging.warning(f"Keine Bewertung (POPM) für {p.name} gefunden.")
+            return 0, 0
+
+        rating_raw = popm_tags[0].rating  # Wert 0–255
+        return rating_raw
+
+    except Exception as e:
+        logging.error(f"Fehler beim Lesen von {p.name}: {e}")
+        return 0
+
+def set_popm_rating(p: Path, rating: int, email: str = "default", playcount: int = 0):
+    """
+    Setzt das `POPM`-Rating einer MP3-Datei.
+
+    Parameter:
+    - p: Pfad zur MP3-Datei
+    - rating: Bewertung (je nach Modus 0–5 oder 0–255)
+    - mode: "stars" (Standard) oder "raw"
+    - email: Identifikator im POPM-Frame (Standard: "default")
+    - playcount: Optionaler Zähler für Abspielhäufigkeit
+    """
+    try:
+        if not (0 <= rating <= 255):
+            raise ValueError("Raw-Rating muss zwischen 0 und 255 liegen.")
+        rating_raw = rating
+
+        audio = MP3(p, ID3=ID3)
+        if audio.tags is None:
+            audio.add_tags()
+
+        popm = POPM(email=email, rating=rating_raw, count=playcount)
+        audio.tags.setall("POPM", [popm])
+        audio.save()
+
+        logging.info(f"{p.name}: Bewertung gesetzt auf {rating_raw}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Fehler beim Schreiben von {p.name}: {e}")
+        return False
+
+import subprocess
+from pathlib import Path
+import logging
+
+def split_mp3_lossless(p: Path, start_sec: float, end_sec: float, overwrite=False):
+    """
+    todo dieses verwenden
+    Verwendet mp3splt, um verlustfrei ein MP3 zu schneiden (nur auf Framegrenzen möglich).
+
+    Args:
+        p (Path): Eingabedatei (muss .mp3 sein)
+        start_sec (float): Startzeit in Sekunden
+        end_sec (float): Endzeit in Sekunden
+        overwrite (bool): Ob Originaldatei überschrieben wird (standard: False)
+    """
+    if p.suffix.lower() != ".mp3":
+        logging.error(f"Nur MP3-Dateien werden unterstützt, nicht {p.suffix}")
+        return
+
+    output = p if overwrite else p.with_stem(p.stem + "-split")
+
+    # mp3splt erwartet Zeitangaben im Format MM.SS oder HH.MM.SS
+    def format_time(sec):
+        minutes = int(sec // 60)
+        seconds = sec % 60
+        return f"{minutes}.{seconds:06.3f}"
+
+    start_formatted = format_time(start_sec)
+    end_formatted = format_time(end_sec)
+
+    cmd = [
+        "mp3splt", "-f", "-o", output.stem, "-d", str(output.parent),
+        str(p), start_formatted, end_formatted
+    ]
+
+    logging.info(f"Schneide {p.name} verlustfrei: {start_formatted} bis {end_formatted}")
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-    popm_value = result.stdout.strip()
-    if not popm_value:
-        logging.warning(f"Keine Bewertung (Rating) für {p.name} gefunden.")
-        return "0"  # Standardwert (keine Bewertung)
+    if result.returncode != 0:
+        logging.error(f"Fehler beim Schneiden: {result.stderr}")
+    else:
+        logging.info(f"Erfolg: Datei gespeichert unter {output.with_suffix('.mp3')}")
 
-    logging.info(f"Bewertung für {p.name} gefunden: {popm_value}")
-    return popm_value
+
 
 def remove_silence_with_ffmpeg(p: Path, overwrite=False, save_difference_flag=False, silence_thresh=-75):
     """Verwendet pydub zur Analyse und FFmpeg zum Schneiden ohne Rekodierung, speichert optional die entfernte Stille."""
@@ -145,19 +250,23 @@ def remove_silence_with_ffmpeg(p: Path, overwrite=False, save_difference_flag=Fa
         logging.info(f"Keine Änderungen für {p.name}, Datei wird nicht gespeichert.")
         return
 
-    popm_value = get_popm_rating(p)  # TODO # todo wird nicht korrekt befüllt, metadaten rating geht verloren...
+    # popm_value = get_popm_rating(p)  # TODO # todo wird nicht korrekt befüllt, metadaten rating geht verloren...
+    # tags = read_all_tags(p)
 
     if overwrite:
-        p_source = p.rename(p.with_stem(p.stem + "-ffmpeg-original"))
+        p_source = p.rename(p.with_stem(p.stem + "-ffmpeg-original"))  # safety-copy
         p_new = p
     else:
         p_source = p
         p_new = p.with_stem(p.stem + "-ffmpeg")
-
+    # todo tutorial with mp3splthttps://sourceforge.net/projects/mp3splt/files/latest/download
+    #     sudo apt install mp3splt
+    #     # oder
+    #     brew install mp3splt
     cmd = [
         "ffmpeg", "-i", str(p_source),
         "-c:a", "copy",
-        # "-map_metadata", "0",
+        "-map_metadata", "0",
         # "-metadata", f"rating={popm_value}",
         "-ss", str(start_trim / 1000),
         "-to", str(end_trim / 1000 + 0.5),
@@ -171,6 +280,7 @@ def remove_silence_with_ffmpeg(p: Path, overwrite=False, save_difference_flag=Fa
         logging.info(f"Keine Änderungen für {p.name}, Datei wird nicht gespeichert.")
         return
     logging.info(f"Stille entfernt mit FFmpeg und gespeichert als: {p_new}")
+    # write_all_tags(p_new, tags)
 
     if save_difference_flag:
         removed_audio = audio[:start_trim] + audio[end_trim:]
@@ -192,6 +302,6 @@ def process_audio_folder(folder: Path, overwrite=False, save_difference_wav=Fals
             # analyze_bpm(file)  # todo
 
 
-audio_folder = Path("C:/Users/Simon/Music/Audials/Audials Music")
-process_audio_folder(audio_folder, overwrite=True, save_difference_wav=True)
+audio_folder = Path("C:/Users/Simon/Music/Audials/Audials Music/test")
+process_audio_folder(audio_folder, overwrite=False, save_difference_wav=False)
 
