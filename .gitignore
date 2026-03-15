@@ -1,0 +1,31 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+*.egg
+
+# Virtual environments
+hometools-env/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs & generated files
+*.log
+
+# Local data & test artifacts
+wa_data/
+
+# OS
+Thumbs.db
+.DS_Store
