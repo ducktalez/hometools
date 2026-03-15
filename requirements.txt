@@ -1,0 +1,16 @@
+# Core
+python-dotenv>=1.0
+PyYAML>=6.0
+pydub>=0.25
+mutagen>=1.47
+tmdbv3api>=1.9
+
+# Audio analysis (optional)
+# librosa>=0.10
+# matplotlib>=3.7
+# numpy>=1.24
+
+
+# Development
+pytest>=7.0
+pytest-cov>=4.0
