@@ -4,8 +4,7 @@
 
 ## Scope
 
-hometools = CLI-only tool collection + local streaming prototypes (audio & video).
-There is **no GUI application and no background daemon** — all functionality is exposed exclusively through CLI commands (see below).
+hometools = media library tools + local streaming prototypes (audio & video).
 One shared core, two servers, common dark-theme UI.
 
 ## Architecture
@@ -26,6 +25,8 @@ One shared core, two servers, common dark-theme UI.
 7. **Logging, not print.** `logging.getLogger(__name__)` in library code.
 8. **Sync only on explicit command.** Never auto-pull from NAS.
 9. **Update instructions after structural changes.** `hometools update-instructions`.
+10. **Robust exception handling.** Every public function must handle errors gracefully and never crash the caller. Use try/except with logging — return sensible defaults (e.g. empty list, `None`, `False`) on failure.
+11. **No blocking on long-running operations.** Expensive work (thumbnail extraction, network I/O, large file scans) must run in background threads or be deferred. Use dummy/placeholder values until results are ready so the UI stays responsive on first start.
 
 ## CLI
 
