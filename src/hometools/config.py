@@ -14,6 +14,23 @@ except ImportError:
     pass  # python-dotenv is optional; env vars can be set externally
 
 
+def _get_path_from_env(name: str, default: Path) -> Path:
+    """Return a filesystem path from the environment or a default value."""
+    raw = os.environ.get(name)
+    return Path(raw).expanduser() if raw else default.expanduser()
+
+
+def _get_int_from_env(name: str, default: int) -> int:
+    """Return an integer environment variable, raising a clear error on invalid input."""
+    raw = os.environ.get(name)
+    if raw in (None, ""):
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer, got: {raw!r}") from exc
+
+
 def get_tmdb_api_key() -> str:
     """Return the TMDB API key from the environment."""
     key = os.environ.get("TMDB_API_KEY", "")
@@ -28,3 +45,35 @@ def get_tmdb_api_key() -> str:
 def get_delete_dir() -> Path:
     """Return the soft-delete directory from the environment, with a sensible default."""
     return Path(os.environ.get("HOMETOOLS_DELETE_DIR", Path.home() / "Music" / "DELETE_ME"))
+
+
+def get_audio_library_dir() -> Path:
+    """Return the local audio library used by the streaming prototype."""
+    return _get_path_from_env(
+        "HOMETOOLS_AUDIO_LIBRARY_DIR",
+        Path.home() / "Music" / "hometools" / "audio-library",
+    )
+
+
+def get_audio_nas_dir() -> Path:
+    """Return the mounted NAS source directory for manual audio syncs."""
+    return _get_path_from_env(
+        "HOMETOOLS_AUDIO_NAS_DIR",
+        Path.home() / "Music" / "hometools" / "audio-nas",
+    )
+
+
+def get_stream_host() -> str:
+    """Return the bind host for the local streaming web server."""
+    return os.environ.get("HOMETOOLS_STREAM_HOST", "127.0.0.1")
+
+
+def get_stream_port() -> int:
+    """Return the bind port for the local streaming web server."""
+    return _get_int_from_env("HOMETOOLS_STREAM_PORT", 8000)
+
+
+def get_stream_bind() -> tuple[str, int]:
+    """Return host and port tuple for the local streaming web server."""
+    return get_stream_host(), get_stream_port()
+
