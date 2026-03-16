@@ -152,3 +152,26 @@ def get_player_bar_style() -> str:
     if raw not in ("classic", "waveform"):
         return "classic"
     return raw
+
+
+# ---------------------------------------------------------------------------
+# Video PWA display mode
+# ---------------------------------------------------------------------------
+
+
+def get_video_pwa_display_mode() -> str:
+    """Return the video PWA display mode: ``'standalone'`` or ``'minimal-ui'``.
+
+    ``standalone`` — app-like experience with native controls blocked.
+                     Best for: Fullscreen button visible, clean interface.
+                     Drawback: Background playback & PiP blocked by iOS.
+    ``minimal-ui`` — minimal browser chrome, all APIs available.
+                     Best for: Background audio playback, PiP, fullscreen APIs.
+                     Drawback: "Add to Home Screen" creates web link, not PWA.
+
+    Set via environment variable ``HOMETOOLS_VIDEO_PWA_DISPLAY`` (default: "minimal-ui").
+    """
+    raw = os.environ.get("HOMETOOLS_VIDEO_PWA_DISPLAY", "minimal-ui").strip().lower()
+    if raw not in ("standalone", "minimal-ui"):
+        return "minimal-ui"
+    return raw

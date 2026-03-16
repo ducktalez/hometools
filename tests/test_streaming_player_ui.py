@@ -250,3 +250,159 @@ def test_render_media_page_accepts_style_param():
         assert 'id="progress-bar"' in page
         assert 'id="btn-play"' in page
         assert 'id="folder-grid"' in page
+
+
+# ---------------------------------------------------------------------------
+# PiP (Picture-in-Picture) support
+# ---------------------------------------------------------------------------
+
+
+def test_pip_button_in_classic_html():
+    page = _page(media="video", style="classic")
+    assert 'id="btn-pip"' in page
+    assert "pip-btn" in page
+
+
+def test_pip_button_in_waveform_html():
+    page = _page(media="video", style="waveform")
+    assert 'id="btn-pip"' in page
+    assert "pip-btn" in page
+
+
+def test_pip_button_in_audio_page():
+    """Audio pages also get the button (hidden by JS when not a video player)."""
+    page = _page(media="audio", style="classic")
+    assert 'id="btn-pip"' in page
+
+
+def test_pip_js_has_request_and_exit():
+    js = _js(style="classic")
+    assert "requestPiP" in js
+    assert "exitPiP" in js
+
+
+def test_pip_js_has_pip_supported_detection():
+    js = _js(style="classic")
+    assert "pictureInPictureEnabled" in js
+    assert "webkitSupportsPresentationMode" in js
+
+
+def test_pip_js_has_visibility_change_pip():
+    js = _js(style="classic")
+    assert "visibilitychange" in js
+    assert "pipActive" in js
+
+
+def test_pip_js_has_enter_leave_events():
+    js = _js(style="waveform")
+    assert "enterpictureinpicture" in js
+    assert "leavepictureinpicture" in js
+
+
+def test_pip_css_styling():
+    css = render_base_css()
+    assert ".ctrl-btn.pip-btn" in css
+
+
+def test_bg_audio_runs_for_all_video_players():
+    """bgAudio mirror is no longer restricted to iOS only."""
+    js = _js(style="classic")
+    assert "if (!isVideoPlayer) return;" in js
+    # The old iOS-only guard should be gone
+    assert "if (!isVideoPlayer || !isIOS) return;" not in js
+
+
+# ---------------------------------------------------------------------------
+# Background playback: wasPlaying flag + volume approach
+# ---------------------------------------------------------------------------
+
+
+def test_js_has_was_playing_flag():
+    """The wasPlaying flag must exist and be set on 'playing' event."""
+    js = _js(style="classic")
+    assert "wasPlaying" in js
+    assert "wasPlaying = true" in js
+    assert "wasPlaying = false" in js
+
+
+def test_js_uses_muted_not_volume():
+    """bgAudio must use muted (not volume) because iOS ignores volume changes."""
+    js = _js(style="classic")
+    assert "bgAudio.muted = true" in js or "bg.muted = true" in js
+    assert "bgAudio.muted = false" in js
+    # Must NOT use volume approach (read-only on iOS → double audio)
+    assert "bgAudio.volume = 0" not in js
+    assert "bgAudio.volume = 1" not in js
+
+
+def test_js_visibility_checks_was_playing():
+    """visibilitychange must check wasPlaying, not player.paused."""
+    js = _js(style="classic")
+    assert "document.hidden && wasPlaying" in js
+
+
+def test_js_has_bg_audio_is_active():
+    """Helper function bgAudioIsActive must exist."""
+    js = _js(style="classic")
+    assert "bgAudioIsActive" in js
+
+
+def test_video_has_autopictureinpicture_attribute():
+    """Video pages should have autopictureinpicture on the element."""
+    page = _page(media="video", style="waveform")
+    assert "autopictureinpicture" in page
+
+
+def test_video_has_controls_attribute():
+    """Video element must have native controls for fullscreen button."""
+    page = _page(media="video", style="classic")
+    assert '<video id="player" preload="auto" playsinline controls autopictureinpicture>' in page
+
+
+def test_audio_element_has_no_controls():
+    """Audio element should NOT have controls or autopictureinpicture."""
+    page = _page(media="audio", style="classic")
+    assert '<audio id="player" preload="auto" playsinline>' in page
+    assert '<audio id="player" preload="auto" playsinline controls' not in page
+
+
+def test_video_page_no_apple_web_app_capable():
+    """Video pages must NOT set apple-mobile-web-app-capable (blocks PiP on iOS)."""
+    page = _page(media="video", style="classic")
+    assert "apple-mobile-web-app-capable" not in page
+
+
+def test_audio_page_has_apple_web_app_capable():
+    """Audio pages should keep apple-mobile-web-app-capable for standalone mode."""
+    page = _page(media="audio", style="classic")
+    assert "apple-mobile-web-app-capable" in page
+
+
+def test_fullscreen_button_in_classic_html():
+    page = _page(media="video", style="classic")
+    assert 'id="btn-fs"' in page
+    assert "fs-btn" in page
+
+
+def test_fullscreen_button_in_waveform_html():
+    page = _page(media="video", style="waveform")
+    assert 'id="btn-fs"' in page
+
+
+def test_js_has_fullscreen_logic():
+    js = _js(style="classic")
+    assert "requestFullscreen" in js
+    assert "webkitEnterFullscreen" in js
+    assert "fullscreenEnabled" in js
+
+
+def test_js_sets_media_session_playback_state():
+    """When going to background, playbackState should be set to 'playing'."""
+    js = _js(style="classic")
+    assert "mediaSession.playbackState" in js
+
+
+def test_pause_handler_checks_document_hidden():
+    """The pause handler must not react when browser auto-pauses (hidden)."""
+    js = _js(style="classic")
+    assert "document.hidden" in js
