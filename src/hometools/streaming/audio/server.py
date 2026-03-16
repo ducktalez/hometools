@@ -23,6 +23,10 @@ from hometools.streaming.core.server_utils import (
     check_library_accessible,
     render_error_page,
     render_media_page,
+    render_pwa_icon_png,
+    render_pwa_icon_svg,
+    render_pwa_manifest,
+    render_pwa_service_worker,
     resolve_media_path,
 )
 
@@ -50,6 +54,7 @@ def render_audio_index_html(tracks: list[AudioTrack], library_dir: Path) -> str:
         extra_css=AUDIO_CSS_EXTRA,
         api_path="/api/audio/tracks",
         item_noun="track",
+        theme_color="#1db954",
     )
 
 
@@ -119,6 +124,37 @@ def create_app(library_dir: Path | None = None) -> Any:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
+
+    # --- PWA endpoints ---
+    _AUDIO_THEME = "#1db954"
+
+    @app.get("/manifest.json")
+    def manifest():
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=_json.loads(render_pwa_manifest("hometools audio", "Audio", theme_color=_AUDIO_THEME)),
+            media_type="application/manifest+json",
+        )
+
+    @app.get("/sw.js")
+    def service_worker():
+        from fastapi.responses import Response
+        return Response(content=render_pwa_service_worker(), media_type="application/javascript")
+
+    @app.get("/icon.svg")
+    def icon_svg():
+        from fastapi.responses import Response
+        return Response(content=render_pwa_icon_svg("🎵", _AUDIO_THEME), media_type="image/svg+xml")
+
+    @app.get("/icon-192.png")
+    def icon_192():
+        from fastapi.responses import Response
+        return Response(content=render_pwa_icon_png("🎵", 192, _AUDIO_THEME), media_type="image/png")
+
+    @app.get("/icon-512.png")
+    def icon_512():
+        from fastapi.responses import Response
+        return Response(content=render_pwa_icon_png("🎵", 512, _AUDIO_THEME), media_type="image/png")
 
     return app
 

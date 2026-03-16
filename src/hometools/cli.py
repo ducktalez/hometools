@@ -136,25 +136,21 @@ def _print_server_banner(current: str, host: str, port: int) -> None:
     # If binding to all interfaces, show network IPs
     if host == "0.0.0.0":
         local_ips = _get_local_ips()
-        hosts_to_show = local_ips + ["localhost", "127.0.0.1"]
+        hosts_to_show = local_ips + ["127.0.0.1"]
     else:
         hosts_to_show = [host]
-    
-    a_mark = "  ← dieser Server" if current == "audio" else ""
-    v_mark = "  ← dieser Server" if current == "video" else ""
 
-    print()
-    print("  ╔═ Verbindungsadressen ════════════════════════════╗")
+    print("\n  ╔═ Verbindungsadressen ════════════════════════════╗")
     
     for i, h in enumerate(hosts_to_show):
         audio_url = f"http://{h}:{audio_port}/"
         video_url = f"http://{h}:{video_port}/"
         
-        if i > 0:
+        if i >= 0:
             print("  ║                                                  ║")
         
-        print(f"  ║  🎵  {audio_url:<37}{a_mark}")
-        print(f"  ║  🎬  {video_url:<37}{v_mark}")
+        print(f"  ║  🎵  {audio_url:<37}")
+        print(f"  ║  🎬  {video_url:<37}")
     
     print("  ╚════════════════════════════════════════════════╝")
     print()

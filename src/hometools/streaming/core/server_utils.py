@@ -171,6 +171,127 @@ def resolve_media_path(library_dir: Path, encoded_relative_path: str, allowed_su
 
 
 # ---------------------------------------------------------------------------
+# Progressive Web App (PWA) support
+# ---------------------------------------------------------------------------
+
+
+def render_pwa_manifest(
+    name: str,
+    short_name: str,
+    theme_color: str = "#1db954",
+    background_color: str = "#121212",
+) -> str:
+    """Return a PWA manifest.json as string.
+
+    ``display: standalone`` removes the browser chrome (URL bar, tabs)
+    so the app feels native on iOS and Android.
+    """
+    import json
+    manifest = {
+        "name": name,
+        "short_name": short_name,
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": background_color,
+        "theme_color": theme_color,
+        "icons": [
+            {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"},
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ],
+    }
+    return json.dumps(manifest, indent=2, ensure_ascii=False)
+
+
+def render_pwa_service_worker() -> str:
+    """Return a minimal service worker JS for PWA installability and caching."""
+    return """\
+const CACHE_NAME = 'hometools-v1';
+
+self.addEventListener('install', event => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(names =>
+      Promise.all(names.filter(n => n !== CACHE_NAME).map(n => caches.delete(n)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  // Don't cache streaming endpoints or API calls
+  if (url.pathname.includes('/stream') || url.pathname.startsWith('/api/')) return;
+  // Cache-first for icons, network-first for everything else
+  if (url.pathname.startsWith('/icon')) {
+    event.respondWith(
+      caches.match(event.request).then(r => r || fetch(event.request).then(resp => {
+        const clone = resp.clone();
+        caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+        return resp;
+      }))
+    );
+  }
+});
+"""
+
+
+def render_pwa_icon_svg(emoji: str, bg_color: str = "#1db954") -> str:
+    """Return an SVG icon for the PWA using an emoji character."""
+    return f"""\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="20" fill="{bg_color}"/>
+  <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+        font-size="60">{emoji}</text>
+</svg>"""
+
+
+def render_pwa_icon_png(emoji: str, size: int, bg_color: str = "#1db954") -> bytes:
+    """Return a PNG icon rendered from an SVG.
+
+    Falls back to a simple colored square if cairosvg is not available.
+    """
+    svg = render_pwa_icon_svg(emoji, bg_color)
+    try:
+        import cairosvg  # type: ignore[import-untyped]
+        return cairosvg.svg2png(bytestring=svg.encode(), output_width=size, output_height=size)
+    except ImportError:
+        pass
+    # Fallback: create a minimal 1-color PNG (icon will just be the bg color)
+    import struct, zlib
+    # Simple RGBA PNG
+    width = height = size
+    def _raw_row():
+        return b'\x00' + bytes(_parse_hex(bg_color)) * width
+    raw = b''.join(_raw_row() for _ in range(height))
+    def _chunk(ctype, data):
+        c = ctype + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    sig = b'\x89PNG\r\n\x1a\n'
+    ihdr = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)
+    return sig + _chunk(b'IHDR', ihdr) + _chunk(b'IDAT', zlib.compress(raw)) + _chunk(b'IEND', b'')
+
+
+def _parse_hex(color: str) -> tuple[int, int, int]:
+    """Parse a hex color string to (r, g, b)."""
+    c = color.lstrip('#')
+    return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+
+
+def render_pwa_head_tags(theme_color: str = "#1db954") -> str:
+    """Return HTML <head> tags required for PWA + iOS standalone mode."""
+    return f"""\
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="{theme_color}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">"""
+
+
+# ---------------------------------------------------------------------------
 # Shared dark-theme CSS
 # ---------------------------------------------------------------------------
 
@@ -183,6 +304,10 @@ def render_base_css() -> str:
   --bg: #121212; --surface: #1e1e1e; --surface2: #282828;
   --accent: #1db954; --text: #fff; --sub: #b3b3b3;
   --header-h: 56px; --filter-h: 52px; --player-h: 80px;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 body {
   background: var(--bg); color: var(--text);
@@ -192,8 +317,10 @@ body {
 
 /* ── Header ── */
 header {
-  height: var(--header-h); background: var(--surface);
-  display: flex; align-items: center; padding: 0 1rem; gap: 0.75rem;
+  height: calc(var(--header-h) + var(--sat));
+  padding-top: var(--sat);
+  background: var(--surface);
+  display: flex; align-items: center; padding-left: max(1rem, var(--sal)); padding-right: max(1rem, var(--sar)); gap: 0.75rem;
   flex-shrink: 0; border-bottom: 1px solid #333;
 }
 .logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
@@ -202,7 +329,8 @@ header {
 /* ── Filter bar ── */
 .filter-bar {
   display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.5rem 1rem; background: var(--surface);
+  padding: 0.5rem max(1rem, var(--sal)) 0.5rem max(1rem, var(--sar));
+  background: var(--surface);
   border-bottom: 1px solid #333; flex-shrink: 0;
 }
 .filter-bar input, .filter-bar select {
@@ -219,7 +347,8 @@ header {
 .track-list { list-style: none; }
 .track-item {
   display: flex; align-items: center; gap: 0.75rem;
-  padding: 0.65rem 1rem; cursor: pointer;
+  padding: 0.65rem max(1rem, var(--sar)) 0.65rem max(1rem, var(--sal));
+  cursor: pointer;
   border-bottom: 1px solid #222; transition: background 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
@@ -244,9 +373,11 @@ header {
 
 /* ── Bottom player bar ── */
 .player-bar {
-  height: var(--player-h); background: var(--surface);
+  height: calc(var(--player-h) + var(--sab));
+  padding-bottom: var(--sab);
+  background: var(--surface);
   border-top: 1px solid #333; display: flex; align-items: center;
-  padding: 0 0.75rem; gap: 0.65rem; flex-shrink: 0;
+  padding-left: max(0.75rem, var(--sal)); padding-right: max(0.75rem, var(--sar)); gap: 0.65rem; flex-shrink: 0;
 }
 .player-info { flex: 0 0 150px; min-width: 0; }
 .player-title {
@@ -290,7 +421,7 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
 .folder-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.75rem; padding: 1rem;
+  gap: 0.75rem; padding: 1rem max(1rem, var(--sar)) 1rem max(1rem, var(--sal));
   overflow-y: auto; flex: 1 1 0;
 }
 .folder-card {
@@ -334,7 +465,8 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
 
 /* ── Breadcrumb navigation ── */
 .breadcrumb {
-  display: none; padding: 0.4rem 1rem; background: var(--surface);
+  display: none; padding: 0.4rem max(1rem, var(--sal)) 0.4rem max(1rem, var(--sar));
+  background: var(--surface);
   border-bottom: 1px solid #333; font-size: 0.82rem; flex-shrink: 0;
   overflow-x: auto; white-space: nowrap;
 }
@@ -780,6 +912,7 @@ def render_media_page(
     extra_css: str = "",
     api_path: str,
     item_noun: str = "track",
+    theme_color: str = "#1db954",
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -789,13 +922,21 @@ def render_media_page(
     """
     css = render_base_css() + extra_css
     js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji)
+    pwa_tags = render_pwa_head_tags(theme_color=theme_color)
+    sw_register = """
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function(){});
+    }
+  </script>"""
 
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{html.escape(title)}</title>
+{pwa_tags}
   <style>{css}</style>
 </head>
 <body>
@@ -849,6 +990,7 @@ def render_media_page(
 
   <script id="initial-data" type="application/json">{items_json}</script>
   <script>{js}</script>
+{sw_register}
 </body>
 </html>
 """
