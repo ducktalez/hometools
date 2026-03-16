@@ -2,6 +2,13 @@
 
 Built on top of :mod:`hometools.streaming.core` so that query, sort and
 filter logic is shared with the video streaming component.
+
+INSTRUCTIONS (local):
+- ``AudioTrack`` is a legacy alias for ``MediaItem``. Use ``MediaItem`` in new code.
+- ``build_audio_index`` uses ``audiofile_assume_artist_title`` from the tools
+  package — if that function changes, the catalog output changes.
+- Re-exports from core (``sort_tracks``, ``query_tracks``, ``list_artists``)
+  are renamed wrappers so audio-specific call sites read naturally.
 """
 
 from __future__ import annotations

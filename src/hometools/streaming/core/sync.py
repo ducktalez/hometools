@@ -1,4 +1,11 @@
-"""Generic NAS-to-library sync helpers shared by audio and video streaming."""
+"""Generic NAS-to-library sync helpers shared by audio and video streaming.
+
+INSTRUCTIONS (local):
+- Sync is **always** explicit (CLI command). Never auto-pull.
+- ``plan_sync`` takes a suffix list so the same logic works for any media type.
+- ``copy_reason`` returns None when no copy is needed — callers filter on truthiness.
+- Uses ``shutil.copy2`` (preserves mtime) so that ``copy_reason`` can detect "source-newer".
+"""
 
 from __future__ import annotations
 

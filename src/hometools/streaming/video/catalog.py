@@ -2,6 +2,14 @@
 
 Built on top of :mod:`hometools.streaming.core` — same query/sort/filter
 logic as the audio streaming component.
+
+INSTRUCTIONS (local):
+- ``_title_from_filename`` strips codec/resolution tags. Keep the regex list
+  updated when new common tags appear. Test via ``test_streaming_video.py``.
+- ``_folder_as_artist`` uses the first subfolder as category. Videos at the
+  library root get ``artist=""``.
+- Default sort is **title** (not artist) because video folders are less
+  meaningful than music artists.
 """
 
 from __future__ import annotations

@@ -1,4 +1,11 @@
-"""Generic catalog helpers shared by audio and video streaming."""
+"""Generic catalog helpers shared by audio and video streaming.
+
+INSTRUCTIONS (local):
+- All functions accept ``list[MediaItem]`` — never audio- or video-specific types.
+- ``sort_items`` falls back to "artist" for unknown sort fields.
+- ``list_artists`` excludes empty strings (video items without a folder).
+- Add new sort fields to ``VALID_SORT_FIELDS`` and handle them in ``sort_items``.
+"""
 
 from __future__ import annotations
 

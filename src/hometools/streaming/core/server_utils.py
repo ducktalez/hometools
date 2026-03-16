@@ -1,4 +1,14 @@
-"""Shared server utilities — path validation and base CSS/JS for dark-theme media UIs."""
+"""Shared server utilities — path validation and base CSS/JS for dark-theme media UIs.
+
+INSTRUCTIONS (local):
+- ``render_media_page()`` is the SINGLE HTML skeleton for all media types.
+  Do NOT duplicate it in audio/video servers. Pass differences as parameters.
+- CSS and JS are plain strings (no f-strings) to avoid Python escaping issues.
+- ``render_player_js`` reads the ``items`` key from API responses. All API
+  endpoints must return ``{ "items": [...] }`` — not ``tracks`` or ``videos``.
+- ``resolve_media_path`` validates path traversal + suffix. Always use it
+  instead of manual path joins in server endpoints.
+"""
 
 from __future__ import annotations
 
