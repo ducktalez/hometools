@@ -1,2 +1,1 @@
-"""Video streaming prototype placeholders."""
-
+"""Video streaming prototype modules."""

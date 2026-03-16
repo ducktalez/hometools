@@ -47,6 +47,11 @@ def get_delete_dir() -> Path:
     return Path(os.environ.get("HOMETOOLS_DELETE_DIR", Path.home() / "Music" / "DELETE_ME"))
 
 
+# ---------------------------------------------------------------------------
+# Audio streaming
+# ---------------------------------------------------------------------------
+
+
 def get_audio_library_dir() -> Path:
     """Return the local audio library used by the streaming prototype."""
     return _get_path_from_env(
@@ -61,6 +66,32 @@ def get_audio_nas_dir() -> Path:
         "HOMETOOLS_AUDIO_NAS_DIR",
         Path.home() / "Music" / "hometools" / "audio-nas",
     )
+
+
+# ---------------------------------------------------------------------------
+# Video streaming
+# ---------------------------------------------------------------------------
+
+
+def get_video_library_dir() -> Path:
+    """Return the local video library used by the streaming prototype."""
+    return _get_path_from_env(
+        "HOMETOOLS_VIDEO_LIBRARY_DIR",
+        Path.home() / "Videos" / "hometools" / "video-library",
+    )
+
+
+def get_video_nas_dir() -> Path:
+    """Return the mounted NAS source directory for manual video syncs."""
+    return _get_path_from_env(
+        "HOMETOOLS_VIDEO_NAS_DIR",
+        Path.home() / "Videos" / "hometools" / "video-nas",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shared streaming bind
+# ---------------------------------------------------------------------------
 
 
 def get_stream_host() -> str:

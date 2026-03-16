@@ -38,6 +38,8 @@ hometools/
 │   ├── test_streaming_audio_catalog.py
 │   ├── test_streaming_audio_server.py
 │   ├── test_streaming_audio_sync.py
+│   ├── test_streaming_core.py
+│   ├── test_streaming_video.py
 │   ├── test_utils.py
 │   └── test_video_organizer.py
 ├── tmp/

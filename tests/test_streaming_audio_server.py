@@ -1,16 +1,17 @@
 """Tests for HTML rendering and path safety in the audio streaming server."""
 
-from hometools.streaming.audio.catalog import AudioTrack
+from hometools.streaming.core.models import MediaItem
 from hometools.streaming.audio.server import render_audio_index_html, resolve_audio_path
 
 
 def test_render_audio_index_html_contains_filter_controls(tmp_path):
     tracks = [
-        AudioTrack(
+        MediaItem(
             relative_path="Artist/Song.mp3",
-            artist="Artist",
             title="Song",
+            artist="Artist",
             stream_url="/audio/stream?path=Artist%2FSong.mp3",
+            media_type="audio",
         )
     ]
 
@@ -19,7 +20,8 @@ def test_render_audio_index_html_contains_filter_controls(tmp_path):
     assert 'id="search-input"' in html
     assert 'id="artist-filter"' in html
     assert 'id="sort-field"' in html
-    assert '/api/audio/tracks?' in html
+    assert '/api/audio/tracks' in html
+    assert '<audio' in html
 
 
 def test_resolve_audio_path_rejects_directory_escape(tmp_path):
@@ -41,7 +43,6 @@ def test_resolve_audio_path_rejects_non_audio_file(tmp_path):
     try:
         resolve_audio_path(tmp_path, "note.txt")
     except ValueError as exc:
-        assert "Unsupported audio suffix" in str(exc)
+        assert "Unsupported" in str(exc)
     else:
         raise AssertionError("Expected ValueError for unsupported suffix")
-
