@@ -128,13 +128,13 @@ def test_render_media_page_contains_expected_elements():
         title="Test",
         emoji="🎵",
         items_json="[]",
-        artist_options_html="",
         media_element_tag="audio",
         api_path="/api/test",
         item_noun="item",
     )
     assert "<audio" in page
     assert "🎵" in page
-    assert "/api/test" in page
+    assert 'id="folder-grid"' in page
+    assert 'id="play-all-btn"' in page
     assert "item" in page
 

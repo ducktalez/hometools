@@ -24,6 +24,7 @@ from hometools.streaming.core.catalog import (  # noqa: F401 – re-export
     sort_items as sort_videos,
 )
 from hometools.streaming.core.models import MediaItem, encode_relative_path  # noqa: F401
+from hometools.streaming.core.server_utils import safe_resolve
 from hometools.utils import get_files_in_folder
 
 
@@ -47,7 +48,7 @@ def _title_from_filename(stem: str) -> str:
 def _folder_as_artist(file_path: Path, library_root: Path) -> str:
     """Use the first directory level below the library root as 'artist' (folder name)."""
     try:
-        relative = file_path.resolve().relative_to(library_root.resolve())
+        relative = safe_resolve(file_path).relative_to(safe_resolve(library_root))
         parts = relative.parts
         if len(parts) > 1:
             return parts[0]
@@ -61,11 +62,11 @@ def build_video_index(library_dir: Path) -> list[MediaItem]:
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
-    root = library_dir.resolve()
+    root = safe_resolve(library_dir)
     items: list[MediaItem] = []
 
     for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
-        relative_path = video_file.resolve().relative_to(root).as_posix()
+        relative_path = safe_resolve(video_file).relative_to(root).as_posix()
         title = _title_from_filename(video_file.stem)
         folder = _folder_as_artist(video_file, root)
         items.append(

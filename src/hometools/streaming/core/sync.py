@@ -13,6 +13,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from hometools.streaming.core.server_utils import safe_resolve
 from hometools.utils import get_files_in_folder, path_make_dir
 
 
@@ -43,12 +44,12 @@ def plan_sync(source_root: Path, target_root: Path, suffixes: list[str]) -> list
     if not source_root.exists() or not source_root.is_dir():
         raise FileNotFoundError(f"Source directory does not exist: {source_root}")
 
-    source_root = source_root.resolve()
-    target_root = target_root.resolve()
+    source_root = safe_resolve(source_root)
+    target_root = safe_resolve(target_root)
     operations: list[SyncOperation] = []
 
     for source in get_files_in_folder(source_root, suffix_accepted=suffixes):
-        relative_path = source.resolve().relative_to(source_root)
+        relative_path = safe_resolve(source).relative_to(source_root)
         destination = target_root / relative_path
         reason = copy_reason(source, destination)
         if reason:

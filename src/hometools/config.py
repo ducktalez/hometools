@@ -90,7 +90,7 @@ def get_video_nas_dir() -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Shared streaming bind
+# Streaming bind
 # ---------------------------------------------------------------------------
 
 
@@ -100,8 +100,18 @@ def get_stream_host() -> str:
 
 
 def get_stream_port() -> int:
-    """Return the bind port for the local streaming web server."""
+    """Return the shared default port (used by single-server commands)."""
     return _get_int_from_env("HOMETOOLS_STREAM_PORT", 8000)
+
+
+def get_audio_port() -> int:
+    """Return the port for the audio streaming server."""
+    return _get_int_from_env("HOMETOOLS_AUDIO_PORT", get_stream_port())
+
+
+def get_video_port() -> int:
+    """Return the port for the video streaming server."""
+    return _get_int_from_env("HOMETOOLS_VIDEO_PORT", get_stream_port() + 1)
 
 
 def get_stream_bind() -> tuple[str, int]:
