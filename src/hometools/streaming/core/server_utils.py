@@ -175,11 +175,14 @@ def render_pwa_manifest(
     short_name: str,
     theme_color: str = "#1db954",
     background_color: str = "#121212",
+    display_mode: str = "standalone",
 ) -> str:
     """Return a PWA manifest.json as string.
 
-    ``display: standalone`` removes the browser chrome (URL bar, tabs)
-    so the app feels native on iOS and Android.
+    *display_mode* controls the browser chrome:
+    ``standalone`` — no browser UI (feels native, best for audio).
+    ``minimal-ui`` — minimal back-button; allows PiP & fullscreen on iOS
+                     (required for video background playback).
     """
     import json
 
@@ -187,7 +190,7 @@ def render_pwa_manifest(
         "name": name,
         "short_name": short_name,
         "start_url": "/",
-        "display": "standalone",
+        "display": display_mode,
         "background_color": background_color,
         "theme_color": theme_color,
         "icons": [
@@ -283,13 +286,24 @@ def _parse_hex(color: str) -> tuple[int, int, int]:
     return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
 
 
-def render_pwa_head_tags(theme_color: str = "#1db954") -> str:
-    """Return HTML <head> tags required for PWA + iOS standalone mode."""
+def render_pwa_head_tags(theme_color: str = "#1db954", standalone: bool = True) -> str:
+    """Return HTML <head> tags required for PWA + iOS.
+
+    When *standalone* is ``True`` (default, best for audio), the
+    ``apple-mobile-web-app-capable`` meta tag is included so iOS opens
+    the app without browser chrome.  Set to ``False`` for video — the
+    standalone WebView on iOS aggressively suspends media on background
+    and disables PiP / fullscreen.
+    """
+    apple_capable = (
+        '\n  <meta name="apple-mobile-web-app-capable" content="yes">'
+        '\n  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+        if standalone
+        else ""
+    )
     return f"""\
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="{theme_color}">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="{theme_color}">{apple_capable}
   <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">"""
 
@@ -414,6 +428,11 @@ header {
   width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
 }
 .ctrl-btn.play-pause:hover { background: #1ed760; }
+.ctrl-btn.pip-btn { font-size: 0.85rem; position: relative; }
+.ctrl-btn.pip-btn.active { color: var(--accent); }
+.ctrl-btn.pip-btn[hidden] { display: none; }
+.ctrl-btn.fs-btn { font-size: 0.85rem; }
+.ctrl-btn.fs-btn[hidden] { display: none; }
 .time-label { font-size: 0.68rem; color: var(--sub); flex-shrink: 0; min-width: 2.2rem; }
 .time-label.end { text-align: left; }
 
@@ -1065,18 +1084,132 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   }
 
   /* ── playback ── */
-  /* Background audio fallback for iOS PWA standalone mode:
-     When the app goes to background, iOS pauses <video> elements.
-     We mirror the source to a hidden <audio> element so playback continues. */
+  /* Background playback for video — three layers of defence:
+     ─────────────────────────────────────────────────────────
+     PROBLEM: Mobile browsers (especially iOS Safari) pause <video>
+     elements **before** the visibilitychange event fires.  So checking
+     `!player.paused` inside that handler is already too late — the
+     video is paused.  And `requestPictureInPicture()` requires a
+     user-gesture, so calling it from visibilitychange is rejected.
+
+     STRATEGY:
+     1. **`wasPlaying` flag** — set on `playing` event, cleared only by
+        intentional user-pause.  The browser's auto-pause does NOT
+        clear it.  visibilitychange checks `wasPlaying` instead of
+        `!player.paused`.
+     2. **Hidden <audio> with `muted:true`** — plays the same source
+        silently alongside the video.  Because it is already actively
+        playing (started from user-gesture), iOS keeps it alive when
+        backgrounded.  On visibilitychange we unmute it so audio
+        continues seamlessly.
+        NOTE: iOS ignores `volume` (always 1), so we MUST use `muted`
+        to prevent double-audio in the foreground.
+     3. **`autopictureinpicture` attribute** — Safari/WebKit honours
+        this and enters PiP automatically when the page backgrounds.
+        No user-gesture needed.  The manual PiP button works on all
+        browsers that support the API. */
   var bgAudio = null;
-  var isStandalone = window.matchMedia('(display-mode: standalone)').matches
-                  || window.navigator.standalone === true;
+  var bgSyncTimer = null;
+  var isVideoPlayer = player.tagName === 'VIDEO';
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var pipActive = false;
+  var wasPlaying = false;
+  var btnPip = document.getElementById('btn-pip');
+
+  /* Track intentional playback state — survives browser auto-pause */
+  player.addEventListener('playing', function() { wasPlaying = true; });
+
+  /* Show PiP button only when the browser supports it for this player */
+  var pipSupported = isVideoPlayer && (
+    document.pictureInPictureEnabled ||
+    (typeof player.webkitSupportsPresentationMode === 'function' &&
+     player.webkitSupportsPresentationMode('picture-in-picture'))
+  );
+  if (pipSupported && btnPip) btnPip.hidden = false;
+
+  /* Enable Safari's automatic PiP on page background */
+  if (isVideoPlayer) {
+    player.setAttribute('autopictureinpicture', '');
+  }
+
+  function requestPiP() {
+    if (!pipSupported || pipActive) return Promise.resolve();
+    if (player.requestPictureInPicture) {
+      return player.requestPictureInPicture().then(function() {
+        pipActive = true;
+        if (btnPip) btnPip.classList.add('active');
+      }).catch(function() {});
+    } else if (player.webkitSetPresentationMode) {
+      player.webkitSetPresentationMode('picture-in-picture');
+      pipActive = true;
+      if (btnPip) btnPip.classList.add('active');
+      return Promise.resolve();
+    }
+    return Promise.resolve();
+  }
+
+  function exitPiP() {
+    if (!pipActive) return;
+    if (document.exitPictureInPicture && document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(function() {});
+    } else if (player.webkitSetPresentationMode) {
+      player.webkitSetPresentationMode('inline');
+    }
+    pipActive = false;
+    if (btnPip) btnPip.classList.remove('active');
+  }
+
+  /* Track PiP state changes from native controls */
+  if (isVideoPlayer) {
+    player.addEventListener('enterpictureinpicture', function() {
+      pipActive = true;
+      if (btnPip) btnPip.classList.add('active');
+    });
+    player.addEventListener('leavepictureinpicture', function() {
+      pipActive = false;
+      if (btnPip) btnPip.classList.remove('active');
+      /* If user closed PiP but wasPlaying, resume inline */
+      if (wasPlaying && !document.hidden) {
+        player.play().catch(function() {});
+      }
+    });
+  }
+
+  /* Manual PiP toggle button */
+  if (btnPip) {
+    btnPip.addEventListener('click', function() {
+      if (pipActive) { exitPiP(); } else { requestPiP(); }
+    });
+  }
+
+  /* Fullscreen button — uses native fullscreen or iOS webkitEnterFullscreen */
+  var btnFs = document.getElementById('btn-fs');
+  var fsSupported = isVideoPlayer && (
+    document.fullscreenEnabled || document.webkitFullscreenEnabled ||
+    typeof player.webkitEnterFullscreen === 'function'
+  );
+  if (fsSupported && btnFs) btnFs.hidden = false;
+  if (btnFs) {
+    btnFs.addEventListener('click', function() {
+      if (player.requestFullscreen) {
+        player.requestFullscreen().catch(function() {});
+      } else if (player.webkitRequestFullscreen) {
+        player.webkitRequestFullscreen();
+      } else if (player.webkitEnterFullscreen) {
+        /* iOS Safari — only method that works */
+        player.webkitEnterFullscreen();
+      }
+    });
+  }
 
   function ensureBgAudio() {
     if (bgAudio) return bgAudio;
     bgAudio = document.createElement('audio');
     bgAudio.style.display = 'none';
-    bgAudio.preload = 'none';
+    bgAudio.preload = 'auto';
+    bgAudio.playsInline = true;
+    bgAudio.muted = true;
     document.body.appendChild(bgAudio);
     /* When bg audio track ends, advance to next */
     bgAudio.addEventListener('ended', function() {
@@ -1085,25 +1218,73 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     return bgAudio;
   }
 
-  /* Sync bg audio when app goes to background / foreground */
-  if (isStandalone) {
-    document.addEventListener('visibilitychange', function() {
-      if (player.tagName === 'AUDIO') return; /* audio element handles bg natively */
-      if (document.hidden && !player.paused) {
-        /* App going to background with video playing → start bg audio */
-        var bg = ensureBgAudio();
-        bg.src = player.src;
-        bg.currentTime = player.currentTime;
-        bg.play();
-        player.pause();
-      } else if (!document.hidden && bgAudio && !bgAudio.paused) {
-        /* App coming back → sync back to video */
-        player.currentTime = bgAudio.currentTime;
-        player.play();
-        bgAudio.pause();
-        bgAudio.removeAttribute('src');
+  /* Is bg audio currently the active (unmuted) source? */
+  function bgAudioIsActive() {
+    return bgAudio && !bgAudio.muted && !bgAudio.paused;
+  }
+
+  /* Start the hidden <audio> muted, mirroring the video source.
+     The play() call happens inside user-initiated playback so the
+     browser allows it.  Because the element is already in a playing
+     state, unmuting it later in visibilitychange works instantly. */
+  function startBgMirror() {
+    if (!isVideoPlayer) return;
+    var bg = ensureBgAudio();
+    if (bg.src !== player.src) {
+      bg.src = player.src;
+    }
+    bg.currentTime = player.currentTime;
+    bg.muted = true;
+    bg.play().catch(function() {});
+    /* keep bg audio roughly in sync while video plays */
+    stopBgSync();
+    bgSyncTimer = setInterval(function() {
+      if (!bgAudio || !bgAudio.muted) return;
+      if (!player.paused && Math.abs(bgAudio.currentTime - player.currentTime) > 0.5) {
+        bgAudio.currentTime = player.currentTime;
       }
-    });
+    }, 2000);
+  }
+
+  function stopBgSync() {
+    if (bgSyncTimer) { clearInterval(bgSyncTimer); bgSyncTimer = null; }
+  }
+
+  /* ── Visibility change — the core background handler ──
+     Uses `wasPlaying` instead of `!player.paused` because the browser
+     has already paused the video by the time this fires on mobile. */
+  document.addEventListener('visibilitychange', function() {
+    if (!isVideoPlayer) return;
+    if (document.hidden && wasPlaying) {
+      /* App going to background — video may already be paused by browser.
+         bgAudio is already playing (muted) — unmute it so audio continues. */
+      if (bgAudio && !bgAudio.paused) {
+        bgAudio.currentTime = player.currentTime;
+        bgAudio.muted = false;
+      }
+      /* Signal to OS that playback is ongoing */
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    } else if (!document.hidden && wasPlaying) {
+      /* App coming back to foreground */
+      if (pipActive) exitPiP();
+      if (bgAudio && !bgAudio.muted) {
+        /* Sync video to where bg audio continued, resume video */
+        player.currentTime = bgAudio.currentTime;
+        player.play().catch(function() {});
+        bgAudio.muted = true;
+      } else if (player.paused) {
+        /* No bg audio ran — just resume the video */
+        player.play().catch(function() {});
+      }
+    }
+  });
+
+  /* Return whichever element is currently driving playback */
+  function activeMedia() {
+    if (bgAudioIsActive()) return bgAudio;
+    return player;
   }
 
   /* Media Session API — lock screen controls & background playback signal */
@@ -1116,8 +1297,18 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
       artwork: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
                 { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
     });
-    navigator.mediaSession.setActionHandler('play', function() { player.play(); });
-    navigator.mediaSession.setActionHandler('pause', function() { player.pause(); });
+    navigator.mediaSession.setActionHandler('play', function() {
+      var m = activeMedia();
+      m.play();
+      wasPlaying = true;
+    });
+    navigator.mediaSession.setActionHandler('pause', function() {
+      /* Lockscreen pause = intentional user pause */
+      wasPlaying = false;
+      var m = activeMedia();
+      m.pause();
+      if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
+    });
     navigator.mediaSession.setActionHandler('previoustrack', function() {
       playTrack(currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1);
     });
@@ -1126,7 +1317,8 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     });
     try {
       navigator.mediaSession.setActionHandler('seekto', function(details) {
-        player.currentTime = details.seekTime;
+        var m = activeMedia();
+        m.currentTime = details.seekTime;
       });
     } catch(e) {}
   }
@@ -1135,10 +1327,17 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     if (index < 0 || index >= filteredItems.length) return;
     currentIndex = index;
     var t = filteredItems[index];
-    /* Stop bg audio if active */
-    if (bgAudio && !bgAudio.paused) { bgAudio.pause(); bgAudio.removeAttribute('src'); }
+    /* Reset bg audio for new track */
+    stopBgSync();
+    if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; bgAudio.removeAttribute('src'); }
+    wasPlaying = false;
     player.src = t.stream_url;
-    player.play();
+    player.play().then(function() {
+      /* wasPlaying is set by the 'playing' event listener */
+      /* Once video is playing, start the silent bg mirror so the
+         audio pipeline is alive if the user switches away */
+      startBgMirror();
+    }).catch(function() {});
     playerTitle.textContent = t.title;
     playerArtist.textContent = t.artist || t.relative_path;
     if (t.thumbnail_url) {
@@ -1158,14 +1357,20 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   function togglePlay() {
     if (currentIndex < 0 && filteredItems.length) { playTrack(0); return; }
     if (player.paused) {
-      /* If bg audio is playing (came back from background), sync first */
-      if (bgAudio && !bgAudio.paused) {
+      /* If bg audio was driving playback (came back from background), sync first */
+      if (bgAudio && !bgAudio.muted) {
         player.currentTime = bgAudio.currentTime;
-        bgAudio.pause(); bgAudio.removeAttribute('src');
+        bgAudio.muted = true;
       }
-      player.play(); btnPlay.textContent = '\\u23F8';
+      player.play().then(function() { startBgMirror(); }).catch(function() {});
+      btnPlay.textContent = '\\u23F8';
     } else {
-      player.pause(); btnPlay.textContent = '\\u25B6';
+      /* Intentional user pause — clear wasPlaying */
+      wasPlaying = false;
+      player.pause();
+      if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
+      stopBgSync();
+      btnPlay.textContent = '\\u25B6';
     }
   }
 
@@ -1179,7 +1384,12 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   player.addEventListener('ended', function() {
     playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
   });
-  player.addEventListener('pause', function() { if (!player.ended) btnPlay.textContent = '\\u25B6'; });
+  player.addEventListener('pause', function() {
+    /* Don't change UI when the browser auto-paused for background,
+       or when bg audio has taken over playback */
+    if (document.hidden) return;
+    if (!player.ended && !bgAudioIsActive()) btnPlay.textContent = '\\u25B6';
+  });
   player.addEventListener('play',  function() { btnPlay.textContent = '\\u23F8'; });
   player.addEventListener('timeupdate', function() {
     if (!isFinite(player.duration)) return;
@@ -1193,9 +1403,9 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   progressBar.addEventListener('input', function() { player.currentTime = progressBar.value; });
 
   /* bg audio events — keep UI in sync when playing in background */
-  if (isStandalone) {
+  if (isVideoPlayer) {
     setInterval(function() {
-      if (bgAudio && !bgAudio.paused && document.hidden) {
+      if (bgAudio && !bgAudio.muted && document.hidden) {
         if (isFinite(bgAudio.duration)) {
           progressBar.max = bgAudio.duration;
           progressBar.value = bgAudio.currentTime;
@@ -1253,7 +1463,8 @@ def render_media_page(
     """
     css = render_base_css() + extra_css
     js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji, player_bar_style=player_bar_style)
-    pwa_tags = render_pwa_head_tags(theme_color=theme_color)
+    is_video = media_element_tag == "video"
+    pwa_tags = render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
     sw_register = """
   <script>
     if ('serviceWorker' in navigator) {
@@ -1274,6 +1485,8 @@ def render_media_page(
         <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
         <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
         <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
+        <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>&#9114;</button>
+        <button class="ctrl-btn fs-btn"     id="btn-fs"   title="Vollbild" hidden>&#x26F6;</button>
       </div>
     </div>
     <div class="progress-wrap">
@@ -1301,6 +1514,8 @@ def render_media_page(
       <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
       <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
       <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
+      <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>&#9114;</button>
+      <button class="ctrl-btn fs-btn"     id="btn-fs"   title="Vollbild" hidden>&#x26F6;</button>
     </div>
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>
@@ -1348,7 +1563,7 @@ def render_media_page(
     <ul class="track-list" id="track-list"></ul>
   </div>
 
-  <{media_element_tag} id="player" preload="auto" playsinline></{media_element_tag}>
+  <{media_element_tag} id="player" preload="auto" playsinline{" controls autopictureinpicture" if media_element_tag == "video" else ""}></{media_element_tag}>
 {player_bar_html}
 
   <script id="initial-data" type="application/json">{items_json}</script>

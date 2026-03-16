@@ -28,7 +28,9 @@ A collection of Python tools for managing personal media libraries — music fil
 - Videostreaming Medianeigenschaften taggen: 
   - Sprache und Untertiteloptionen in Ordnern einblenden (nachladen, wenn vorhanden). Hier gilt zu beachten dass es mehrere Arten der Untertitel geben kann. Entweder sind sie als Files vorhanden oder aber das gesamte Video hat die Untertitel eingeblendet.
   - Auflösung ()ab 1080p, 4K, ...). Codec denkbar auch, aber ich sehe keinen direkten Nutzen davon
-  - Bei mehreren Sprachen soll bei Klick auf eine der Sprach-Flaggen das entsprechende File ausgewählt werden. 
+  - Bei mehreren Sprachen soll bei Klick auf eine der Sprach-Flaggen das entsprechende File ausgewählt werden.
+  - Es soll angezeigt werden ob ein File heruntergeladen worden ist und wenn man drauf klickt soll man den Speicherplatz wieder freigeben können. 
+- Alle runtergeladenen Dateien sollen in einer Offline-Downloads-Liste aufgelistet werden. 
 - Filteroptionen für die Suche
 - DJ-feature (Plan): 
   - Musiktitel übereinanderlegen (mixen)? Automatische Übergänge?
@@ -44,7 +46,10 @@ A collection of Python tools for managing personal media libraries — music fil
 - DJ-extension: Zwischen Songs braucht Er ist ein Analyse-Autor, der schaut ob ein flüssiger Übergang möglich ist oder ob es eine andere Art von Übergang braucht. 
 - DJ-extension: "Keep something playing"-option, um zu verhindern, dass gar nichts läuft.
 - DJ-extension: "Auto-DJ"-modus, in dem die Software automatisch Songs auswählt und Übergänge basierend auf den analysierten Eigenschaften erstellt, um eine kontinuierliche Wiedergabe zu gewährleisten. Hier sollte auch die Möglichkeit bedacht werden, eine Art Geschichte aus den Songs zu machen und verschiedene aufeinander folgende Themes etc. zu ermöglichen. 
-- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme oder Musikvideos oder News abspielt.
+- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme oder Musikvideos oder News abspielt. 
+- "Fernsehsender" MTV-version: Zu allen Liedern wird einfach das Musikvideo abgespielt, z.B. von YouTube. Musikvideos könnten auch hinterlegt werden. Ansonsten wird Musik abgespielt aber es gibt eine dazu passende visuelle Begleitung. Das heißt ein DJ bei Partymucke, irgendwelche Night Ride oder Surfvideos bei Drum&Bass oder auch nur ein Feuer. Auf jeden Fall soll irgendeine Visualisierung zu eigentlich vorrangig abgespielter Musik stattfinden. 
+- "Sleep Mode" Video stream radio: Gibt einfach nur das Audio aus einer Serie wieder so dass man aber keine Helligkeit hat beim Schlafen. 
+- 
 - Photo-Management: Alles online oder zumindest mit einem lokalen Server
 
 ## Features

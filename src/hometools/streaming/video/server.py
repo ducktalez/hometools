@@ -11,7 +11,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-from hometools.config import get_cache_dir, get_player_bar_style, get_video_library_dir
+from hometools.config import get_cache_dir, get_player_bar_style, get_video_library_dir, get_video_pwa_display_mode
 from hometools.constants import VIDEO_SUFFIX
 from hometools.streaming.core.catalog import list_artists, query_items
 from hometools.streaming.core.server_utils import (
@@ -172,7 +172,9 @@ def create_app(library_dir: Path | None = None) -> Any:
         from fastapi.responses import JSONResponse
 
         return JSONResponse(
-            content=_json.loads(render_pwa_manifest("hometools video", "Video", theme_color=_VIDEO_THEME)),
+            content=_json.loads(
+                render_pwa_manifest("hometools video", "Video", theme_color=_VIDEO_THEME, display_mode=get_video_pwa_display_mode())
+            ),
             media_type="application/manifest+json",
         )
 
