@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 
 from hometools.config import get_delete_dir
@@ -15,9 +16,23 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _walk_files(root: Path) -> list[Path]:
+    """Recursively collect all files under *root* using os.walk.
+
+    Unlike ``Path.rglob``, this avoids the Windows MAX_PATH (260 char)
+    limitation that causes ``Path.is_file()`` to silently return False
+    for files with very long names.
+    """
+    collected: list[Path] = []
+    for dirpath, _dirs, filenames in os.walk(root):
+        for filename in filenames:
+            collected.append(Path(dirpath) / filename)
+    return collected
+
+
 def get_files_in_folder(p: Path, suffix_accepted=None) -> list[Path]:
     """Return sorted list of files, optionally filtered by suffix."""
-    files = [f for f in p.rglob('*') if f.is_file()]
+    files = _walk_files(p)
     if suffix_accepted:
         files = [f for f in files if f.suffix.lower() in suffix_accepted]
     return sorted(files, key=lambda f: f.stem)
@@ -27,7 +42,7 @@ def get_audio_files_in_folder(p: Path, suffix=None, print_non_audio=False) -> li
     """Return sorted list of audio files under *p*."""
     from hometools.constants import AUDIO_SUFFIX
     suffix = suffix or AUDIO_SUFFIX
-    all_files = [f for f in p.rglob('*') if f.is_file()]
+    all_files = _walk_files(p)
     audio_files = [f for f in all_files if f.suffix.lower() in suffix]
     audio_files = sorted(audio_files, key=lambda f: f.stem)
     if print_non_audio:
