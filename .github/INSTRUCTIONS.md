@@ -4,7 +4,8 @@
 
 ## Scope
 
-hometools = media library tools + local streaming prototypes (audio & video).
+hometools = CLI-only tool collection + local streaming prototypes (audio & video).
+There is **no GUI application and no background daemon** — all functionality is exposed exclusively through CLI commands (see below).
 One shared core, two servers, common dark-theme UI.
 
 ## Architecture
@@ -31,6 +32,9 @@ One shared core, two servers, common dark-theme UI.
 ```
 hometools serve-audio / serve-video [--library-dir] [--host] [--port]
 hometools sync-audio  / sync-video  [--source] [--target] [--dry-run]
+hometools serve-all [--host] [--audio-port] [--video-port]
+hometools streaming-config
+hometools setup-pycharm [--project-root]
 hometools update-instructions [--repo-root]
 ```
 
@@ -40,5 +44,5 @@ hometools update-instructions [--repo-root]
 TMDB_API_KEY, HOMETOOLS_DELETE_DIR,
 HOMETOOLS_AUDIO_LIBRARY_DIR, HOMETOOLS_AUDIO_NAS_DIR,
 HOMETOOLS_VIDEO_LIBRARY_DIR, HOMETOOLS_VIDEO_NAS_DIR,
-HOMETOOLS_STREAM_HOST, HOMETOOLS_STREAM_PORT
+HOMETOOLS_STREAM_HOST, HOMETOOLS_AUDIO_PORT, HOMETOOLS_VIDEO_PORT
 ```

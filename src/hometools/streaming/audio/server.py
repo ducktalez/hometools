@@ -6,7 +6,6 @@ so that the video server can reuse the same dark-theme layout.
 
 from __future__ import annotations
 
-import html
 import json as _json
 import mimetypes
 from pathlib import Path
@@ -20,7 +19,12 @@ from hometools.streaming.audio.catalog import (
     list_artists,
     query_tracks,
 )
-from hometools.streaming.core.server_utils import render_media_page, resolve_media_path
+from hometools.streaming.core.server_utils import (
+    check_library_accessible,
+    render_error_page,
+    render_media_page,
+    resolve_media_path,
+)
 
 
 AUDIO_CSS_EXTRA = """
@@ -35,24 +39,17 @@ def resolve_audio_path(library_dir: Path, encoded_relative_path: str) -> Path:
 
 
 def render_audio_index_html(tracks: list[AudioTrack], library_dir: Path) -> str:
-    """Render the audio player UI — dark theme, fixed bottom player, scrollable track list."""
-    artists = list_artists(tracks)
-    artist_options = "\n".join(
-        f'<option value="{html.escape(a, quote=True)}">{html.escape(a)}</option>'
-        for a in artists
-    )
+    """Render the audio player UI — dark theme, folder grid, player."""
     items_json = _json.dumps([t.to_dict() for t in tracks], ensure_ascii=False)
 
     return render_media_page(
         title="hometools audio",
         emoji="🎵",
         items_json=items_json,
-        artist_options_html=artist_options,
         media_element_tag="audio",
         extra_css=AUDIO_CSS_EXTRA,
         api_path="/api/audio/tracks",
         item_noun="track",
-        filter2_label="Artist",
     )
 
 
@@ -64,17 +61,44 @@ def create_app(library_dir: Path | None = None) -> Any:
     resolved_library_dir = (library_dir or get_audio_library_dir()).expanduser()
     app = FastAPI(title="hometools audio streaming prototype")
 
+    @app.on_event("startup")
+    async def _check_library() -> None:
+        import asyncio
+        ok, msg = await asyncio.to_thread(check_library_accessible, resolved_library_dir)
+        if not ok:
+            import logging
+            logging.getLogger(__name__).warning("Audio-Bibliothek: %s", msg)
+
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"status": "ok", "library_dir": str(resolved_library_dir)}
+        ok, msg = check_library_accessible(resolved_library_dir)
+        return {
+            "status": "ok" if ok else "degraded",
+            "library_dir": str(resolved_library_dir),
+            "library_accessible": str(ok),
+            "detail": msg,
+        }
 
     @app.get("/", response_class=HTMLResponse)
     def audio_home() -> HTMLResponse:
+        ok, msg = check_library_accessible(resolved_library_dir)
+        if not ok:
+            return HTMLResponse(render_error_page("hometools audio", "🎵", msg, resolved_library_dir))
         tracks = build_audio_index(resolved_library_dir)
         return HTMLResponse(render_audio_index_html(tracks, resolved_library_dir))
 
     @app.get("/api/audio/tracks")
     def audio_tracks(q: str | None = None, artist: str | None = None, sort: str = "artist") -> dict[str, object]:
+        ok, msg = check_library_accessible(resolved_library_dir)
+        if not ok:
+            return {
+                "library_dir": str(resolved_library_dir),
+                "count": 0,
+                "items": [],
+                "artists": [],
+                "error": msg,
+                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
+            }
         tracks = build_audio_index(resolved_library_dir)
         filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
         return {

@@ -18,9 +18,7 @@ def test_render_audio_index_html_contains_filter_controls(tmp_path):
     html = render_audio_index_html(tracks, tmp_path)
 
     assert 'id="search-input"' in html
-    assert 'id="artist-filter"' in html
     assert 'id="sort-field"' in html
-    assert '/api/audio/tracks' in html
     assert '<audio' in html
 
 

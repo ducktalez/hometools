@@ -13,15 +13,138 @@ INSTRUCTIONS (local):
 from __future__ import annotations
 
 import html
+import logging
 import mimetypes
+import os
+import threading
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Library directory validation
+# ---------------------------------------------------------------------------
+
+_check_cache: dict[str, tuple[tuple[bool, str], float]] = {}
+_CHECK_CACHE_TTL = 10.0  # seconds
+
+
+def check_library_accessible(library_dir: Path, timeout: float = 3.0) -> tuple[bool, str]:
+    """Check whether a library directory is accessible.
+
+    Uses a **timeout** so that unreachable network paths (UNC/SMB) don't
+    block the server.  Results are cached for ``_CHECK_CACHE_TTL`` seconds
+    to avoid repeated slow probes on every request.
+
+    Returns ``(ok, message)``.
+    """
+    key = str(library_dir)
+    now = time.monotonic()
+
+    # Return cached result if fresh enough
+    if key in _check_cache:
+        cached_result, cached_at = _check_cache[key]
+        if now - cached_at < _CHECK_CACHE_TTL:
+            return cached_result
+
+    path_str = key
+    is_unc = path_str.startswith("\\\\") or path_str.startswith("//")
+
+    result: list[tuple[bool, str]] = []
+
+    def _probe() -> None:
+        try:
+            if not library_dir.exists():
+                hint = ""
+                if is_unc:
+                    hint = (
+                        " Tipp: LIBRARY_DIR sollte ein schneller lokaler Ordner sein. "
+                        "Den NAS-Pfad stattdessen als NAS_DIR für 'sync' verwenden."
+                    )
+                result.append((False, f"Verzeichnis existiert nicht: {library_dir}{hint}"))
+            elif not library_dir.is_dir():
+                result.append((False, f"Pfad ist kein Verzeichnis: {library_dir}"))
+            else:
+                result.append((True, "ok"))
+        except OSError as exc:
+            reason = f"Pfad nicht erreichbar: {exc}"
+            if is_unc:
+                reason += (
+                    " — UNC-Netzwerkpfade (\\\\Server\\Share) erfordern, "
+                    "dass das NAS eingeschaltet und die Freigabe authentifiziert ist."
+                )
+            result.append((False, reason))
+
+    thread = threading.Thread(target=_probe, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+
+    if not result:
+        # Thread is still running → timeout
+        msg = (
+            f"Zeitüberschreitung ({timeout}s): Pfad nicht erreichbar: {library_dir}"
+        )
+        if is_unc:
+            msg += (
+                " — UNC-Netzwerkpfade können bei nicht erreichbarem NAS "
+                "lange blockieren. Verwenden Sie einen lokalen Ordner als LIBRARY_DIR."
+            )
+        outcome = (False, msg)
+    else:
+        outcome = result[0]
+
+    _check_cache[key] = (outcome, now)
+    return outcome
+
+
+def render_error_page(title: str, emoji: str, error_message: str, library_dir: Path) -> str:
+    """Return a minimal dark-theme HTML page showing a library access error."""
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(title)} — Fehler</title>
+<style>
+body {{ background:#121212; color:#fff; font-family:system-ui,sans-serif;
+       display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }}
+.card {{ background:#1e1e1e; border-radius:12px; padding:2rem 2.5rem; max-width:600px; }}
+h1 {{ margin:0 0 1rem; font-size:1.3rem; }}
+.err {{ color:#ff6b6b; background:#2a1515; border-radius:8px; padding:1rem; font-size:0.9rem;
+        word-break:break-all; margin:1rem 0; }}
+.path {{ color:#b3b3b3; font-size:0.85rem; }}
+.hint {{ color:#b3b3b3; font-size:0.85rem; margin-top:1rem; }}
+code {{ background:#282828; padding:0.15rem 0.4rem; border-radius:4px; font-size:0.85rem; }}
+</style></head><body>
+<div class="card">
+<h1>{emoji} {html.escape(title)}</h1>
+<div class="err">⚠ {html.escape(error_message)}</div>
+<div class="path">Konfigurierter Pfad: <code>{html.escape(str(library_dir))}</code></div>
+<div class="hint">
+  Prüfen Sie die Einstellung in <code>.env</code> und stellen Sie sicher,
+  dass das Verzeichnis existiert und erreichbar ist.<br>
+  Der Server läuft weiter — laden Sie die Seite neu, sobald das Problem behoben ist.
+</div>
+</div></body></html>"""
 
 
 # ---------------------------------------------------------------------------
 # Path resolution
 # ---------------------------------------------------------------------------
+
+
+def safe_resolve(p: Path) -> Path:
+    """Normalise a path **without** filesystem I/O.
+
+    ``Path.resolve()`` on Windows calls ``GetFinalPathNameByHandle`` which can
+    hang indefinitely on unreachable UNC/SMB shares.  This function uses
+    ``os.path.normpath`` + ``os.path.abspath`` instead — it resolves ``..``
+    and ``.`` segments and makes the path absolute, but does **not** follow
+    symlinks or touch the network.
+    """
+    return Path(os.path.normpath(os.path.abspath(str(p))))
 
 
 def resolve_media_path(library_dir: Path, encoded_relative_path: str, allowed_suffixes: list[str]) -> Path:
@@ -30,9 +153,9 @@ def resolve_media_path(library_dir: Path, encoded_relative_path: str, allowed_su
     Raises ValueError for path traversal or unsupported suffix, FileNotFoundError
     if the file does not exist on disk.
     """
-    root = library_dir.resolve()
+    root = safe_resolve(library_dir)
     relative_path = Path(unquote(encoded_relative_path))
-    candidate = (root / relative_path).resolve()
+    candidate = safe_resolve(root / relative_path)
 
     try:
         candidate.relative_to(root)
@@ -163,9 +286,97 @@ input[type=range]::-webkit-slider-thumb {
 }
 input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
 
+/* ── Folder grid ── */
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem; padding: 1rem;
+  overflow-y: auto; flex: 1 1 0;
+}
+.folder-card {
+  background: var(--surface2); border-radius: 8px;
+  padding: 1rem; cursor: pointer; position: relative;
+  transition: background 0.15s, transform 0.1s;
+}
+.folder-card:hover { background: #333; transform: translateY(-2px); }
+.folder-icon { font-size: 2rem; margin-bottom: 0.3rem; }
+.folder-name {
+  font-size: 0.95rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.folder-count { font-size: 0.78rem; color: var(--sub); margin-top: 2px; }
+.folder-play-btn {
+  position: absolute; bottom: 0.75rem; right: 0.75rem;
+  background: var(--accent); color: #000; border: none;
+  border-radius: 50%; width: 36px; height: 36px;
+  cursor: pointer; font-size: 1rem;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s;
+}
+.folder-card:hover .folder-play-btn { opacity: 1; }
+.folder-play-btn:hover { background: #1ed760; }
+.back-btn {
+  background: var(--surface2); border: 1px solid #444; color: var(--accent);
+  cursor: pointer; font-size: 1rem; padding: 0.3rem 0.6rem;
+  border-radius: 6px; display: none;
+  transition: background 0.12s, color 0.12s;
+}
+.back-btn:hover { background: #333; color: #1ed760; }
+.play-all-btn {
+  background: var(--accent); color: #000; border: none;
+  border-radius: 20px; padding: 0.3rem 0.8rem; cursor: pointer;
+  font-size: 0.8rem; font-weight: 600; display: none;
+  transition: background 0.12s; white-space: nowrap;
+}
+.play-all-btn:hover { background: #1ed760; }
+.file-card .folder-icon { font-size: 1.6rem; }
+.view-hidden { display: none !important; }
+
+/* ── Breadcrumb navigation ── */
+.breadcrumb {
+  display: none; padding: 0.4rem 1rem; background: var(--surface);
+  border-bottom: 1px solid #333; font-size: 0.82rem; flex-shrink: 0;
+  overflow-x: auto; white-space: nowrap;
+}
+.breadcrumb.visible { display: block; }
+.breadcrumb a {
+  color: var(--accent); text-decoration: none; cursor: pointer;
+}
+.breadcrumb a:hover { text-decoration: underline; }
+.breadcrumb .sep { color: var(--sub); margin: 0 0.4rem; }
+.breadcrumb .current { color: var(--text); font-weight: 500; }
+
+/* ── View toggle (list / grid) ── */
+.view-toggle {
+  background: none; border: 1px solid #444; color: var(--sub);
+  border-radius: 4px; padding: 0.25rem 0.5rem; cursor: pointer;
+  font-size: 0.85rem; transition: color 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+.view-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── Folder list mode ── */
+.folder-grid.list-mode {
+  display: flex; flex-direction: column; gap: 0; padding: 0;
+}
+.folder-grid.list-mode .folder-card {
+  border-radius: 0; padding: 0.6rem 1rem;
+  display: flex; align-items: center; gap: 0.75rem;
+  border-bottom: 1px solid #282828;
+}
+.folder-grid.list-mode .folder-card:hover { transform: none; }
+.folder-grid.list-mode .folder-icon { font-size: 1.3rem; margin-bottom: 0; flex-shrink: 0; }
+.folder-grid.list-mode .folder-name { font-size: 0.9rem; flex: 1 1 0; }
+.folder-grid.list-mode .folder-count { margin-top: 0; flex-shrink: 0; }
+.folder-grid.list-mode .folder-play-btn {
+  position: static; opacity: 0; width: 30px; height: 30px; font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.folder-grid.list-mode .folder-card:hover .folder-play-btn { opacity: 1; }
+
 @media (max-width: 480px) {
   .player-info { flex: 0 0 90px; }
-  .filter-bar select:last-of-type { display: none; }
+  .folder-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
 """
 
@@ -175,19 +386,27 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
 # ---------------------------------------------------------------------------
 
 
-def render_player_js(api_path: str, item_noun: str = "track") -> str:
-    """Return the media player JavaScript.
+def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = "\U0001f3b5") -> str:
+    """Return the media player JavaScript with hierarchical folder navigation.
 
-    *api_path* is the fetch URL (e.g. ``/api/audio/tracks``).
-    *item_noun* is used for the counter label (``6 tracks`` / ``3 videos``).
+    Default view is a folder list (configurable via toggle to grid).
+    Clicking a folder navigates deeper into the hierarchy.  Leaf folders
+    (no sub-folders) are displayed as playlists.  A breadcrumb trail and
+    back button allow navigating up.  View preference is stored in
+    localStorage.
     """
     return """
 (function () {
   var INITIAL = JSON.parse(document.getElementById('initial-data').textContent);
-  var API_PATH = '""" + api_path + """';
   var ITEM_NOUN = '""" + item_noun + """';
+  var FILE_EMOJI = '""" + file_emoji + """';
 
-  var allTracks = [], currentIndex = -1;
+  var allItems = INITIAL;
+  var currentPath = '';
+  var playlistItems = [];
+  var filteredItems = [];
+  var currentIndex = -1;
+  var inPlaylist = false;
 
   var player       = document.getElementById('player');
   var btnPlay      = document.getElementById('btn-play');
@@ -201,121 +420,348 @@ def render_player_js(api_path: str, item_noun: str = "track") -> str:
   var timeCur      = document.getElementById('time-cur');
   var timeDur      = document.getElementById('time-dur');
   var searchInput  = document.getElementById('search-input');
-  var artistFilter = document.getElementById('artist-filter');
   var sortField    = document.getElementById('sort-field');
+  var folderGrid   = document.getElementById('folder-grid');
+  var trackView    = document.getElementById('track-view');
+  var filterBar    = document.querySelector('.filter-bar');
+  var backBtn      = document.getElementById('back-btn');
+  var headerTitle  = document.querySelector('.logo');
+  var playerBar    = document.querySelector('.player-bar');
+  var playAllBtn   = document.getElementById('play-all-btn');
+  var originalTitle = headerTitle.textContent;
+  var breadcrumb  = document.getElementById('breadcrumb');
+  var viewToggle  = document.getElementById('view-toggle');
+  var viewMode    = localStorage.getItem('ht-view-mode') || 'list';
 
+  /* ── helpers ── */
   function fmtTime(s) {
     if (!isFinite(s)) return '0:00';
-    var h = Math.floor(s / 3600);
-    var m = Math.floor((s % 3600) / 60);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     var sec = String(Math.floor(s % 60)).padStart(2, '0');
     return h > 0 ? h + ':' + String(m).padStart(2, '0') + ':' + sec : m + ':' + sec;
   }
-
-  function escHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  /* items under a path prefix (recursive) */
+  function itemsUnder(path) {
+    if (!path) return allItems;
+    var prefix = path + '/';
+    return allItems.filter(function(it) { return it.relative_path.startsWith(prefix); });
+  }
+
+  /* compute direct sub-folders and loose files at a path level */
+  function contentsAt(path) {
+    var items = itemsUnder(path);
+    var folderMap = {};
+    var files = [];
+    var off = path ? path.length + 1 : 0;
+    items.forEach(function(it) {
+      var rest = it.relative_path.substring(off);
+      var slash = rest.indexOf('/');
+      if (slash >= 0) {
+        var name = rest.substring(0, slash);
+        if (!folderMap[name]) folderMap[name] = 0;
+        folderMap[name]++;
+      } else {
+        files.push(it);
+      }
+    });
+    var folders = Object.keys(folderMap)
+      .sort(function(a, b) { return a.localeCompare(b); })
+      .map(function(n) { return { name: n, count: folderMap[n] }; });
+    return { folders: folders, files: files };
+  }
+
+  function leafName(path) {
+    if (!path) return originalTitle;
+    var i = path.lastIndexOf('/');
+    return i >= 0 ? path.substring(i + 1) : path;
+  }
+
+  function parentPath(path) {
+    if (!path) return '';
+    var i = path.lastIndexOf('/');
+    return i >= 0 ? path.substring(0, i) : '';
+  }
+
+  /* ── breadcrumb ── */
+  function renderBreadcrumb() {
+    if (!currentPath) { breadcrumb.classList.remove('visible'); return; }
+    breadcrumb.classList.add('visible');
+    var parts = currentPath.split('/');
+    var h = '<a data-path="">\\u{1F3E0} Home</a>';
+    for (var i = 0; i < parts.length; i++) {
+      h += '<span class="sep">\\u203A</span>';
+      var p = parts.slice(0, i + 1).join('/');
+      if (i < parts.length - 1) {
+        h += '<a data-path="' + escHtml(p) + '">' + escHtml(parts[i]) + '</a>';
+      } else {
+        h += '<span class="current">' + escHtml(parts[i]) + '</span>';
+      }
+    }
+    breadcrumb.innerHTML = h;
+    breadcrumb.querySelectorAll('a').forEach(function(a) {
+      a.addEventListener('click', function() {
+        currentPath = a.dataset.path;
+        showFolderView();
+      });
+    });
+  }
+
+  /* ── view toggle ── */
+  function applyViewMode() {
+    if (viewMode === 'list') {
+      folderGrid.classList.add('list-mode');
+      viewToggle.textContent = '\\u25A6';
+      viewToggle.title = 'Zur Kachelansicht wechseln';
+    } else {
+      folderGrid.classList.remove('list-mode');
+      viewToggle.textContent = '\\u2630';
+      viewToggle.title = 'Zur Listenansicht wechseln';
+    }
+  }
+
+  /* ── folder view ── */
+  function showFolderView() {
+    inPlaylist = false;
+    var c = contentsAt(currentPath);
+
+    /* empty library */
+    if (c.folders.length === 0 && c.files.length === 0) {
+      folderGrid.classList.remove('view-hidden');
+      trackView.classList.add('view-hidden');
+      filterBar.classList.add('view-hidden');
+      playAllBtn.style.display = 'none';
+      headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
+      backBtn.style.display = currentPath ? 'inline-block' : 'none';
+      if (currentIndex < 0) playerBar.classList.add('view-hidden');
+      folderGrid.innerHTML = '<div class="empty-hint">No items found. Run a sync first.</div>';
+      trackCount.textContent = '';
+      renderBreadcrumb();
+      applyViewMode();
+      return;
+    }
+
+    /* leaf folder (no sub-folders) → playlist */
+    if (c.folders.length === 0) {
+      showPlaylist(c.files, false);
+      return;
+    }
+
+    folderGrid.classList.remove('view-hidden');
+    trackView.classList.add('view-hidden');
+    filterBar.classList.add('view-hidden');
+    if (currentIndex < 0) playerBar.classList.add('view-hidden');
+
+    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
+    backBtn.style.display = currentPath ? 'inline-block' : 'none';
+    playAllBtn.style.display = '';
+
+    var label = c.folders.length + ' folder' + (c.folders.length !== 1 ? 's' : '');
+    if (c.files.length > 0) {
+      label += ', ' + c.files.length + ' ' + (c.files.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
+    }
+    trackCount.textContent = label;
+
+    var html = '';
+    c.folders.forEach(function(f) {
+      var noun = f.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
+      html += '<div class="folder-card" data-folder="' + escHtml(f.name) + '">' +
+        '<div class="folder-icon">\\u{1F4C1}</div>' +
+        '<div class="folder-name">' + escHtml(f.name) + '</div>' +
+        '<div class="folder-count">' + f.count + ' ' + noun + '</div>' +
+        '<button class="folder-play-btn" title="Play all">\\u25B6</button>' +
+      '</div>';
+    });
+    c.files.forEach(function(it, i) {
+      html += '<div class="folder-card file-card" data-file-idx="' + i + '">' +
+        '<div class="folder-icon">' + FILE_EMOJI + '</div>' +
+        '<div class="folder-name">' + escHtml(it.title) + '</div>' +
+        '<div class="folder-count">' + escHtml(it.artist || '') + '</div>' +
+      '</div>';
+    });
+    folderGrid.innerHTML = html;
+
+    folderGrid.querySelectorAll('.folder-card:not(.file-card)').forEach(function(card) {
+      var pb = card.querySelector('.folder-play-btn');
+      card.addEventListener('click', function(e) {
+        if (e.target !== pb) navigateInto(card.dataset.folder);
+      });
+      pb.addEventListener('click', function(e) {
+        e.stopPropagation();
+        playAllIn(card.dataset.folder);
+      });
+    });
+
+    var looseFiles = c.files;
+    folderGrid.querySelectorAll('.file-card').forEach(function(card) {
+      card.addEventListener('click', function() {
+        showPlaylist(looseFiles, true, Number(card.dataset.fileIdx));
+      });
+    });
+
+    renderBreadcrumb();
+    applyViewMode();
+  }
+
+  function navigateInto(name) {
+    currentPath = currentPath ? currentPath + '/' + name : name;
+    showFolderView();
+  }
+
+  function playAllIn(name) {
+    var full = currentPath ? currentPath + '/' + name : name;
+    var items = itemsUnder(full);
+    if (items.length) { currentPath = full; showPlaylist(items, true); }
+  }
+
+  /* ── playlist view ── */
+  function showPlaylist(items, autoplay, startIdx) {
+    inPlaylist = true;
+    playlistItems = items;
+
+    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
+    backBtn.style.display = currentPath ? 'inline-block' : 'none';
+    playAllBtn.style.display = 'none';
+
+    folderGrid.classList.add('view-hidden');
+    trackView.classList.remove('view-hidden');
+    filterBar.classList.remove('view-hidden');
+    playerBar.classList.remove('view-hidden');
+
+    searchInput.value = '';
+    currentIndex = -1;
+    renderBreadcrumb();
+    applyFilter();
+    if (autoplay && playlistItems.length) playTrack(startIdx || 0);
+  }
+
+  /* ── back ── */
+  function goBack() {
+    if (inPlaylist) {
+      var c = contentsAt(currentPath);
+      if (c.folders.length > 0) { showFolderView(); return; }
+    }
+    currentPath = parentPath(currentPath);
+    showFolderView();
+  }
+
+  /* play all items under current path */
+  function playAllCurrent() {
+    var items = itemsUnder(currentPath);
+    if (!items.length) items = contentsAt(currentPath).files;
+    if (items.length) showPlaylist(items, true);
+  }
+
+  /* ── filter / sort within playlist ── */
+  function applyFilter() {
+    var needle = searchInput.value.trim().toLowerCase();
+    var sortBy = sortField.value;
+    var items = playlistItems;
+    if (needle) {
+      items = items.filter(function(t) {
+        return t.title.toLowerCase().indexOf(needle) >= 0 ||
+               t.artist.toLowerCase().indexOf(needle) >= 0 ||
+               t.relative_path.toLowerCase().indexOf(needle) >= 0;
+      });
+    }
+    items = items.slice().sort(function(a, b) {
+      if (sortBy === 'title') return a.title.localeCompare(b.title) || a.relative_path.localeCompare(b.relative_path);
+      if (sortBy === 'path') return a.relative_path.localeCompare(b.relative_path);
+      return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
+    });
+    renderTracks(items);
+  }
+
+  /* ── track list rendering ── */
   function markActive() {
-    document.querySelectorAll('.track-item').forEach(function (el, i) {
+    document.querySelectorAll('.track-item').forEach(function(el, i) {
       el.classList.toggle('active', i === currentIndex);
       if (i === currentIndex) el.scrollIntoView({ block: 'nearest' });
     });
   }
 
+  function renderTracks(tracks) {
+    filteredItems = tracks;
+    var noun = tracks.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
+    trackCount.textContent = tracks.length + ' ' + noun;
+    if (!tracks.length) {
+      trackList.innerHTML = '<li class="empty-hint">No matching items.</li>';
+      return;
+    }
+    trackList.innerHTML = tracks.map(function(t, i) {
+      var subtitle = t.artist || t.relative_path;
+      return '<li class="track-item' + (i === currentIndex ? ' active' : '') +
+        '" data-index="' + i + '">' +
+        '<span class="track-num"><span class="num-text">' + (i + 1) + '</span></span>' +
+        '<div class="track-info">' +
+          '<div class="track-title">' + escHtml(t.title) + '</div>' +
+          '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
+        '</div></li>';
+    }).join('');
+    document.querySelectorAll('.track-item').forEach(function(el) {
+      el.addEventListener('click', function() { playTrack(Number(el.dataset.index)); });
+    });
+  }
+
+  /* ── playback ── */
   function playTrack(index) {
-    if (index < 0 || index >= allTracks.length) return;
+    if (index < 0 || index >= filteredItems.length) return;
     currentIndex = index;
-    var t = allTracks[index];
+    var t = filteredItems[index];
     player.src = t.stream_url;
     player.play();
-    playerTitle.textContent  = t.title;
+    playerTitle.textContent = t.title;
     playerArtist.textContent = t.artist || t.relative_path;
-    btnPlay.textContent = '⏸';
+    btnPlay.textContent = '\\u23F8';
+    playerBar.classList.remove('view-hidden');
     markActive();
   }
 
   function togglePlay() {
-    if (currentIndex < 0 && allTracks.length) { playTrack(0); return; }
-    if (player.paused) { player.play(); btnPlay.textContent = '⏸'; }
-    else               { player.pause(); btnPlay.textContent = '▶'; }
+    if (currentIndex < 0 && filteredItems.length) { playTrack(0); return; }
+    if (player.paused) { player.play(); btnPlay.textContent = '\\u23F8'; }
+    else               { player.pause(); btnPlay.textContent = '\\u25B6'; }
   }
 
   btnPlay.addEventListener('click', togglePlay);
-  btnPrev.addEventListener('click', function () {
-    playTrack(currentIndex > 0 ? currentIndex - 1 : allTracks.length - 1);
+  btnPrev.addEventListener('click', function() {
+    playTrack(currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1);
   });
-  btnNext.addEventListener('click', function () {
-    playTrack(currentIndex < allTracks.length - 1 ? currentIndex + 1 : 0);
+  btnNext.addEventListener('click', function() {
+    playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
   });
-  player.addEventListener('ended', function () {
-    playTrack(currentIndex < allTracks.length - 1 ? currentIndex + 1 : 0);
+  player.addEventListener('ended', function() {
+    playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
   });
-  player.addEventListener('pause', function () {
-    if (!player.ended) btnPlay.textContent = '▶';
-  });
-  player.addEventListener('play', function () { btnPlay.textContent = '⏸'; });
-
-  player.addEventListener('timeupdate', function () {
+  player.addEventListener('pause', function() { if (!player.ended) btnPlay.textContent = '\\u25B6'; });
+  player.addEventListener('play',  function() { btnPlay.textContent = '\\u23F8'; });
+  player.addEventListener('timeupdate', function() {
     if (!isFinite(player.duration)) return;
-    progressBar.max   = player.duration;
-    progressBar.value = player.currentTime;
+    progressBar.max = player.duration; progressBar.value = player.currentTime;
     timeCur.textContent = fmtTime(player.currentTime);
   });
-  player.addEventListener('loadedmetadata', function () {
-    timeDur.textContent = fmtTime(player.duration);
-    progressBar.max     = player.duration;
+  player.addEventListener('loadedmetadata', function() {
+    timeDur.textContent = fmtTime(player.duration); progressBar.max = player.duration;
   });
-  progressBar.addEventListener('input', function () {
-    player.currentTime = progressBar.value;
+  progressBar.addEventListener('input', function() { player.currentTime = progressBar.value; });
+
+  backBtn.addEventListener('click', goBack);
+  playAllBtn.addEventListener('click', playAllCurrent);
+  viewToggle.addEventListener('click', function() {
+    viewMode = viewMode === 'list' ? 'grid' : 'list';
+    localStorage.setItem('ht-view-mode', viewMode);
+    applyViewMode();
   });
+  searchInput.addEventListener('input', applyFilter);
+  sortField.addEventListener('change', applyFilter);
 
-  function renderTracks(tracks) {
-    allTracks = tracks;
-    var noun = tracks.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
-    trackCount.textContent = tracks.length + ' ' + noun;
-    if (!tracks.length) {
-      trackList.innerHTML = '<li class="empty-hint">No matching items found. Run a sync first.</li>';
-      return;
-    }
-    trackList.innerHTML = tracks.map(function (t, i) {
-      var subtitle = t.artist || t.relative_path;
-      return (
-        '<li class="track-item' + (i === currentIndex ? ' active' : '') +
-        '" data-index="' + i + '">' +
-          '<span class="track-num"><span class="num-text">' + (i + 1) + '</span></span>' +
-          '<div class="track-info">' +
-            '<div class="track-title">'  + escHtml(t.title)  + '</div>' +
-            '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
-          '</div>' +
-        '</li>'
-      );
-    }).join('');
-    document.querySelectorAll('.track-item').forEach(function (el) {
-      el.addEventListener('click', function () { playTrack(Number(el.dataset.index)); });
-    });
-  }
-
-  async function fetchTracks() {
-    var params = new URLSearchParams({
-      q: searchInput.value, artist: artistFilter.value, sort: sortField.value
-    });
-    var res = await fetch(API_PATH + '?' + params.toString());
-    if (!res.ok) {
-      trackList.innerHTML = '<li class="empty-hint">Could not load items.</li>'; return;
-    }
-    var payload = await res.json();
-    currentIndex = -1;
-    renderTracks(payload.items || []);
-  }
-
-  searchInput.addEventListener('input', fetchTracks);
-  artistFilter.addEventListener('change', fetchTracks);
-  sortField.addEventListener('change', fetchTracks);
-
-  renderTracks(INITIAL);
+  /* ── init ── */
+  applyViewMode();
+  showFolderView();
 }());
 """
 
@@ -330,19 +776,19 @@ def render_media_page(
     title: str,
     emoji: str,
     items_json: str,
-    artist_options_html: str,
     media_element_tag: str,
     extra_css: str = "",
     api_path: str,
     item_noun: str = "track",
-    filter2_label: str = "Artist",
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
+    The page starts in folder-grid view.  Clicking a folder shows the
+    track list with the player.  A back button returns to the grid.
     *media_element_tag* should be ``audio`` or ``video``.
     """
     css = render_base_css() + extra_css
-    js = render_player_js(api_path=api_path, item_noun=item_noun)
+    js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji)
 
     return f"""<!doctype html>
 <html lang="en">
@@ -354,38 +800,45 @@ def render_media_page(
 </head>
 <body>
   <header>
+    <button class="back-btn" id="back-btn" title="Back to folders">&larr;</button>
     <span class="logo">{emoji} {html.escape(title)}</span>
+    <button class="play-all-btn" id="play-all-btn" title="Play all">&#9654; Play All</button>
+    <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">&#9776;</button>
     <span class="track-count" id="track-count"></span>
   </header>
 
-  <div class="filter-bar">
+  <!-- breadcrumb navigation -->
+  <nav class="breadcrumb" id="breadcrumb"></nav>
+
+  <!-- folder grid (default view) -->
+  <div class="folder-grid" id="folder-grid"></div>
+
+  <!-- filter bar (visible inside a folder) -->
+  <div class="filter-bar view-hidden">
     <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
-    <select id="artist-filter">
-      <option value="all">All {html.escape(filter2_label.lower())}s</option>
-      {artist_options_html}
-    </select>
     <select id="sort-field">
-      <option value="artist">{html.escape(filter2_label)} ↕</option>
-      <option value="title">Title ↕</option>
-      <option value="path">Path ↕</option>
+      <option value="title">Title &UpDownArrow;</option>
+      <option value="artist">Artist &UpDownArrow;</option>
+      <option value="path">Path &UpDownArrow;</option>
     </select>
   </div>
 
-  <div class="track-list-wrap">
+  <!-- track list (visible inside a folder) -->
+  <div class="track-list-wrap view-hidden" id="track-view">
     <ul class="track-list" id="track-list"></ul>
   </div>
 
   <{media_element_tag} id="player" preload="auto"></{media_element_tag}>
 
-  <div class="player-bar">
+  <div class="player-bar view-hidden">
     <div class="player-info">
       <div class="player-title"  id="player-title">No {item_noun} selected</div>
-      <div class="player-artist" id="player-artist">–</div>
+      <div class="player-artist" id="player-artist">&ndash;</div>
     </div>
     <div class="player-controls">
-      <button class="ctrl-btn"            id="btn-prev" title="Previous">⏮</button>
-      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">▶</button>
-      <button class="ctrl-btn"            id="btn-next" title="Next">⏭</button>
+      <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
+      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
+      <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
     </div>
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>

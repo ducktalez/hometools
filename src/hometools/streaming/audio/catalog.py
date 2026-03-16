@@ -22,6 +22,7 @@ from hometools.streaming.core.catalog import (  # noqa: F401 – re-export
     sort_items as sort_tracks,
 )
 from hometools.streaming.core.models import MediaItem, encode_relative_path  # noqa: F401
+from hometools.streaming.core.server_utils import safe_resolve
 from hometools.utils import get_audio_files_in_folder
 
 # Legacy alias so existing imports keep working
@@ -33,11 +34,11 @@ def build_audio_index(library_dir: Path) -> list[MediaItem]:
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
-    root = library_dir.resolve()
+    root = safe_resolve(library_dir)
     tracks: list[MediaItem] = []
 
     for audio_file in get_audio_files_in_folder(root):
-        relative_path = audio_file.resolve().relative_to(root).as_posix()
+        relative_path = safe_resolve(audio_file).relative_to(root).as_posix()
         artist, title = audiofile_assume_artist_title(audio_file)
         tracks.append(
             MediaItem(
