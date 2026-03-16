@@ -32,6 +32,7 @@ A collection of Python tools for managing personal media libraries — music fil
 - DJ-extension: Zwischen Songs braucht Er ist ein Analyse-Autor, der schaut ob ein flüssiger Übergang möglich ist oder ob es eine andere Art von Übergang braucht.
 - DJ-extension: "Keep something playing"-option, um zu verhindern, dass gar nichts läuft.
 - DJ-extension: "Auto-DJ"-modus, in dem die Software automatisch Songs auswählt und Übergänge basierend auf den analysierten Eigenschaften erstellt, um eine kontinuierliche Wiedergabe zu gewährleisten. Hier sollte auch die Möglichkeit bedacht werden, eine Art Geschichte aus den Songs zu machen und verschiedene aufeinander folgende Themes etc. zu ermöglichen. 
+- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme Oder Musikvideos oder News abspielt. 
 
 ## Features
 
