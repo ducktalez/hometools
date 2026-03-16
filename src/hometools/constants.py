@@ -1,22 +1,75 @@
 """Shared constants used across hometools modules."""
 
 # Audio file extensions
-AUDIO_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.aac', '.wma', '.rm', '.wav', '.flac', '.aif', '.aiff', '.aifc']
-AUDIO_LOSS_SUFFIX = ['.mp3', '.m4a', '.ogg', '.opus', '.aac', '.wma', '.rm']
-AUDIO_LOSSLESS_SUFFIX = ['.wav', '.flac', '.aif', '.aiff', '.aifc']
+AUDIO_SUFFIX = [".mp3", ".m4a", ".ogg", ".opus", ".aac", ".wma", ".rm", ".wav", ".flac", ".aif", ".aiff", ".aifc"]
+AUDIO_LOSS_SUFFIX = [".mp3", ".m4a", ".ogg", ".opus", ".aac", ".wma", ".rm"]
+AUDIO_LOSSLESS_SUFFIX = [".wav", ".flac", ".aif", ".aiff", ".aifc"]
 
 # Video file extensions
-VIDEO_SUFFIX = ['.mp4', '.m4v', '.mvg', '.avi', '.mov', '.wmv', '.avchd', '.webm', '.flv', '.mkv', '.vob', '.ogg', '.ogv']
+VIDEO_SUFFIX = [
+    ".mp4",
+    ".m4v",
+    ".mvg",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".avchd",
+    ".webm",
+    ".flv",
+    ".mkv",
+    ".vob",
+    ".ogg",
+    ".ogv",
+]
 
 # Metadata keys to strip from ffprobe / mediainfo output
 MEDIAINFO_DEL_KEYS = [
-    'DISPOSITION',
-    'codec_name', 'avg_frame_rate', 'bits_per_raw_sample', 'bits_per_sample', 'channel_layout', 'channels',
-    'chroma_location', 'closed_captions', 'codec_long_name', 'codec_tag', 'codec_tag_string', 'codec_type',
-    'coded_height', 'coded_width', 'color_primaries', 'color_range', 'color_space', 'color_transfer',
-    'display_aspect_ratio', 'duration_ts', 'field_order', 'filename', 'film_grain', 'format_long_name',
-    'format_name', 'has_b_frames', 'height', 'id', 'index', 'initial_padding', 'level', 'max_bit_rate',
-    'nb_frames', 'nb_programs', 'nb_read_frames', 'nb_read_packets', 'nb_streams', 'pix_fmt', 'probe_score',
-    'profile', 'r_frame_rate', 'refs', 'sample_aspect_ratio', 'sample_fmt', 'start_pts', 'time_base',
-    'width',
+    "DISPOSITION",
+    "codec_name",
+    "avg_frame_rate",
+    "bits_per_raw_sample",
+    "bits_per_sample",
+    "channel_layout",
+    "channels",
+    "chroma_location",
+    "closed_captions",
+    "codec_long_name",
+    "codec_tag",
+    "codec_tag_string",
+    "codec_type",
+    "coded_height",
+    "coded_width",
+    "color_primaries",
+    "color_range",
+    "color_space",
+    "color_transfer",
+    "display_aspect_ratio",
+    "duration_ts",
+    "field_order",
+    "filename",
+    "film_grain",
+    "format_long_name",
+    "format_name",
+    "has_b_frames",
+    "height",
+    "id",
+    "index",
+    "initial_padding",
+    "level",
+    "max_bit_rate",
+    "nb_frames",
+    "nb_programs",
+    "nb_read_frames",
+    "nb_read_packets",
+    "nb_streams",
+    "pix_fmt",
+    "probe_score",
+    "profile",
+    "r_frame_rate",
+    "refs",
+    "sample_aspect_ratio",
+    "sample_fmt",
+    "start_pts",
+    "time_base",
+    "width",
 ]

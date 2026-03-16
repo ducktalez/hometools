@@ -8,10 +8,9 @@ Run ``hometools setup-pycharm`` to generate PyCharm run configurations.
 from __future__ import annotations
 
 import logging
-import textwrap
 import threading
 from pathlib import Path
-from xml.etree.ElementTree import Element, SubElement, ElementTree, indent
+from xml.etree.ElementTree import Element, ElementTree, SubElement, indent
 
 from hometools.config import (
     get_audio_library_dir,
@@ -53,13 +52,19 @@ def streaming_config_table() -> str:
     title = f"│  {'hometools streaming configuration':<{w + 8}s}│"
 
     lines = [
-        top, title, sep,
-        row("Host", host), sep,
+        top,
+        title,
+        sep,
+        row("Host", host),
+        sep,
         row("Audio", f"port {audio_port}"),
-        row("", audio_dir), sep,
+        row("", audio_dir),
+        sep,
         row("Video", f"port {video_port}"),
-        row("", video_dir), sep,
-        row("Player", bar_style), sep,
+        row("", video_dir),
+        sep,
+        row("Player", bar_style),
+        sep,
         row("URLs", audio_url),
         row("", video_url),
         bot,
@@ -140,12 +145,16 @@ def _make_python_config(
 ) -> Element:
     """Build an XML element for a PyCharm Python run configuration."""
     root = Element("component", attrib={"name": "ProjectRunConfigurationManager"})
-    cfg = SubElement(root, "configuration", attrib={
-        "default": "false",
-        "name": name,
-        "type": "PythonConfigurationType",
-        "factoryName": "Python",
-    })
+    cfg = SubElement(
+        root,
+        "configuration",
+        attrib={
+            "default": "false",
+            "name": name,
+            "type": "PythonConfigurationType",
+            "factoryName": "Python",
+        },
+    )
     SubElement(cfg, "module", attrib={"name": "hometools"})
 
     SubElement(cfg, "option", attrib={"name": "INTERPRETER_OPTIONS", "value": ""})
@@ -170,12 +179,16 @@ def _make_python_config(
     SubElement(cfg, "option", attrib={"name": "MODULE_MODE", "value": "true"})
 
     method = SubElement(cfg, "method", attrib={"v": "2"})
-    SubElement(method, "option", attrib={
-        "name": "RunConfigurationTask",
-        "enabled": "true",
-        "run_configuration_name": "",
-        "run_configuration_type": "PythonConfigurationType",
-    })
+    SubElement(
+        method,
+        "option",
+        attrib={
+            "name": "RunConfigurationTask",
+            "enabled": "true",
+            "run_configuration_name": "",
+            "run_configuration_type": "PythonConfigurationType",
+        },
+    )
 
     return root
 
@@ -187,11 +200,15 @@ def _make_compound_config(name: str, child_configs: list[tuple[str, str]]) -> El
     ``("Serve Audio", "PythonConfigurationType")``.
     """
     root = Element("component", attrib={"name": "ProjectRunConfigurationManager"})
-    cfg = SubElement(root, "configuration", attrib={
-        "default": "false",
-        "name": name,
-        "type": "CompoundRunConfigurationType",
-    })
+    cfg = SubElement(
+        root,
+        "configuration",
+        attrib={
+            "default": "false",
+            "name": name,
+            "type": "CompoundRunConfigurationType",
+        },
+    )
     for child_name, child_type in child_configs:
         SubElement(cfg, "toRun", attrib={"name": child_name, "type": child_type})
     return root
@@ -226,10 +243,13 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
         logger.info("Created run configuration: %s", target)
 
     # Compound configuration: starts both servers as separate processes
-    compound_root = _make_compound_config("Serve All", [
-        ("Serve Audio", "PythonConfigurationType"),
-        ("Serve Video", "PythonConfigurationType"),
-    ])
+    compound_root = _make_compound_config(
+        "Serve All",
+        [
+            ("Serve Audio", "PythonConfigurationType"),
+            ("Serve Video", "PythonConfigurationType"),
+        ],
+    )
     compound_target = run_cfg_dir / "serve_all.xml"
     compound_tree = ElementTree(compound_root)
     indent(compound_tree, space="  ")
@@ -238,5 +258,3 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
     logger.info("Created compound run configuration: %s", compound_target)
 
     return created
-
-

@@ -14,12 +14,10 @@ from __future__ import annotations
 
 import html
 import logging
-import mimetypes
 import os
 import threading
 import time
 from pathlib import Path
-from typing import Any
 from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
@@ -74,8 +72,7 @@ def check_library_accessible(library_dir: Path, timeout: float = 3.0) -> tuple[b
             reason = f"Pfad nicht erreichbar: {exc}"
             if is_unc:
                 reason += (
-                    " — UNC-Netzwerkpfade (\\\\Server\\Share) erfordern, "
-                    "dass das NAS eingeschaltet und die Freigabe authentifiziert ist."
+                    " — UNC-Netzwerkpfade (\\\\Server\\Share) erfordern, dass das NAS eingeschaltet und die Freigabe authentifiziert ist."
                 )
             result.append((False, reason))
 
@@ -85,9 +82,7 @@ def check_library_accessible(library_dir: Path, timeout: float = 3.0) -> tuple[b
 
     if not result:
         # Thread is still running → timeout
-        msg = (
-            f"Zeitüberschreitung ({timeout}s): Pfad nicht erreichbar: {library_dir}"
-        )
+        msg = f"Zeitüberschreitung ({timeout}s): Pfad nicht erreichbar: {library_dir}"
         if is_unc:
             msg += (
                 " — UNC-Netzwerkpfade können bei nicht erreichbarem NAS "
@@ -187,6 +182,7 @@ def render_pwa_manifest(
     so the app feels native on iOS and Android.
     """
     import json
+
     manifest = {
         "name": name,
         "short_name": short_name,
@@ -256,27 +252,34 @@ def render_pwa_icon_png(emoji: str, size: int, bg_color: str = "#1db954") -> byt
     svg = render_pwa_icon_svg(emoji, bg_color)
     try:
         import cairosvg  # type: ignore[import-untyped]
+
         return cairosvg.svg2png(bytestring=svg.encode(), output_width=size, output_height=size)
     except ImportError:
         pass
     # Fallback: create a minimal 1-color PNG (icon will just be the bg color)
-    import struct, zlib
+    import struct
+    import zlib
+
     # Simple RGBA PNG
     width = height = size
+
     def _raw_row():
-        return b'\x00' + bytes(_parse_hex(bg_color)) * width
-    raw = b''.join(_raw_row() for _ in range(height))
+        return b"\x00" + bytes(_parse_hex(bg_color)) * width
+
+    raw = b"".join(_raw_row() for _ in range(height))
+
     def _chunk(ctype, data):
         c = ctype + data
-        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
-    sig = b'\x89PNG\r\n\x1a\n'
-    ihdr = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)
-    return sig + _chunk(b'IHDR', ihdr) + _chunk(b'IDAT', zlib.compress(raw)) + _chunk(b'IEND', b'')
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return sig + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", zlib.compress(raw)) + _chunk(b"IEND", b"")
 
 
 def _parse_hex(color: str) -> tuple[int, int, int]:
     """Parse a hex color string to (r, g, b)."""
-    c = color.lstrip('#')
+    c = color.lstrip("#")
     return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
 
 
@@ -586,8 +589,7 @@ header {
 # ---------------------------------------------------------------------------
 
 
-def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = "\U0001f3b5",
-                     player_bar_style: str = "classic") -> str:
+def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = "\U0001f3b5", player_bar_style: str = "classic") -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
     Default view is a folder list (configurable via toggle to grid).
@@ -727,11 +729,16 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   function drawWaveform() {}
 """
 
-    return """
+    return (
+        """
 (function () {
   var INITIAL = JSON.parse(document.getElementById('initial-data').textContent);
-  var ITEM_NOUN = '""" + item_noun + """';
-  var FILE_EMOJI = '""" + file_emoji + """';
+  var ITEM_NOUN = '"""
+        + item_noun
+        + """';
+  var FILE_EMOJI = '"""
+        + file_emoji
+        + """';
 
   /* Placeholder SVG thumbnails — same dimensions as real thumbs so layout never shifts.
      Simple dark-grey squares with a subtle icon silhouette. */
@@ -770,7 +777,9 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var breadcrumb  = document.getElementById('breadcrumb');
   var viewToggle  = document.getElementById('view-toggle');
   var viewMode    = localStorage.getItem('ht-view-mode') || 'list';
-""" + waveform_js + """
+"""
+        + waveform_js
+        + """
 
   /* ── helpers ── */
   function fmtTime(s) {
@@ -783,7 +792,9 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-""" + waveform_setup_js + """
+"""
+        + waveform_setup_js
+        + """
 
   /* items under a path prefix (recursive) */
   function itemsUnder(path) {
@@ -1210,6 +1221,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   showFolderView();
 }());
 """
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1240,8 +1252,7 @@ def render_media_page(
     ``waveform`` — two-row layout with audio waveform / video thumbnails.
     """
     css = render_base_css() + extra_css
-    js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji,
-                          player_bar_style=player_bar_style)
+    js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji, player_bar_style=player_bar_style)
     pwa_tags = render_pwa_head_tags(theme_color=theme_color)
     sw_register = """
   <script>
@@ -1346,4 +1357,3 @@ def render_media_page(
 </body>
 </html>
 """
-

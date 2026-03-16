@@ -1,29 +1,27 @@
 """Tests for the video streaming catalog and sync."""
 
-from pathlib import Path
-
 from hometools.streaming.video.catalog import (
-    build_video_index,
-    _title_from_filename,
     _folder_as_artist,
+    _title_from_filename,
+    build_video_index,
 )
 from hometools.streaming.video.sync import plan_video_sync, sync_video_library
-
 
 # ---------------------------------------------------------------------------
 # Video catalog
 # ---------------------------------------------------------------------------
 
+
 def test_title_from_filename_strips_codec_tags():
-    assert "Movie Name" == _title_from_filename("Movie.Name.1080p.x264.BluRay")
+    assert _title_from_filename("Movie.Name.1080p.x264.BluRay") == "Movie Name"
 
 
 def test_title_from_filename_removes_brackets():
-    assert "Title" == _title_from_filename("Title [HEVC] (2024)")
+    assert _title_from_filename("Title [HEVC] (2024)") == "Title"
 
 
 def test_title_from_filename_plain_name():
-    assert "Borat" == _title_from_filename("Borat")
+    assert _title_from_filename("Borat") == "Borat"
 
 
 def test_folder_as_artist(tmp_path):
@@ -66,6 +64,7 @@ def test_build_video_index_empty_for_missing_dir(tmp_path):
 # Video sync
 # ---------------------------------------------------------------------------
 
+
 def test_plan_video_sync_finds_mp4(tmp_path):
     source = tmp_path / "source"
     target = tmp_path / "target"
@@ -88,4 +87,3 @@ def test_sync_video_library_copies(tmp_path):
     ops = sync_video_library(source, target)
     assert len(ops) == 1
     assert (target / "film.mkv").exists()
-

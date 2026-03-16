@@ -123,7 +123,7 @@ def audiofile_assume_artist_title(p: Path, lut: dict | None = None) -> tuple[str
 
     if lut and p.as_posix() in lut:
         tag = lut[p.as_posix()].get("TAG", {})
-        artist = re.sub(r'\| - Topic', '', tag.get("artist", artist))
+        artist = re.sub(r"\| - Topic", "", tag.get("artist", artist))
         title = tag.get("title", title)
 
     return artist, title

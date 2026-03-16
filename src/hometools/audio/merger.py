@@ -4,7 +4,8 @@ import logging
 import re
 from pathlib import Path
 
-from pydub import AudioSegment, utils as pydub_utils
+from pydub import AudioSegment
+from pydub import utils as pydub_utils
 
 logger = logging.getLogger(__name__)
 

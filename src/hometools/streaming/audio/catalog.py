@@ -19,18 +19,27 @@ from __future__ import annotations
 from pathlib import Path
 
 from hometools.audio.metadata import audiofile_assume_artist_title
-from hometools.streaming.core.catalog import (  # noqa: F401 – re-export
-    list_artists,
-    query_items as query_tracks,
-    sort_items as sort_tracks,
-)
-from hometools.streaming.core.models import MediaItem, encode_relative_path  # noqa: F401
+from hometools.streaming.core.catalog import list_artists
+from hometools.streaming.core.catalog import query_items as query_tracks
+from hometools.streaming.core.catalog import sort_items as sort_tracks
+from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import safe_resolve
 from hometools.streaming.core.thumbnailer import check_thumbnail_cached
 from hometools.utils import get_audio_files_in_folder
 
 # Legacy alias so existing imports keep working
 AudioTrack = MediaItem
+
+__all__ = [
+    "AudioTrack",
+    "MediaItem",
+    "build_audio_index",
+    "collect_thumbnail_work",
+    "encode_relative_path",
+    "list_artists",
+    "query_tracks",
+    "sort_tracks",
+]
 
 
 def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> list[MediaItem]:
@@ -70,7 +79,8 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
 
 
 def collect_thumbnail_work(
-    library_dir: Path, cache_dir: Path,
+    library_dir: Path,
+    cache_dir: Path,
 ) -> list[tuple[Path, Path, str, str]]:
     """Return a list of ``(media_path, cache_dir, media_type, relative_path)``
     tuples for all audio files in the library — ready for
@@ -87,4 +97,3 @@ def collect_thumbnail_work(
         work.append((audio_file, cache_dir, "audio", relative_path))
 
     return work
-

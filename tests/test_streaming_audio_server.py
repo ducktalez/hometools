@@ -1,7 +1,7 @@
 """Tests for HTML rendering and path safety in the audio streaming server."""
 
-from hometools.streaming.core.models import MediaItem
 from hometools.streaming.audio.server import render_audio_index_html, resolve_audio_path
+from hometools.streaming.core.models import MediaItem
 
 
 def test_render_audio_index_html_contains_filter_controls(tmp_path):
@@ -19,7 +19,7 @@ def test_render_audio_index_html_contains_filter_controls(tmp_path):
 
     assert 'id="search-input"' in html
     assert 'id="sort-field"' in html
-    assert '<audio' in html
+    assert "<audio" in html
 
 
 def test_resolve_audio_path_rejects_directory_escape(tmp_path):

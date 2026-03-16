@@ -76,4 +76,3 @@ def test_list_artists_returns_unique_sorted_values():
         MediaItem("c.mp3", "C", "Muse", "u3", "audio"),
     ]
     assert list_artists(tracks) == ["daft punk", "Muse"]
-

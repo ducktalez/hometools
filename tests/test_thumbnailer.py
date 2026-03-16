@@ -13,7 +13,6 @@ from hometools.streaming.core.thumbnailer import (
     start_background_thumbnail_generation,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pure path helpers
 # ---------------------------------------------------------------------------
@@ -148,7 +147,6 @@ def test_extract_video_thumbnail_no_ffmpeg(tmp_path):
     media.write_bytes(b"fake-video")
     thumb = tmp_path / "thumb.jpg"
 
-    import subprocess
     with patch("hometools.streaming.core.thumbnailer.subprocess.run", side_effect=FileNotFoundError):
         assert extract_video_thumbnail(media, thumb) is False
 
@@ -160,6 +158,7 @@ def test_extract_video_thumbnail_ffmpeg_failure(tmp_path):
     thumb = tmp_path / "thumb.jpg"
 
     import subprocess
+
     mock_result = subprocess.CompletedProcess(args=[], returncode=1, stdout=b"", stderr=b"error")
     with patch("hometools.streaming.core.thumbnailer.subprocess.run", return_value=mock_result):
         assert extract_video_thumbnail(media, thumb) is False
@@ -232,4 +231,3 @@ def test_ensure_thumbnail_never_raises(tmp_path):
     with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=RuntimeError("boom")):
         result = ensure_thumbnail(media, cache, "audio", "song.mp3")
     assert result is None
-

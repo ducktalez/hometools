@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from hometools.config import (
     get_audio_library_dir,
@@ -15,7 +15,6 @@ from hometools.config import (
     get_video_nas_dir,
     get_video_port,
 )
-from hometools.instructions import update_instructions_file
 from hometools.logging_config import setup_logging
 
 
@@ -66,14 +65,6 @@ def build_parser() -> argparse.ArgumentParser:
     setup_pc.add_argument("--project-root", type=Path, default=Path.cwd())
     setup_pc.set_defaults(func=run_setup_pycharm)
 
-    # Maintenance
-    update_instructions = subparsers.add_parser(
-        "update-instructions",
-        help="Regenerate .github/INSTRUCTIONS.md from current repository structure.",
-    )
-    update_instructions.add_argument("--repo-root", type=Path, default=Path.cwd())
-    update_instructions.set_defaults(func=run_update_instructions)
-
     return parser
 
 
@@ -84,12 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _get_local_ips() -> list[str]:
     """Return a list of local IPv4 addresses this machine has.
-    
+
     Filters out loopback (127.x), auto-config (169.254.x), and virtual
     network adapters (172.x for Docker/Hyper-V).
     """
     import socket
-    
+
     ips = []
     try:
         # Create a socket connection to a non-routable address to find the primary local IP
@@ -101,24 +92,27 @@ def _get_local_ips() -> list[str]:
         ips.append(primary_ip)
     except Exception:
         pass
-    
+
     # Also try to get all IPv4 addresses from network interfaces
     try:
         import socket as socket_module
+
         hostname = socket_module.gethostname()
         all_ips = socket_module.gethostbyname_ex(hostname)[2]
         for ip in all_ips:
             # Filter: skip loopback, auto-config, and virtual networks
-            if (ip.startswith("127.") or 
-                ip.startswith("169.254") or 
-                ip.startswith("172.") or  # Docker/Hyper-V virtual
-                ip.startswith("10.") and ip not in ips):  # Private IP, but check duplicates
+            if (
+                ip.startswith("127.")
+                or ip.startswith("169.254")
+                or ip.startswith("172.")  # Docker/Hyper-V virtual
+                or (ip.startswith("10.") and ip not in ips)
+            ):  # Private IP, but check duplicates
                 continue
             if ip not in ips:
                 ips.append(ip)
     except Exception:
         pass
-    
+
     return ips or ["127.0.0.1"]
 
 
@@ -127,12 +121,12 @@ def _print_server_banner(current: str, host: str, port: int) -> None:
 
     *current* should be ``"audio"`` or ``"video"`` — the one being started
     will be highlighted with an arrow.
-    
+
     If host is 0.0.0.0 (all interfaces), show available network IPs.
     """
     audio_port = get_audio_port()
     video_port = get_video_port()
-    
+
     # If binding to all interfaces, show network IPs
     if host == "0.0.0.0":
         local_ips = _get_local_ips()
@@ -141,15 +135,15 @@ def _print_server_banner(current: str, host: str, port: int) -> None:
         hosts_to_show = [host]
 
     print("\n  ╔═ Verbindungsadressen ════════════════════════════╗")
-    
-    for i, h in enumerate(hosts_to_show):
+
+    for _i, h in enumerate(hosts_to_show):
         audio_url = f"http://{h}:{audio_port}/"
         video_url = f"http://{h}:{video_port}/"
 
-        print(f"  ║                                                  ║")
+        print("  ║                                                  ║")
         print(f"  ║  🎵  {audio_url:<37}")
         print(f"  ║  🎬  {video_url:<37}")
-    
+
     print("  ╚════════════════════════════════════════════════╝")
     print()
 
@@ -163,7 +157,7 @@ def _check_library_dir(path: Path, label: str) -> None:
         return
 
     print(f"\n⚠  {label}-Bibliothek: {msg}")
-    print(f"   Server startet trotzdem — die Bibliothek kann später verfügbar werden.\n")
+    print("   Server startet trotzdem — die Bibliothek kann später verfügbar werden.\n")
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +168,7 @@ def _check_library_dir(path: Path, label: str) -> None:
 def run_serve_audio(args: argparse.Namespace) -> int:
     """Start the local audio streaming server."""
     import uvicorn
+
     from hometools.streaming.audio.server import create_app
 
     setup_logging(log_file=None)
@@ -203,6 +198,7 @@ def run_sync_audio(args: argparse.Namespace) -> int:
 def run_serve_video(args: argparse.Namespace) -> int:
     """Start the local video streaming server."""
     import uvicorn
+
     from hometools.streaming.video.server import create_app
 
     setup_logging(log_file=None)
@@ -286,19 +282,6 @@ def _run_sync(args, default_source, default_target, sync_fn, label: str) -> int:
     return 0
 
 
-# ---------------------------------------------------------------------------
-# Maintenance handlers
-# ---------------------------------------------------------------------------
-
-
-def run_update_instructions(args: argparse.Namespace) -> int:
-    """Regenerate the project instructions file."""
-    repo_root = args.repo_root.resolve()
-    target = update_instructions_file(repo_root)
-    print(f"Updated instructions: {target}")
-    return 0
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the hometools CLI."""
     parser = build_parser()
@@ -308,4 +291,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

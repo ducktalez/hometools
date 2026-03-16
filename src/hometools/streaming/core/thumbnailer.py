@@ -24,8 +24,8 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,9 @@ def _extract_cover_bytes(media_path: Path) -> bytes | None:
 def _resize_and_save_jpeg(raw_bytes: bytes, dest: Path) -> bool:
     """Resize cover art to max THUMB_MAX_PX and save as JPEG."""
     try:
-        from PIL import Image
         import io
+
+        from PIL import Image
     except ImportError:
         # Pillow not available — save raw bytes as-is (may be larger)
         logger.debug("Pillow not installed — saving raw cover bytes")
@@ -136,11 +137,16 @@ def extract_video_thumbnail(media_path: Path, thumb_path: Path, seek_sec: int = 
     try:
         result = subprocess.run(
             [
-                "ffmpeg", "-y",
-                "-ss", str(seek_sec),
-                "-i", str(media_path),
-                "-frames:v", "1",
-                "-vf", f"scale={THUMB_MAX_PX}:-1",
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(seek_sec),
+                "-i",
+                str(media_path),
+                "-frames:v",
+                "1",
+                "-vf",
+                f"scale={THUMB_MAX_PX}:-1",
                 str(thumb_path),
             ],
             capture_output=True,
@@ -271,7 +277,9 @@ def _generate_thumbnails_worker(
             _bg_running = False
         logger.info(
             "Background thumbnail generation finished: %d generated, %d skipped, %d errors",
-            generated, skipped, errors,
+            generated,
+            skipped,
+            errors,
         )
 
 
@@ -315,7 +323,3 @@ def start_background_thumbnail_generation(
         with _bg_lock:
             _bg_running = False
         return False
-
-
-
-

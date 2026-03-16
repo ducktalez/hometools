@@ -39,10 +39,7 @@ def query_items(
         filtered = [i for i in filtered if i.artist.casefold() == artist_filter]
     if needle:
         filtered = [
-            i for i in filtered
-            if needle in i.artist.casefold()
-            or needle in i.title.casefold()
-            or needle in i.relative_path.casefold()
+            i for i in filtered if needle in i.artist.casefold() or needle in i.title.casefold() or needle in i.relative_path.casefold()
         ]
     return sort_items(filtered, sort_by=sort_by)
 
@@ -50,4 +47,3 @@ def query_items(
 def list_artists(items: list[MediaItem]) -> list[str]:
     """Return unique non-empty artists sorted case-insensitively."""
     return sorted({i.artist for i in items if i.artist}, key=str.casefold)
-

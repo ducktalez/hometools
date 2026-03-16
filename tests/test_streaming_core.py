@@ -1,16 +1,14 @@
 """Tests for the shared streaming core — models, catalog, sync, server_utils."""
 
-from pathlib import Path
-
+from hometools.streaming.core.catalog import list_artists, query_items, sort_items
 from hometools.streaming.core.models import MediaItem, encode_relative_path
-from hometools.streaming.core.catalog import sort_items, query_items, list_artists
-from hometools.streaming.core.sync import plan_sync, sync_library, copy_reason
-from hometools.streaming.core.server_utils import resolve_media_path, render_media_page
-
+from hometools.streaming.core.server_utils import render_media_page, resolve_media_path
+from hometools.streaming.core.sync import copy_reason, plan_sync, sync_library
 
 # ---------------------------------------------------------------------------
 # MediaItem model
 # ---------------------------------------------------------------------------
+
 
 def test_media_item_to_dict():
     item = MediaItem("a.mp3", "Song", "Artist", "/stream?x", "audio")
@@ -26,6 +24,7 @@ def test_encode_relative_path_escapes():
 # ---------------------------------------------------------------------------
 # Catalog helpers
 # ---------------------------------------------------------------------------
+
 
 def test_sort_items_by_title():
     items = [
@@ -57,6 +56,7 @@ def test_list_artists_excludes_empty():
 # ---------------------------------------------------------------------------
 # Sync helpers
 # ---------------------------------------------------------------------------
+
 
 def test_plan_sync_finds_missing_files(tmp_path):
     source = tmp_path / "source"
@@ -103,6 +103,7 @@ def test_copy_reason_detects_size_change(tmp_path):
 # Server utilities
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_media_path_rejects_traversal(tmp_path):
     (tmp_path / "ok.mp3").write_text("audio")
     try:
@@ -137,4 +138,3 @@ def test_render_media_page_contains_expected_elements():
     assert 'id="folder-grid"' in page
     assert 'id="play-all-btn"' in page
     assert "item" in page
-

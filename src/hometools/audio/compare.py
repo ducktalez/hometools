@@ -8,7 +8,7 @@ import yaml
 
 from hometools.audio.metadata import _open_audio, audiofile_assume_artist_title
 from hometools.audio.sanitize import sanitize_track_to_path, stem_identifier
-from hometools.constants import AUDIO_LOSSLESS_SUFFIX, AUDIO_LOSS_SUFFIX, MEDIAINFO_DEL_KEYS
+from hometools.constants import AUDIO_LOSS_SUFFIX, AUDIO_LOSSLESS_SUFFIX, MEDIAINFO_DEL_KEYS
 from hometools.print_tools import highlight_removed
 from hometools.utils import (
     deleting_file,
@@ -108,10 +108,7 @@ def sanitize_all_track_names(directory: Path):
             print(f"{sanitized}{p.suffix}")
             changes[p] = p.parent / f"{sanitized}{p.suffix}"
 
-    answer = input(
-        'Sanitize track names? Type "all" to apply all at once,\n'
-        "press Enter to decide for each.\n"
-    )
+    answer = input('Sanitize track names? Type "all" to apply all at once,\npress Enter to decide for each.\n')
     for old, new in changes.items():
         try:
             if answer == "all":
@@ -182,10 +179,7 @@ def delete_song_dupes(main_dir: Path, new_dir: Path, check_file_size=False, dry_
     duplicates = set(main_tracks) & set(new_tracks)
 
     if check_file_size:
-        size_mismatch = {
-            t for t in duplicates
-            if get_file_size(main_tracks[t]) != get_file_size(new_tracks[t])
-        }
+        size_mismatch = {t for t in duplicates if get_file_size(main_tracks[t]) != get_file_size(new_tracks[t])}
         duplicates -= size_mismatch
         if size_mismatch:
             logger.warning(f"Ignoring {len(size_mismatch)} duplicates with different sizes.")
@@ -215,12 +209,12 @@ def find_all_dupes(directory: Path, delete_dupes=False):
     dupes = {k: v for k, v in dupes.items() if len(v) > 1}
 
     if delete_dupes:
-        for k, v in dupes.items():
+        for _k, v in dupes.items():
             v = sorted(v, key=lambda x: x["size"], reverse=True)
             to_delete = v[1:]
             kept = v[0]
-            info = "\n".join(f'{x["path"]} ({x["size"]})' for x in to_delete)
-            print(f'Keeping: {kept["path"]} (size {kept["size"]})\nRemoving:\n{info}')
+            info = "\n".join(f"{x['path']} ({x['size']})" for x in to_delete)
+            print(f"Keeping: {kept['path']} (size {kept['size']})\nRemoving:\n{info}")
             for x in to_delete:
                 deleting_file(x["path"])
     else:

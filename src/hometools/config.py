@@ -9,6 +9,7 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass  # python-dotenv is optional; env vars can be set externally
@@ -36,8 +37,7 @@ def get_tmdb_api_key() -> str:
     key = os.environ.get("TMDB_API_KEY", "")
     if not key:
         raise RuntimeError(
-            "TMDB_API_KEY is not set. "
-            "Create a .env file with TMDB_API_KEY=your_key or export it as an environment variable."
+            "TMDB_API_KEY is not set. Create a .env file with TMDB_API_KEY=your_key or export it as an environment variable."
         )
     return key
 
@@ -152,4 +152,3 @@ def get_player_bar_style() -> str:
     if raw not in ("classic", "waveform"):
         return "classic"
     return raw
-

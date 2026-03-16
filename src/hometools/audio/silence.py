@@ -8,8 +8,6 @@ import numpy as np
 from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
 
-from hometools.audio.metadata import read_all_tags, write_all_tags
-
 logger = logging.getLogger(__name__)
 
 
@@ -21,9 +19,15 @@ logger = logging.getLogger(__name__)
 def get_audio_length(p: Path) -> float:
     """Return audio length in seconds via ffprobe."""
     cmd = [
-        "ffprobe", "-i", str(p),
-        "-show_entries", "format=duration",
-        "-v", "quiet", "-of", "csv=p=0",
+        "ffprobe",
+        "-i",
+        str(p),
+        "-show_entries",
+        "format=duration",
+        "-v",
+        "quiet",
+        "-of",
+        "csv=p=0",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     try:
@@ -109,10 +113,15 @@ def trim_audio_fixed_duration(
 
     new_path = p if overwrite else p.with_stem(p.stem + "-ffmpeg")
     cmd = [
-        "ffmpeg", "-i", str(p),
-        "-c:a", "copy",
-        "-ss", str(start_sec),
-        "-to", str(end_sec),
+        "ffmpeg",
+        "-i",
+        str(p),
+        "-c:a",
+        "copy",
+        "-ss",
+        str(start_sec),
+        "-to",
+        str(end_sec),
         str(new_path),
         "-y" if overwrite else "-n",
     ]
@@ -137,8 +146,15 @@ def split_mp3_lossless(p: Path, start_sec: float, end_sec: float, overwrite: boo
         return f"{minutes}.{seconds:06.3f}"
 
     cmd = [
-        "mp3splt", "-f", "-o", output.stem, "-d", str(output.parent),
-        str(p), _fmt(start_sec), _fmt(end_sec),
+        "mp3splt",
+        "-f",
+        "-o",
+        output.stem,
+        "-d",
+        str(output.parent),
+        str(p),
+        _fmt(start_sec),
+        _fmt(end_sec),
     ]
     logger.info(f"Splitting {p.name}: {_fmt(start_sec)} – {_fmt(end_sec)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -181,11 +197,17 @@ def remove_silence_with_ffmpeg(
         p_new = p.with_stem(p.stem + "-ffmpeg")
 
     cmd = [
-        "ffmpeg", "-i", str(p_source),
-        "-c:a", "copy",
-        "-map_metadata", "0",
-        "-ss", str(start_trim / 1000),
-        "-to", str(end_trim / 1000 + 0.5),
+        "ffmpeg",
+        "-i",
+        str(p_source),
+        "-c:a",
+        "copy",
+        "-map_metadata",
+        "0",
+        "-ss",
+        str(start_trim / 1000),
+        "-to",
+        str(end_trim / 1000 + 0.5),
         str(p_new),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -212,11 +234,7 @@ def process_audio_folder(
     """Process all audio files in *folder*, removing leading/trailing silence."""
     supported = {".mp3", ".flac", ".m4a", ".wav"}
     for f in folder.glob("*.*"):
-        if (
-            f.suffix.lower() in supported
-            and "-ffmpeg" not in f.stem
-            and "-removed" not in f.stem
-        ):
+        if f.suffix.lower() in supported and "-ffmpeg" not in f.stem and "-removed" not in f.stem:
             remove_silence_with_ffmpeg(
                 f,
                 overwrite=overwrite,

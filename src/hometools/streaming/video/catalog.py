@@ -21,15 +21,23 @@ import re
 from pathlib import Path
 
 from hometools.constants import VIDEO_SUFFIX
-from hometools.streaming.core.catalog import (  # noqa: F401 – re-export
-    list_artists,
-    query_items as query_videos,
-    sort_items as sort_videos,
-)
-from hometools.streaming.core.models import MediaItem, encode_relative_path  # noqa: F401
+from hometools.streaming.core.catalog import list_artists
+from hometools.streaming.core.catalog import query_items as query_videos
+from hometools.streaming.core.catalog import sort_items as sort_videos
+from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import safe_resolve
 from hometools.streaming.core.thumbnailer import check_thumbnail_cached
 from hometools.utils import get_files_in_folder
+
+__all__ = [
+    "MediaItem",
+    "build_video_index",
+    "collect_thumbnail_work",
+    "encode_relative_path",
+    "list_artists",
+    "query_videos",
+    "sort_videos",
+]
 
 
 def _title_from_filename(stem: str) -> str:
@@ -38,14 +46,19 @@ def _title_from_filename(stem: str) -> str:
     Strips common codec / resolution tags and normalises separators.
     """
     # Replace dots and underscores used as word separators
-    title = re.sub(r'[._]', ' ', stem)
+    title = re.sub(r"[._]", " ", stem)
     # Strip resolution, codec, source tags
-    title = re.sub(r'\b(1080|720|480|2160|4k)p?\b', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'\b(x264|x265|h\.?264|h\.?265|hevc|avc|BluRay|BDRip|WEBRip|WEB-DL|HDRip|DVDRip|DD5\.?1|AAC|DTS)\b', '', title, flags=re.IGNORECASE)
-    title = re.sub(r'\[.*?]', '', title)
-    title = re.sub(r'\(.*?\)', '', title)
+    title = re.sub(r"\b(1080|720|480|2160|4k)p?\b", "", title, flags=re.IGNORECASE)
+    title = re.sub(
+        r"\b(x264|x265|h\.?264|h\.?265|hevc|avc|BluRay|BDRip|WEBRip|WEB-DL|HDRip|DVDRip|DD5\.?1|AAC|DTS)\b",
+        "",
+        title,
+        flags=re.IGNORECASE,
+    )
+    title = re.sub(r"\[.*?]", "", title)
+    title = re.sub(r"\(.*?\)", "", title)
     # Collapse whitespace
-    title = re.sub(r'\s{2,}', ' ', title).strip()
+    title = re.sub(r"\s{2,}", " ", title).strip()
     return title or stem
 
 
@@ -99,7 +112,8 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
 
 
 def collect_thumbnail_work(
-    library_dir: Path, cache_dir: Path,
+    library_dir: Path,
+    cache_dir: Path,
 ) -> list[tuple[Path, Path, str, str]]:
     """Return a list of ``(media_path, cache_dir, media_type, relative_path)``
     tuples for all video files in the library — ready for
@@ -116,5 +130,3 @@ def collect_thumbnail_work(
         work.append((video_file, cache_dir, "video", relative_path))
 
     return work
-
-

@@ -1,2 +1,1 @@
 """Streaming prototypes for hometools."""
-

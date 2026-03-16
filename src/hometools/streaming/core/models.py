@@ -24,9 +24,9 @@ class MediaItem:
 
     relative_path: str
     title: str
-    artist: str          # audio: artist name, video: top-level folder (may be "")
+    artist: str  # audio: artist name, video: top-level folder (may be "")
     stream_url: str
-    media_type: str      # "audio" or "video"
+    media_type: str  # "audio" or "video"
     thumbnail_url: str = ""  # URL to shadow-cached thumbnail (empty = no thumb)
 
     def to_dict(self) -> dict[str, str]:

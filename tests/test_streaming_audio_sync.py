@@ -63,4 +63,3 @@ def test_sync_audio_library_dry_run_does_not_copy(tmp_path):
 
     assert len(operations) == 1
     assert not (target / "Artist - Track.mp3").exists()
-

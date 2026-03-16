@@ -32,7 +32,6 @@ from hometools.streaming.core.server_utils import (
 )
 from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
 
-
 AUDIO_CSS_EXTRA = """
 .track-item.active .track-num::before { content: '♪'; color: var(--accent); }
 #player { display: none; }
@@ -73,22 +72,28 @@ def create_app(library_dir: Path | None = None) -> Any:
     @app.on_event("startup")
     async def _check_library() -> None:
         import asyncio
+
         ok, msg = await asyncio.to_thread(check_library_accessible, resolved_library_dir)
         if not ok:
             import logging
+
             logging.getLogger(__name__).warning("Audio-Bibliothek: %s", msg)
         else:
             # Trigger thumbnail generation in a background daemon thread so
             # the server is immediately responsive.
             try:
                 work = await asyncio.to_thread(
-                    collect_thumbnail_work, resolved_library_dir, resolved_cache_dir,
+                    collect_thumbnail_work,
+                    resolved_library_dir,
+                    resolved_cache_dir,
                 )
                 start_background_thumbnail_generation(work)
             except Exception:
                 import logging
+
                 logging.getLogger(__name__).debug(
-                    "Failed to start background audio thumbnail generation", exc_info=True,
+                    "Failed to start background audio thumbnail generation",
+                    exc_info=True,
                 )
 
     @app.get("/health")
@@ -146,6 +151,7 @@ def create_app(library_dir: Path | None = None) -> Any:
     def thumb(path: str) -> FileResponse:
         """Serve a cached thumbnail image for an audio track."""
         from urllib.parse import unquote
+
         relative_path = unquote(path)
         thumb_path = get_thumbnail_path(resolved_cache_dir, "audio", relative_path)
         if not thumb_path.exists():
@@ -158,6 +164,7 @@ def create_app(library_dir: Path | None = None) -> Any:
     @app.get("/manifest.json")
     def manifest():
         from fastapi.responses import JSONResponse
+
         return JSONResponse(
             content=_json.loads(render_pwa_manifest("hometools audio", "Audio", theme_color=_AUDIO_THEME)),
             media_type="application/manifest+json",
@@ -166,22 +173,25 @@ def create_app(library_dir: Path | None = None) -> Any:
     @app.get("/sw.js")
     def service_worker():
         from fastapi.responses import Response
+
         return Response(content=render_pwa_service_worker(), media_type="application/javascript")
 
     @app.get("/icon.svg")
     def icon_svg():
         from fastapi.responses import Response
+
         return Response(content=render_pwa_icon_svg("🎵", _AUDIO_THEME), media_type="image/svg+xml")
 
     @app.get("/icon-192.png")
     def icon_192():
         from fastapi.responses import Response
+
         return Response(content=render_pwa_icon_png("🎵", 192, _AUDIO_THEME), media_type="image/png")
 
     @app.get("/icon-512.png")
     def icon_512():
         from fastapi.responses import Response
+
         return Response(content=render_pwa_icon_png("🎵", 512, _AUDIO_THEME), media_type="image/png")
 
     return app
-

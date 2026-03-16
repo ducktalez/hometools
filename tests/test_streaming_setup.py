@@ -1,7 +1,5 @@
 """Tests for the streaming setup module."""
 
-from pathlib import Path
-
 from hometools.streaming.setup import (
     generate_pycharm_configs,
     streaming_config_table,
@@ -49,14 +47,7 @@ def test_generate_pycharm_configs_creates_files(tmp_path):
 
 def test_generate_pycharm_configs_idempotent(tmp_path):
     generate_pycharm_configs(tmp_path)
-    first_contents = {
-        p.name: p.read_text(encoding="utf-8")
-        for p in (tmp_path / ".idea" / "runConfigurations").iterdir()
-    }
+    first_contents = {p.name: p.read_text(encoding="utf-8") for p in (tmp_path / ".idea" / "runConfigurations").iterdir()}
     generate_pycharm_configs(tmp_path)
-    second_contents = {
-        p.name: p.read_text(encoding="utf-8")
-        for p in (tmp_path / ".idea" / "runConfigurations").iterdir()
-    }
+    second_contents = {p.name: p.read_text(encoding="utf-8") for p in (tmp_path / ".idea" / "runConfigurations").iterdir()}
     assert first_contents == second_contents
-
