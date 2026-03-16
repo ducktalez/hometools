@@ -5,6 +5,7 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
+- Album-cover/thumbnail bei Video- und Audio-Streaming anzeigen
 - dynamisches synchronisieren: Update an Handy schicken
 - Metadaten vom Handy aus ändern soll auch Änderungen im Filesystem triggern. Hier soll aber nur eine Liste generiert werden, die dann am PC "akzeptiert" werden kann.
 - Implement a "Recently Added" section in the streaming UI
@@ -12,17 +13,20 @@ A collection of Python tools for managing personal media libraries — music fil
 - "Malcolm mittendrin" (deutsch) vs. "Malcolm in the Middle" vs. "Malcolm Mittendrin [engl]" - Lösung finden
 - Untertitelfiles verwenden und in die TMDB-Integration einbinden. Pfadanpassungen bei Namensänderungen nicht vergessen
 - "swipe"-gesture für die mobile UI implementieren (z.B. für "Ordner nach oben/zurück gehen, ...")
-- Album-cover/thumbnail bei Video- und Audio-Streaming anzeigen
-- "Zufällige Wiedergabe" (shuffle) in der Audio-Streaming UI
+- "Zufällige Wiedergabe" (shuffle) in der Audio-Streaming UI. Mit Long Touch soll ein anderer Shuffle-Modus genutzt werden bei dem die Songs proportional zu ihrer Bewertung häufiger oder weniger oft dran kommen. 
 - Songwertung (1–5 Sterne) in der UI anzeigen und in den ID3-POPM-Tags speichern
 - Feature: "Ähnliche Titel" vorschlagen basierend auf Artist/Genre/Album (Audio) oder TMDB-Genre/Regisseur/Schauspieler (Video)
 - Feature: "Wiedergabelisten" erstellen und verwalten in der Audio-Streaming UI, mit Möglichkeit zur manuellen Sortierung
 - Feature: Tags bei Musik nutzen
-- Videostreaming: Sprache und Untertiteloptionen in Ordnern einblenden (nachladen, wenn vorhanden). Hier gilt zu beachten dass es mehrere Arten der Untertitel geben kann. Entweder sind sie als Files vorhanden oder aber das gesamte Video hat die Untertitel eingeblendet. 
-- Feature: Musiktitel übereinanderlegen (mixen)? Automatische Übergänge?
-- DJ-feature: songs automatisch aufeinander abstimmen (BPM, Tonart) und nahtlos überblenden. Besondere Songeigenschaften (zum mixen oder samplen) beim laden der lieder speichern (oder vom Nutzer beschreiben lassen).
+- Videostreaming Medianeigenschaften taggen: 
+  - Sprache und Untertiteloptionen in Ordnern einblenden (nachladen, wenn vorhanden). Hier gilt zu beachten dass es mehrere Arten der Untertitel geben kann. Entweder sind sie als Files vorhanden oder aber das gesamte Video hat die Untertitel eingeblendet.
+  - Auflösung ()ab 1080p, 4K, ...). Codec denkbar auch, aber ich sehe keinen direkten Nutzen davon
+  - Bei mehreren Sprachen soll bei Klick auf eine der Sprach-Flaggen das entsprechende File ausgewählt werden. 
+- Filteroptionen für die Suche
+- DJ-feature (Plan): 
+  - Musiktitel übereinanderlegen (mixen)? Automatische Übergänge?
+  - DJ-feature: songs automatisch aufeinander abstimmen (BPM, Tonart) und nahtlos überblenden. Besondere Songeigenschaften (zum mixen oder samplen) beim laden der lieder speichern (oder vom Nutzer beschreiben lassen).
 - Anzeige von Songtexten (sofern in den ID3-Tags vorhanden) in der Audio-Streaming UI
-- Anzeige des Vorspul-balkens als die Welleform des Songs (ggf. mit markierten Stellen für Strophen/Refrains) in der Audio-Streaming UI und mit Thumbnails beim Video-Streaming.
 - Plan: Einführung eines Management-servers, der die Synchronisation und das Streaming steuert, damit man nicht von Hand die Synchronisation und das Starten der Server triggern muss. Hier muss auch ein Scheduler regelmäßig die NAS-Ordner scannen und die Synchronisation triggern, damit die Streaming-Server immer auf dem neuesten Stand sind. Scheduler muss auch entwickelt werden.
 - Plan: Letzte Wiedergabe + Fortschrittsanzeige in der Streaming-UI speichern, damit man auch von einem anderen Gerät aus weitermachen kann. Hier muss auch die Synchronisation der Fortschrittsdaten zwischen den Geräten implementiert werden (z.B. über eine JSON-Datei oder eine kleine Datenbank).
 - Plan: Implementierung eines "Offline-Modus", Downloads ermöglichen, Speicherfreigabe ebenfalls ermöglichen
@@ -32,7 +36,8 @@ A collection of Python tools for managing personal media libraries — music fil
 - DJ-extension: Zwischen Songs braucht Er ist ein Analyse-Autor, der schaut ob ein flüssiger Übergang möglich ist oder ob es eine andere Art von Übergang braucht.
 - DJ-extension: "Keep something playing"-option, um zu verhindern, dass gar nichts läuft.
 - DJ-extension: "Auto-DJ"-modus, in dem die Software automatisch Songs auswählt und Übergänge basierend auf den analysierten Eigenschaften erstellt, um eine kontinuierliche Wiedergabe zu gewährleisten. Hier sollte auch die Möglichkeit bedacht werden, eine Art Geschichte aus den Songs zu machen und verschiedene aufeinander folgende Themes etc. zu ermöglichen. 
-- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme Oder Musikvideos oder News abspielt. 
+- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme Oder Musikvideos oder News abspielt.
+- Photo-Management: Alles online oder zumindest mit einem lokalen Server
 
 ## Features
 

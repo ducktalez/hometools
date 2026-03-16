@@ -371,15 +371,13 @@ header {
 }
 .empty-hint { text-align: center; color: var(--sub); padding: 3rem 1rem; font-size: 0.9rem; }
 
-/* ── Bottom player bar ── */
+/* ── Bottom player bar — shared ── */
 .player-bar {
-  height: calc(var(--player-h) + var(--sab));
   padding-bottom: var(--sab);
   background: var(--surface);
-  border-top: 1px solid #333; display: flex; align-items: center;
-  padding-left: max(0.75rem, var(--sal)); padding-right: max(0.75rem, var(--sar)); gap: 0.65rem; flex-shrink: 0;
+  border-top: 1px solid #333; flex-shrink: 0;
 }
-.player-info { flex: 0 0 150px; min-width: 0; }
+.player-info { min-width: 0; }
 .player-title {
   font-size: 0.85rem; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -401,21 +399,79 @@ header {
   width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
 }
 .ctrl-btn.play-pause:hover { background: #1ed760; }
-.progress-wrap {
-  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.4rem;
-}
 .time-label { font-size: 0.68rem; color: var(--sub); flex-shrink: 0; min-width: 2.2rem; }
 .time-label.end { text-align: left; }
-input[type=range] {
+
+/* ── Classic player bar — single row ── */
+.player-bar.classic {
+  display: flex; align-items: center;
+  height: calc(var(--player-h) + var(--sab));
+  padding-left: max(0.75rem, var(--sal)); padding-right: max(0.75rem, var(--sar)); gap: 0.65rem;
+}
+.player-bar.classic .player-info { flex: 0 0 150px; }
+.player-bar.classic .progress-wrap {
+  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.4rem;
+}
+.player-bar.classic input[type=range] {
   -webkit-appearance: none; appearance: none;
   flex: 1 1 0; height: 4px; background: #555;
   border-radius: 2px; outline: none; cursor: pointer;
 }
-input[type=range]::-webkit-slider-thumb {
+.player-bar.classic input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 12px; height: 12px;
   background: var(--text); border-radius: 50%;
 }
-input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
+.player-bar.classic input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
+
+/* ── Waveform player bar — two rows ── */
+.player-bar.waveform {
+  display: flex; flex-direction: column;
+}
+.player-bar-top {
+  display: flex; align-items: center;
+  padding: 0.4rem max(0.75rem, var(--sal)) 0 max(0.75rem, var(--sar));
+  gap: 0.65rem;
+}
+.player-bar-top .player-info { flex: 0 1 auto; max-width: 45%; }
+.player-bar-top .player-controls { flex: 1 1 0; justify-content: center; }
+.player-bar.waveform .progress-wrap {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.25rem max(0.75rem, var(--sal)) 0.5rem max(0.75rem, var(--sar));
+}
+.progress-track {
+  flex: 1 1 0; position: relative; height: 48px; min-width: 0; cursor: pointer;
+}
+.progress-track.video-mode { height: 28px; }
+.waveform-canvas {
+  display: block; width: 100%; height: 100%; border-radius: 4px;
+}
+.progress-track input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%; opacity: 0;
+  cursor: pointer; margin: 0; z-index: 2;
+  background: transparent;
+}
+.progress-track input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 1px; height: 1px; background: transparent;
+}
+
+/* ── Video thumbnail preview ── */
+.thumb-preview {
+  display: none; position: absolute; bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  background: var(--surface2); border: 2px solid #444;
+  border-radius: 6px; padding: 4px; z-index: 100;
+  pointer-events: none;
+}
+.thumb-preview.visible { display: block; }
+.thumb-preview canvas {
+  display: block; width: 160px; height: 90px; border-radius: 3px;
+}
+.thumb-time {
+  display: block; text-align: center; font-size: 0.72rem;
+  color: var(--text); margin-top: 3px;
+}
 
 /* ── Folder grid ── */
 .folder-grid {
@@ -518,7 +574,8 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
 # ---------------------------------------------------------------------------
 
 
-def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = "\U0001f3b5") -> str:
+def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = "\U0001f3b5",
+                     player_bar_style: str = "classic") -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
     Default view is a folder list (configurable via toggle to grid).
@@ -527,6 +584,137 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     back button allow navigating up.  View preference is stored in
     localStorage.
     """
+    # -- waveform/thumbnail JS (only for waveform mode) -----------------------
+    if player_bar_style == "waveform":
+        waveform_js = """
+  /* ── waveform & thumbnail elements ── */
+  var progressTrack  = document.getElementById('progress-track');
+  var waveformCanvas = document.getElementById('waveform-canvas');
+  var waveformCtx    = waveformCanvas ? waveformCanvas.getContext('2d') : null;
+  var thumbPreview   = document.getElementById('thumb-preview');
+  var thumbCanvas    = document.getElementById('thumb-canvas');
+  var thumbCtx       = thumbCanvas ? thumbCanvas.getContext('2d') : null;
+  var thumbTimeEl    = document.getElementById('thumb-time');
+  var isAudioMode    = player.tagName === 'AUDIO';
+  var isVideoMode    = player.tagName === 'VIDEO';
+  var waveformData   = null;
+  var waveformAbort  = null;
+  var thumbVideo     = null;
+"""
+    else:
+        waveform_js = ""
+
+    if player_bar_style == "waveform":
+        waveform_setup_js = """
+  /* ── waveform (audio) & thumbnail (video) setup ── */
+  if (isVideoMode && progressTrack) {
+    progressTrack.classList.add('video-mode');
+    thumbVideo = document.createElement('video');
+    thumbVideo.preload = 'metadata';
+    thumbVideo.muted = true;
+    thumbVideo.crossOrigin = 'anonymous';
+    thumbVideo.style.display = 'none';
+    document.body.appendChild(thumbVideo);
+    thumbVideo.addEventListener('seeked', function() {
+      if (thumbCtx) thumbCtx.drawImage(thumbVideo, 0, 0, 160, 90);
+    });
+    progressTrack.addEventListener('mousemove', function(e) {
+      if (!player.duration || !isFinite(player.duration)) return;
+      var rect = progressTrack.getBoundingClientRect();
+      var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      var seekTime = ratio * player.duration;
+      var pctLeft = Math.max(5, Math.min(95, ratio * 100));
+      thumbPreview.style.left = pctLeft + '%';
+      thumbPreview.classList.add('visible');
+      thumbTimeEl.textContent = fmtTime(seekTime);
+      if (thumbVideo.getAttribute('src') !== player.src) thumbVideo.src = player.src;
+      thumbVideo.currentTime = seekTime;
+    });
+    progressTrack.addEventListener('mouseleave', function() {
+      thumbPreview.classList.remove('visible');
+    });
+  }
+
+  function generateWaveform(url) {
+    if (!isAudioMode || !waveformCanvas) return;
+    if (waveformAbort) waveformAbort.abort();
+    waveformAbort = new AbortController();
+    waveformData = null;
+    drawWaveform(0);
+    fetch(url, { signal: waveformAbort.signal })
+      .then(function(r) { return r.arrayBuffer(); })
+      .then(function(buf) {
+        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        return audioCtx.decodeAudioData(buf).then(function(decoded) {
+          audioCtx.close();
+          return decoded;
+        });
+      })
+      .then(function(audioBuffer) {
+        var rawData = audioBuffer.getChannelData(0);
+        var samples = 120;
+        var blockSize = Math.floor(rawData.length / samples);
+        if (blockSize < 1) return;
+        var data = [];
+        for (var i = 0; i < samples; i++) {
+          var sum = 0;
+          for (var j = 0; j < blockSize; j++) sum += Math.abs(rawData[i * blockSize + j]);
+          data.push(sum / blockSize);
+        }
+        var max = Math.max.apply(null, data);
+        if (max > 0) data = data.map(function(d) { return d / max; });
+        waveformData = data;
+        var prog = player.duration > 0 ? player.currentTime / player.duration : 0;
+        drawWaveform(prog);
+      })
+      .catch(function(e) {
+        if (e.name !== 'AbortError') waveformData = null;
+      });
+  }
+
+  function drawWaveform(progress) {
+    if (!waveformCanvas || !waveformCtx) return;
+    var W = 600, H = 48;
+    waveformCanvas.width = W;
+    waveformCanvas.height = H;
+    waveformCtx.clearRect(0, 0, W, H);
+    var accent = getComputedStyle(document.documentElement)
+      .getPropertyValue('--accent').trim() || '#1db954';
+    if (isAudioMode && waveformData && waveformData.length) {
+      var BAR_COUNT = 120;
+      var slotW = W / BAR_COUNT;
+      var gapW = slotW * 0.15;
+      var barW = slotW - gapW;
+      var playedBars = Math.floor(progress * BAR_COUNT);
+      for (var i = 0; i < BAR_COUNT; i++) {
+        var di = Math.min(Math.floor(i * waveformData.length / BAR_COUNT), waveformData.length - 1);
+        var bh = Math.max(2, waveformData[di] * H * 0.85);
+        var x = i * slotW, y = (H - bh) / 2;
+        waveformCtx.fillStyle = i < playedBars ? accent : '#555';
+        waveformCtx.fillRect(x, y, barW, bh);
+      }
+    } else {
+      var barH = 6, cy = H / 2, ty = cy - barH / 2;
+      var playedW = W * progress;
+      waveformCtx.fillStyle = '#555';
+      waveformCtx.fillRect(0, ty, W, barH);
+      if (playedW > 0) {
+        waveformCtx.fillStyle = accent;
+        waveformCtx.fillRect(0, ty, playedW, barH);
+      }
+      waveformCtx.fillStyle = '#fff';
+      waveformCtx.beginPath();
+      waveformCtx.arc(Math.max(7, Math.min(W - 7, playedW)), cy, 7, 0, Math.PI * 2);
+      waveformCtx.fill();
+    }
+  }
+"""
+    else:
+        waveform_setup_js = """
+  function generateWaveform() {}
+  function drawWaveform() {}
+"""
+
     return """
 (function () {
   var INITIAL = JSON.parse(document.getElementById('initial-data').textContent);
@@ -564,6 +752,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var breadcrumb  = document.getElementById('breadcrumb');
   var viewToggle  = document.getElementById('view-toggle');
   var viewMode    = localStorage.getItem('ht-view-mode') || 'list';
+""" + waveform_js + """
 
   /* ── helpers ── */
   function fmtTime(s) {
@@ -576,6 +765,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+""" + waveform_setup_js + """
 
   /* items under a path prefix (recursive) */
   function itemsUnder(path) {
@@ -840,10 +1030,78 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   }
 
   /* ── playback ── */
+  /* Background audio fallback for iOS PWA standalone mode:
+     When the app goes to background, iOS pauses <video> elements.
+     We mirror the source to a hidden <audio> element so playback continues. */
+  var bgAudio = null;
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                  || window.navigator.standalone === true;
+
+  function ensureBgAudio() {
+    if (bgAudio) return bgAudio;
+    bgAudio = document.createElement('audio');
+    bgAudio.style.display = 'none';
+    bgAudio.preload = 'none';
+    document.body.appendChild(bgAudio);
+    /* When bg audio track ends, advance to next */
+    bgAudio.addEventListener('ended', function() {
+      playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
+    });
+    return bgAudio;
+  }
+
+  /* Sync bg audio when app goes to background / foreground */
+  if (isStandalone) {
+    document.addEventListener('visibilitychange', function() {
+      if (player.tagName === 'AUDIO') return; /* audio element handles bg natively */
+      if (document.hidden && !player.paused) {
+        /* App going to background with video playing → start bg audio */
+        var bg = ensureBgAudio();
+        bg.src = player.src;
+        bg.currentTime = player.currentTime;
+        bg.play();
+        player.pause();
+      } else if (!document.hidden && bgAudio && !bgAudio.paused) {
+        /* App coming back → sync back to video */
+        player.currentTime = bgAudio.currentTime;
+        player.play();
+        bgAudio.pause();
+        bgAudio.removeAttribute('src');
+      }
+    });
+  }
+
+  /* Media Session API — lock screen controls & background playback signal */
+  function updateMediaSession(t) {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: t.title,
+      artist: t.artist || '',
+      album: ITEM_NOUN === 'video' ? 'hometools video' : 'hometools audio',
+      artwork: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+                { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
+    });
+    navigator.mediaSession.setActionHandler('play', function() { player.play(); });
+    navigator.mediaSession.setActionHandler('pause', function() { player.pause(); });
+    navigator.mediaSession.setActionHandler('previoustrack', function() {
+      playTrack(currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1);
+    });
+    navigator.mediaSession.setActionHandler('nexttrack', function() {
+      playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
+    });
+    try {
+      navigator.mediaSession.setActionHandler('seekto', function(details) {
+        player.currentTime = details.seekTime;
+      });
+    } catch(e) {}
+  }
+
   function playTrack(index) {
     if (index < 0 || index >= filteredItems.length) return;
     currentIndex = index;
     var t = filteredItems[index];
+    /* Stop bg audio if active */
+    if (bgAudio && !bgAudio.paused) { bgAudio.pause(); bgAudio.removeAttribute('src'); }
     player.src = t.stream_url;
     player.play();
     playerTitle.textContent = t.title;
@@ -851,12 +1109,22 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     btnPlay.textContent = '\\u23F8';
     playerBar.classList.remove('view-hidden');
     markActive();
+    updateMediaSession(t);
+    generateWaveform(t.stream_url);
   }
 
   function togglePlay() {
     if (currentIndex < 0 && filteredItems.length) { playTrack(0); return; }
-    if (player.paused) { player.play(); btnPlay.textContent = '\\u23F8'; }
-    else               { player.pause(); btnPlay.textContent = '\\u25B6'; }
+    if (player.paused) {
+      /* If bg audio is playing (came back from background), sync first */
+      if (bgAudio && !bgAudio.paused) {
+        player.currentTime = bgAudio.currentTime;
+        bgAudio.pause(); bgAudio.removeAttribute('src');
+      }
+      player.play(); btnPlay.textContent = '\\u23F8';
+    } else {
+      player.pause(); btnPlay.textContent = '\\u25B6';
+    }
   }
 
   btnPlay.addEventListener('click', togglePlay);
@@ -875,11 +1143,26 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     if (!isFinite(player.duration)) return;
     progressBar.max = player.duration; progressBar.value = player.currentTime;
     timeCur.textContent = fmtTime(player.currentTime);
+    drawWaveform(player.currentTime / player.duration);
   });
   player.addEventListener('loadedmetadata', function() {
     timeDur.textContent = fmtTime(player.duration); progressBar.max = player.duration;
   });
   progressBar.addEventListener('input', function() { player.currentTime = progressBar.value; });
+
+  /* bg audio events — keep UI in sync when playing in background */
+  if (isStandalone) {
+    setInterval(function() {
+      if (bgAudio && !bgAudio.paused && document.hidden) {
+        if (isFinite(bgAudio.duration)) {
+          progressBar.max = bgAudio.duration;
+          progressBar.value = bgAudio.currentTime;
+          timeCur.textContent = fmtTime(bgAudio.currentTime);
+          drawWaveform(bgAudio.currentTime / bgAudio.duration);
+        }
+      }
+    }, 1000);
+  }
 
   backBtn.addEventListener('click', goBack);
   playAllBtn.addEventListener('click', playAllCurrent);
@@ -913,15 +1196,21 @@ def render_media_page(
     api_path: str,
     item_noun: str = "track",
     theme_color: str = "#1db954",
+    player_bar_style: str = "classic",
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
     The page starts in folder-grid view.  Clicking a folder shows the
     track list with the player.  A back button returns to the grid.
     *media_element_tag* should be ``audio`` or ``video``.
+
+    *player_bar_style* selects the bottom player layout:
+    ``classic``  — single-row with inline range slider (default).
+    ``waveform`` — two-row layout with audio waveform / video thumbnails.
     """
     css = render_base_css() + extra_css
-    js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji)
+    js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji,
+                          player_bar_style=player_bar_style)
     pwa_tags = render_pwa_head_tags(theme_color=theme_color)
     sw_register = """
   <script>
@@ -929,6 +1218,52 @@ def render_media_page(
       navigator.serviceWorker.register('/sw.js').catch(function(){});
     }
   </script>"""
+
+    if player_bar_style == "waveform":
+        player_bar_html = f"""
+  <div class="player-bar waveform view-hidden">
+    <div class="player-bar-top">
+      <div class="player-info">
+        <div class="player-title"  id="player-title">No {item_noun} selected</div>
+        <div class="player-artist" id="player-artist">&ndash;</div>
+      </div>
+      <div class="player-controls">
+        <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
+        <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
+        <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <span class="time-label"     id="time-cur">0:00</span>
+      <div class="progress-track" id="progress-track">
+        <canvas id="waveform-canvas"></canvas>
+        <input type="range" id="progress-bar" min="0" step="0.1" value="0" />
+        <div class="thumb-preview" id="thumb-preview">
+          <canvas id="thumb-canvas" width="160" height="90"></canvas>
+          <span class="thumb-time" id="thumb-time"></span>
+        </div>
+      </div>
+      <span class="time-label end" id="time-dur">0:00</span>
+    </div>
+  </div>"""
+    else:
+        player_bar_html = f"""
+  <div class="player-bar classic view-hidden">
+    <div class="player-info">
+      <div class="player-title"  id="player-title">No {item_noun} selected</div>
+      <div class="player-artist" id="player-artist">&ndash;</div>
+    </div>
+    <div class="player-controls">
+      <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
+      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
+      <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
+    </div>
+    <div class="progress-wrap">
+      <span class="time-label"     id="time-cur">0:00</span>
+      <input type="range" id="progress-bar" min="0" step="0.1" value="0" />
+      <span class="time-label end" id="time-dur">0:00</span>
+    </div>
+  </div>"""
 
     return f"""<!doctype html>
 <html lang="en">
@@ -969,24 +1304,8 @@ def render_media_page(
     <ul class="track-list" id="track-list"></ul>
   </div>
 
-  <{media_element_tag} id="player" preload="auto"></{media_element_tag}>
-
-  <div class="player-bar view-hidden">
-    <div class="player-info">
-      <div class="player-title"  id="player-title">No {item_noun} selected</div>
-      <div class="player-artist" id="player-artist">&ndash;</div>
-    </div>
-    <div class="player-controls">
-      <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
-      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
-      <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
-    </div>
-    <div class="progress-wrap">
-      <span class="time-label"     id="time-cur">0:00</span>
-      <input type="range" id="progress-bar" min="0" step="0.1" value="0" />
-      <span class="time-label end" id="time-dur">0:00</span>
-    </div>
-  </div>
+  <{media_element_tag} id="player" preload="auto" playsinline></{media_element_tag}>
+{player_bar_html}
 
   <script id="initial-data" type="application/json">{items_json}</script>
   <script>{js}</script>

@@ -11,7 +11,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-from hometools.config import get_audio_library_dir
+from hometools.config import get_audio_library_dir, get_player_bar_style
 from hometools.constants import AUDIO_SUFFIX
 from hometools.streaming.audio.catalog import (
     AudioTrack,
@@ -55,6 +55,7 @@ def render_audio_index_html(tracks: list[AudioTrack], library_dir: Path) -> str:
         api_path="/api/audio/tracks",
         item_noun="track",
         theme_color="#1db954",
+        player_bar_style=get_player_bar_style(),
     )
 
 

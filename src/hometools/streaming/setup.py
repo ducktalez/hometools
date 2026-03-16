@@ -16,6 +16,7 @@ from xml.etree.ElementTree import Element, SubElement, ElementTree, indent
 from hometools.config import (
     get_audio_library_dir,
     get_audio_port,
+    get_player_bar_style,
     get_stream_host,
     get_video_library_dir,
     get_video_port,
@@ -37,9 +38,10 @@ def streaming_config_table() -> str:
     video_dir = str(get_video_library_dir())
     audio_url = f"http://{host}:{audio_port}/"
     video_url = f"http://{host}:{video_port}/"
+    bar_style = get_player_bar_style()
 
     # Adapt column width to longest value
-    values = [host, f"port {audio_port}", audio_dir, f"port {video_port}", video_dir, audio_url, video_url]
+    values = [host, f"port {audio_port}", audio_dir, f"port {video_port}", video_dir, audio_url, video_url, bar_style]
     w = max(len(v) for v in values) + 2
 
     def row(label: str, value: str) -> str:
@@ -57,6 +59,7 @@ def streaming_config_table() -> str:
         row("", audio_dir), sep,
         row("Video", f"port {video_port}"),
         row("", video_dir), sep,
+        row("Player", bar_style), sep,
         row("URLs", audio_url),
         row("", video_url),
         bot,
