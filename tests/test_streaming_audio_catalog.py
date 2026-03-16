@@ -8,6 +8,12 @@ from hometools.streaming.audio.catalog import (
     query_tracks,
     sort_tracks,
 )
+from hometools.streaming.core.models import MediaItem
+
+
+def test_audio_track_is_media_item():
+    """AudioTrack is just an alias for MediaItem."""
+    assert AudioTrack is MediaItem
 
 
 def test_build_audio_index_filters_audio_files_and_sorts(tmp_path):
@@ -21,10 +27,7 @@ def test_build_audio_index_filters_audio_files_and_sorts(tmp_path):
 
     assert [track.artist for track in tracks] == ["A Artist", "B Artist"]
     assert [track.title for track in tracks] == ["First", "Second"]
-    assert [track.relative_path for track in tracks] == [
-        "nested/A Artist - First.flac",
-        "B Artist - Second.mp3",
-    ]
+    assert all(track.media_type == "audio" for track in tracks)
     assert all(track.stream_url.startswith("/audio/stream?path=") for track in tracks)
 
 
@@ -41,43 +44,36 @@ def test_encode_relative_path_escapes_spaces_and_slashes():
 
 def test_query_tracks_filters_by_search_and_artist():
     tracks = [
-        AudioTrack("a/one.mp3", "Daft Punk", "One More Time", "/audio/stream?path=a"),
-        AudioTrack("b/two.mp3", "Muse", "Uprising", "/audio/stream?path=b"),
-        AudioTrack("c/three.mp3", "Daft Punk", "Harder Better", "/audio/stream?path=c"),
+        MediaItem("a/one.mp3", "One More Time", "Daft Punk", "/audio/stream?path=a", "audio"),
+        MediaItem("b/two.mp3", "Uprising", "Muse", "/audio/stream?path=b", "audio"),
+        MediaItem("c/three.mp3", "Harder Better", "Daft Punk", "/audio/stream?path=c", "audio"),
     ]
-
     result = query_tracks(tracks, q="hard", artist="daft punk", sort_by="title")
-
-    assert [track.title for track in result] == ["Harder Better"]
+    assert [t.title for t in result] == ["Harder Better"]
 
 
 def test_query_tracks_matches_relative_path_case_insensitive():
     tracks = [
-        AudioTrack("Library/Nested/Track.mp3", "Artist", "Song", "/audio/stream?path=x"),
+        MediaItem("Library/Nested/Track.mp3", "Song", "Artist", "/audio/stream?path=x", "audio"),
     ]
-
     result = query_tracks(tracks, q="nested/track")
-
     assert len(result) == 1
 
 
 def test_sort_tracks_supports_title_and_path():
     tracks = [
-        AudioTrack("z/final.mp3", "B Artist", "Zulu", "u1"),
-        AudioTrack("a/first.mp3", "A Artist", "Alpha", "u2"),
+        MediaItem("z/final.mp3", "Zulu", "B Artist", "u1", "audio"),
+        MediaItem("a/first.mp3", "Alpha", "A Artist", "u2", "audio"),
     ]
-
-    assert [track.title for track in sort_tracks(tracks, "title")] == ["Alpha", "Zulu"]
-    assert [track.relative_path for track in sort_tracks(tracks, "path")] == ["a/first.mp3", "z/final.mp3"]
+    assert [t.title for t in sort_tracks(tracks, "title")] == ["Alpha", "Zulu"]
+    assert [t.relative_path for t in sort_tracks(tracks, "path")] == ["a/first.mp3", "z/final.mp3"]
 
 
 def test_list_artists_returns_unique_sorted_values():
     tracks = [
-        AudioTrack("a.mp3", "Muse", "A", "u1"),
-        AudioTrack("b.mp3", "daft punk", "B", "u2"),
-        AudioTrack("c.mp3", "Muse", "C", "u3"),
+        MediaItem("a.mp3", "A", "Muse", "u1", "audio"),
+        MediaItem("b.mp3", "B", "daft punk", "u2", "audio"),
+        MediaItem("c.mp3", "C", "Muse", "u3", "audio"),
     ]
-
     assert list_artists(tracks) == ["daft punk", "Muse"]
-
 

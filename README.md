@@ -1,6 +1,6 @@
 # hometools
 
-A collection of Python tools for managing personal media libraries — music file sanitization, video organizing with TMDB, and a minimal local audio streaming prototype.
+A collection of Python tools for managing personal media libraries — music file sanitization, video organizing with TMDB, and local audio & video streaming prototypes with a shared core.
 
 ## Features
 
@@ -16,62 +16,62 @@ A collection of Python tools for managing personal media libraries — music fil
 - **Smart renaming** — rename files to `Title (Year) [tmdbid-ID].ext` format, compatible with Jellyfin/Plex
 - **Series support** — parse `S01E03` patterns and fetch episode names
 
-### Streaming Prototype
-- **Manual NAS sync** — copy new or changed audio files from a mounted NAS folder into a local library on demand
-- **Browser-based audio player** — open a local web UI and stream copied tracks to devices on your home network
-- **Track discovery controls** — search by artist/title/path, filter by artist, and choose sorting in the web UI
-- **iPhone-friendly MVP** — no native iOS client, no Xcode project, just a local web app in Safari
-- **Video-ready structure** — a matching video streaming area already exists as a placeholder for later expansion
+### Streaming (Audio & Video)
+- **Shared streaming core** — common `MediaItem` model, catalog query/sort/filter, NAS sync and dark-theme UI used by both servers
+- **Manual NAS sync** — copy new or changed media files from a mounted NAS folder into a local library on demand
+- **Browser-based audio player** — dark-theme web UI with search, artist filter, sort, and bottom player bar (⏮ ▶ ⏭ + progress)
+- **Browser-based video player** — same UI as audio but with an inline `<video>` element, folder-based filtering
+- **Track discovery controls** — search by title/artist/path, filter by artist or folder, sort by multiple fields
+- **iPhone-friendly MVP** — no native iOS client, no Xcode project, just local web apps accessible via Safari
 
 ## Quick Start
 
 ```bash
 # Clone and set up
-git clone <repo-url>
+git clone https://github.com/ducktalez/hometools.git
 cd hometools
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 pip install -e ".[dev]"
 
-# Configure secrets
+# Configure secrets and paths
 Copy-Item .env.example .env
-# Edit .env with your TMDB_API_KEY
+# Edit .env with your TMDB_API_KEY and library paths
 
 # Run tests
 pytest
 ```
 
-## Audio Streaming MVP
+## Streaming
 
-Configure the local library, NAS source and bind address in `.env`:
+Configure library paths, NAS sources and bind address in `.env`:
 
 ```dotenv
 HOMETOOLS_AUDIO_LIBRARY_DIR=C:/Media/audio-library
 HOMETOOLS_AUDIO_NAS_DIR=Z:/Music
+HOMETOOLS_VIDEO_LIBRARY_DIR=C:/Media/video-library
+HOMETOOLS_VIDEO_NAS_DIR=Z:/Video
 HOMETOOLS_STREAM_HOST=0.0.0.0
 HOMETOOLS_STREAM_PORT=8000
 ```
 
-Sync audio manually from the mounted NAS share into the local library:
+### Audio
 
 ```powershell
-hometools sync-audio --dry-run
-hometools sync-audio
+hometools sync-audio --dry-run    # preview
+hometools sync-audio              # copy files
+hometools serve-audio             # start web UI → http://127.0.0.1:8000/
 ```
 
-Start the local audio streaming UI:
+### Video
 
 ```powershell
-hometools serve-audio
+hometools sync-video --dry-run    # preview
+hometools sync-video              # copy files
+hometools serve-video --port 8001 # start web UI → http://127.0.0.1:8001/
 ```
 
-Then open:
-
-```text
-http://127.0.0.1:8000/
-```
-
-If the server runs on your home network and your firewall allows access, you can also open it from Safari on your iPhone using your PC or server IP.
+Both servers share the same dark-theme UI. Open them from any device on your home network (including Safari on iPhone).
 
 ## Project Structure
 
@@ -87,10 +87,11 @@ hometools update-instructions
 src/hometools/
 ├── audio/              # Sanitization, metadata, silence removal, merging
 ├── streaming/
+│   ├── core/           # Shared MediaItem model, catalog, sync, UI helpers
 │   ├── audio/          # Audio catalog, sync and FastAPI server
-│   └── video/          # Placeholder for future video streaming work
+│   └── video/          # Video catalog, sync and FastAPI server
 ├── video/              # TMDB-based movie & series renaming
-├── cli.py              # CLI commands for sync and local streaming
+├── cli.py              # CLI commands for sync, streaming and maintenance
 ├── config.py           # Environment-based configuration
 ├── constants.py        # Shared constants
 ├── utils.py            # File/path utilities
@@ -101,7 +102,7 @@ src/hometools/
 
 - Python >= 3.10
 - ffmpeg (for silence removal / trimming)
-- A mounted NAS/share path if you want to use the manual audio sync workflow
+- A mounted NAS/share path if you want to use the manual sync workflow
 
 ## License
 
