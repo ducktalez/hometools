@@ -72,4 +72,3 @@ def sync_library(source_root: Path, target_root: Path, suffixes: list[str], dry_
     if not dry_run:
         execute_sync_plan(operations)
     return operations
-

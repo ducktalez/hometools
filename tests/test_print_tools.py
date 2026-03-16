@@ -4,7 +4,6 @@ from hometools.print_tools import Colors, highlight_removed
 
 
 class TestHighlightRemoved:
-
     def test_no_changes(self):
         result = highlight_removed("hello", "hello")
         assert result == "hello"

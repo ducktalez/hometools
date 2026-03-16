@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from hometools.constants import AUDIO_SUFFIX
-from hometools.streaming.core.sync import SyncOperation, sync_library  # noqa: F401 – re-export
+from hometools.streaming.core.sync import SyncOperation, sync_library
 
 
 def plan_audio_sync(source_root: Path, target_root: Path) -> list[SyncOperation]:

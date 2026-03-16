@@ -1,7 +1,5 @@
 """Tests for hometools.audio.sanitize – pure string transformation functions."""
 
-import pytest
-
 from hometools.audio.sanitize import (
     sanitize_track_to_path,
     split_extreme,
@@ -9,13 +7,12 @@ from hometools.audio.sanitize import (
     stem_identifier,
 )
 
-
 # ---------------------------------------------------------------------------
 # stem_identifier
 # ---------------------------------------------------------------------------
 
-class TestStemIdentifier:
 
+class TestStemIdentifier:
     def test_returns_list(self):
         result = stem_identifier("Artist - Title")
         assert isinstance(result, list)
@@ -100,8 +97,8 @@ class TestStemIdentifier:
 # sanitize_track_to_path
 # ---------------------------------------------------------------------------
 
-class TestSanitizeTrackToPath:
 
+class TestSanitizeTrackToPath:
     def test_returns_list(self):
         result = sanitize_track_to_path("Artist - Title")
         assert isinstance(result, list)
@@ -121,7 +118,7 @@ class TestSanitizeTrackToPath:
         assert "\\" not in result
 
     def test_replaces_invalid_chars(self):
-        for char in ['<', '>', ':', '|', '?', '*']:
+        for char in ["<", ">", ":", "|", "?", "*"]:
             result = sanitize_track_to_path(f"Artist - Title{char}Extra")[-1]
             assert char not in result, f"Character {char!r} should have been replaced"
 
@@ -134,8 +131,8 @@ class TestSanitizeTrackToPath:
 # split_stem
 # ---------------------------------------------------------------------------
 
-class TestSplitStem:
 
+class TestSplitStem:
     def test_basic_split(self):
         parts = split_stem("Artist - Title")
         assert "Artist" in parts
@@ -158,8 +155,8 @@ class TestSplitStem:
 # split_extreme
 # ---------------------------------------------------------------------------
 
-class TestSplitExtreme:
 
+class TestSplitExtreme:
     def test_removes_keywords(self):
         parts = split_extreme("Artist - Title (Official Remix Extended Version)")
         for keyword in ["Official", "Remix", "Extended", "Version"]:

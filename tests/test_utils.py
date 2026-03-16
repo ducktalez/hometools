@@ -1,9 +1,5 @@
 """Tests for hometools.utils – file and path utilities."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-
 from hometools.utils import (
     fix_spaces,
     get_file_size,
@@ -15,7 +11,6 @@ from hometools.utils import (
 
 
 class TestFixSpaces:
-
     def test_collapses_double_spaces(self):
         assert fix_spaces("hello  world") == "hello world"
 
@@ -48,7 +43,6 @@ class TestFixSpaces:
 
 
 class TestGetFilesInFolder:
-
     def test_finds_files(self, tmp_path):
         (tmp_path / "a.txt").write_text("a")
         (tmp_path / "b.mp3").write_text("b")
@@ -83,7 +77,6 @@ class TestGetFilesInFolder:
 
 
 class TestPathMakeDir:
-
     def test_creates_directory(self, tmp_path):
         new_dir = tmp_path / "new" / "nested"
         path_make_dir(new_dir)
@@ -97,7 +90,6 @@ class TestPathMakeDir:
 
 
 class TestGetFileSize:
-
     def test_returns_size(self, tmp_path):
         f = tmp_path / "test.txt"
         f.write_text("hello world")

@@ -2,10 +2,10 @@
 
 from hometools.streaming.core.server_utils import render_base_css, render_media_page, render_player_js
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _page(media="audio", style="classic"):
     return render_media_page(
@@ -20,13 +20,13 @@ def _page(media="audio", style="classic"):
 
 
 def _js(style="classic"):
-    return render_player_js(api_path="/api/test", item_noun="track",
-                            player_bar_style=style)
+    return render_player_js(api_path="/api/test", item_noun="track", player_bar_style=style)
 
 
 # ---------------------------------------------------------------------------
 # CSS: both modes have their styles
 # ---------------------------------------------------------------------------
+
 
 def test_css_contains_classic_player_bar():
     css = render_base_css()
@@ -73,9 +73,10 @@ def test_css_contains_classic_range_styling():
 # HTML: classic mode (default)
 # ---------------------------------------------------------------------------
 
+
 def test_classic_html_has_classic_class():
     page = _page(style="classic")
-    assert 'player-bar classic' in page
+    assert "player-bar classic" in page
 
 
 def test_classic_html_has_inline_range():
@@ -112,9 +113,10 @@ def test_classic_html_video_element():
 # HTML: waveform mode
 # ---------------------------------------------------------------------------
 
+
 def test_waveform_html_has_waveform_class():
     page = _page(style="waveform")
-    assert 'player-bar waveform' in page
+    assert "player-bar waveform" in page
 
 
 def test_waveform_html_has_player_bar_top():
@@ -157,6 +159,7 @@ def test_waveform_html_video_page():
 # JS: classic mode
 # ---------------------------------------------------------------------------
 
+
 def test_classic_js_has_no_waveform_data():
     js = _js(style="classic")
     assert "waveformData" not in js
@@ -185,6 +188,7 @@ def test_classic_js_has_core_player():
 # ---------------------------------------------------------------------------
 # JS: waveform mode
 # ---------------------------------------------------------------------------
+
 
 def test_waveform_js_has_audio_mode_detection():
     js = _js(style="waveform")
@@ -232,8 +236,10 @@ def test_waveform_js_calls_generate_on_play():
 # Config
 # ---------------------------------------------------------------------------
 
+
 def test_config_get_player_bar_style():
     from hometools.config import get_player_bar_style
+
     style = get_player_bar_style()
     assert style in ("classic", "waveform")
 
@@ -244,4 +250,3 @@ def test_render_media_page_accepts_style_param():
         assert 'id="progress-bar"' in page
         assert 'id="btn-play"' in page
         assert 'id="folder-grid"' in page
-

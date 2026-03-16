@@ -1,30 +1,22 @@
 # Audio/Video File Tools
 
 > Part of [INSTRUCTIONS.md](../INSTRUCTIONS.md). Covers `audio/` and `video/`.
-> Auto-generated module list. Edit descriptions in `instructions.py` or as code comments.
 
 ## audio/ modules
 
 | Module | Notes |
 |--------|-------|
-| `compare.py` | |
-| `merger.py` | |
-| `metadata.py` | |
-| `sanitize.py` | |
-| `silence.py` | |
+| `compare.py` | Duplicate detection, batch sanitization. I/O-heavy — behind CLI. |
+| `merger.py` | MP3 merging via pydub. I/O-heavy — behind CLI. |
+| `metadata.py` | `audiofile_assume_artist_title(path)` splits `"Artist - Title"` from stems. Used by `streaming/audio/catalog.py`. |
+| `sanitize.py` | **Pure** — no I/O, no side effects. Every new transform needs a test. |
+| `silence.py` | Silence detection/trimming. Requires **ffmpeg** on PATH. |
 
 ## video/ modules
 
 | Module | Notes |
 |--------|-------|
-| `organizer.py` | |
-
-## Conventions
-
-- `sanitize.py` is **pure** — no I/O, no side effects. Every new transform needs a test.
-- `metadata.py` — `audiofile_assume_artist_title(path)` splits `"Artist - Title"` from stems. Used by `streaming/audio/catalog.py`.
-- `compare.py`, `merger.py` perform I/O — wrap behind CLI commands.
-- `silence.py` requires **ffmpeg** on PATH.
+| `organizer.py` | TMDB-based renaming for films and series. |
 
 ## Tests
 

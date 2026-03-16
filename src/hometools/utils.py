@@ -3,7 +3,6 @@
 import logging
 import os
 import re
-import sys
 from pathlib import Path
 
 from hometools.config import get_delete_dir
@@ -41,6 +40,7 @@ def get_files_in_folder(p: Path, suffix_accepted=None) -> list[Path]:
 def get_audio_files_in_folder(p: Path, suffix=None, print_non_audio=False) -> list[Path]:
     """Return sorted list of audio files under *p*."""
     from hometools.constants import AUDIO_SUFFIX
+
     suffix = suffix or AUDIO_SUFFIX
     all_files = _walk_files(p)
     audio_files = [f for f in all_files if f.suffix.lower() in suffix]
@@ -48,7 +48,7 @@ def get_audio_files_in_folder(p: Path, suffix=None, print_non_audio=False) -> li
     if print_non_audio:
         non_audio = set(all_files) - set(audio_files)
         for x in non_audio:
-            logger.info(f'Ignoring: {x}')
+            logger.info(f"Ignoring: {x}")
     return audio_files
 
 
@@ -59,7 +59,7 @@ def get_audio_files_in_folder(p: Path, suffix=None, print_non_audio=False) -> li
 
 def fix_spaces(s: str) -> str:
     """Collapse multiple spaces and strip leading/trailing spaces."""
-    s = re.sub(r' {2,}', ' ', s)
+    s = re.sub(r" {2,}", " ", s)
     return s.strip()
 
 
@@ -104,31 +104,31 @@ def rename_path(f: Path, new: Path):
     try:
         f.rename(new)
     except FileExistsError:
-        logger.warning(f'FileExistsError: {f} -> {new}  (skipped)')
+        logger.warning(f"FileExistsError: {f} -> {new}  (skipped)")
 
 
 def user_rename_file(f: Path, new: Path, ask_user_str=None):
     """Interactively ask the user before renaming."""
     prompt = ask_user_str or f'Renaming:\n\t{f}\n\t{new}\nEnter to continue. "n" to skip.'
     x = input(prompt)
-    if x == '':
+    if x == "":
         rename_path(f, new)
     else:
-        print('Skipped')
+        print("Skipped")
 
 
 def user_rename_from_to_dict(from_to_dict: dict, confirm_each=True):
     """Rename files described by *from_to_dict* ``{old_path: new_path}``."""
     if not from_to_dict:
-        print('No files to rename!')
+        print("No files to rename!")
         return
 
     if not confirm_each:
         for k, v in from_to_dict.items():
-            print(f'{Colors.RED}{k}\n{Colors.GREEN}{v}{Colors.RESET}')
-        x = input('Press Enter to rename all files above.')
-        if x != '':
-            print('Skipped!')
+            print(f"{Colors.RED}{k}\n{Colors.GREEN}{v}{Colors.RESET}")
+        x = input("Press Enter to rename all files above.")
+        if x != "":
+            print("Skipped!")
             return
 
     for k, v in from_to_dict.items():
@@ -154,7 +154,7 @@ def attention_delete_files(paths, delete_dir: Path | None = None, soft_delete=Tr
     for p in paths:
         if soft_delete:
             dest = delete_dir / p.name
-            logger.info(f'{p} -> {dest}')
+            logger.info(f"{p} -> {dest}")
             p.rename(dest)
         else:
             Path.unlink(p)
@@ -165,4 +165,4 @@ def deleting_file(p: Path, delete_dir: Path | None = None):
     delete_dir = delete_dir or get_delete_dir()
     path_make_dir(delete_dir)
     dest = delete_dir / p.name
-    user_rename_file(p, dest, ask_user_str=f'{p} -> {dest}')
+    user_rename_file(p, dest, ask_user_str=f"{p} -> {dest}")
