@@ -56,7 +56,7 @@ def get_audio_library_dir() -> Path:
     """Return the local audio library used by the streaming prototype."""
     return _get_path_from_env(
         "HOMETOOLS_AUDIO_LIBRARY_DIR",
-        Path.home() / "Music" / "hometools" / "audio-library",
+        Path.home() / "Music/hometools/audio-library",
     )
 
 
@@ -77,7 +77,7 @@ def get_video_library_dir() -> Path:
     """Return the local video library used by the streaming prototype."""
     return _get_path_from_env(
         "HOMETOOLS_VIDEO_LIBRARY_DIR",
-        Path.home() / "Videos" / "hometools" / "video-library",
+        Path.home() / "Videos/clips",
     )
 
 
@@ -85,7 +85,7 @@ def get_video_nas_dir() -> Path:
     """Return the mounted NAS source directory for manual video syncs."""
     return _get_path_from_env(
         "HOMETOOLS_VIDEO_NAS_DIR",
-        Path.home() / "Videos" / "hometools" / "video-nas",
+        Path.home() / "Videos/clips",
     )
 
 

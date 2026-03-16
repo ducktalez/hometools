@@ -13,11 +13,18 @@ class MediaItem:
 
     Used by both audio and video catalogs so that shared query/sort/sync
     logic only needs to be written once.
+
+    INSTRUCTIONS (local):
+    - Frozen: never mutate, always create a new instance.
+    - ``artist`` is overloaded: actual artist for audio, folder name for video.
+      Core code must tolerate empty strings.
+    - Add new fields at the end to keep backward compatibility with to_dict().
+    - Every new field must be JSON-serializable (str/int/float/bool/None).
     """
 
     relative_path: str
     title: str
-    artist: str          # empty string for video items without a known director
+    artist: str          # audio: artist name, video: top-level folder (may be "")
     stream_url: str
     media_type: str      # "audio" or "video"
 

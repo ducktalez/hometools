@@ -107,3 +107,9 @@ src/hometools/
 ## License
 
 See [LICENSE](LICENSE).
+
+## TODOs
+
+- [ ] Add more unit tests for edge cases (e.g. weird filename patterns, missing metadata)
+- [ ] Implement a "Recently Added" section in the streaming UI
+- [ ] Während des Scans der Files für den Audio- und Video Streaming Server: Hinweise wenn die Organisation mit dem Filesystem genügend Informationen gibt oder ob es Probleme 

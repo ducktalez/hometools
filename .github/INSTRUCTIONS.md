@@ -1,84 +1,44 @@
-# INSTRUCTIONS - hometools Developer Guide
+# INSTRUCTIONS — hometools
 
-> Auto-generated overview. Run `hometools update-instructions` after structural changes.
-> Last updated: 2026-03-16
+> Auto-generated. Run `hometools update-instructions` after structural changes.
 
-## Project Structure
+## Scope
 
-```text
-hometools/
-├── .github/
-│   └── INSTRUCTIONS.md
-├── src/
-│   ├── hometools/
-│   │   ├── audio/
-│   │   ├── streaming/
-│   │   ├── video/
-│   │   ├── __init__.py
-│   │   ├── cli.py
-│   │   ├── config.py
-│   │   ├── constants.py
-│   │   ├── instructions.py
-│   │   ├── logging_config.py
-│   │   ├── print_tools.py
-│   │   └── utils.py
-│   └── hometools.egg-info/
-│       ├── dependency_links.txt
-│       ├── entry_points.txt
-│       ├── PKG-INFO
-│       ├── requires.txt
-│       ├── SOURCES.txt
-│       └── top_level.txt
-├── tests/
-│   ├── __init__.py
-│   ├── test_config.py
-│   ├── test_instructions.py
-│   ├── test_print_tools.py
-│   ├── test_sanitize.py
-│   ├── test_streaming_audio_catalog.py
-│   ├── test_streaming_audio_server.py
-│   ├── test_streaming_audio_sync.py
-│   ├── test_streaming_core.py
-│   ├── test_streaming_video.py
-│   ├── test_utils.py
-│   └── test_video_organizer.py
-├── tmp/
-│   └── audio-library/
-│       ├── Daft Punk/
-│       └── Muse/
-├── wa_data/
-│   ├── 2raumwohnung - Wir Werden Sehen (Paul Kalkbrenner Remix) 😆😆😆 Δ ASAP Rocky feat. 2 Chainz, Drake & Kendrick Lamar - Fuckin Problem (Prod. By 40) many productions, (prod Simon), prod sdf erg34, prod. sdf erg34 asd - Topic official video (www.dfg).m4a
-│   ├── Borat.mp4
-│   ├── mp3files_lut.yaml
-│   └── mp3files_lut2.yaml
-├── .env.example
-├── .gitignore
-├── LICENSE
-├── pyproject.toml
-├── README.md
-└── requirements.txt
+hometools = media library tools + local streaming prototypes (audio & video).
+One shared core, two servers, common dark-theme UI.
+
+## Architecture
+
+| Domain | Package | Instruction file |
+|--------|---------|-----------------|
+| **Audio/Video file tools** | `audio/`, `video/` | [tools.instructions.md](instructions/tools.instructions.md) |
+| **Streaming** | `streaming/` | [streaming.instructions.md](instructions/streaming.instructions.md) |
+
+## Rules (global)
+
+1. **Keep instructions lean.** Only include what an AI assistant needs to make correct changes. Avoid repeating information that is obvious from the code. Overly verbose instructions distort task focus.
+2. **No hardcoded paths.** Use `config.py` helpers or CLI args.
+3. **No secrets in source.** Use `.env` (gitignored).
+4. **No side effects at import time.** Code behind CLI commands or explicit calls.
+5. **Pure functions first.** Separate I/O from transformation; test the logic.
+6. **Tests for every new pure function.** `tests/`, run `pytest`.
+7. **Logging, not print.** `logging.getLogger(__name__)` in library code.
+8. **Sync only on explicit command.** Never auto-pull from NAS.
+9. **Update instructions after structural changes.** `hometools update-instructions`.
+
+## CLI
+
+```
+hometools serve-audio / serve-video [--library-dir] [--host] [--port]
+hometools sync-audio  / sync-video  [--source] [--target] [--dry-run]
+hometools update-instructions [--repo-root]
 ```
 
-## Quick Commands
+## Config (env vars → `config.py`)
 
-```powershell
-# Run tests
-pytest
-
-# Manual audio sync from NAS source
-hometools sync-audio --dry-run
-hometools sync-audio
-
-# Start local audio streaming MVP
-hometools serve-audio
-
-# Regenerate this file
-hometools update-instructions
 ```
-
-## Notes
-
-- Keep secrets in `.env`, never in source files.
-- Keep side effects behind explicit CLI commands.
-- Add tests for new pure functions in `tests/`.
-- Audio sync runs only on command (no automatic NAS polling).
+TMDB_API_KEY, HOMETOOLS_DELETE_DIR,
+HOMETOOLS_AUDIO_LIBRARY_DIR, HOMETOOLS_AUDIO_NAS_DIR,
+HOMETOOLS_VIDEO_LIBRARY_DIR, HOMETOOLS_VIDEO_NAS_DIR,
+HOMETOOLS_STREAM_HOST, HOMETOOLS_STREAM_PORT
+```
