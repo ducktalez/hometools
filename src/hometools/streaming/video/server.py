@@ -12,7 +12,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-from hometools.config import get_video_library_dir
+from hometools.config import get_video_library_dir, get_player_bar_style
 from hometools.constants import VIDEO_SUFFIX
 from hometools.streaming.core.catalog import list_artists, query_items
 from hometools.streaming.core.server_utils import (
@@ -63,6 +63,7 @@ def render_video_index_html(items, library_dir: Path) -> str:
         api_path="/api/video/items",
         item_noun="video",
         theme_color="#bb86fc",
+        player_bar_style=get_player_bar_style(),
     )
 
 

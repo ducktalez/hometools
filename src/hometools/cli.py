@@ -145,10 +145,8 @@ def _print_server_banner(current: str, host: str, port: int) -> None:
     for i, h in enumerate(hosts_to_show):
         audio_url = f"http://{h}:{audio_port}/"
         video_url = f"http://{h}:{video_port}/"
-        
-        if i >= 0:
-            print("  ║                                                  ║")
-        
+
+        print(f"  ║                                                  ║")
         print(f"  ║  🎵  {audio_url:<37}")
         print(f"  ║  🎬  {video_url:<37}")
     
