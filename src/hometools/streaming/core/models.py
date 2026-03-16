@@ -27,6 +27,7 @@ class MediaItem:
     artist: str          # audio: artist name, video: top-level folder (may be "")
     stream_url: str
     media_type: str      # "audio" or "video"
+    thumbnail_url: str = ""  # URL to shadow-cached thumbnail (empty = no thumb)
 
     def to_dict(self) -> dict[str, str]:
         """Return a JSON-serializable representation."""
@@ -43,4 +44,3 @@ def normalize_relative_path(relative_path: str | Path) -> str:
 def encode_relative_path(relative_path: str | Path) -> str:
     """Encode a relative path for use in query parameters."""
     return quote(normalize_relative_path(relative_path), safe="")
-

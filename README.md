@@ -5,12 +5,19 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
-- Album-cover/thumbnail bei Video- und Audio-Streaming anzeigen
-- dynamisches synchronisieren: Update an Handy schicken
-- Metadaten vom Handy aus ändern soll auch Änderungen im Filesystem triggern. Hier soll aber nur eine Liste generiert werden, die dann am PC "akzeptiert" werden kann.
+- Management Server.
+  - Ich will eine Seite, die den Serverstatus anzeigt und wichtige Managementaufgaben repräsentiert.
+  - Vom Handy aus soll man die Metadaten von Files ändern können. Diese sollen aber nicht direkt eingetragen werden sondern in einer Liste festgehalten. Erst wenn man diese Liste im Management Server "akzeptiert" hat, werden die Metadaten in den Files festgeschrieben. 
+  - dynamisches synchronisieren: Die neuesten Änderungen müssen in einer Datenbank festgehalten werden so dass man das Handy zielgerichtet updaten kann.
+  - Ein Scheduler, der die wichtigsten Aufgaben planbar und zyklisch ausführt.  
+- OPTIONALE https-kommunikation. Es handelt sich um einen privaten Streaming-Server und wir erwarten keine Angriffe. HTTP ist schneller.
+- Für englische Serien müssen die Metadaten anders geladen werden und das Programm, welches die Files automatisch umbennt, muss hier die englischen Titel etc. einfügen. Bisher ist das nicht der Fall. 
 - Implement a "Recently Added" section in the streaming UI
-- Während des Scans der Files für den Audio- und Video Streaming Server: Hinweise wenn die Organisation mit dem Filesystem genügend Informationen gibt oder ob es Probleme
-- "Malcolm mittendrin" (deutsch) vs. "Malcolm in the Middle" vs. "Malcolm Mittendrin [engl]" - Lösung finden
+- Während des Scans der Files für den Audio- und Video Streaming Server: Hinweise wenn die Organisation mit dem Filesystem genügend Informationen gibt oder ob es Probleme geben kann
+- "Malcolm mittendrin" (deutsch) vs. "Malcolm in the Middle" vs. "Malcolm Mittendrin [engl]" - Lösung finden.
+  - Deutsche und englische Versionen einer Serie müssen irgendwie miteinander verlinkt werden, damit man nicht zwei Einträge in der UI hat.
+  - Ich will eine Verlinkung bereits durch die richtige Namensgebung in der Ordnerstruktur ermöglichen. Ist das überhaupt eine gute Idee? 
+  - Ein Match wäre dann ein Match wenn der Serientitel im Ordner gleich ist, bloß mit einem "(engl)" oder "[engl]" dahinter. Die Files in dem Ordner sollen aber nach der original englischen Serie benannt werden. (zB. 'Malcolm Mittendrin (engl)/Malcolm in the Middle S01E01.mp4').
 - Untertitelfiles verwenden und in die TMDB-Integration einbinden. Pfadanpassungen bei Namensänderungen nicht vergessen
 - "swipe"-gesture für die mobile UI implementieren (z.B. für "Ordner nach oben/zurück gehen, ...")
 - "Zufällige Wiedergabe" (shuffle) in der Audio-Streaming UI. Mit Long Touch soll ein anderer Shuffle-Modus genutzt werden bei dem die Songs proportional zu ihrer Bewertung häufiger oder weniger oft dran kommen. 
@@ -32,11 +39,12 @@ A collection of Python tools for managing personal media libraries — music fil
 - Plan: Implementierung eines "Offline-Modus", Downloads ermöglichen, Speicherfreigabe ebenfalls ermöglichen
 - "Intro überspringen" Feature für die Video-Streaming UI, basierend auf TMDB-Daten oder manueller Markierung
 - "Crossfade" Feature für die Audio-Streaming UI, um nahtlose Übergänge zwischen Songs zu ermöglichen
-- DJ-extended: Bei songs für die DJ-Nutzung sollten folgende Spuren extrahiert werden: Gesang, Instrumental, Bass/Beat. Loopregionen sollen festgelegt werden.
-- DJ-extension: Zwischen Songs braucht Er ist ein Analyse-Autor, der schaut ob ein flüssiger Übergang möglich ist oder ob es eine andere Art von Übergang braucht.
+- DJ-extension: Bei songs für die DJ-Nutzung sollten folgende Spuren extrahiert werden (Gespeichert im Schattenverzeichnis): Gesang, Instrumental, Bass/Beat. Loopregionen sollen festgelegt werden.
+- DJ-extension: Um flüssige Übergänge zu ermöglichen müssen die BPM von Songs, die abweichen, schneller oder langsamer abgespielt werden können. Hier muss eine solche Funktion implementiert werden. Zusätzlich würde ich auch gerne bei einem Long Touch auf den Pause-Button eine Scroll-Funktion nach oben und unten aufploppen lassen, wo man die BPM einstellen kann und so auch die Abspiel-Geschwindigkeit verändern kann. 
+- DJ-extension: Zwischen Songs braucht Er ist ein Analyse-Autor, der schaut ob ein flüssiger Übergang möglich ist oder ob es eine andere Art von Übergang braucht. 
 - DJ-extension: "Keep something playing"-option, um zu verhindern, dass gar nichts läuft.
 - DJ-extension: "Auto-DJ"-modus, in dem die Software automatisch Songs auswählt und Übergänge basierend auf den analysierten Eigenschaften erstellt, um eine kontinuierliche Wiedergabe zu gewährleisten. Hier sollte auch die Möglichkeit bedacht werden, eine Art Geschichte aus den Songs zu machen und verschiedene aufeinander folgende Themes etc. zu ermöglichen. 
-- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme Oder Musikvideos oder News abspielt.
+- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme oder Musikvideos oder News abspielt.
 - Photo-Management: Alles online oder zumindest mit einem lokalen Server
 
 ## Features

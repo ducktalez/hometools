@@ -369,6 +369,18 @@ header {
   font-size: 0.8rem; color: var(--sub); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.track-thumb {
+  width: 40px; height: 40px; border-radius: 4px; object-fit: cover;
+  flex-shrink: 0; background: var(--surface2);
+}
+.folder-thumb {
+  width: 100%; aspect-ratio: 1; border-radius: 6px; object-fit: cover;
+  margin-bottom: 0.4rem; background: var(--surface2);
+}
+.folder-grid.list-mode .folder-thumb {
+  width: 40px; height: 40px; aspect-ratio: auto; border-radius: 4px;
+  margin-bottom: 0; flex-shrink: 0;
+}
 .empty-hint { text-align: center; color: var(--sub); padding: 3rem 1rem; font-size: 0.9rem; }
 
 /* ── Bottom player bar — shared ── */
@@ -721,6 +733,11 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var ITEM_NOUN = '""" + item_noun + """';
   var FILE_EMOJI = '""" + file_emoji + """';
 
+  /* Placeholder SVG thumbnails — same dimensions as real thumbs so layout never shifts.
+     Simple dark-grey squares with a subtle icon silhouette. */
+  var FOLDER_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='6' fill='%232a2a2a'/%3E%3Cpath d='M30 45h25l7-10h28l0 0H90v40H30z' fill='%23444'/%3E%3C/svg%3E";
+  var FILE_PLACEHOLDER  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='6' fill='%232a2a2a'/%3E%3Ccircle cx='54' cy='72' r='12' fill='none' stroke='%23444' stroke-width='3'/%3E%3Crect x='63' y='38' width='3' height='34' fill='%23444'/%3E%3Crect x='57' y='38' width='12' height='4' rx='1' fill='%23444'/%3E%3C/svg%3E";
+
   var allItems = INITIAL;
   var currentPath = '';
   var playlistItems = [];
@@ -736,6 +753,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var trackCount   = document.getElementById('track-count');
   var playerTitle  = document.getElementById('player-title');
   var playerArtist = document.getElementById('player-artist');
+  var playerThumb  = document.getElementById('player-thumb');
   var progressBar  = document.getElementById('progress-bar');
   var timeCur      = document.getElementById('time-cur');
   var timeDur      = document.getElementById('time-dur');
@@ -778,6 +796,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   function contentsAt(path) {
     var items = itemsUnder(path);
     var folderMap = {};
+    var folderThumb = {};
     var files = [];
     var off = path ? path.length + 1 : 0;
     items.forEach(function(it) {
@@ -787,13 +806,14 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
         var name = rest.substring(0, slash);
         if (!folderMap[name]) folderMap[name] = 0;
         folderMap[name]++;
+        if (!folderThumb[name] && it.thumbnail_url) folderThumb[name] = it.thumbnail_url;
       } else {
         files.push(it);
       }
     });
     var folders = Object.keys(folderMap)
       .sort(function(a, b) { return a.localeCompare(b); })
-      .map(function(n) { return { name: n, count: folderMap[n] }; });
+      .map(function(n) { return { name: n, count: folderMap[n], thumbnail_url: folderThumb[n] || '' }; });
     return { folders: folders, files: files };
   }
 
@@ -891,16 +911,18 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     var html = '';
     c.folders.forEach(function(f) {
       var noun = f.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
+      var thumbSrc = f.thumbnail_url || FOLDER_PLACEHOLDER;
       html += '<div class="folder-card" data-folder="' + escHtml(f.name) + '">' +
-        '<div class="folder-icon">\\u{1F4C1}</div>' +
+        '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         '<div class="folder-name">' + escHtml(f.name) + '</div>' +
         '<div class="folder-count">' + f.count + ' ' + noun + '</div>' +
         '<button class="folder-play-btn" title="Play all">\\u25B6</button>' +
       '</div>';
     });
     c.files.forEach(function(it, i) {
+      var thumbSrc = it.thumbnail_url || FILE_PLACEHOLDER;
       html += '<div class="folder-card file-card" data-file-idx="' + i + '">' +
-        '<div class="folder-icon">' + FILE_EMOJI + '</div>' +
+        '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         '<div class="folder-name">' + escHtml(it.title) + '</div>' +
         '<div class="folder-count">' + escHtml(it.artist || '') + '</div>' +
       '</div>';
@@ -1016,9 +1038,11 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     }
     trackList.innerHTML = tracks.map(function(t, i) {
       var subtitle = t.artist || t.relative_path;
+      var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
       return '<li class="track-item' + (i === currentIndex ? ' active' : '') +
         '" data-index="' + i + '">' +
         '<span class="track-num"><span class="num-text">' + (i + 1) + '</span></span>' +
+        '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         '<div class="track-info">' +
           '<div class="track-title">' + escHtml(t.title) + '</div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
@@ -1106,6 +1130,13 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     player.play();
     playerTitle.textContent = t.title;
     playerArtist.textContent = t.artist || t.relative_path;
+    if (t.thumbnail_url) {
+      playerThumb.src = t.thumbnail_url;
+      playerThumb.style.display = '';
+    } else {
+      playerThumb.src = FILE_PLACEHOLDER;
+      playerThumb.style.display = '';
+    }
     btnPlay.textContent = '\\u23F8';
     playerBar.classList.remove('view-hidden');
     markActive();
@@ -1223,6 +1254,7 @@ def render_media_page(
         player_bar_html = f"""
   <div class="player-bar waveform view-hidden">
     <div class="player-bar-top">
+      <img class="track-thumb" id="player-thumb" src="" alt="" style="display:none">
       <div class="player-info">
         <div class="player-title"  id="player-title">No {item_noun} selected</div>
         <div class="player-artist" id="player-artist">&ndash;</div>
@@ -1249,6 +1281,7 @@ def render_media_page(
     else:
         player_bar_html = f"""
   <div class="player-bar classic view-hidden">
+    <img class="track-thumb" id="player-thumb" src="" alt="" style="display:none">
     <div class="player-info">
       <div class="player-title"  id="player-title">No {item_noun} selected</div>
       <div class="player-artist" id="player-artist">&ndash;</div>

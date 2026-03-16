@@ -11,11 +11,12 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-from hometools.config import get_audio_library_dir, get_player_bar_style
+from hometools.config import get_audio_library_dir, get_cache_dir, get_player_bar_style
 from hometools.constants import AUDIO_SUFFIX
 from hometools.streaming.audio.catalog import (
     AudioTrack,
     build_audio_index,
+    collect_thumbnail_work,
     list_artists,
     query_tracks,
 )
@@ -29,6 +30,7 @@ from hometools.streaming.core.server_utils import (
     render_pwa_service_worker,
     resolve_media_path,
 )
+from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
 
 
 AUDIO_CSS_EXTRA = """
@@ -65,6 +67,7 @@ def create_app(library_dir: Path | None = None) -> Any:
     from fastapi.responses import FileResponse, HTMLResponse
 
     resolved_library_dir = (library_dir or get_audio_library_dir()).expanduser()
+    resolved_cache_dir = get_cache_dir()
     app = FastAPI(title="hometools audio streaming prototype")
 
     @app.on_event("startup")
@@ -74,6 +77,19 @@ def create_app(library_dir: Path | None = None) -> Any:
         if not ok:
             import logging
             logging.getLogger(__name__).warning("Audio-Bibliothek: %s", msg)
+        else:
+            # Trigger thumbnail generation in a background daemon thread so
+            # the server is immediately responsive.
+            try:
+                work = await asyncio.to_thread(
+                    collect_thumbnail_work, resolved_library_dir, resolved_cache_dir,
+                )
+                start_background_thumbnail_generation(work)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).debug(
+                    "Failed to start background audio thumbnail generation", exc_info=True,
+                )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -90,7 +106,7 @@ def create_app(library_dir: Path | None = None) -> Any:
         ok, msg = check_library_accessible(resolved_library_dir)
         if not ok:
             return HTMLResponse(render_error_page("hometools audio", "🎵", msg, resolved_library_dir))
-        tracks = build_audio_index(resolved_library_dir)
+        tracks = build_audio_index(resolved_library_dir, cache_dir=resolved_cache_dir)
         return HTMLResponse(render_audio_index_html(tracks, resolved_library_dir))
 
     @app.get("/api/audio/tracks")
@@ -105,7 +121,7 @@ def create_app(library_dir: Path | None = None) -> Any:
                 "error": msg,
                 "query": {"q": q or "", "artist": artist or "all", "sort": sort},
             }
-        tracks = build_audio_index(resolved_library_dir)
+        tracks = build_audio_index(resolved_library_dir, cache_dir=resolved_cache_dir)
         filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
         return {
             "library_dir": str(resolved_library_dir),
@@ -125,6 +141,16 @@ def create_app(library_dir: Path | None = None) -> Any:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
+
+    @app.get("/thumb")
+    def thumb(path: str) -> FileResponse:
+        """Serve a cached thumbnail image for an audio track."""
+        from urllib.parse import unquote
+        relative_path = unquote(path)
+        thumb_path = get_thumbnail_path(resolved_cache_dir, "audio", relative_path)
+        if not thumb_path.exists():
+            raise HTTPException(status_code=404, detail="Thumbnail not found")
+        return FileResponse(thumb_path, media_type="image/jpeg")
 
     # --- PWA endpoints ---
     _AUDIO_THEME = "#1db954"

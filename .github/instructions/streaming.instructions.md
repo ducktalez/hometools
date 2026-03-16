@@ -6,7 +6,7 @@
 
 | Sub-package | Modules |
 |-------------|---------|
-| `core/` | `catalog.py`, `models.py`, `server_utils.py`, `sync.py` |
+| `core/` | `catalog.py`, `models.py`, `server_utils.py`, `sync.py`, `thumbnailer.py` |
 | `audio/` | `catalog.py`, `server.py`, `sync.py` |
 | `video/` | `catalog.py`, `server.py`, `sync.py` |
 

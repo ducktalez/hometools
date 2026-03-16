@@ -120,6 +120,24 @@ def get_stream_bind() -> tuple[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# Shadow cache directory
+# ---------------------------------------------------------------------------
+
+
+def get_cache_dir() -> Path:
+    """Return the shadow cache directory for thumbnails and metadata.
+
+    Mirrors the library directory structures but stores only generated
+    artefacts (thumbnails, metadata caches).  Original media files are
+    never touched.  Set ``HOMETOOLS_CACHE_DIR`` to override.
+    """
+    return _get_path_from_env(
+        "HOMETOOLS_CACHE_DIR",
+        Path.home() / "hometools-cache",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Player bar style
 # ---------------------------------------------------------------------------
 
@@ -134,5 +152,4 @@ def get_player_bar_style() -> str:
     if raw not in ("classic", "waveform"):
         return "classic"
     return raw
-
 
