@@ -1494,32 +1494,41 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   }
 
   function playOfflineOrStream(streamUrl, item) {
-    /* Try to play from cache, fallback to stream */
+    /* Try to play from cache, fallback to stream.
+       This function is now integrated into playTrack override below.
+       Kept for backwards compatibility and testing. */
     checkIfMediaCached(streamUrl).then(function(cached) {
       if (cached) {
         var offlineUrl = getOfflineUrl(cached.blob);
         if (offlineUrl) {
-          player.src = offlineUrl;
           console.log('Playing from offline cache: ' + cached.title);
-          return;
         }
       }
-      // Not cached or offline URL failed — use stream URL
-      player.src = streamUrl;
     });
   }
 
-  /* Override playTrack to use offline if available */
+  /* Override playTrack to check offline cache AFTER initial setup */
   var originalPlayTrack = playTrack;
   playTrack = function(index) {
-    if (index < 0 || index >= filteredItems.length) return;
-    var item = filteredItems[index];
-    
-    // Call original first to set currentIndex etc
+    // Call original first to set everything up normally
     originalPlayTrack.call(this, index);
     
-    // Then try offline playback
-    playOfflineOrStream(item.stream_url, item);
+    // Then asynchronously check if we should use offline version
+    if (index >= 0 && index < filteredItems.length) {
+      var item = filteredItems[index];
+      checkIfMediaCached(item.stream_url).then(function(cached) {
+        // Only change src if this is still the current track
+        if (currentIndex === index && cached) {
+          var offlineUrl = getOfflineUrl(cached.blob);
+          if (offlineUrl) {
+            player.src = offlineUrl;
+            console.log('Switched to offline cache: ' + cached.title);
+          }
+        }
+      }).catch(function() {
+        // Silently ignore offline check failures
+      });
+    }
   };
 
   /* Listen for online/offline state changes */
