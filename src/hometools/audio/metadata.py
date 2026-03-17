@@ -65,12 +65,17 @@ def write_all_tags(p: Path, tags: dict) -> bool:
 
 
 def get_popm_rating(p: Path) -> int:
-    """Return the raw POPM rating (0–255) of an MP3 file."""
+    """Return the raw POPM rating (0–255) of an audio file.
+
+    Only MP3 files carry ID3 POPM frames.  M4A/FLAC/other formats
+    return 0 silently because they have no equivalent tag.
+    """
+    if p.suffix.lower() != ".mp3":
+        return 0
     try:
         audio = MP3(p, ID3=ID3)
         popm_tags = audio.tags.getall("POPM")
         if not popm_tags:
-            logger.warning(f"No POPM rating found for {p.name}")
             return 0
         return popm_tags[0].rating
     except Exception as e:
