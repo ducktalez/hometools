@@ -12,11 +12,10 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ### 🔴 High Priority
 
-- **Phase 1: Offline-Download Feature (PWA)** — ✅ Weitgehend implementiert (2026-03-17)
+- **Phase 1: Offline-Download Feature (PWA)** — ✅ Code fertig
   - Siehe [docs/plans/offline_feature.md](docs/plans/offline_feature.md)
-  - ✅ **Done:** Service Worker (static cache + IndexedDB fallback), Download UI, IndexedDB setup, Offline-Playback, Download-List UI, Storage-Quota/Pruning UI, automatisierte Integration-Tests
-  - 🚧 **Offen:** Manuelle Geräte-Verifikation auf iPhone/iPad — siehe [docs/ios/device_validation.md](docs/ios/device_validation.md)
-  - **Output:** PWA mit ~50 MB Offline-Storage und verwaltbarer Offline-Bibliothek
+  - ✅ Service Worker, Download UI, IndexedDB, Offline-Playback, Storage-Quota/Pruning, automatisierte Tests
+  - 📱 **Manuelle Abnahme auf iPhone/iPad:** [docs/ios/quick_acceptance.md](docs/ios/quick_acceptance.md) (5 min) oder [docs/ios/device_validation.md](docs/ios/device_validation.md) (vollständig)
 
 - **Phase 2: PWA Shortcuts — Quick Win** — Woche 2-3
   - Siehe [docs/plans/pwa_shortcuts.md](docs/plans/pwa_shortcuts.md)
@@ -42,7 +41,7 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ### 🟡 Medium Priority
 
-- ✅ ~~In einem File sollen im Schattenverzeichnis oder an einem anderen sinnvollen Ort die Files hinterlegt werden, die zu bestimmten Problemen führen. So dass man zum Beispiel nicht mehrfach versucht, Thumbnails zu generieren, wenn das beim ersten Mal schon schief gelaufen ist.~~ → `thumbnail_failures.json`, MTime-basierter Retry.
+- Clean extensive device-checks. Are they all necessary?
 - iphone-pitfall: der Pause-button ist immernoch ein emoji.
 - Plan: Restrukturiere den Inhalt in Tools komplett neu und schreibe für alles, inklusive aller möglichen oder denkbaren Edge Cases Tests.
   - In WA Unterdaten findest du zwei LUTs, die hierfür herangezogen werden können. Vermutlich ist es dennoch sinnvoll, dieses Lookup Table File dauerhaft aus dem Repo zu entfernen und durch generelle Tests und Edge Cases zu ersetzen.

@@ -25,24 +25,11 @@ pre-commit run --all-files
 
 ## Project Layout
 
-```
-src/hometools/
-├── cli.py              # entry point: hometools = hometools.cli:main
-├── config.py           # all paths/ports from env vars (HOMETOOLS_*), never hardcode
-├── constants.py        # AUDIO_SUFFIX, VIDEO_SUFFIX, shared constants
-├── utils.py            # file/path utilities
-├── audio/              # sanitize, metadata (ID3/mutagen), silence, merge
-├── video/              # TMDB-based movie/series renaming (organizer.py)
-└── streaming/
-    ├── core/           # SHARED: MediaItem model, catalog query/sort, sync, thumbnailer, server_utils (HTML/CSS/JS generation)
-    ├── audio/          # audio-specific: catalog.py, server.py, sync.py
-    └── video/          # video-specific: catalog.py, server.py, sync.py
-tests/                  # pytest, one file per module, all under tests/
-pyproject.toml          # build config, ruff config, pytest config — single source of truth
-.pre-commit-config.yaml # ruff (v0.11.3) + pytest + feature-parity hooks
-```
-
-**Key files:** `pyproject.toml` (deps, ruff rules, pytest paths), `config.py` (every env var), `streaming/core/server_utils.py` (the ~2500-line UI renderer — HTML, CSS, JS are Python strings here, not separate files).
+- **Entry point:** `src/hometools/cli.py` → `hometools = hometools.cli:main`
+- **Config:** `config.py` — all paths/ports from `HOMETOOLS_*` env vars, never hardcode.
+- **Streaming:** `streaming/core/` is shared, `streaming/audio/` and `streaming/video/` are thin wrappers with `catalog.py`, `server.py`, `sync.py` each.
+- **UI:** `streaming/core/server_utils.py` (~2500 lines) generates all HTML/CSS/JS as Python strings — no separate frontend files.
+- **All config** (deps, ruff, pytest) lives in `pyproject.toml`. Pre-commit in `.pre-commit-config.yaml`.
 
 ## Architecture Rules
 
@@ -67,5 +54,4 @@ After any change, run in this order:
 3. `python -m pytest tests/ -q` — all tests must pass
 4. If you changed streaming UI or API: also run `python -m pytest tests/test_feature_parity.py -v` — catches audio↔video drift
 
-Trust these instructions. Only search the codebase if something here is incomplete or fails unexpectedly.
 
