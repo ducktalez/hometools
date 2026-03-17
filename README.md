@@ -94,6 +94,7 @@ A collection of Python tools for managing personal media libraries — music fil
 - "Sleep Mode" Video stream radio: Gibt einfach nur das Audio aus einer Serie wieder so dass man aber keine Helligkeit hat beim Schlafen. 
 - Ein lennyface-board
 - Photo-Management: Alles online oder zumindest mit einem lokalen Server
+- Jeder hat eine andere Ordnerstruktur. Es sollte überlegt werden ob nicht mit N8N hier eine Logik generiert werden kann, auf jede Person zugeschnitten, damit alle Ordner richtig interpretiert werden. 
 
 ## Features
 
