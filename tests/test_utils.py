@@ -1,5 +1,8 @@
 """Tests for hometools.utils – file and path utilities."""
 
+import subprocess
+from unittest.mock import patch
+
 from hometools.utils import (
     fix_spaces,
     get_file_size,
@@ -7,6 +10,7 @@ from hometools.utils import (
     path_make_dir,
     remove_ugly_spaces,
     repath_fix_spaces,
+    run_text_subprocess,
 )
 
 
@@ -95,3 +99,18 @@ class TestGetFileSize:
         f.write_text("hello world")
         size = get_file_size(f)
         assert size == len("hello world")
+
+
+class TestRunTextSubprocess:
+    def test_forces_utf8_text_defaults(self):
+        expected = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+        with patch("hometools.utils.subprocess.run", return_value=expected) as mocked_run:
+            result = run_text_subprocess(["ffprobe", "-version"], capture_output=True)
+
+        assert result is expected
+        _args, kwargs = mocked_run.call_args
+        assert kwargs["text"] is True
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
+        assert kwargs["capture_output"] is True

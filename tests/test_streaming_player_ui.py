@@ -229,7 +229,7 @@ def test_waveform_js_has_video_mode_class():
 
 def test_waveform_js_calls_generate_on_play():
     js = _js(style="waveform")
-    assert "generateWaveform(t.stream_url)" in js
+    assert "generateWaveform(playback.url)" in js
 
 
 # ---------------------------------------------------------------------------
@@ -378,8 +378,6 @@ def test_audio_page_has_apple_web_app_capable():
     assert "apple-mobile-web-app-capable" in page
 
 
-
-
 def test_js_has_fullscreen_logic():
     js = _js(style="classic")
     assert "requestFullscreen" in js
@@ -397,3 +395,48 @@ def test_pause_handler_checks_document_hidden():
     """The pause handler must not react when browser auto-pauses (hidden)."""
     js = _js(style="classic")
     assert "document.hidden" in js
+
+
+# ---------------------------------------------------------------------------
+# playTrack robustness & metadata refresh
+# ---------------------------------------------------------------------------
+
+
+def test_js_play_track_calls_load():
+    """playTrack must call player.load() before play() for reliable playback."""
+    js = _js(style="classic")
+    assert "player.load()" in js
+
+
+def test_js_play_track_has_canplay_retry():
+    """If play() fails, playTrack should retry on canplay event."""
+    js = _js(style="classic")
+    assert "canplay" in js
+    assert "once: true" in js
+
+
+def test_js_has_refresh_metadata_function():
+    """refreshMetadata function should exist and call the metadata API."""
+    js = _js(style="classic")
+    assert "refreshMetadata" in js
+    assert "/metadata?path=" in js
+
+
+def test_js_play_track_calls_refresh_metadata():
+    """playTrack should call refreshMetadata to update track info on play."""
+    js = _js(style="classic")
+    assert "refreshMetadata(t)" in js
+
+
+def test_js_has_api_path_variable():
+    """The API_PATH variable should be injected into the JavaScript."""
+    js = _js(style="classic")
+    assert "API_PATH" in js
+
+
+def test_js_loads_initial_catalog_async():
+    """The shell should fetch the catalog asynchronously after initial page render."""
+    js = _js(style="classic")
+    assert "function loadInitialCatalog" in js
+    assert "fetch(API_PATH)" in js
+    assert "Loading library" in js

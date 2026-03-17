@@ -1,15 +1,23 @@
 """Tests for the shadow-cache thumbnail system."""
 
+import time
 from pathlib import Path
 from unittest.mock import patch
 
 from hometools.streaming.core.thumbnailer import (
+    FAILURE_FILE,
     THUMB_SUFFIX,
+    _compute_seek_seconds,
+    _failure_key,
     check_thumbnail_cached,
     ensure_thumbnail,
     extract_audio_cover,
     extract_video_thumbnail,
     get_thumbnail_path,
+    load_failures,
+    record_failure,
+    save_failures,
+    should_skip_failure,
     start_background_thumbnail_generation,
 )
 
@@ -109,7 +117,7 @@ def test_ensure_thumbnail_video_success(tmp_path):
     media = tmp_path / "movie.mp4"
     media.write_bytes(b"fake-video")
 
-    def fake_extract(media_path, thumb_path, seek_sec=5):
+    def fake_extract(media_path, thumb_path, seek_sec=None):
         thumb_path.parent.mkdir(parents=True, exist_ok=True)
         thumb_path.write_bytes(b"\xff\xd8fake-frame")
         return True
@@ -231,3 +239,223 @@ def test_ensure_thumbnail_never_raises(tmp_path):
     with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=RuntimeError("boom")):
         result = ensure_thumbnail(media, cache, "audio", "song.mp3")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Seek computation (_compute_seek_seconds)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_seek_seconds_with_duration():
+    """20 % of a 600-second video → 120 seconds."""
+    with patch("hometools.streaming.core.thumbnailer._get_video_duration", return_value=600.0):
+        assert _compute_seek_seconds(Path("dummy.mp4")) == 120
+
+
+def test_compute_seek_seconds_short_video():
+    """20 % of a 3-second video → at least 1 second."""
+    with patch("hometools.streaming.core.thumbnailer._get_video_duration", return_value=3.0):
+        assert _compute_seek_seconds(Path("short.mp4")) == 1
+
+
+def test_compute_seek_seconds_no_ffprobe():
+    """When ffprobe fails, fall back to 5 seconds."""
+    with patch("hometools.streaming.core.thumbnailer._get_video_duration", return_value=None):
+        assert _compute_seek_seconds(Path("unknown.mp4")) == 5
+
+
+def test_compute_seek_seconds_series_episode():
+    """22-minute episode (1320 s) → 20 % = 264 s ≈ 4 min 24 s (skips intro)."""
+    with patch("hometools.streaming.core.thumbnailer._get_video_duration", return_value=1320.0):
+        assert _compute_seek_seconds(Path("episode.mp4")) == 264
+
+
+def test_compute_seek_seconds_feature_film():
+    """120-minute film (7200 s) → 20 % = 1440 s = 24 min."""
+    with patch("hometools.streaming.core.thumbnailer._get_video_duration", return_value=7200.0):
+        assert _compute_seek_seconds(Path("film.mp4")) == 1440
+
+
+# ---------------------------------------------------------------------------
+# Failure registry
+# ---------------------------------------------------------------------------
+
+
+def test_failure_key_format():
+    assert _failure_key("video", "Comedy/Borat.mp4") == "video::Comedy/Borat.mp4"
+
+
+def test_load_failures_empty(tmp_path):
+    """No failure file on disk → empty dict."""
+    assert load_failures(tmp_path) == {}
+
+
+def test_save_and_load_failures(tmp_path):
+    """Round-trip: save then load failure data."""
+    failures = {}
+    record_failure(failures, "video", "x.mp4", "ffmpeg timeout", 1000.0)
+    save_failures(tmp_path, failures)
+
+    loaded = load_failures(tmp_path)
+    assert "video::x.mp4" in loaded
+    assert loaded["video::x.mp4"]["reason"] == "ffmpeg timeout"
+    assert loaded["video::x.mp4"]["source_mtime"] == 1000.0
+
+
+def test_should_skip_failure_no_entry():
+    """Unknown file → do not skip."""
+    assert should_skip_failure({}, "audio", "song.mp3", 999.0) is False
+
+
+def test_should_skip_failure_same_mtime():
+    """Same mtime as recorded → skip (file unchanged)."""
+    failures = {}
+    record_failure(failures, "video", "x.mp4", "error", 1000.0)
+    assert should_skip_failure(failures, "video", "x.mp4", 1000.0) is True
+
+
+def test_should_skip_failure_newer_source():
+    """Source mtime newer than recorded → do NOT skip (retry)."""
+    failures = {}
+    record_failure(failures, "video", "x.mp4", "error", 1000.0)
+    assert should_skip_failure(failures, "video", "x.mp4", 2000.0) is False
+
+
+def test_load_failures_corrupt_json(tmp_path):
+    """Corrupt JSON file → gracefully return empty dict."""
+    (tmp_path / FAILURE_FILE).write_text("not valid json{{{", encoding="utf-8")
+    assert load_failures(tmp_path) == {}
+
+
+# ---------------------------------------------------------------------------
+# MTime-based thumbnail invalidation (background worker)
+# ---------------------------------------------------------------------------
+
+
+def test_worker_regenerates_when_source_newer(tmp_path):
+    """Worker regenerates thumbnail when source file is newer."""
+    cache = tmp_path / "cache"
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"original")
+
+    # Create an old thumbnail
+    thumb = get_thumbnail_path(cache, "audio", "song.mp3")
+    thumb.parent.mkdir(parents=True, exist_ok=True)
+    thumb.write_bytes(b"\xff\xd8old-thumb")
+
+    # Make source newer than thumbnail
+    time.sleep(0.05)
+    media.write_bytes(b"updated-content")
+
+    def fake_extract(media_path, thumb_path):
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        thumb_path.write_bytes(b"\xff\xd8new-thumb")
+        return True
+
+    work = [(media, cache, "audio", "song.mp3")]
+    with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=fake_extract):
+        started = start_background_thumbnail_generation(work)
+        assert started is True
+        time.sleep(0.5)
+
+    assert thumb.read_bytes() == b"\xff\xd8new-thumb"
+
+
+def test_worker_skips_when_thumbnail_up_to_date(tmp_path):
+    """Worker does NOT regenerate when thumbnail is newer than source."""
+    cache = tmp_path / "cache"
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"content")
+
+    # Create thumbnail AFTER source
+    time.sleep(0.05)
+    thumb = get_thumbnail_path(cache, "audio", "song.mp3")
+    thumb.parent.mkdir(parents=True, exist_ok=True)
+    thumb.write_bytes(b"\xff\xd8current-thumb")
+
+    extract_called = []
+
+    def spy_extract(media_path, thumb_path):
+        extract_called.append(True)
+        return True
+
+    work = [(media, cache, "audio", "song.mp3")]
+    with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=spy_extract):
+        started = start_background_thumbnail_generation(work)
+        assert started is True
+        time.sleep(0.5)
+
+    # Extraction should NOT have been called
+    assert extract_called == []
+    assert thumb.read_bytes() == b"\xff\xd8current-thumb"
+
+
+def test_worker_records_and_skips_failures(tmp_path):
+    """Worker records failures and skips them on the next run."""
+    cache = tmp_path / "cache"
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"content")
+
+    extract_calls = []
+
+    def failing_extract(media_path, thumb_path):
+        extract_calls.append(True)
+        return False  # simulate extraction failure
+
+    work = [(media, cache, "audio", "song.mp3")]
+
+    # First run: extraction fails → recorded in failures.json
+    with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=failing_extract):
+        start_background_thumbnail_generation(work)
+        time.sleep(0.5)
+
+    assert len(extract_calls) == 1
+    failures = load_failures(cache)
+    assert "audio::song.mp3" in failures
+
+    # Second run: same file, same mtime → should be skipped
+    extract_calls.clear()
+    with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=failing_extract):
+        start_background_thumbnail_generation(work)
+        time.sleep(0.5)
+
+    assert extract_calls == []  # not retried
+
+
+def test_worker_retries_failure_after_source_update(tmp_path):
+    """Worker retries a failed file when the source mtime is newer."""
+    cache = tmp_path / "cache"
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"v1")
+
+    def failing_extract(media_path, thumb_path):
+        return False
+
+    work = [(media, cache, "audio", "song.mp3")]
+
+    # First run: fails
+    with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=failing_extract):
+        start_background_thumbnail_generation(work)
+        time.sleep(0.5)
+
+    # Update source file → newer mtime
+    time.sleep(0.05)
+    media.write_bytes(b"v2-fixed-cover")
+
+    retry_calls = []
+
+    def success_extract(media_path, thumb_path):
+        retry_calls.append(True)
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        thumb_path.write_bytes(b"\xff\xd8fixed")
+        return True
+
+    work = [(media, cache, "audio", "song.mp3")]
+    with patch("hometools.streaming.core.thumbnailer.extract_audio_cover", side_effect=success_extract):
+        start_background_thumbnail_generation(work)
+        time.sleep(0.5)
+
+    # Should have retried and succeeded
+    assert len(retry_calls) == 1
+    thumb = get_thumbnail_path(cache, "audio", "song.mp3")
+    assert thumb.exists()

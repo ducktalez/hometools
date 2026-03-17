@@ -11,13 +11,16 @@ Bitte vor jeder Entscheidung „brauchen wir native App?" hier nachschlagen.
 
 ---
 
-## Aktuelle Situation (2026-03-16)
+## Aktuelle Situation (2026-03-17)
 
 **PWA-Status:** Funktionsfähig, aber mit Trade-offs
 - ✅ Audio-Streaming funktioniert gut
 - ✅ Video-Streaming + Miniplayer funktioniert
 - ⚠️ Background-Playback + echte PWA-Installation (Home-Screen) funktioniert nicht gleichzeitig
-- ❌ Offline-Download noch nicht implementiert
+- ✅ Offline-Download / Offline-Bibliothek / Quota-UI sind im Code implementiert
+- ✅ Schnelltest-Checkliste für iPhone vorhanden — siehe [quick_acceptance.md](quick_acceptance.md)
+- ✅ Konkretes Test-Runbook für das aktuelle Setup vorhanden — siehe [test_runbook.md](test_runbook.md)
+- 🚧 Echte iPhone-/iPad-Gerätevalidierung steht noch aus — siehe [device_validation.md](device_validation.md)
 
 ---
 
@@ -246,6 +249,6 @@ Bitte vor jeder Entscheidung „brauchen wir native App?" hier nachschlagen.
 
 ---
 
-**Letzte Aktualisierung:** 2026-03-16
+**Letzte Aktualisierung:** 2026-03-17
 **Nächste Review:** Nach iOS 18 Release oder bei neuen Feature-Requests
 

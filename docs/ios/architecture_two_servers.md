@@ -1,6 +1,6 @@
 # hometools — Architektur-Überlegung: Zwei Video-Server für iOS
 
-> **Siehe auch:** [`.iOS_PWA_DECISIONS.md`](.iOS_PWA_DECISIONS.md) für die größere Frage: "Wann wird eine Native App nötig?"
+> **Siehe auch:** [pwa_decisions.md](pwa_decisions.md) für die größere Frage: "Wann wird eine Native App nötig?"
 
 ## Das Problem: iOS PWA-Konfiguration
 

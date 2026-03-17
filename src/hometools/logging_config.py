@@ -33,7 +33,10 @@ def setup_logging(level=logging.INFO, log_file: str | None = "hometools.log"):
     if log_file == "auto":
         path = get_log_dir() / "hometools.log"
         file_handler = logging.handlers.RotatingFileHandler(
-            path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
+            path,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
         )
         handlers.append(file_handler)
     elif log_file:
@@ -44,5 +47,3 @@ def setup_logging(level=logging.INFO, log_file: str | None = "hometools.log"):
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=handlers,
     )
-
-

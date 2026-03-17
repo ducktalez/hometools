@@ -1,5 +1,7 @@
 """Tests for the audio streaming catalog helpers."""
 
+from unittest.mock import patch
+
 from hometools.streaming.audio.catalog import (
     AudioTrack,
     build_audio_index,
@@ -76,3 +78,48 @@ def test_list_artists_returns_unique_sorted_values():
         MediaItem("c.mp3", "C", "Muse", "u3", "audio"),
     ]
     assert list_artists(tracks) == ["daft punk", "Muse"]
+
+
+# ---------------------------------------------------------------------------
+# Embedded metadata (audio)
+# ---------------------------------------------------------------------------
+
+
+def test_build_audio_index_prefers_embedded_metadata(tmp_path):
+    """When a file has embedded tags, use them instead of filename parsing."""
+    (tmp_path / "messy_filename.m4a").write_bytes(b"")
+
+    fake_meta = {"title": "Real Song", "artist": "Real Artist"}
+
+    with patch("hometools.audio.metadata.read_embedded_metadata", return_value=fake_meta):
+        tracks = build_audio_index(tmp_path)
+
+    assert len(tracks) == 1
+    assert tracks[0].title == "Real Song"
+    assert tracks[0].artist == "Real Artist"
+
+
+def test_build_audio_index_falls_back_to_filename_without_metadata(tmp_path):
+    """Without embedded metadata, filename parsing still works."""
+    (tmp_path / "Cool Artist - Great Song.mp3").write_bytes(b"")
+
+    with patch("hometools.audio.metadata.read_embedded_metadata", return_value=None):
+        tracks = build_audio_index(tmp_path)
+
+    assert len(tracks) == 1
+    assert tracks[0].title == "Great Song"
+    assert tracks[0].artist == "Cool Artist"
+
+
+def test_build_audio_index_partial_metadata_supplements_filename(tmp_path):
+    """If metadata only has title, artist is still derived from filename."""
+    (tmp_path / "Some Artist - Ignored.mp3").write_bytes(b"")
+
+    fake_meta = {"title": "Embedded Title", "artist": ""}
+
+    with patch("hometools.audio.metadata.read_embedded_metadata", return_value=fake_meta):
+        tracks = build_audio_index(tmp_path)
+
+    assert len(tracks) == 1
+    assert tracks[0].title == "Embedded Title"
+    assert tracks[0].artist == "Some Artist"  # from filename

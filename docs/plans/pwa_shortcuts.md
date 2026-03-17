@@ -257,7 +257,7 @@ Shortcuts sind ein schöner "Quick Win" — kleine Features, großes UX-Impact.
 
 ## Zu dokumentieren
 
-- [x] Dieses File: `.PWA_SHORTCUTS.md`
+- [x] Dieses File: `pwa_shortcuts.md`
 - [ ] Manifest-Generator updaten
 - [ ] Deep-Link-Tests schreiben
 - [ ] UI-Komponenten hinzufügen

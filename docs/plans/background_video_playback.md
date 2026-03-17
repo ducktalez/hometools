@@ -1,6 +1,6 @@
 # Background Video Playback — Analyse & Plan
 
-> **Siehe auch:** [`.iOS_PWA_DECISIONS.md`](.iOS_PWA_DECISIONS.md) für iOS-spezifische Limitations und wann eine Native App nötig wird.
+> **Siehe auch:** [pwa_decisions.md](../ios/pwa_decisions.md) für iOS-spezifische Limitations und wann eine Native App nötig wird.
 
 ## Problem
 

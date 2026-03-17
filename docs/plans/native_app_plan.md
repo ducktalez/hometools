@@ -42,7 +42,7 @@ hometools Repository
 - Service Worker erweitern (Cache API)
 - IndexedDB für Downloads
 - Download-Manager UI
-- ~10-12 Stunden (siehe `.OFFLINE_FEATURE.md`)
+- ~10-12 Stunden (siehe `offline_feature.md`)
 
 **Output:** Funktionierende PWA mit Offline-Support
 

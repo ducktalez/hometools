@@ -108,6 +108,24 @@ class TestAPIResponseParity:
         assert "artists" in data
         assert "query" in data
 
+    def test_both_home_pages_include_offline_library_ui(self, tmp_path):
+        """Both shared UIs must expose the offline library controls."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        for html in (audio_html, video_html):
+            assert 'id="offline-btn"' in html
+            assert 'id="offline-library"' in html
+            assert 'id="offline-download-list"' in html
+
     def test_catalog_api_response_structure_video(self, tmp_path):
         """Video API must return consistent structure."""
         from fastapi.testclient import TestClient

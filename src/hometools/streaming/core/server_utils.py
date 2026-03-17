@@ -205,7 +205,7 @@ def render_pwa_manifest(
 def render_pwa_service_worker() -> str:
     """Return a service worker JS for PWA caching, offline UI, and download support."""
     return """\
-const CACHE_NAME = 'hometools-v2';
+const CACHE_NAME = 'hometools-v4';
 const DOWNLOAD_CACHE = 'hometools-downloads-v1';
 
 self.addEventListener('install', event => {
@@ -230,7 +230,7 @@ self.addEventListener('fetch', event => {
         .then(resp => resp)
         .catch(() => {
           // Offline — serve from IndexedDB downloads cache
-          return serveFromIndexedDB(event.request.url);
+          return serveFromIndexedDB(event.request);
         })
     );
     return;
@@ -292,48 +292,91 @@ self.addEventListener('message', event => {
         });
       });
     });
+  } else if (event.data.type === 'DELETE_DOWNLOAD') {
+    caches.open(DOWNLOAD_CACHE).then(cache => cache.delete(event.data.url)).then(() => {
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'DOWNLOAD_DELETED',
+            url: event.data.url
+          });
+        });
+      });
+    });
   }
 });
 
-/* Serve cached downloads from IndexedDB */
-function serveFromIndexedDB(streamUrl) {
+function openDownloadDB() {
   return new Promise((resolve, reject) => {
     const dbReq = indexedDB.open('hometools-downloads', 1);
-    
     dbReq.onerror = () => reject(new Error('IndexedDB open failed'));
-    
-    dbReq.onsuccess = () => {
-      const db = dbReq.result;
-      const tx = db.transaction('downloads', 'readonly');
-      const store = tx.objectStore('downloads');
-      const index = store.index('streamUrl');
-      const query = index.get(streamUrl);
-      
-      query.onerror = () => reject(new Error('Download lookup failed'));
-      
-      query.onsuccess = () => {
-        const result = query.result;
-        
-        if (result && result.blob) {
-          // Found in IndexedDB — serve the blob as a proper media response
-          const headers = {
-            'Content-Type': result.blob.type || 'application/octet-stream',
-            'Content-Length': result.blob.size,
-            'Accept-Ranges': 'bytes',
-            'Cache-Control': 'public, max-age=31536000' // Cache forever (it's immutable)
-          };
-          
-          resolve(new Response(result.blob, {
-            status: 200,
-            statusText: 'OK (from offline cache)',
-            headers: new Headers(headers)
-          }));
-        } else {
-          // Not found in cache
-          reject(new Error('Download not found in cache'));
-        }
-      };
-    };
+    dbReq.onsuccess = () => resolve(dbReq.result);
+  });
+}
+
+function findDownloadByUrl(streamUrl) {
+  return openDownloadDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction('downloads', 'readonly');
+    const store = tx.objectStore('downloads');
+    const index = store.index('streamUrl');
+    const query = index.get(streamUrl);
+    query.onerror = () => reject(new Error('Download lookup failed'));
+    query.onsuccess = () => resolve(query.result || null);
+  }));
+}
+
+function responseFromBlob(blob, request) {
+  const type = blob.type || 'application/octet-stream';
+  const range = request.headers.get('range');
+  if (range) {
+    const match = /bytes=([0-9]+)-([0-9]*)/.exec(range);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? Math.min(parseInt(match[2], 10), blob.size - 1) : blob.size - 1;
+      if (start >= blob.size) {
+        return new Response(null, {
+          status: 416,
+          headers: new Headers({
+            'Content-Range': 'bytes */' + blob.size,
+            'Accept-Ranges': 'bytes'
+          })
+        });
+      }
+      const chunk = blob.slice(start, end + 1, type);
+      return new Response(chunk, {
+        status: 206,
+        statusText: 'Partial Content (from offline cache)',
+        headers: new Headers({
+          'Content-Type': type,
+          'Content-Length': String(end - start + 1),
+          'Content-Range': 'bytes ' + start + '-' + end + '/' + blob.size,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=31536000'
+        })
+      });
+    }
+  }
+  return new Response(blob, {
+    status: 200,
+    statusText: 'OK (from offline cache)',
+    headers: new Headers({
+      'Content-Type': type,
+      'Content-Length': String(blob.size),
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=31536000'
+    })
+  });
+}
+
+/* Serve cached downloads from IndexedDB */
+function serveFromIndexedDB(request) {
+  const streamUrl = typeof request === 'string' ? request : request.url;
+  const req = typeof request === 'string' ? new Request(streamUrl) : request;
+  return findDownloadByUrl(streamUrl).then(result => {
+    if (result && result.blob) {
+      return responseFromBlob(result.blob, req);
+    }
+    throw new Error('Download not found in cache');
   }).catch(err => {
     // Fallback: return error response
     return new Response(
@@ -450,6 +493,80 @@ header {
 }
 .logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
 .track-count { font-size: 0.8rem; color: var(--sub); margin-left: auto; }
+.offline-btn, .offline-close, .offline-action-btn {
+  background: var(--surface2); color: var(--text); border: 1px solid #444;
+  border-radius: 999px; cursor: pointer; padding: 0.4rem 0.8rem;
+  font-size: 0.8rem; -webkit-tap-highlight-color: transparent;
+}
+.offline-btn:hover, .offline-close:hover, .offline-action-btn:hover {
+  color: var(--accent); border-color: var(--accent);
+}
+.offline-status-pill {
+  font-size: 0.72rem; color: var(--sub); border: 1px solid #3a3a3a;
+  border-radius: 999px; padding: 0.28rem 0.55rem; margin-left: 0.45rem;
+}
+.offline-status-pill.is-offline { color: #ffcc00; border-color: #ffcc00; }
+body.modal-open { overflow: hidden; }
+.offline-library {
+  position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.62);
+  display: flex; align-items: flex-end; justify-content: center; padding: 1rem;
+}
+.offline-library[hidden] { display: none; }
+.offline-panel {
+  width: min(760px, 100%); max-height: min(82vh, 900px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border: 1px solid #333; border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(0,0,0,0.45);
+}
+.offline-head {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 1rem 1rem 0.75rem; border-bottom: 1px solid #262626;
+}
+.offline-title-wrap { flex: 1 1 0; min-width: 0; }
+.offline-title { font-size: 1rem; font-weight: 700; }
+.offline-subtitle, .offline-summary-detail {
+  font-size: 0.78rem; color: var(--sub); margin-top: 0.2rem;
+}
+.offline-summary {
+  padding: 0.75rem 1rem 0.25rem; font-size: 0.85rem; color: var(--text);
+}
+.offline-summary.warn { color: #ffcc00; }
+.offline-toolbar {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  padding: 0.5rem 1rem 0.9rem;
+}
+.offline-toolbar select {
+  background: var(--surface2); color: var(--text); border: 1px solid #444;
+  border-radius: 999px; padding: 0.4rem 0.8rem; font-size: 0.8rem;
+}
+.offline-download-list {
+  list-style: none; margin: 0; padding: 0; overflow: auto; border-top: 1px solid #202020;
+}
+.offline-download-item {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.8rem 1rem; border-bottom: 1px solid #202020; cursor: pointer;
+}
+.offline-download-item:hover { background: var(--surface2); }
+.offline-download-thumb {
+  width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--surface2);
+  flex-shrink: 0;
+}
+.offline-download-meta { flex: 1 1 0; min-width: 0; }
+.offline-download-title {
+  font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.offline-download-sub, .offline-download-size {
+  font-size: 0.77rem; color: var(--sub); margin-top: 0.12rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.offline-download-delete {
+  background: none; border: 1px solid #555; color: var(--sub); border-radius: 999px;
+  padding: 0.35rem 0.65rem; cursor: pointer; flex-shrink: 0;
+}
+.offline-download-delete:hover { color: #ff6b6b; border-color: #ff6b6b; }
+.empty-downloads {
+  text-align: center; color: var(--sub); padding: 2rem 1rem; font-size: 0.85rem;
+}
 
 /* ── Filter bar ── */
 .filter-bar {
@@ -494,6 +611,26 @@ header {
   font-size: 0.8rem; color: var(--sub); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.track-dl-btn {
+  background: none; border: 1px solid #555; color: var(--sub);
+  border-radius: 50%; width: 30px; height: 30px;
+  font-size: 0.8rem; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0; line-height: 1;
+}
+.track-dl-btn:hover { color: var(--accent); border-color: var(--accent); }
+.track-dl-btn.cached {
+  color: var(--accent); border-color: var(--accent);
+  background: rgba(29, 185, 84, 0.12);
+}
+.track-dl-btn.downloading {
+  color: #ffcc00; border-color: #ffcc00; font-size: 0.65rem;
+  pointer-events: none;
+}
+@keyframes dl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.track-dl-btn.downloading { animation: dl-pulse 1.2s ease-in-out infinite; }
 .track-thumb {
   width: 40px; height: 40px; border-radius: 4px; object-fit: cover;
   flex-shrink: 0; background: var(--surface2);
@@ -893,13 +1030,16 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var FILE_EMOJI = '"""
         + file_emoji
         + """';
+  var API_PATH = '"""
+        + api_path
+        + """';
 
   /* Placeholder SVG thumbnails — same dimensions as real thumbs so layout never shifts.
      Simple dark-grey squares with a subtle icon silhouette. */
   var FOLDER_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='6' fill='%232a2a2a'/%3E%3Cpath d='M30 45h25l7-10h28l0 0H90v40H30z' fill='%23444'/%3E%3C/svg%3E";
   var FILE_PLACEHOLDER  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='6' fill='%232a2a2a'/%3E%3Ccircle cx='54' cy='72' r='12' fill='none' stroke='%23444' stroke-width='3'/%3E%3Crect x='63' y='38' width='3' height='34' fill='%23444'/%3E%3Crect x='57' y='38' width='12' height='4' rx='1' fill='%23444'/%3E%3C/svg%3E";
 
-  var allItems = INITIAL;
+  var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
   var playlistItems = [];
   var filteredItems = [];
@@ -927,10 +1067,22 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var headerTitle  = document.querySelector('.logo');
   var playerBar    = document.querySelector('.player-bar');
   var playAllBtn   = document.getElementById('play-all-btn');
+  var offlineBtn   = document.getElementById('offline-btn');
+  var offlineLibrary = document.getElementById('offline-library');
+  var offlineClose = document.getElementById('offline-close');
+  var offlineSort  = document.getElementById('offline-sort');
+  var offlinePersistBtn = document.getElementById('offline-persist-btn');
+  var offlinePruneBtn = document.getElementById('offline-prune-btn');
+  var offlineDownloadList = document.getElementById('offline-download-list');
+  var offlineStorageSummary = document.getElementById('offline-storage-summary');
+  var offlineStorageDetail = document.getElementById('offline-storage-detail');
+  var offlineStatusPill = document.getElementById('offline-status-pill');
   var originalTitle = headerTitle.textContent;
   var breadcrumb  = document.getElementById('breadcrumb');
   var viewToggle  = document.getElementById('view-toggle');
   var viewMode    = localStorage.getItem('ht-view-mode') || 'list';
+  var currentStreamUrl = '';
+  var currentOfflineUrl = null;
 """
         + waveform_js
         + """
@@ -992,6 +1144,59 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     if (!path) return '';
     var i = path.lastIndexOf('/');
     return i >= 0 ? path.substring(0, i) : '';
+  }
+
+  function showLoadingState(message) {
+    folderGrid.classList.remove('view-hidden');
+    trackView.classList.add('view-hidden');
+    filterBar.classList.add('view-hidden');
+    playAllBtn.style.display = 'none';
+    backBtn.style.display = currentPath ? 'inline-block' : 'none';
+    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
+    trackCount.textContent = 'Loading…';
+    if (currentIndex < 0) playerBar.classList.add('view-hidden');
+    folderGrid.innerHTML = '<div class="empty-hint">' + escHtml(message || 'Loading library…') + '</div>';
+    renderBreadcrumb();
+    applyViewMode();
+  }
+
+  function showCatalogLoadError(detail) {
+    folderGrid.classList.remove('view-hidden');
+    trackView.classList.add('view-hidden');
+    filterBar.classList.add('view-hidden');
+    playAllBtn.style.display = 'none';
+    if (currentIndex < 0) playerBar.classList.add('view-hidden');
+    trackCount.textContent = 'Library unavailable';
+    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
+    backBtn.style.display = currentPath ? 'inline-block' : 'none';
+    folderGrid.innerHTML = '<div class="empty-hint">' + escHtml(detail || 'Library could not be loaded.') + '</div>';
+    renderBreadcrumb();
+    applyViewMode();
+  }
+
+  function loadInitialCatalog() {
+    if (allItems.length) {
+      return Promise.resolve(allItems);
+    }
+    showLoadingState('Loading library…');
+    return fetch(API_PATH)
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        if (data && data.error) {
+          throw new Error(data.error);
+        }
+        allItems = data && Array.isArray(data.items) ? data.items : [];
+        showFolderView();
+        return allItems;
+      })
+      .catch(function(err) {
+        console.error('Initial catalog load failed:', err);
+        showCatalogLoadError(err && err.message ? err.message : 'Library could not be loaded.');
+        return [];
+      });
   }
 
   /* ── breadcrumb ── */
@@ -1217,12 +1422,542 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
         '<div class="track-info">' +
           '<div class="track-title">' + escHtml(t.title) + '</div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
-        '</div></li>';
+        '</div>' +
+        '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
+          '" data-title="' + escHtml(t.title) +
+          '" data-artist="' + escHtml(t.artist || '') +
+          '" data-relative-path="' + escHtml(t.relative_path || '') +
+          '" data-thumbnail-url="' + escHtml(t.thumbnail_url || '') +
+          '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">\\u2B07</button>' +
+        '</li>';
     }).join('');
     document.querySelectorAll('.track-item').forEach(function(el) {
       el.addEventListener('click', function() { playTrack(Number(el.dataset.index)); });
     });
+    document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var url = btn.dataset.streamUrl;
+        var title = btn.dataset.title;
+        var meta = {
+          artist: btn.dataset.artist || '',
+          relativePath: btn.dataset.relativePath || '',
+          thumbnailUrl: btn.dataset.thumbnailUrl || '',
+          mediaType: btn.dataset.mediaType || ITEM_NOUN
+        };
+        if (btn.classList.contains('cached')) {
+          deleteTrackDownload(url, btn);
+        } else if (!btn.classList.contains('downloading')) {
+          downloadTrack(url, title, btn, meta);
+        }
+      });
+    });
+    updateAllDownloadButtons();
   }
+
+  /* ── offline download management ── */
+  var downloadDB = null;
+  var OFFLINE_SOFT_LIMIT = 50 * 1024 * 1024;
+
+  function revokeOfflineUrl() {
+    if (currentOfflineUrl) {
+      URL.revokeObjectURL(currentOfflineUrl);
+      currentOfflineUrl = null;
+    }
+  }
+
+  function initDownloadDB() {
+    return new Promise(function(resolve, reject) {
+      var req = indexedDB.open('hometools-downloads', 2);
+      req.onerror = function() { reject(req.error); };
+      req.onsuccess = function() { downloadDB = req.result; resolve(req.result); };
+      req.onupgradeneeded = function(e) {
+        var db = e.target.result;
+        var store;
+        if (!db.objectStoreNames.contains('downloads')) {
+          store = db.createObjectStore('downloads', { keyPath: 'id', autoIncrement: true });
+        } else {
+          store = e.target.transaction.objectStore('downloads');
+        }
+        if (!store.indexNames.contains('streamUrl')) {
+          store.createIndex('streamUrl', 'streamUrl', { unique: true });
+        }
+        if (!store.indexNames.contains('status')) {
+          store.createIndex('status', 'status', { unique: false });
+        }
+        if (!store.indexNames.contains('timestamp')) {
+          store.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+        if (!store.indexNames.contains('title')) {
+          store.createIndex('title', 'title', { unique: false });
+        }
+      };
+    });
+  }
+
+  function getDownloadByStreamUrl(streamUrl) {
+    return new Promise(function(resolve) {
+      if (!downloadDB) { resolve(null); return; }
+      try {
+        var tx = downloadDB.transaction('downloads', 'readonly');
+        var store = tx.objectStore('downloads');
+        var index = store.index('streamUrl');
+        var req = index.get(streamUrl);
+        req.onerror = function() { resolve(null); };
+        req.onsuccess = function() { resolve(req.result || null); };
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  }
+
+  function getAllDownloads() {
+    return new Promise(function(resolve) {
+      if (!downloadDB) { resolve([]); return; }
+      try {
+        var tx = downloadDB.transaction('downloads', 'readonly');
+        var store = tx.objectStore('downloads');
+        var req = store.getAll();
+        req.onerror = function() { resolve([]); };
+        req.onsuccess = function() { resolve(req.result || []); };
+      } catch (e) {
+        resolve([]);
+      }
+    });
+  }
+
+  function deleteDownloadById(id) {
+    return new Promise(function(resolve) {
+      if (!downloadDB) { resolve(false); return; }
+      try {
+        var tx = downloadDB.transaction('downloads', 'readwrite');
+        tx.objectStore('downloads').delete(id);
+        tx.oncomplete = function() { resolve(true); };
+        tx.onerror = function() { resolve(false); };
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  }
+
+  function deleteDownloadByStreamUrl(streamUrl) {
+    return getDownloadByStreamUrl(streamUrl).then(function(download) {
+      if (!download) return false;
+      return deleteDownloadById(download.id).then(function(ok) {
+        if (ok && navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'DELETE_DOWNLOAD', url: streamUrl });
+        }
+        return ok;
+      });
+    });
+  }
+
+  function formatBytes(bytes) {
+    var value = Number(bytes || 0);
+    if (value <= 0) return '0 MB';
+    var units = ['B', 'KB', 'MB', 'GB'];
+    var idx = 0;
+    while (value >= 1024 && idx < units.length - 1) {
+      value /= 1024;
+      idx++;
+    }
+    return value.toFixed(idx === 0 ? 0 : 1) + ' ' + units[idx];
+  }
+
+  function formatDate(ts) {
+    if (!ts) return 'Unbekannt';
+    try {
+      return new Date(ts).toLocaleString();
+    } catch (e) {
+      return 'Unbekannt';
+    }
+  }
+
+  function findItemByStreamUrl(streamUrl) {
+    var idx = filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; });
+    if (idx >= 0) return { item: filteredItems[idx], index: idx };
+    for (var i = 0; i < allItems.length; i++) {
+      if (allItems[i].stream_url === streamUrl) return { item: allItems[i], index: -1 };
+    }
+    return null;
+  }
+
+  function sortDownloads(downloads, sortBy) {
+    return downloads.slice().sort(function(a, b) {
+      if (sortBy === 'oldest') return (a.timestamp || 0) - (b.timestamp || 0);
+      if (sortBy === 'title') return String(a.title || '').localeCompare(String(b.title || ''));
+      if (sortBy === 'size') return (b.size || 0) - (a.size || 0);
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+  }
+
+  function getAppDownloadUsage(downloads) {
+    return (downloads || []).reduce(function(sum, d) {
+      return sum + (d.status === 'ready' ? Number(d.size || 0) : 0);
+    }, 0);
+  }
+
+  function estimateOfflineStorage(downloads) {
+    var list = downloads || [];
+    var info = {
+      downloads: list,
+      appUsage: getAppDownloadUsage(list),
+      softLimit: OFFLINE_SOFT_LIMIT,
+      browserUsage: null,
+      browserQuota: null,
+      persistent: null
+    };
+    var tasks = [];
+    if (navigator.storage && navigator.storage.estimate) {
+      tasks.push(
+        navigator.storage.estimate().then(function(estimate) {
+          info.browserUsage = estimate && estimate.usage ? estimate.usage : 0;
+          info.browserQuota = estimate && estimate.quota ? estimate.quota : 0;
+        }).catch(function() {})
+      );
+    }
+    if (navigator.storage && navigator.storage.persisted) {
+      tasks.push(
+        navigator.storage.persisted().then(function(persistent) {
+          info.persistent = !!persistent;
+        }).catch(function() {})
+      );
+    }
+    return Promise.all(tasks).then(function() { return info; });
+  }
+
+  function renderStorageSummary(info) {
+    if (!info) return;
+    var warn = info.appUsage >= info.softLimit * 0.8 ||
+      (info.browserQuota && info.browserUsage >= info.browserQuota * 0.8);
+    if (offlineStorageSummary) {
+      offlineStorageSummary.classList.toggle('warn', !!warn);
+      offlineStorageSummary.textContent = info.downloads.length
+        ? info.downloads.length + ' Offline-Download' + (info.downloads.length !== 1 ? 's' : '') +
+          ' · ' + formatBytes(info.appUsage) + ' lokal gespeichert'
+        : 'Noch keine Offline-Downloads.';
+    }
+    if (offlineStorageDetail) {
+      var parts = [
+        'App-Budget ' + formatBytes(info.appUsage) + ' / ' + formatBytes(info.softLimit)
+      ];
+      if (info.browserQuota) {
+        parts.push('Browser ' + formatBytes(info.browserUsage) + ' / ' + formatBytes(info.browserQuota));
+      }
+      if (info.persistent !== null) {
+        parts.push(info.persistent ? 'Persistent aktiv' : 'Nicht persistent');
+      }
+      offlineStorageDetail.textContent = parts.join(' · ');
+    }
+    if (offlineStatusPill) {
+      var net = navigator.onLine ? 'Online' : 'Offline';
+      offlineStatusPill.textContent = net + (info.downloads.length ? ' · ' + info.downloads.length : '');
+      offlineStatusPill.classList.toggle('is-offline', !navigator.onLine);
+    }
+  }
+
+  function renderOfflineDownloadList(downloads) {
+    if (!offlineDownloadList) return;
+    if (!downloads.length) {
+      offlineDownloadList.innerHTML = '<li class="empty-downloads">Noch keine Offline-Downloads gespeichert.</li>';
+      return;
+    }
+    offlineDownloadList.innerHTML = downloads.map(function(download) {
+      var thumbSrc = download.thumbnailUrl || FILE_PLACEHOLDER;
+      var subtitle = download.artist || download.relativePath || '';
+      var statusText = download.status === 'ready' ? 'Offline bereit' : (download.status || 'unbekannt');
+      return '<li class="offline-download-item" data-stream-url="' + escHtml(download.streamUrl) + '">' +
+        '<img class="offline-download-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
+        '<div class="offline-download-meta">' +
+          '<div class="offline-download-title">' + escHtml(download.title || 'Unbenannter Download') + '</div>' +
+          '<div class="offline-download-sub">' + escHtml(subtitle) + '</div>' +
+          '<div class="offline-download-size">' + escHtml(statusText) + ' · ' +
+            escHtml(formatBytes(download.size || 0)) + ' · ' + escHtml(formatDate(download.timestamp)) + '</div>' +
+        '</div>' +
+        '<button class="offline-download-delete" data-stream-url="' + escHtml(download.streamUrl) + '" title="Entfernen">Entfernen</button>' +
+      '</li>';
+    }).join('');
+    offlineDownloadList.querySelectorAll('.offline-download-item').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        if (e.target && e.target.classList && e.target.classList.contains('offline-download-delete')) return;
+        playStoredDownload(el.dataset.streamUrl);
+      });
+    });
+    offlineDownloadList.querySelectorAll('.offline-download-delete').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        deleteTrackDownload(btn.dataset.streamUrl);
+      });
+    });
+  }
+
+  function refreshOfflineLibrary() {
+    return getAllDownloads().then(function(downloads) {
+      var sortBy = offlineSort ? offlineSort.value : 'newest';
+      var sorted = sortDownloads(downloads, sortBy);
+      renderOfflineDownloadList(sorted);
+      return estimateOfflineStorage(sorted).then(function(info) {
+        renderStorageSummary(info);
+        return info;
+      });
+    });
+  }
+
+  function openOfflineLibrary() {
+    if (!offlineLibrary) return;
+    offlineLibrary.hidden = false;
+    document.body.classList.add('modal-open');
+    refreshOfflineLibrary();
+  }
+
+  function closeOfflineLibrary() {
+    if (!offlineLibrary) return;
+    offlineLibrary.hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+
+  function requestPersistentStorage() {
+    if (!(navigator.storage && navigator.storage.persist)) return Promise.resolve(false);
+    if (offlinePersistBtn) offlinePersistBtn.textContent = 'Prüfe persistenten Speicher…';
+    return navigator.storage.persist().then(function(persistent) {
+      if (offlinePersistBtn) {
+        offlinePersistBtn.textContent = persistent ? 'Persistenter Speicher aktiv' : 'Persistenz nicht verfügbar';
+      }
+      return refreshOfflineLibrary().then(function() { return persistent; });
+    }).catch(function() {
+      if (offlinePersistBtn) offlinePersistBtn.textContent = 'Persistenz fehlgeschlagen';
+      return false;
+    });
+  }
+
+  function pruneOldDownloads(requiredBytes, protectedStreamUrl) {
+    return getAllDownloads().then(function(downloads) {
+      var total = getAppDownloadUsage(downloads);
+      var candidates = downloads.filter(function(download) {
+        return download.status === 'ready' && download.streamUrl !== protectedStreamUrl;
+      }).sort(function(a, b) {
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      });
+      var victims = [];
+      while (total + requiredBytes > OFFLINE_SOFT_LIMIT && candidates.length) {
+        var victim = candidates.shift();
+        victims.push(victim);
+        total -= Number(victim.size || 0);
+      }
+      if (total + requiredBytes > OFFLINE_SOFT_LIMIT) return false;
+      var chain = Promise.resolve();
+      victims.forEach(function(victim) {
+        chain = chain.then(function() { return deleteDownloadById(victim.id); });
+      });
+      return chain.then(function() { return true; });
+    }).then(function(ok) {
+      updateAllDownloadButtons();
+      refreshOfflineLibrary();
+      return ok;
+    });
+  }
+
+  function ensureStorageBudget(requiredBytes, protectedStreamUrl) {
+    return getAllDownloads().then(function(downloads) {
+      var total = getAppDownloadUsage(downloads);
+      if (total + requiredBytes <= OFFLINE_SOFT_LIMIT) return true;
+      return pruneOldDownloads(requiredBytes, protectedStreamUrl);
+    });
+  }
+
+  function updateAllDownloadButtons() {
+    if (!downloadDB) return;
+    getAllDownloads().then(function(downloads) {
+      var cached = {};
+      downloads.forEach(function(d) {
+        if (d.streamUrl && d.status === 'ready') cached[d.streamUrl] = true;
+      });
+      document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
+        var url = btn.dataset.streamUrl;
+        btn.classList.remove('cached');
+        if (!btn.classList.contains('downloading')) {
+          btn.textContent = '\\u2B07';
+          btn.title = 'Download';
+        }
+        if (cached[url]) {
+          btn.classList.add('cached');
+          btn.classList.remove('downloading');
+          btn.textContent = '\\u2713';
+          btn.title = 'Offline gespeichert — klicken zum Entfernen';
+        }
+      });
+    });
+  }
+
+  function downloadTrack(streamUrl, title, btn, meta) {
+    if (!downloadDB) return;
+    btn.classList.add('downloading');
+    btn.classList.remove('cached');
+    btn.textContent = '0%';
+    btn.title = 'Download läuft';
+
+    fetch(streamUrl).then(function(response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      var total = parseInt(response.headers.get('content-length'), 10) || 0;
+      return Promise.resolve(total > 0 ? ensureStorageBudget(total, streamUrl) : true).then(function(ok) {
+        if (!ok) throw new Error('Offline-Speicher voll');
+        var received = 0;
+        var reader = response.body.getReader();
+        var chunks = [];
+
+        function pump() {
+          return reader.read().then(function(result) {
+            if (result.done) return;
+            chunks.push(result.value);
+            received += result.value.length;
+            if (total > 0) {
+              btn.textContent = Math.round(received / total * 100) + '%';
+            }
+            return pump();
+          });
+        }
+
+        return pump().then(function() {
+          var blob = new Blob(chunks, { type: response.headers.get('content-type') || 'application/octet-stream' });
+          return ensureStorageBudget(blob.size, streamUrl).then(function(stillOk) {
+            if (!stillOk) throw new Error('Offline-Speicher voll');
+            return new Promise(function(resolve, reject) {
+              var tx = downloadDB.transaction('downloads', 'readwrite');
+              var store = tx.objectStore('downloads');
+              store.put({
+                streamUrl: streamUrl,
+                title: title,
+                artist: meta && meta.artist ? meta.artist : '',
+                relativePath: meta && meta.relativePath ? meta.relativePath : '',
+                thumbnailUrl: meta && meta.thumbnailUrl ? meta.thumbnailUrl : '',
+                mediaType: meta && meta.mediaType ? meta.mediaType : ITEM_NOUN,
+                blob: blob,
+                size: blob.size,
+                timestamp: Date.now(),
+                status: 'ready'
+              });
+              tx.oncomplete = resolve;
+              tx.onerror = function() { reject(tx.error || new Error('IndexedDB write failed')); };
+            });
+          });
+        });
+      });
+    }).then(function() {
+      btn.classList.remove('downloading');
+      btn.classList.add('cached');
+      btn.textContent = '\\u2713';
+      btn.title = 'Offline gespeichert — klicken zum Entfernen';
+      updateAllDownloadButtons();
+      refreshOfflineLibrary();
+    }).catch(function(err) {
+      console.error('Download failed:', err);
+      btn.classList.remove('downloading');
+      btn.classList.remove('cached');
+      btn.textContent = '\\u2B07';
+      btn.title = 'Download fehlgeschlagen';
+      refreshOfflineLibrary();
+    });
+  }
+
+  function deleteTrackDownload(streamUrl, btn) {
+    deleteDownloadByStreamUrl(streamUrl).then(function(deleted) {
+      if (!deleted) return;
+      if (btn) {
+        btn.classList.remove('cached');
+        btn.classList.remove('downloading');
+        btn.textContent = '\\u2B07';
+        btn.title = 'Download';
+      }
+      refreshOfflineLibrary();
+      updateAllDownloadButtons();
+    });
+  }
+
+  function checkIfMediaCached(streamUrl) {
+    return getDownloadByStreamUrl(streamUrl).then(function(download) {
+      return download && download.status === 'ready' && download.blob ? download : null;
+    });
+  }
+
+  function getOfflineUrl(blob) {
+    revokeOfflineUrl();
+    currentOfflineUrl = URL.createObjectURL(blob);
+    return currentOfflineUrl;
+  }
+
+  function playOfflineOrStream(streamUrl) {
+    return checkIfMediaCached(streamUrl).then(function(download) {
+      if (download && download.blob) {
+        return {
+          url: getOfflineUrl(download.blob),
+          offline: true,
+          fallbackUrl: streamUrl
+        };
+      }
+      return {
+        url: streamUrl,
+        offline: false,
+        fallbackUrl: streamUrl
+      };
+    });
+  }
+
+  function playStoredDownload(streamUrl) {
+    getDownloadByStreamUrl(streamUrl).then(function(download) {
+      if (!download) return;
+      var match = findItemByStreamUrl(streamUrl);
+      closeOfflineLibrary();
+      if (match) {
+        playTrack(match.index >= 0 ? match.index : filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; }));
+        if (match.index < 0) {
+          playItem(match.item, -1);
+        }
+        return;
+      }
+      playItem({
+        title: download.title || 'Offline-Download',
+        artist: download.artist || '',
+        relative_path: download.relativePath || download.title || streamUrl,
+        stream_url: download.streamUrl,
+        thumbnail_url: download.thumbnailUrl || '',
+        media_type: download.mediaType || ITEM_NOUN,
+        rating: 0
+      }, -1);
+    });
+  }
+
+  /* Listen for Service Worker download notifications */
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('message', function(e) {
+      if (e.data && (e.data.type === 'DOWNLOAD_CACHED' || e.data.type === 'DOWNLOAD_DELETED')) {
+        updateAllDownloadButtons();
+        refreshOfflineLibrary();
+      }
+    });
+  }
+
+  if (offlineBtn) offlineBtn.addEventListener('click', openOfflineLibrary);
+  if (offlineClose) offlineClose.addEventListener('click', closeOfflineLibrary);
+  if (offlineLibrary) {
+    offlineLibrary.addEventListener('click', function(e) {
+      if (e.target === offlineLibrary) closeOfflineLibrary();
+    });
+  }
+  if (offlineSort) offlineSort.addEventListener('change', refreshOfflineLibrary);
+  if (offlinePersistBtn) {
+    if (!(navigator.storage && navigator.storage.persist)) {
+      offlinePersistBtn.hidden = true;
+    } else {
+      offlinePersistBtn.addEventListener('click', requestPersistentStorage);
+    }
+  }
+  if (offlinePruneBtn) {
+    offlinePruneBtn.addEventListener('click', function() {
+      pruneOldDownloads(0, currentStreamUrl);
+    });
+  }
+  window.addEventListener('online', refreshOfflineLibrary);
+  window.addEventListener('offline', refreshOfflineLibrary);
 
   /* ── playback ── */
   /* Background playback for video — three layers of defence:
@@ -1461,21 +2196,51 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     } catch(e) {}
   }
 
-  function playTrack(index) {
-    if (index < 0 || index >= filteredItems.length) return;
-    currentIndex = index;
-    var t = filteredItems[index];
+  function playItem(t, index) {
+    currentIndex = typeof index === 'number' ? index : -1;
+    currentStreamUrl = t.stream_url || '';
+
     /* Reset bg audio for new track */
     stopBgSync();
     if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; bgAudio.removeAttribute('src'); }
     wasPlaying = false;
-    player.src = t.stream_url;
-    player.play().then(function() {
-      /* wasPlaying is set by the 'playing' event listener */
-      /* Once video is playing, start the silent bg mirror so the
-         audio pipeline is alive if the user switches away */
+    revokeOfflineUrl();
+
+    function onPlaySuccess() {
+      btnPlay.textContent = '\u23f8';
       startBgMirror();
-    }).catch(function() {});
+    }
+
+    function retryAfterCanPlay() {
+      player.addEventListener('canplay', function() {
+        player.play().then(onPlaySuccess).catch(function(e) {
+          console.error('playTrack retry also failed:', e);
+          btnPlay.textContent = '\u25b6';
+        });
+      }, { once: true });
+    }
+
+    function beginPlayback(playback) {
+      player.src = playback.url;
+      player.load();
+      player.play().then(onPlaySuccess).catch(function(err) {
+        if (playback.offline) {
+          console.warn('Offline playback failed, falling back to stream:', err);
+          revokeOfflineUrl();
+          player.src = playback.fallbackUrl;
+          player.load();
+          player.play().then(onPlaySuccess).catch(function(fallbackErr) {
+            console.warn('Stream fallback play() failed, waiting for canplay:', fallbackErr);
+            retryAfterCanPlay();
+          });
+          return;
+        }
+        console.warn('playTrack play() failed, waiting for canplay:', err);
+        retryAfterCanPlay();
+      });
+      generateWaveform(playback.url);
+    }
+
     playerTitle.textContent = t.title;
     playerArtist.textContent = t.artist || t.relative_path;
     if (t.thumbnail_url) {
@@ -1485,11 +2250,52 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
       playerThumb.src = FILE_PLACEHOLDER;
       playerThumb.style.display = '';
     }
-    btnPlay.textContent = '\\u23F8';
+    btnPlay.textContent = '\u23f8';
     playerBar.classList.remove('view-hidden');
     markActive();
     updateMediaSession(t);
-    generateWaveform(t.stream_url);
+    refreshMetadata(t);
+
+    playOfflineOrStream(t.stream_url)
+      .then(beginPlayback)
+      .catch(function() {
+        beginPlayback({ url: t.stream_url, offline: false, fallbackUrl: t.stream_url });
+      });
+  }
+
+  function playTrack(index) {
+    if (index < 0 || index >= filteredItems.length) return;
+    playItem(filteredItems[index], index);
+  }
+
+  function refreshMetadata(t) {
+    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
+    var metaUrl = base + '/metadata?path=' + encodeURIComponent(t.relative_path);
+    fetch(metaUrl)
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(meta) {
+        if (!meta) return;
+        var changed = false;
+        if (meta.title && meta.title !== t.title) {
+          t.title = meta.title;
+          playerTitle.textContent = meta.title;
+          changed = true;
+        }
+        if (meta.artist && meta.artist !== t.artist) {
+          t.artist = meta.artist;
+          playerArtist.textContent = meta.artist;
+          changed = true;
+        }
+        if (typeof meta.rating === 'number') {
+          t.rating = meta.rating;
+        }
+        if (changed) {
+          updateMediaSession(t);
+          renderTracks(filteredItems);
+          markActive();
+        }
+      })
+      .catch(function() {});
   }
 
   function togglePlay() {
@@ -1565,8 +2371,18 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   sortField.addEventListener('change', applyFilter);
 
   /* ── init ── */
+  if (typeof indexedDB !== 'undefined') {
+    initDownloadDB().catch(function(err) {
+      console.warn('IndexedDB not available:', err);
+    }).then(function() {
+      updateAllDownloadButtons();
+      refreshOfflineLibrary();
+    });
+  } else {
+    refreshOfflineLibrary();
+  }
   applyViewMode();
-  showFolderView();
+  loadInitialCatalog();
 }());
 """
     )
@@ -1675,6 +2491,8 @@ def render_media_page(
     <span class="logo">{emoji} {html.escape(title)}</span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">&#9654; Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">&#9776;</button>
+    <button class="offline-btn" id="offline-btn" title="Offline-Bibliothek öffnen">Offline</button>
+    <span class="offline-status-pill" id="offline-status-pill">Online</span>
     <span class="track-count" id="track-count"></span>
   </header>
 
@@ -1697,6 +2515,31 @@ def render_media_page(
   <!-- track list (visible inside a folder) -->
   <div class="track-list-wrap view-hidden" id="track-view">
     <ul class="track-list" id="track-list"></ul>
+  </div>
+
+  <div class="offline-library" id="offline-library" hidden>
+    <div class="offline-panel">
+      <div class="offline-head">
+        <div class="offline-title-wrap">
+          <div class="offline-title">Offline-Bibliothek</div>
+          <div class="offline-subtitle">Gespeicherte Downloads verwalten und direkt offline abspielen</div>
+        </div>
+        <button class="offline-close" id="offline-close" title="Schließen">Schließen</button>
+      </div>
+      <div class="offline-summary" id="offline-storage-summary">Noch keine Offline-Downloads.</div>
+      <div class="offline-summary-detail" id="offline-storage-detail"></div>
+      <div class="offline-toolbar">
+        <select id="offline-sort">
+          <option value="newest">Neueste zuerst</option>
+          <option value="oldest">Älteste zuerst</option>
+          <option value="title">Titel A–Z</option>
+          <option value="size">Größte zuerst</option>
+        </select>
+        <button class="offline-action-btn" id="offline-persist-btn" type="button">Speicher persistent halten</button>
+        <button class="offline-action-btn" id="offline-prune-btn" type="button">Alte Downloads aufräumen</button>
+      </div>
+      <ul class="offline-download-list" id="offline-download-list"></ul>
+    </div>
   </div>
 
   <{media_element_tag} id="player" preload="auto" playsinline{" controls autopictureinpicture" if media_element_tag == "video" else ""}></{media_element_tag}>

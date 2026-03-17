@@ -3,12 +3,29 @@
 import logging
 import os
 import re
+import subprocess
 from pathlib import Path
 
 from hometools.config import get_delete_dir
 from hometools.print_tools import Colors
 
 logger = logging.getLogger(__name__)
+
+
+def run_text_subprocess(*args, **kwargs) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess with deterministic Unicode decoding.
+
+    External media tools such as ``ffprobe``/``ffmpeg`` often emit UTF-8 text
+    even on Windows systems whose ANSI code page is still CP1252.  Using
+    ``text=True`` without an explicit encoding can therefore crash inside the
+    stdlib reader thread with ``UnicodeDecodeError``.  Force UTF-8 and replace
+    undecodable bytes so callers never inherit locale-dependent decode errors.
+    """
+    kwargs.setdefault("text", True)
+    kwargs.setdefault("encoding", "utf-8")
+    kwargs.setdefault("errors", "replace")
+    return subprocess.run(*args, **kwargs)
+
 
 # ---------------------------------------------------------------------------
 # File discovery

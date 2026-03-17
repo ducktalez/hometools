@@ -1,12 +1,13 @@
 """Audio silence detection and removal using pydub + ffmpeg."""
 
 import logging
-import subprocess
 from pathlib import Path
 
 import numpy as np
 from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
+
+from hometools.utils import run_text_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def get_audio_length(p: Path) -> float:
         "-of",
         "csv=p=0",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_text_subprocess(cmd, capture_output=True)
     try:
         return float(result.stdout.strip())
     except ValueError:
@@ -125,7 +126,7 @@ def trim_audio_fixed_duration(
         str(new_path),
         "-y" if overwrite else "-n",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_text_subprocess(cmd, capture_output=True)
     if "Output file is empty" in result.stderr:
         logger.warning(f"No changes for {p.name}.")
         return
@@ -157,7 +158,7 @@ def split_mp3_lossless(p: Path, start_sec: float, end_sec: float, overwrite: boo
         _fmt(end_sec),
     ]
     logger.info(f"Splitting {p.name}: {_fmt(start_sec)} – {_fmt(end_sec)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_text_subprocess(cmd, capture_output=True)
     if result.returncode != 0:
         logger.error(f"mp3splt error: {result.stderr}")
     else:
@@ -210,7 +211,7 @@ def remove_silence_with_ffmpeg(
         str(end_trim / 1000 + 0.5),
         str(p_new),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_text_subprocess(cmd, capture_output=True)
     if "Output file is empty" in result.stderr:
         logger.info(f"No changes for {p.name}.")
         return
