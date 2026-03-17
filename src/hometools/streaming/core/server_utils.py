@@ -498,6 +498,35 @@ header {
   width: 40px; height: 40px; border-radius: 4px; object-fit: cover;
   flex-shrink: 0; background: var(--surface2);
 }
+/* ── Rating bar overlay on thumbnails ── */
+.thumb-wrap {
+  position: relative; flex-shrink: 0; overflow: hidden;
+}
+.thumb-wrap.track-thumb-wrap {
+  width: 40px; height: 40px; border-radius: 4px;
+}
+.thumb-wrap.track-thumb-wrap .track-thumb {
+  width: 100%; height: 100%; border-radius: 0;
+}
+.thumb-wrap.folder-thumb-wrap {
+  width: 100%; border-radius: 6px; margin-bottom: 0.4rem;
+}
+.thumb-wrap.folder-thumb-wrap .folder-thumb {
+  margin-bottom: 0; border-radius: 0;
+}
+.rating-bar {
+  position: absolute; bottom: 0; left: 0; height: 3px;
+  background: linear-gradient(90deg, #ff8800, #ffcc00);
+  opacity: 0.85; pointer-events: none;
+  border-radius: 0 1px 0 0;
+}
+.folder-grid.list-mode .thumb-wrap.folder-thumb-wrap {
+  width: 40px; height: 40px; border-radius: 4px;
+  margin-bottom: 0; flex-shrink: 0;
+}
+.folder-grid.list-mode .thumb-wrap.folder-thumb-wrap .folder-thumb {
+  width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0;
+}
 .folder-thumb {
   width: 100%; aspect-ratio: 1; border-radius: 6px; object-fit: cover;
   margin-bottom: 0.4rem; background: var(--surface2);
@@ -1057,8 +1086,11 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     });
     c.files.forEach(function(it, i) {
       var thumbSrc = it.thumbnail_url || FILE_PLACEHOLDER;
+      var ratingBar = it.rating > 0 ? '<div class="rating-bar" style="width:' + (it.rating / 5 * 100) + '%"></div>' : '';
       html += '<div class="folder-card file-card" data-file-idx="' + i + '">' +
+        '<div class="thumb-wrap folder-thumb-wrap">' +
         '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
+        ratingBar + '</div>' +
         '<div class="folder-name">' + escHtml(it.title) + '</div>' +
         '<div class="folder-count">' + escHtml(it.artist || '') + '</div>' +
       '</div>';
@@ -1175,10 +1207,13 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     trackList.innerHTML = tracks.map(function(t, i) {
       var subtitle = t.artist || t.relative_path;
       var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
+      var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
       return '<li class="track-item' + (i === currentIndex ? ' active' : '') +
         '" data-index="' + i + '">' +
         '<span class="track-num"><span class="num-text">' + (i + 1) + '</span></span>' +
+        '<div class="thumb-wrap track-thumb-wrap">' +
         '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
+        ratingBar + '</div>' +
         '<div class="track-info">' +
           '<div class="track-title">' + escHtml(t.title) + '</div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
