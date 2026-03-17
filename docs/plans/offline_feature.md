@@ -3,6 +3,16 @@
 ## Ziel
 Benutzer können Songs/Videos vom Handy aus herunterladen und offline abspielen — ohne native App.
 
+## Aktueller Stand (2026-03-17)
+
+- ✅ Service Worker mit IndexedDB-Fallback für Offline-Media
+- ✅ Download-Buttons in der Listenansicht
+- ✅ Offline-Playback mit explizitem Blob-/Stream-Fallback
+- ✅ Offline-Bibliothek (Modal) mit Sortierung und Entfernen einzelner Downloads
+- ✅ Storage-Quota-UI inkl. Soft-Limit (~50 MB), Warnung und Pruning alter Downloads
+- ✅ Automatisierte Tests für Offline-Playback, Quota-Hooks und gemeinsame UI
+- 🚧 Noch offen: manuelle Gerätevalidierung auf echtem iPhone/iPad — siehe [device_validation.md](../ios/device_validation.md)
+
 ## Warum PWA reicht (ohne native App)
 
 | Feature | Möglich? | Browser-API |
@@ -191,7 +201,7 @@ async function loadLibraryOffline() {
 
 ## iOS-spezifische Punkte
 
-> **Wichtig:** Siehe [`.iOS_PWA_DECISIONS.md`](.iOS_PWA_DECISIONS.md) für alle iOS-Limitations und wann eine Native App nötig wird.
+> **Wichtig:** Siehe [pwa_decisions.md](../ios/pwa_decisions.md) für alle iOS-Limitations und wann eine Native App nötig wird.
 
 ### Speicher-Quoten
 - **Tab-Kontext:** ~50 MB
@@ -238,11 +248,9 @@ if (navigator.storage && navigator.storage.estimate) {
 
 ## Nächste Schritte
 
-1. Service Worker Fetch-Handler erweitern (Cache API)
-2. IndexedDB Wrapper-Funktion schreiben
-3. Download-Button + Progress-UI in Player-Bar
-4. Tests schreiben
-5. Auf iOS testen (Safari + Home-Screen-App)
+1. Auf iOS testen (Safari + Home-Screen-App)
+2. Echte Quota-Grenzen / Seek-Verhalten dokumentieren
+3. Eventuelle Device-spezifische Edge Cases nachschärfen
 
 
 

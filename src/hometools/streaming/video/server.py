@@ -7,7 +7,10 @@ as the audio server, but with a ``<video>`` element instead of ``<audio>``.
 from __future__ import annotations
 
 import json as _json
+import logging
 import mimetypes
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +29,8 @@ from hometools.streaming.core.server_utils import (
 )
 from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
 from hometools.streaming.video.catalog import build_video_index, collect_thumbnail_work
+
+logger = logging.getLogger(__name__)
 
 VIDEO_CSS_EXTRA = """
 :root { --accent: #bb86fc; }
@@ -49,7 +54,7 @@ def resolve_video_path(library_dir: Path, encoded_relative_path: str) -> Path:
     return resolve_media_path(library_dir, encoded_relative_path, VIDEO_SUFFIX)
 
 
-def render_video_index_html(items, library_dir: Path) -> str:
+def render_video_index_html(items) -> str:
     """Render the video player UI — dark theme, folder grid, inline video element."""
     items_json = _json.dumps([i.to_dict() for i in items], ensure_ascii=False)
 
@@ -73,10 +78,9 @@ def create_app(library_dir: Path | None = None) -> Any:
 
     resolved_library_dir = (library_dir or get_video_library_dir()).expanduser()
     resolved_cache_dir = get_cache_dir()
-    app = FastAPI(title="hometools video streaming prototype")
 
-    @app.on_event("startup")
-    async def _check_library() -> None:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         import asyncio
 
         ok, msg = await asyncio.to_thread(check_library_accessible, resolved_library_dir)
@@ -102,6 +106,10 @@ def create_app(library_dir: Path | None = None) -> Any:
                     exc_info=True,
                 )
 
+        yield
+
+    app = FastAPI(title="hometools video streaming prototype", lifespan=lifespan)
+
     @app.get("/health")
     def health() -> dict[str, str]:
         ok, msg = check_library_accessible(resolved_library_dir)
@@ -114,16 +122,22 @@ def create_app(library_dir: Path | None = None) -> Any:
 
     @app.get("/", response_class=HTMLResponse)
     def video_home() -> HTMLResponse:
+        t0 = time.monotonic()
         ok, msg = check_library_accessible(resolved_library_dir)
         if not ok:
+            logger.warning("GET / — library not accessible: %s", msg)
             return HTMLResponse(render_error_page("hometools video", "🎬", msg, resolved_library_dir))
-        items = build_video_index(resolved_library_dir, cache_dir=resolved_cache_dir)
-        return HTMLResponse(render_video_index_html(items, resolved_library_dir))
+        html = render_video_index_html([])
+        elapsed = time.monotonic() - t0
+        logger.info("GET / — shell rendered in %.2fs (HTML: %d bytes)", elapsed, len(html))
+        return HTMLResponse(html)
 
     @app.get("/api/video/items")
     def video_items(q: str | None = None, artist: str | None = None, sort: str = "title") -> dict[str, object]:
+        t0 = time.monotonic()
         ok, msg = check_library_accessible(resolved_library_dir)
         if not ok:
+            logger.warning("GET /api/video/items — library not accessible: %s", msg)
             return {
                 "library_dir": str(resolved_library_dir),
                 "count": 0,
@@ -134,6 +148,8 @@ def create_app(library_dir: Path | None = None) -> Any:
             }
         items = build_video_index(resolved_library_dir, cache_dir=resolved_cache_dir)
         filtered = query_items(items, q=q, artist=artist, sort_by=sort)
+        elapsed = time.monotonic() - t0
+        logger.info("GET /api/video/items — %d/%d items in %.1fs (q=%r, artist=%r)", len(filtered), len(items), elapsed, q, artist)
         return {
             "library_dir": str(resolved_library_dir),
             "count": len(filtered),
@@ -142,15 +158,48 @@ def create_app(library_dir: Path | None = None) -> Any:
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
 
+    @app.get("/api/video/metadata")
+    def video_metadata(path: str) -> dict[str, object]:
+        """Re-read embedded metadata for a single video file."""
+        from hometools.audio.metadata import read_embedded_metadata
+        from hometools.streaming.video.catalog import _folder_as_artist, _title_from_filename
+
+        try:
+            file_path = resolve_video_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            logger.warning("GET /api/video/metadata — resolve failed: %s", exc)
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        title = _title_from_filename(file_path.stem)
+        artist = _folder_as_artist(file_path, resolved_library_dir)
+
+        try:
+            meta = read_embedded_metadata(file_path)
+        except Exception:
+            logger.warning("GET /api/video/metadata — fallback for %s due to metadata read error", path, exc_info=True)
+            meta = None
+
+        if meta:
+            if meta.get("title", "").strip():
+                title = meta["title"].strip()
+            if meta.get("artist", "").strip():
+                artist = meta["artist"].strip()
+
+        logger.debug("GET /api/video/metadata — %s → title=%r artist=%r", path, title, artist)
+        return {"title": title, "artist": artist, "rating": 0.0}
+
     @app.get("/video/stream")
     def video_stream(path: str) -> FileResponse:
         try:
             file_path = resolve_video_path(resolved_library_dir, path)
         except FileNotFoundError as exc:
+            logger.warning("GET /video/stream — not found: %s", path)
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
+            logger.warning("GET /video/stream — invalid path: %s (%s)", path, exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        logger.debug("GET /video/stream — serving %s (%s)", file_path.name, media_type)
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
     @app.get("/thumb")

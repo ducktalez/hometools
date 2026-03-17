@@ -17,7 +17,9 @@ INSTRUCTIONS (local):
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from pathlib import Path
 
 from hometools.constants import VIDEO_SUFFIX
@@ -28,6 +30,8 @@ from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import safe_resolve
 from hometools.streaming.core.thumbnailer import check_thumbnail_cached
 from hometools.utils import get_files_in_folder
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "MediaItem",
@@ -74,22 +78,75 @@ def _folder_as_artist(file_path: Path, library_root: Path) -> str:
     return ""
 
 
+def _read_metadata_fast(p: Path) -> dict[str, str] | None:
+    """Read embedded metadata using mutagen only — no ffprobe subprocess.
+
+    This is used during index building where speed matters more than
+    completeness.  The full ``read_embedded_metadata`` (with ffprobe
+    fallback) is reserved for single-track metadata refresh requests.
+    """
+    from mutagen import File
+
+    from hometools.audio.metadata import _find_tag
+
+    try:
+        audio = File(p)
+        if audio is not None and audio.tags:
+            title = _find_tag(
+                audio.tags,
+                "\xa9nam",
+                "title",
+                "TITLE",
+                "TIT2",
+                "Title",
+            )
+            artist = _find_tag(
+                audio.tags,
+                "\xa9ART",
+                "artist",
+                "ARTIST",
+                "TPE1",
+                "Author",
+            )
+            if title or artist:
+                return {"title": title, "artist": artist}
+    except Exception:
+        pass
+    return None
+
+
 def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> list[MediaItem]:
     """Build a read-only video index from a local video library.
 
     Thumbnail URLs are only included when a cached thumbnail already exists
     on disk — no extraction is attempted here so startup stays fast.
+
+    Uses mutagen-only metadata reading (no ffprobe subprocess) to avoid
+    blocking for minutes on large libraries.
     """
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
+    t0 = time.monotonic()
     root = safe_resolve(library_dir)
     items: list[MediaItem] = []
+    meta_hits = 0
 
     for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
         relative_path = safe_resolve(video_file).relative_to(root).as_posix()
-        title = _title_from_filename(video_file.stem)
-        folder = _folder_as_artist(video_file, root)
+
+        # Fast metadata: mutagen only, no ffprobe (avoids subprocess per file)
+        meta = _read_metadata_fast(video_file)
+        if meta and meta.get("title", "").strip():
+            title = meta["title"].strip()
+            meta_hits += 1
+        else:
+            title = _title_from_filename(video_file.stem)
+
+        if meta and meta.get("artist", "").strip():
+            folder = meta["artist"].strip()
+        else:
+            folder = _folder_as_artist(video_file, root)
 
         thumbnail_url = ""
         if cache_dir is not None:
@@ -108,6 +165,13 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             )
         )
 
+    elapsed = time.monotonic() - t0
+    logger.info(
+        "Video index built: %d items (%d with embedded metadata) in %.1fs",
+        len(items),
+        meta_hits,
+        elapsed,
+    )
     return sort_videos(items, sort_by="title")
 
 

@@ -1,5 +1,7 @@
 """Tests for the video streaming catalog and sync."""
 
+from unittest.mock import patch
+
 from hometools.streaming.video.catalog import (
     _folder_as_artist,
     _title_from_filename,
@@ -87,3 +89,53 @@ def test_sync_video_library_copies(tmp_path):
     ops = sync_video_library(source, target)
     assert len(ops) == 1
     assert (target / "film.mkv").exists()
+
+
+# ---------------------------------------------------------------------------
+# Embedded metadata (video)
+# ---------------------------------------------------------------------------
+
+
+def test_build_video_index_prefers_embedded_title(tmp_path):
+    """When a video file has an embedded title tag, use it instead of parsing the filename."""
+    (tmp_path / "messy.filename.1080p.x264.mp4").write_bytes(b"")
+
+    fake_meta = {"title": "The Real Title", "artist": "Director X"}
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", return_value=fake_meta):
+        items = build_video_index(tmp_path)
+
+    assert len(items) == 1
+    assert items[0].title == "The Real Title"
+    assert items[0].artist == "Director X"
+
+
+def test_build_video_index_falls_back_to_filename_when_no_metadata(tmp_path):
+    """Without embedded metadata the filename/folder heuristics still work."""
+    genre = tmp_path / "Action"
+    genre.mkdir()
+    (genre / "Borat.mp4").write_bytes(b"")
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", return_value=None):
+        items = build_video_index(tmp_path)
+
+    assert len(items) == 1
+    assert items[0].title == "Borat"
+    assert items[0].artist == "Action"
+
+
+def test_build_video_index_partial_metadata_uses_fallback(tmp_path):
+    """If only title is in metadata, folder is still used for artist."""
+    genre = tmp_path / "Comedy"
+    genre.mkdir()
+    (genre / "movie.mp4").write_bytes(b"")
+
+    # Metadata has title but no artist
+    fake_meta = {"title": "Funny Movie", "artist": ""}
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", return_value=fake_meta):
+        items = build_video_index(tmp_path)
+
+    assert len(items) == 1
+    assert items[0].title == "Funny Movie"
+    assert items[0].artist == "Comedy"

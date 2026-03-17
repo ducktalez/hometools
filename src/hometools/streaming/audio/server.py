@@ -7,10 +7,14 @@ so that the video server can reuse the same dark-theme layout.
 from __future__ import annotations
 
 import json as _json
+import logging
 import mimetypes
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+from hometools.audio.sanitize import split_stem
 from hometools.config import get_audio_library_dir, get_cache_dir, get_player_bar_style
 from hometools.constants import AUDIO_SUFFIX
 from hometools.streaming.audio.catalog import (
@@ -37,13 +41,15 @@ AUDIO_CSS_EXTRA = """
 #player { display: none; }
 """
 
+logger = logging.getLogger(__name__)
+
 
 def resolve_audio_path(library_dir: Path, encoded_relative_path: str) -> Path:
     """Resolve and validate a requested audio track inside the library root."""
     return resolve_media_path(library_dir, encoded_relative_path, AUDIO_SUFFIX)
 
 
-def render_audio_index_html(tracks: list[AudioTrack], library_dir: Path) -> str:
+def render_audio_index_html(tracks: list[AudioTrack]) -> str:
     """Render the audio player UI — dark theme, folder grid, player."""
     items_json = _json.dumps([t.to_dict() for t in tracks], ensure_ascii=False)
 
@@ -67,10 +73,9 @@ def create_app(library_dir: Path | None = None) -> Any:
 
     resolved_library_dir = (library_dir or get_audio_library_dir()).expanduser()
     resolved_cache_dir = get_cache_dir()
-    app = FastAPI(title="hometools audio streaming prototype")
 
-    @app.on_event("startup")
-    async def _check_library() -> None:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         import asyncio
 
         ok, msg = await asyncio.to_thread(check_library_accessible, resolved_library_dir)
@@ -96,6 +101,10 @@ def create_app(library_dir: Path | None = None) -> Any:
                     exc_info=True,
                 )
 
+        yield
+
+    app = FastAPI(title="hometools audio streaming prototype", lifespan=lifespan)
+
     @app.get("/health")
     def health() -> dict[str, str]:
         ok, msg = check_library_accessible(resolved_library_dir)
@@ -108,11 +117,15 @@ def create_app(library_dir: Path | None = None) -> Any:
 
     @app.get("/", response_class=HTMLResponse)
     def audio_home() -> HTMLResponse:
+        t0 = time.monotonic()
         ok, msg = check_library_accessible(resolved_library_dir)
         if not ok:
+            logger.warning("GET / — library not accessible: %s", msg)
             return HTMLResponse(render_error_page("hometools audio", "🎵", msg, resolved_library_dir))
-        tracks = build_audio_index(resolved_library_dir, cache_dir=resolved_cache_dir)
-        return HTMLResponse(render_audio_index_html(tracks, resolved_library_dir))
+        html = render_audio_index_html([])
+        elapsed = time.monotonic() - t0
+        logger.info("GET / — shell rendered in %.2fs", elapsed)
+        return HTMLResponse(html)
 
     @app.get("/api/audio/tracks")
     def audio_tracks(q: str | None = None, artist: str | None = None, sort: str = "artist") -> dict[str, object]:
@@ -135,6 +148,30 @@ def create_app(library_dir: Path | None = None) -> Any:
             "artists": list_artists(tracks),
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
+
+    @app.get("/api/audio/metadata")
+    def audio_metadata(path: str) -> dict[str, object]:
+        """Re-read embedded metadata for a single audio track."""
+        from hometools.audio.metadata import audiofile_assume_artist_title, get_popm_rating
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        parts = split_stem(file_path.stem)
+        artist = parts[0] if parts else "Unknown"
+        title = parts[1] if len(parts) > 1 else "MISSING"
+        stars = 0.0
+
+        try:
+            artist, title = audiofile_assume_artist_title(file_path)
+            raw_rating = get_popm_rating(file_path)
+            stars = round(raw_rating / 255 * 5, 1) if raw_rating > 0 else 0.0
+        except Exception:
+            logger.warning("GET /api/audio/metadata — fallback for %s due to metadata read error", path, exc_info=True)
+
+        return {"title": title, "artist": artist, "rating": stars}
 
     @app.get("/audio/stream")
     def audio_stream(path: str) -> FileResponse:

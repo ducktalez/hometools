@@ -1,7 +1,14 @@
 """Tests for HTML rendering and path safety in the audio streaming server."""
 
-from hometools.streaming.audio.server import render_audio_index_html, resolve_audio_path
+import os
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from hometools.streaming.audio.server import create_app, render_audio_index_html, resolve_audio_path
 from hometools.streaming.core.models import MediaItem
+from hometools.streaming.core.thumbnailer import get_thumbnail_path
 
 
 def test_render_audio_index_html_contains_filter_controls(tmp_path):
@@ -15,7 +22,7 @@ def test_render_audio_index_html_contains_filter_controls(tmp_path):
         )
     ]
 
-    html = render_audio_index_html(tracks, tmp_path)
+    html = render_audio_index_html(tracks)
 
     assert 'id="search-input"' in html
     assert 'id="sort-field"' in html
@@ -26,21 +33,130 @@ def test_resolve_audio_path_rejects_directory_escape(tmp_path):
     safe_file = tmp_path / "ok.mp3"
     safe_file.write_text("audio")
 
-    try:
+    with pytest.raises(ValueError, match="escapes"):
         resolve_audio_path(tmp_path, "..%2Foutside.mp3")
-    except ValueError as exc:
-        assert "escapes" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError for path traversal")
 
 
 def test_resolve_audio_path_rejects_non_audio_file(tmp_path):
     text_file = tmp_path / "note.txt"
     text_file.write_text("not audio")
 
-    try:
+    with pytest.raises(ValueError, match="Unsupported"):
         resolve_audio_path(tmp_path, "note.txt")
-    except ValueError as exc:
-        assert "Unsupported" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError for unsupported suffix")
+
+
+def test_audio_metadata_endpoint_falls_back_when_metadata_reader_breaks(tmp_path):
+    audio = tmp_path / "Artist - Song.mp3"
+    audio.write_bytes(b"")
+
+    client = TestClient(create_app(tmp_path))
+
+    with patch(
+        "hometools.audio.metadata.audiofile_assume_artist_title",
+        side_effect=UnicodeDecodeError("cp1252", b"\x81", 0, 1, "boom"),
+    ):
+        response = client.get("/api/audio/metadata", params={"path": "Artist - Song.mp3"})
+
+    assert response.status_code == 200
+    assert response.json() == {"title": "Song", "artist": "Artist", "rating": 0.0}
+
+
+def test_audio_metadata_endpoint_returns_embedded_values_and_rating(tmp_path):
+    audio = tmp_path / "Artist - Song.mp3"
+    audio.write_bytes(b"")
+
+    client = TestClient(create_app(tmp_path))
+
+    with (
+        patch("hometools.audio.metadata.audiofile_assume_artist_title", return_value=("Meta Artist", "Meta Title")),
+        patch("hometools.audio.metadata.get_popm_rating", return_value=255),
+    ):
+        response = client.get("/api/audio/metadata", params={"path": "Artist - Song.mp3"})
+
+    assert response.status_code == 200
+    assert response.json() == {"title": "Meta Title", "artist": "Meta Artist", "rating": 5.0}
+
+
+def test_audio_metadata_endpoint_returns_404_for_missing_file(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/api/audio/metadata", params={"path": "Missing - Song.mp3"})
+
+    assert response.status_code == 404
+    assert "Media file not found" in response.json()["detail"]
+
+
+def test_audio_metadata_endpoint_returns_404_for_path_traversal(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/api/audio/metadata", params={"path": "../outside.mp3"})
+
+    assert response.status_code == 404
+    assert "escapes" in response.json()["detail"]
+
+
+def test_audio_stream_returns_404_for_missing_file(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/audio/stream", params={"path": "Missing - Song.mp3"})
+
+    assert response.status_code == 404
+    assert "Media file not found" in response.json()["detail"]
+
+
+def test_audio_stream_returns_400_for_non_audio_file(tmp_path):
+    text_file = tmp_path / "note.txt"
+    text_file.write_text("not audio")
+
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/audio/stream", params={"path": "note.txt"})
+
+    assert response.status_code == 400
+    assert "Unsupported suffix" in response.json()["detail"]
+
+
+def test_audio_home_renders_error_page_when_library_unavailable(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    with patch("hometools.streaming.audio.server.check_library_accessible", return_value=(False, "NAS offline")):
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "NAS offline" in response.text
+    assert "Server läuft weiter" in response.text
+
+
+def test_audio_home_renders_shell_without_building_index(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    with patch("hometools.streaming.audio.server.build_audio_index", side_effect=AssertionError("must not run during shell render")):
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="initial-data"' in response.text
+    assert "Loading library" in response.text
+
+
+def test_thumb_returns_404_when_thumbnail_is_missing(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/thumb", params={"path": "Artist/Song.mp3"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Thumbnail not found"}
+
+
+def test_thumb_serves_cached_thumbnail_from_shadow_cache(tmp_path):
+    cache_dir = tmp_path / "cache"
+    thumb_path = get_thumbnail_path(cache_dir, "audio", "Artist/Song.mp3")
+    thumb_path.parent.mkdir(parents=True, exist_ok=True)
+    thumb_path.write_bytes(b"fake-jpeg")
+
+    with patch.dict(os.environ, {"HOMETOOLS_CACHE_DIR": str(cache_dir)}):
+        client = TestClient(create_app(tmp_path))
+        response = client.get("/thumb", params={"path": "Artist/Song.mp3"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/jpeg")
+    assert response.content == b"fake-jpeg"

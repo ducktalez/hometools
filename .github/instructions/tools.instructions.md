@@ -1,27 +1,13 @@
+---
+applyTo: "src/hometools/audio/**,src/hometools/video/**"
+---
 # Audio/Video File Tools
 
-> Part of [INSTRUCTIONS.md](../INSTRUCTIONS.md). Covers `audio/` and `video/`.
+## Key rules
 
-## audio/ modules
-
-| Module | Notes |
-|--------|-------|
-| `compare.py` | Duplicate detection, batch sanitization. I/O-heavy — behind CLI. |
-| `merger.py` | MP3 merging via pydub. I/O-heavy — behind CLI. |
-| `metadata.py` | `audiofile_assume_artist_title(path)` splits `"Artist - Title"` from stems. Used by `streaming/audio/catalog.py`. |
-| `sanitize.py` | **Pure** — no I/O, no side effects. Every new transform needs a test. |
-| `silence.py` | Silence detection/trimming. Requires **ffmpeg** on PATH. |
-
-## video/ modules
-
-| Module | Notes |
-|--------|-------|
-| `organizer.py` | TMDB-based renaming for films and series. |
-
-## Tests
-
-| File |
-|------|
-| `test_sanitize.py` |
-| `test_utils.py` |
-| `test_video_organizer.py` |
+- **`sanitize.py` is pure.** No I/O, no side effects. Every new transform needs a test.
+- **`metadata.py` bridges streaming and file tools.** `audiofile_assume_artist_title(path)` is used by `streaming/audio/catalog.py` — changes here affect catalog building.
+- **I/O-heavy tools** (`compare.py`, `merger.py`, `silence.py`) must stay behind CLI commands — never call them at import time or during server startup.
+- **TMDB calls** (`organizer.py`) require a network — always handle timeouts and missing API keys gracefully.
+- **File renames must be proposed, never auto-applied.** Generate a rename list that the user explicitly confirms. Never modify the filesystem without explicit user action.
+- **ffmpeg dependency:** `silence.py` and video thumbnail extraction require ffmpeg on PATH. Always check for `FileNotFoundError` and return a sensible fallback.
