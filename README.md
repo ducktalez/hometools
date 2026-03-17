@@ -2,14 +2,57 @@
 
 A collection of Python tools for managing personal media libraries — music file sanitization, video organizing with TMDB, and local audio & video streaming prototypes with a shared core.
 
+## 📚 Wichtige Dokumentationen
+
+- **[`.PHASE1_STATUS.md`](.PHASE1_STATUS.md)** — 🚧 Offline-Feature Implementation Status
+- **[`.iOS_PWA_DECISIONS.md`](.iOS_PWA_DECISIONS.md)** — iPhone-spezifische Limitations & wann eine Native App nötig wird
+- **[`.NATIVE_APP_PLAN.md`](.NATIVE_APP_PLAN.md)** — Hybrid Native App mit minimalem Overhead (WebView Wrapper)
+- **[`.SHARED_SERVER_REFACTORING.md`](.SHARED_SERVER_REFACTORING.md)** — Audio/Video Server Code-Sharing (87% Duplikation eliminieren)
+- **[`.PWA_SHORTCUTS.md`](.PWA_SHORTCUTS.md)** — Einzelne Filme/Songs auf Home-Bildschirm speichern (Quick-Win Feature)
+- **[`.ARCHITECTURE.md`](.ARCHITECTURE.md)** — Zwei-Server-Ansatz für iOS (standalone vs. minimal-ui)
+- **[`.OFFLINE_FEATURE.md`](.OFFLINE_FEATURE.md)** — Offline-Download-Plan (PWA + IndexedDB)
+- **[`INSTRUCTIONS_background_video_playback.md`](INSTRUCTIONS_background_video_playback.md)** — Background-Audio & PiP Technical Deep-Dive
 
 ## Plan/TODOs
 
-- Management Server.
+### 🔴 High Priority
+
+- **Phase 1: Offline-Download Feature (PWA)** — 🚧 In Progress (2026-03-17)
+  - See [.OFFLINE_FEATURE.md](.OFFLINE_FEATURE.md) for implementation plan
+  - See [.PHASE1_STATUS.md](.PHASE1_STATUS.md) for current progress
+  - ✅ **Done:** Service Worker (static cache), Download UI, IndexedDB setup, Tests
+  - 🚧 **TODO:** Offline-Playback, Download-List UI, Storage-Quota, Integration Tests
+  - **Output:** PWA mit ~50 MB Offline-Storage (Phase 1 completion: ~2 more weeks)
+
+- **Phase 2: PWA Shortcuts — Quick Win** — Woche 2-3
+  - See [.PWA_SHORTCUTS.md](.PWA_SHORTCUTS.md) for details
+  - Speichere einzelne Filme/Songs auf Home-Bildschirm
+  - Deep Linking + Quick Access (~8-10h)
+  - 🎯 Native-App-Feeling ohne native App
+  - **Output:** Favoriten direkt zugänglich
+
+- **Phase 3: Native iOS Apps (Hybrid WebView Wrapper)** — Woche 4-6
+  - See [.NATIVE_APP_PLAN.md](.NATIVE_APP_PLAN.md) for architecture
+  - Zwei separate Apps: HometoolsVideo + HometoolsAudio
+  - WebView Wrapper (reuse PWA-Code 100%)
+  - Native Features: Background Audio, Lock Screen, Persistent Storage
+  - **Strategy:** Minimal Swift Code (~2000 LOC total, vs. 15000+ pure native)
+  - **Timeline:** ~3-4 weeks für beide Apps
+  - **Output:** App Store ready native Apps mit voller iOS-Integration
+
+### 🟡 Medium Priority
   - Ich will eine Seite, die den Serverstatus anzeigt und wichtige Managementaufgaben repräsentiert.
   - Vom Handy aus soll man die Metadaten von Files ändern können. Diese sollen aber nicht direkt eingetragen werden sondern in einer Liste festgehalten. Erst wenn man diese Liste im Management Server "akzeptiert" hat, werden die Metadaten in den Files festgeschrieben. 
   - dynamisches synchronisieren: Die neuesten Änderungen müssen in einer Datenbank festgehalten werden so dass man das Handy zielgerichtet updaten kann.
   - Ein Scheduler, der die wichtigsten Aufgaben planbar und zyklisch ausführt.  
+
+### 🟡 Medium Priority
+
+- Management Server & Scheduler
+  - Status-Dashboard (Server, Syncs, Tasks)
+  - Metadata-Änderungen in Review-Queue
+  - Auto-Sync-Scheduler (regelmäßig NAS scannen)
+
 - OPTIONALE https-kommunikation. Es handelt sich um einen privaten Streaming-Server und wir erwarten keine Angriffe. HTTP ist schneller.
 - Für englische Serien müssen die Metadaten anders geladen werden und das Programm, welches die Files automatisch umbennt, muss hier die englischen Titel etc. einfügen. Bisher ist das nicht der Fall. 
 - Implement a "Recently Added" section in the streaming UI
@@ -32,13 +75,13 @@ A collection of Python tools for managing personal media libraries — music fil
   - Es soll angezeigt werden ob ein File heruntergeladen worden ist und wenn man drauf klickt soll man den Speicherplatz wieder freigeben können. 
 - Alle runtergeladenen Dateien sollen in einer Offline-Downloads-Liste aufgelistet werden. 
 - Filteroptionen für die Suche
+- Minimum an HTTP-Sicherheit durch Obscurification? Verschlüsselung ist aufwendig. Ich würde gerne HTTP als Standard lassen denn es ist ja ein privater Server. Aber ich würde gerne eine komische Connection haben wollen damit das nicht bei dem Standardportscan direkt auffliegt. 
 - DJ-feature (Plan): 
   - Musiktitel übereinanderlegen (mixen)? Automatische Übergänge?
   - DJ-feature: songs automatisch aufeinander abstimmen (BPM, Tonart) und nahtlos überblenden. Besondere Songeigenschaften (zum mixen oder samplen) beim laden der lieder speichern (oder vom Nutzer beschreiben lassen).
 - Anzeige von Songtexten (sofern in den ID3-Tags vorhanden) in der Audio-Streaming UI
 - Plan: Einführung eines Management-servers, der die Synchronisation und das Streaming steuert, damit man nicht von Hand die Synchronisation und das Starten der Server triggern muss. Hier muss auch ein Scheduler regelmäßig die NAS-Ordner scannen und die Synchronisation triggern, damit die Streaming-Server immer auf dem neuesten Stand sind. Scheduler muss auch entwickelt werden.
 - Plan: Letzte Wiedergabe + Fortschrittsanzeige in der Streaming-UI speichern, damit man auch von einem anderen Gerät aus weitermachen kann. Hier muss auch die Synchronisation der Fortschrittsdaten zwischen den Geräten implementiert werden (z.B. über eine JSON-Datei oder eine kleine Datenbank).
-- Plan: Implementierung eines "Offline-Modus", Downloads ermöglichen, Speicherfreigabe ebenfalls ermöglichen
 - "Intro überspringen" Feature für die Video-Streaming UI, basierend auf TMDB-Daten oder manueller Markierung
 - "Crossfade" Feature für die Audio-Streaming UI, um nahtlose Übergänge zwischen Songs zu ermöglichen
 - DJ-extension: Bei songs für die DJ-Nutzung sollten folgende Spuren extrahiert werden (Gespeichert im Schattenverzeichnis): Gesang, Instrumental, Bass/Beat. Loopregionen sollen festgelegt werden.
@@ -46,10 +89,10 @@ A collection of Python tools for managing personal media libraries — music fil
 - DJ-extension: Zwischen Songs braucht Er ist ein Analyse-Autor, der schaut ob ein flüssiger Übergang möglich ist oder ob es eine andere Art von Übergang braucht. 
 - DJ-extension: "Keep something playing"-option, um zu verhindern, dass gar nichts läuft.
 - DJ-extension: "Auto-DJ"-modus, in dem die Software automatisch Songs auswählt und Übergänge basierend auf den analysierten Eigenschaften erstellt, um eine kontinuierliche Wiedergabe zu gewährleisten. Hier sollte auch die Möglichkeit bedacht werden, eine Art Geschichte aus den Songs zu machen und verschiedene aufeinander folgende Themes etc. zu ermöglichen. 
-- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme oder Musikvideos oder News abspielt. 
+- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme oder Musikvideos oder News abspielt. Lustig wäre, einen Plan für die Zukunft anzulegen und für diesen Plan kurze Werbung einzuspielen. Also quasi morgen 20:15 Uhr kommt Shrek. Auch diese kurzen Einspieler, die man früher hatte mit Toggo oder sowas, wären lustig. 
 - "Fernsehsender" MTV-version: Zu allen Liedern wird einfach das Musikvideo abgespielt, z.B. von YouTube. Musikvideos könnten auch hinterlegt werden. Ansonsten wird Musik abgespielt aber es gibt eine dazu passende visuelle Begleitung. Das heißt ein DJ bei Partymucke, irgendwelche Night Ride oder Surfvideos bei Drum&Bass oder auch nur ein Feuer. Auf jeden Fall soll irgendeine Visualisierung zu eigentlich vorrangig abgespielter Musik stattfinden. 
 - "Sleep Mode" Video stream radio: Gibt einfach nur das Audio aus einer Serie wieder so dass man aber keine Helligkeit hat beim Schlafen. 
-- 
+- Ein lennyface-board
 - Photo-Management: Alles online oder zumindest mit einem lokalen Server
 
 ## Features

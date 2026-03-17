@@ -21,6 +21,15 @@ repos:
         types: [python]
         pass_filenames: false
         always_run: true
+      
+      - id: feature-parity
+        name: feature-parity tests (catch code drift)
+        entry: python -m pytest tests/test_feature_parity.py -v
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
 
 
 

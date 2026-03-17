@@ -203,9 +203,10 @@ def render_pwa_manifest(
 
 
 def render_pwa_service_worker() -> str:
-    """Return a minimal service worker JS for PWA installability and caching."""
+    """Return a service worker JS for PWA caching, offline UI, and download support."""
     return """\
-const CACHE_NAME = 'hometools-v1';
+const CACHE_NAME = 'hometools-v2';
+const DOWNLOAD_CACHE = 'hometools-downloads-v1';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -214,17 +215,37 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(names =>
-      Promise.all(names.filter(n => n !== CACHE_NAME).map(n => caches.delete(n)))
+      Promise.all(names.filter(n => n !== CACHE_NAME && n !== DOWNLOAD_CACHE).map(n => caches.delete(n)))
     ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  // Don't cache streaming endpoints or API calls
-  if (url.pathname.includes('/stream') || url.pathname.startsWith('/api/')) return;
-  // Cache-first for icons, network-first for everything else
-  if (url.pathname.startsWith('/icon')) {
+  
+  // Streaming endpoints — try network first, then serve from IndexedDB cache
+  if (url.pathname.includes('/stream') || url.pathname.includes('/audio/') || url.pathname.includes('/video/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(resp => resp)
+        .catch(() => {
+          // Offline — serve from IndexedDB downloads cache
+          return serveFromIndexedDB(event.request.url);
+        })
+    );
+    return;
+  }
+  
+  // API calls — network first
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(event.request).catch(() => new Response('{}', { status: 503 }))
+    );
+    return;
+  }
+  
+  // Icons — cache first
+  if (url.pathname.startsWith('/icon') || url.pathname.startsWith('/manifest')) {
     event.respondWith(
       caches.match(event.request).then(r => r || fetch(event.request).then(resp => {
         const clone = resp.clone();
@@ -232,8 +253,95 @@ self.addEventListener('fetch', event => {
         return resp;
       }))
     );
+    return;
+  }
+  
+  // Static assets (HTML/CSS/JS) — cache first, fallback to network
+  if (event.request.destination === 'document' || 
+      event.request.destination === 'script' || 
+      event.request.destination === 'style') {
+    event.respondWith(
+      caches.match(event.request).then(r => {
+        if (r) return r;
+        return fetch(event.request).then(resp => {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          return resp;
+        }).catch(() => new Response('Offline — page not cached', { status: 503 }));
+      })
+    );
+    return;
   }
 });
+
+// Download progress tracking — client sends updates
+self.addEventListener('message', event => {
+  if (event.data.type === 'CACHE_DOWNLOAD') {
+    // Client (JS) sends download blob after fetch completes
+    const { url, blob, title } = event.data;
+    caches.open(DOWNLOAD_CACHE).then(cache => {
+      cache.put(url, new Response(blob, { status: 200 }));
+      // Notify all clients that download is cached
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'DOWNLOAD_CACHED',
+            url: url,
+            title: title
+          });
+        });
+      });
+    });
+  }
+});
+
+/* Serve cached downloads from IndexedDB */
+function serveFromIndexedDB(streamUrl) {
+  return new Promise((resolve, reject) => {
+    const dbReq = indexedDB.open('hometools-downloads', 1);
+    
+    dbReq.onerror = () => reject(new Error('IndexedDB open failed'));
+    
+    dbReq.onsuccess = () => {
+      const db = dbReq.result;
+      const tx = db.transaction('downloads', 'readonly');
+      const store = tx.objectStore('downloads');
+      const index = store.index('streamUrl');
+      const query = index.get(streamUrl);
+      
+      query.onerror = () => reject(new Error('Download lookup failed'));
+      
+      query.onsuccess = () => {
+        const result = query.result;
+        
+        if (result && result.blob) {
+          // Found in IndexedDB — serve the blob as a proper media response
+          const headers = {
+            'Content-Type': result.blob.type || 'application/octet-stream',
+            'Content-Length': result.blob.size,
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'public, max-age=31536000' // Cache forever (it's immutable)
+          };
+          
+          resolve(new Response(result.blob, {
+            status: 200,
+            statusText: 'OK (from offline cache)',
+            headers: new Headers(headers)
+          }));
+        } else {
+          // Not found in cache
+          reject(new Error('Download not found in cache'));
+        }
+      };
+    };
+  }).catch(err => {
+    // Fallback: return error response
+    return new Response(
+      'Offline — ' + (err.message || 'stream not cached'),
+      { status: 503, statusText: 'Service Unavailable' }
+    );
+  });
+}
 """
 
 
@@ -433,6 +541,9 @@ header {
 .ctrl-btn.pip-btn[hidden] { display: none; }
 .ctrl-btn.fs-btn { font-size: 0.85rem; }
 .ctrl-btn.fs-btn[hidden] { display: none; }
+.ctrl-btn.dl-btn { font-size: 0.85rem; }
+.ctrl-btn.dl-btn[hidden] { display: none; }
+.ctrl-btn.dl-btn.downloading { opacity: 0.6; pointer-events: none; }
 .time-label { font-size: 0.68rem; color: var(--sub); flex-shrink: 0; min-width: 2.2rem; }
 .time-label.end { text-align: left; }
 
@@ -1203,6 +1314,224 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     });
   }
 
+  /* ── Download Manager ── */
+  var btnDl = document.getElementById('btn-dl');
+  var downloadDB = null;
+
+  function initDownloadDB() {
+    /* Initialize IndexedDB for offline downloads */
+    return new Promise(function(resolve, reject) {
+      var req = indexedDB.open('hometools-downloads', 1);
+      req.onerror = reject;
+      req.onsuccess = function() { resolve(req.result); };
+      req.onupgradeneeded = function(e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains('downloads')) {
+          var store = db.createObjectStore('downloads', { keyPath: 'id' });
+          store.createIndex('streamUrl', 'streamUrl', { unique: true });
+          store.createIndex('status', 'status', { unique: false });
+        }
+      };
+    });
+  }
+
+  function downloadMedia(streamUrl, title) {
+    /* Download current media to IndexedDB */
+    if (!downloadDB) return;
+    if (!streamUrl || !title) return;
+
+    var btnDl = document.getElementById('btn-dl');
+    btnDl.classList.add('downloading');
+    btnDl.textContent = '↓ 0%';
+
+    /* Fetch with progress tracking */
+    fetch(streamUrl)
+      .then(function(response) {
+        if (!response.ok) throw new Error('Download failed: ' + response.status);
+        var total = parseInt(response.headers.get('content-length'), 10) || 0;
+        var received = 0;
+        var reader = response.body.getReader();
+        var chunks = [];
+
+        return new Promise(function(resolve, reject) {
+          function read() {
+            reader.read().then(function(result) {
+              if (result.done) {
+                resolve(new Blob(chunks, { type: response.type }));
+                return;
+              }
+              chunks.push(result.value);
+              received += result.value.length;
+              var pct = total ? Math.round((received / total) * 100) : 0;
+              btnDl.textContent = '↓ ' + pct + '%';
+              read();
+            }).catch(reject);
+          }
+          read();
+        });
+      })
+      .then(function(blob) {
+        /* Save to IndexedDB */
+        var downloadId = Date.now();
+        var tx = downloadDB.transaction('downloads', 'readwrite');
+        var store = tx.objectStore('downloads');
+        store.put({
+          id: downloadId,
+          title: title,
+          streamUrl: streamUrl,
+          size: blob.size,
+          status: 'ready',
+          timestamp: Date.now(),
+          blob: blob
+        });
+        return tx.complete;
+      })
+      .then(function() {
+        btnDl.classList.remove('downloading');
+        btnDl.textContent = '✓';
+        btnDl.dataset.cached = 'true';
+        btnDl.dataset.streamUrl = streamUrl;
+        setTimeout(function() { 
+          if (btnDl.dataset.cached === 'true') {
+            btnDl.textContent = '✕'; 
+          }
+        }, 2000);
+      })
+      .catch(function(err) {
+        console.error('Download error:', err);
+        btnDl.classList.remove('downloading');
+        btnDl.textContent = '✗';
+        setTimeout(function() { 
+          if (btnDl.dataset.cached !== 'true') {
+            btnDl.textContent = '↓';
+          }
+        }, 2000);
+      });
+  }
+
+  function deleteDownload(streamUrl) {
+    /* Remove download from IndexedDB */
+    if (!downloadDB || !streamUrl) return;
+    
+    var tx = downloadDB.transaction('downloads', 'readwrite');
+    var store = tx.objectStore('downloads');
+    var index = store.index('streamUrl');
+    var request = index.getKey(streamUrl);
+    
+    request.onsuccess = function() {
+      if (request.result) {
+        store.delete(request.result);
+        var btnDl = document.getElementById('btn-dl');
+        btnDl.textContent = '↓';
+        btnDl.dataset.cached = '';
+        btnDl.dataset.streamUrl = '';
+        console.log('Download deleted: ' + streamUrl);
+      }
+    };
+  }
+
+  /* Initialize download DB and show button */
+  if (isVideoPlayer || (player.tagName === 'AUDIO')) {
+    initDownloadDB().then(function(db) {
+      downloadDB = db;
+      if (btnDl) {
+        btnDl.hidden = false;
+        btnDl.addEventListener('click', function() {
+          if (currentIndex >= 0 && currentIndex < filteredItems.length) {
+            var item = filteredItems[currentIndex];
+            
+            // Toggle behavior: if cached, delete; otherwise download
+            if (btnDl.dataset.cached === 'true' && btnDl.dataset.streamUrl === item.stream_url) {
+              deleteDownload(item.stream_url);
+            } else {
+              downloadMedia(item.stream_url, item.title);
+            }
+          }
+        });
+      }
+    }).catch(function(err) {
+      console.warn('IndexedDB not available:', err);
+    });
+  }
+
+  /* ── Offline Playback ── */
+  
+  function checkIfMediaCached(streamUrl) {
+    /* Check if this media is cached offline */
+    if (!downloadDB) return Promise.resolve(null);
+    
+    return new Promise(function(resolve) {
+      try {
+        var tx = downloadDB.transaction('downloads', 'readonly');
+        var store = tx.objectStore('downloads');
+        var index = store.index('streamUrl');
+        var query = index.get(streamUrl);
+        
+        query.onsuccess = function() {
+          if (query.result && query.result.blob) {
+            resolve({
+              blob: query.result.blob,
+              title: query.result.title,
+              size: query.result.blob.size
+          });
+          } else {
+            resolve(null);
+          }
+        };
+        query.onerror = function() { resolve(null); };
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  }
+
+  function getOfflineUrl(blob) {
+    /* Create a blob URL for offline playback */
+    if (typeof URL.createObjectURL === 'function') {
+      return URL.createObjectURL(blob);
+    }
+    return null;
+  }
+
+  function playOfflineOrStream(streamUrl, item) {
+    /* Try to play from cache, fallback to stream */
+    checkIfMediaCached(streamUrl).then(function(cached) {
+      if (cached) {
+        var offlineUrl = getOfflineUrl(cached.blob);
+        if (offlineUrl) {
+          player.src = offlineUrl;
+          console.log('Playing from offline cache: ' + cached.title);
+          return;
+        }
+      }
+      // Not cached or offline URL failed — use stream URL
+      player.src = streamUrl;
+    });
+  }
+
+  /* Override playTrack to use offline if available */
+  var originalPlayTrack = playTrack;
+  playTrack = function(index) {
+    if (index < 0 || index >= filteredItems.length) return;
+    var item = filteredItems[index];
+    
+    // Call original first to set currentIndex etc
+    originalPlayTrack.call(this, index);
+    
+    // Then try offline playback
+    playOfflineOrStream(item.stream_url, item);
+  };
+
+  /* Listen for online/offline state changes */
+  window.addEventListener('online', function() {
+    console.log('Back online — playback will switch to stream');
+  });
+
+  window.addEventListener('offline', function() {
+    console.log('Offline mode — will use cached media if available');
+  });
+
+
   function ensureBgAudio() {
     if (bgAudio) return bgAudio;
     bgAudio = document.createElement('audio');
@@ -1482,11 +1811,12 @@ def render_media_page(
         <div class="player-artist" id="player-artist">&ndash;</div>
       </div>
       <div class="player-controls">
-        <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
-        <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
-        <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
-        <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>&#9114;</button>
-        <button class="ctrl-btn fs-btn"     id="btn-fs"   title="Vollbild" hidden>&#x26F6;</button>
+        <button class="ctrl-btn"            id="btn-prev" title="Previous">◄</button>
+        <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">▶</button>
+        <button class="ctrl-btn"            id="btn-next" title="Next">►</button>
+        <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>⊞</button>
+        <button class="ctrl-btn fs-btn"     id="btn-fs"   title="Vollbild" hidden>⛶</button>
+        <button class="ctrl-btn dl-btn"     id="btn-dl"   title="Download" hidden>↓</button>
       </div>
     </div>
     <div class="progress-wrap">
@@ -1511,11 +1841,12 @@ def render_media_page(
       <div class="player-artist" id="player-artist">&ndash;</div>
     </div>
     <div class="player-controls">
-      <button class="ctrl-btn"            id="btn-prev" title="Previous">&#9198;</button>
-      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">&#9654;</button>
-      <button class="ctrl-btn"            id="btn-next" title="Next">&#9197;</button>
-      <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>&#9114;</button>
-      <button class="ctrl-btn fs-btn"     id="btn-fs"   title="Vollbild" hidden>&#x26F6;</button>
+      <button class="ctrl-btn"            id="btn-prev" title="Previous">◄</button>
+      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">▶</button>
+      <button class="ctrl-btn"            id="btn-next" title="Next">►</button>
+      <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>⊞</button>
+      <button class="ctrl-btn fs-btn"     id="btn-fs"   title="Vollbild" hidden>⛶</button>
+      <button class="ctrl-btn dl-btn"     id="btn-dl"   title="Download" hidden>↓</button>
     </div>
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>

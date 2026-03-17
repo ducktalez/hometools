@@ -1,5 +1,7 @@
 # Background Video Playback — Analyse & Plan
 
+> **Siehe auch:** [`.iOS_PWA_DECISIONS.md`](.iOS_PWA_DECISIONS.md) für iOS-spezifische Limitations und wann eine Native App nötig wird.
+
 ## Problem
 
 Wenn der Benutzer die Video-App minimiert (Tab wechseln, App-Switcher, Home-Taste),
