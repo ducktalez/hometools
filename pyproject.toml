@@ -17,6 +17,7 @@ dependencies = [
     "tmdbv3api>=1.9",
     "fastapi>=0.115",
     "uvicorn>=0.30",
+    "httpx>=0.24",
 ]
 
 [project.scripts]
