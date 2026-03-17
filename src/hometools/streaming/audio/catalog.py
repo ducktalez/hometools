@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hometools.audio.metadata import audiofile_assume_artist_title
+from hometools.audio.metadata import audiofile_assume_artist_title, get_popm_rating
 from hometools.streaming.core.catalog import list_artists
 from hometools.streaming.core.catalog import query_items as query_tracks
 from hometools.streaming.core.catalog import sort_items as sort_tracks
@@ -64,6 +64,10 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             if thumb is not None:
                 thumbnail_url = f"/thumb?path={encode_relative_path(relative_path)}"
 
+        # POPM rating: 0–255 → 0.0–5.0 stars
+        raw_rating = get_popm_rating(audio_file)
+        stars = round(raw_rating / 255 * 5, 1) if raw_rating > 0 else 0.0
+
         tracks.append(
             MediaItem(
                 relative_path=relative_path,
@@ -72,6 +76,7 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 stream_url=f"/audio/stream?path={encode_relative_path(relative_path)}",
                 media_type="audio",
                 thumbnail_url=thumbnail_url,
+                rating=stars,
             )
         )
 
