@@ -378,15 +378,6 @@ def test_audio_page_has_apple_web_app_capable():
     assert "apple-mobile-web-app-capable" in page
 
 
-def test_fullscreen_button_in_classic_html():
-    page = _page(media="video", style="classic")
-    assert 'id="btn-fs"' in page
-    assert "fs-btn" in page
-
-
-def test_fullscreen_button_in_waveform_html():
-    page = _page(media="video", style="waveform")
-    assert 'id="btn-fs"' in page
 
 
 def test_js_has_fullscreen_logic():
