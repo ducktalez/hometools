@@ -171,7 +171,7 @@ def run_serve_audio(args: argparse.Namespace) -> int:
 
     from hometools.streaming.audio.server import create_app
 
-    setup_logging(log_file=None)
+    setup_logging(log_file="auto")
     host = args.host or get_stream_host()
     port = args.port or get_audio_port()
     library = args.library_dir or get_audio_library_dir()
@@ -201,7 +201,7 @@ def run_serve_video(args: argparse.Namespace) -> int:
 
     from hometools.streaming.video.server import create_app
 
-    setup_logging(log_file=None)
+    setup_logging(log_file="auto")
     host = args.host or get_stream_host()
     port = args.port or get_video_port()
     library = args.library_dir or get_video_library_dir()
@@ -229,7 +229,7 @@ def run_serve_all(args: argparse.Namespace) -> int:
     """Start both streaming servers on separate ports."""
     from hometools.streaming.setup import serve_all
 
-    setup_logging(log_file=None)
+    setup_logging(log_file="auto")
     serve_all(
         host=args.host or get_stream_host(),
         audio_port=args.audio_port or get_audio_port(),
