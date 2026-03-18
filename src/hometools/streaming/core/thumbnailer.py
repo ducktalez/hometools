@@ -38,6 +38,8 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from hometools.streaming.core.issue_registry import record_issue, resolve_issue
+
 logger = logging.getLogger(__name__)
 
 THUMB_SUFFIX = ".thumb.jpg"
@@ -332,6 +334,7 @@ def record_failure(
     relative_path: str,
     reason: str,
     source_mtime: float,
+    cache_dir: Path | None = None,
 ) -> None:
     """Add or update a failure entry in *failures* (in-memory dict)."""
     key = _failure_key(media_type, relative_path)
@@ -342,6 +345,20 @@ def record_failure(
         "reason": reason,
         "source_mtime": source_mtime,
     }
+    if cache_dir is not None:
+        record_issue(
+            cache_dir,
+            source="hometools.streaming.core.thumbnailer",
+            severity="WARNING",
+            message=f"Thumbnail generation failed for {media_type}:{relative_path}",
+            issue_key=f"thumbnail::{key}",
+            details={
+                "media_type": media_type,
+                "relative_path": relative_path,
+                "reason": reason,
+                "source_mtime": source_mtime,
+            },
+        )
 
 
 def should_skip_failure(
@@ -432,9 +449,17 @@ def _generate_thumbnails_worker(
                     # Clear any previous failure entry on success
                     key = _failure_key(media_type, relative_path)
                     failures.pop(key, None)
+                    resolve_issue(cache_dir, f"thumbnail::{key}", resolution="thumbnail generated successfully")
                 else:
                     skipped += 1
-                    record_failure(failures, media_type, relative_path, "extraction returned False", src_mt)
+                    record_failure(
+                        failures,
+                        media_type,
+                        relative_path,
+                        "extraction returned False",
+                        src_mt,
+                        cache_dir,
+                    )
             except Exception:
                 errors += 1
                 record_failure(
@@ -443,6 +468,7 @@ def _generate_thumbnails_worker(
                     relative_path,
                     "unexpected exception",
                     _source_mtime(media_path),
+                    cache_dir,
                 )
                 logger.debug(
                     "Background thumb generation failed for %s",

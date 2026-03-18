@@ -81,6 +81,10 @@ class TestServerEndpointParity:
         assert video_status.status_code == 200
         assert "cache" in audio_status.json()
         assert "cache" in video_status.json()
+        assert "issues" in audio_status.json()
+        assert "issues" in video_status.json()
+        assert "todos" in audio_status.json()
+        assert "todos" in video_status.json()
 
     def test_both_servers_have_icons(self):
         """Both servers must provide icon endpoints."""

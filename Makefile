@@ -4,8 +4,11 @@ RUFF ?= hometools-env/Scripts/ruff.exe
 SERVER ?= audio
 MODE ?= missing
 SCOPE ?= all
+TODO_KEY ?=
+TODO_ACTION ?= acknowledge
+TODO_SECONDS ?= 3600
 
-.PHONY: help lint format test parity streaming-config \
+.PHONY: help lint format test parity streaming-config issues issues-json issues-errors todos todos-json scheduler-once todo-state \
 	serve-audio serve-video serve-all \
 	serve-audio-safe serve-video-safe serve-all-safe \
 	reset reset-hard reset-all-hard \
@@ -18,6 +21,13 @@ help:
 	@echo "  test                - pytest tests -q"
 	@echo "  parity              - pytest tests/test_feature_parity.py -v"
 	@echo "  streaming-config    - print resolved streaming config"
+	@echo "  issues              - show currently open irregularities from warning/error collection"
+	@echo "  issues-json         - show current irregularities as JSON"
+	@echo "  issues-errors       - return non-zero when error/critical issues are open"
+	@echo "  todos               - derive TODO candidates from open irregularities"
+	@echo "  todos-json          - derive TODO candidates as JSON"
+	@echo "  scheduler-once      - run the first scheduler stub once and persist todo_candidates.json"
+	@echo "  todo-state          - acknowledge/snooze/clear TODO state (TODO_KEY=..., TODO_ACTION=..., TODO_SECONDS=... for snooze)"
 	@echo "  serve-audio         - start audio server"
 	@echo "  serve-video         - start video server"
 	@echo "  serve-all           - start both servers"
@@ -48,6 +58,27 @@ parity:
 
 streaming-config:
 	$(PYTHON) -m hometools streaming-config
+
+issues:
+	$(PYTHON) -m hometools stream-issues
+
+issues-json:
+	$(PYTHON) -m hometools stream-issues --json
+
+issues-errors:
+	$(PYTHON) -m hometools stream-issues --only-errors --fail-on-match
+
+todos:
+	$(PYTHON) -m hometools stream-todos
+
+todos-json:
+	$(PYTHON) -m hometools stream-todos --json
+
+scheduler-once:
+	$(PYTHON) -m hometools stream-scheduler --json
+
+todo-state:
+	$(PYTHON) -m hometools stream-todo-state --todo-key "$(TODO_KEY)" --action $(TODO_ACTION) --seconds $(TODO_SECONDS)
 
 serve-audio:
 	$(PYTHON) -m hometools serve-audio

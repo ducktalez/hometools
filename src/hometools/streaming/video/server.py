@@ -257,6 +257,8 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
     @app.get("/api/video/status")
     def video_status() -> dict[str, object]:
+        from hometools.streaming.core.issue_registry import summarize_issue_and_todos
+
         ok, msg = check_library_accessible(resolved_library_dir)
         cache_status = (
             {
@@ -279,13 +281,17 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             if resolved_safe_mode
             else _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
         )
-        return build_index_status_payload(
+        issue_todo_summary = summarize_issue_and_todos(resolved_cache_dir)
+        payload = build_index_status_payload(
             library_dir=resolved_library_dir,
             item_label="video",
             library_ok=ok,
             library_message="Safe mode active — no cache snapshot or thumbnail warmup" if resolved_safe_mode else msg,
             cache_status=cache_status,
+            issues_summary=issue_todo_summary["issues"],
+            todo_summary=issue_todo_summary["todos"],
         )
+        return payload
 
     @app.get("/api/video/metadata")
     def video_metadata(path: str) -> dict[str, object]:

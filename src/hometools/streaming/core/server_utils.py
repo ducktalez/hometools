@@ -132,6 +132,8 @@ def build_index_status_payload(
     library_ok: bool,
     library_message: str,
     cache_status: dict[str, object],
+    issues_summary: dict[str, object] | None = None,
+    todo_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return a normalized API payload describing index-build state.
 
@@ -150,12 +152,17 @@ def build_index_status_payload(
         if is_unc:
             detail += ". UNC/NAS libraries can be very slow on the first scan; a local LIBRARY_DIR plus NAS sync is recommended."
 
-    return {
+    payload = {
         "library_dir": path_str,
         "library_accessible": library_ok,
         "detail": detail,
         "cache": cache_status,
     }
+    if issues_summary is not None:
+        payload["issues"] = issues_summary
+    if todo_summary is not None:
+        payload["todos"] = todo_summary
+    return payload
 
 
 # ---------------------------------------------------------------------------

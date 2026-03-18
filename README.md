@@ -41,7 +41,6 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ### 🟡 Medium Priority
 
-- Änderungen am Server müssen nicht mit erfolgreichen Tests der Tools abgeschlossen werden. Vielleicht kann man hier etwas Aufwand sparen. Das muss nur im Pre-Commit-Hook stattfinden, Nach Änderungen reicht es nur, die betroffenen Tests nochmal zu machen und auch bei denen nur wenn eine Änderung der Ergebnisse möglich ist. 
 - Clean extensive device-checks. Are they all necessary?
 - iphone-pitfall: der Pause-button ist immernoch ein emoji.
 - Plan: Restrukturiere den Inhalt in Tools komplett neu und schreibe für alles, inklusive aller möglichen oder denkbaren Edge Cases Tests.
@@ -54,7 +53,7 @@ A collection of Python tools for managing personal media libraries — music fil
   - Status-Dashboard (Server, Syncs, Tasks)
   - Metadata-Änderungen in Review-Queue
   - Auto-Sync-Scheduler (regelmäßig NAS scannen)
-- Fehler, Warnungen und Errors sollen zusätzlich zum in das Log auch noch in ein offener Aufgaben-File angefügt werden oder ein Unregelmäßigkeits File. Dieses wird dann von einem Task im Scheduler regelmäßig überprüft und hieraus müssen dann To-Dos erzeugt werden.
+- Fehler/Warnungen/Errors werden zusätzlich als offene Unregelmäßigkeiten in `HOMETOOLS_CACHE_DIR/issues/open_issues.json` gesammelt; der Scheduler bündelt ähnliche Probleme zu stabileren Aufgaben in `todo_candidates.json` und dämpft Wiederholungen per Cooldown (`hometools stream-scheduler --json`)
 - OPTIONALE https-kommunikation. Es handelt sich um einen privaten Streaming-Server und wir erwarten keine Angriffe. HTTP ist schneller.
 - Für englische Serien müssen die Metadaten anders geladen werden und das Programm, welches die Files automatisch umbennt, muss hier die englischen Titel etc. einfügen. Bisher ist das nicht der Fall.
 - Implement a "Recently Added" section in the streaming UI
@@ -170,6 +169,25 @@ hometools sync-video              # copy video files from NAS
 - `make prewarm SERVER=video MODE=missing SCOPE=all` — baut Index-Snapshot + fehlende Thumbnails vor, ohne den Server zu starten
 - `make video-reindex` — erzwingt kompletten Neuaufbau des Video-Index-Snapshots
 - `make serve-all-safe` — startet beide Server im Safe-Mode
+- `make issues` — zeigt aktuell offene Unregelmäßigkeiten aus Warnungen/Errors an
+- `make issues-json` — gibt offene Unregelmäßigkeiten als JSON für Scheduler aus
+- `make issues-errors` — liefert Exit-Code `1`, wenn offene Error/Critical-Issues existieren
+- `make todos` — leitet priorisierte TODO-Kandidaten aus offenen Unregelmäßigkeiten ab
+- `make scheduler-once` — führt den ersten Scheduler-Stub einmal aus, schreibt `todo_candidates.json` und berücksichtigt den TODO-Cooldown
+- `make todo-state TODO_KEY=... TODO_ACTION=acknowledge|snooze|clear` — verwaltet manuelle TODO-Zustände
+
+Für Automatisierung/Scheduler:
+
+```powershell
+hometools stream-issues --json
+hometools stream-todos --json
+hometools stream-scheduler --json
+hometools stream-todo-state --todo-key todo::... --action acknowledge --reason "known issue"
+hometools stream-todo-state --todo-key todo::... --action snooze --seconds 7200 --reason "later"
+hometools stream-issues --only-errors --fail-on-match
+```
+
+Die Status-Endpunkte (`/api/audio/status`, `/api/video/status`) enthalten zusätzlich kompakte `issues`- und `todos`-Summaries, damit spätere Dashboards offene Unregelmäßigkeiten und aktive/snoozed/acknowledged Aufgaben direkt mit anzeigen können.
 
 Safe-Mode (`HOMETOOLS_STREAM_SAFE_MODE=true` oder `--safe-mode`) deaktiviert absichtlich Snapshot-/Thumbnail-Warmups sowie Service-Worker-/Offline-Features. Gedacht als robuster Fallback, wenn NAS/UNC-Pfade oder Cache-Artefakte Probleme machen.
 

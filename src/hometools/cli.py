@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -78,6 +79,78 @@ def build_parser() -> argparse.ArgumentParser:
     stream_prewarm.add_argument("--mode", choices=["missing", "full"], default="missing")
     stream_prewarm.add_argument("--scope", choices=["all", "index", "thumbnails"], default="all")
     stream_prewarm.set_defaults(func=run_stream_prewarm)
+
+    stream_issues = subparsers.add_parser("stream-issues", help="Show currently open irregularities collected from warnings/errors.")
+    stream_issues.add_argument("--json", action="store_true", help="Emit machine-readable JSON for schedulers.")
+    stream_issues.add_argument(
+        "--min-severity",
+        choices=["warning", "error", "critical"],
+        default="warning",
+        help="Only include issues at or above this severity.",
+    )
+    stream_issues.add_argument("--only-errors", action="store_true", help="Shortcut for --min-severity error.")
+    stream_issues.add_argument(
+        "--fail-on-match",
+        action="store_true",
+        help="Return exit code 1 when filtered issues are present (useful for schedulers).",
+    )
+    stream_issues.set_defaults(func=run_stream_issues)
+
+    stream_todos = subparsers.add_parser("stream-todos", help="Derive TODO candidates from the current open streaming irregularities.")
+    stream_todos.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    stream_todos.add_argument(
+        "--min-severity",
+        choices=["warning", "error", "critical"],
+        default="warning",
+        help="Only derive TODOs from issues at or above this severity.",
+    )
+    stream_todos.add_argument("--only-errors", action="store_true", help="Shortcut for --min-severity error.")
+    stream_todos.add_argument("--max-items", type=int, default=None, help="Limit the number of generated TODO candidates.")
+    stream_todos.add_argument(
+        "--fail-on-match",
+        action="store_true",
+        help="Return exit code 1 when filtered TODO candidates are present.",
+    )
+    stream_todos.set_defaults(func=run_stream_todos)
+
+    stream_scheduler = subparsers.add_parser("stream-scheduler", help="Run the first scheduler stub once (issues -> TODO candidates).")
+    stream_scheduler.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    stream_scheduler.add_argument(
+        "--min-severity",
+        choices=["warning", "error", "critical"],
+        default="warning",
+        help="Only process issues at or above this severity.",
+    )
+    stream_scheduler.add_argument("--only-errors", action="store_true", help="Shortcut for --min-severity error.")
+    stream_scheduler.add_argument("--max-items", type=int, default=None, help="Limit the number of generated TODO candidates.")
+    stream_scheduler.add_argument(
+        "--cooldown-seconds",
+        type=int,
+        default=3600,
+        help="Suppress already emitted TODO tasks for this many seconds unless severity increases.",
+    )
+    stream_scheduler.add_argument(
+        "--fail-on-match",
+        action="store_true",
+        help="Return exit code 1 when generated TODO candidates are present.",
+    )
+    stream_scheduler.set_defaults(func=run_stream_scheduler)
+
+    stream_todo_state = subparsers.add_parser(
+        "stream-todo-state", help="Acknowledge, snooze or clear the state of a grouped streaming TODO task."
+    )
+    stream_todo_state.add_argument("--todo-key", required=True, help="Grouped TODO key from stream-todos / stream-scheduler output.")
+    stream_todo_state.add_argument("--action", choices=["acknowledge", "snooze", "clear"], required=True)
+    stream_todo_state.add_argument("--reason", default="", help="Optional note stored with the state change.")
+    stream_todo_state.add_argument("--seconds", type=int, default=3600, help="Snooze duration in seconds (only used with --action snooze).")
+    stream_todo_state.add_argument(
+        "--min-severity",
+        choices=["warning", "error", "critical"],
+        default="warning",
+        help="Severity threshold used to resolve the current TODO candidate.",
+    )
+    stream_todo_state.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    stream_todo_state.set_defaults(func=run_stream_todo_state)
 
     setup_pc = subparsers.add_parser("setup-pycharm", help="Generate PyCharm run configurations for streaming.")
     setup_pc.add_argument("--project-root", type=Path, default=Path.cwd())
@@ -295,6 +368,107 @@ def run_stream_prewarm(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_stream_issues(args: argparse.Namespace) -> int:
+    """Print open irregularities collected from warnings/errors."""
+    from hometools.config import get_cache_dir
+    from hometools.streaming.core.issue_registry import summarize_open_issues
+
+    setup_logging(log_file=None)
+    min_severity = _resolve_min_severity(args)
+    summary = summarize_open_issues(get_cache_dir(), min_severity=min_severity)
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"Open issues >= {summary['min_severity']}: {summary['count']} "
+            f"(warnings={summary['warnings']}, errors={summary['errors']}, criticals={summary['criticals']})"
+        )
+        for item in summary["items"]:
+            print(f"- [{item['severity']}] {item['source']}: {item['message']} (count={item['count']})")
+    return 1 if args.fail_on_match and summary["count"] else 0
+
+
+def run_stream_todos(args: argparse.Namespace) -> int:
+    """Derive and print TODO candidates from open irregularities."""
+    from hometools.config import get_cache_dir
+    from hometools.streaming.core.issue_registry import generate_todo_candidates
+
+    setup_logging(log_file=None)
+    payload = generate_todo_candidates(
+        get_cache_dir(),
+        min_severity=_resolve_min_severity(args),
+        max_items=args.max_items,
+        persist=True,
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"TODO candidates >= {payload['min_severity']}: {payload['count']} (from {payload['source_issue_count']} open issue(s))")
+        for item in payload["items"]:
+            print(f"- [{item['priority']}/{item['severity']}] {item['source']}: {item['message']} (count={item['count']})")
+    return 1 if args.fail_on_match and payload["count"] else 0
+
+
+def run_stream_scheduler(args: argparse.Namespace) -> int:
+    """Run the first scheduler stub once and persist TODO candidates."""
+    from hometools.config import get_cache_dir
+    from hometools.streaming.core.issue_registry import run_scheduler_once
+
+    setup_logging(log_file=None)
+    result = run_scheduler_once(
+        get_cache_dir(),
+        min_severity=_resolve_min_severity(args),
+        max_items=args.max_items,
+        cooldown_seconds=max(int(getattr(args, "cooldown_seconds", 3600)), 0),
+    )
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"Scheduler run complete: status={result['status']}, open_issues={result['open_issue_count']}, "
+            f"todo_candidates={result['todo_count']}, active={result['active_todo_count']}, suppressed={result['suppressed_todo_count']}"
+        )
+        print(f"TODO file: {result['todo_candidates_path']}")
+        top_todo = result.get("top_todo")
+        if isinstance(top_todo, dict):
+            print(f"Top TODO: [{top_todo.get('priority', '?')}] {top_todo.get('message', '')}")
+    return 1 if args.fail_on_match and result["active_todo_count"] else 0
+
+
+def run_stream_todo_state(args: argparse.Namespace) -> int:
+    """Update acknowledge/snooze state for a grouped TODO task."""
+    from hometools.config import get_cache_dir
+    from hometools.streaming.core.issue_registry import acknowledge_todo, clear_todo_state, snooze_todo
+
+    setup_logging(log_file=None)
+    if args.action == "snooze" and int(args.seconds) <= 0:
+        print("--seconds must be > 0 for snooze")
+        return 2
+
+    if args.action == "acknowledge":
+        result = acknowledge_todo(get_cache_dir(), args.todo_key, reason=args.reason, min_severity=_resolve_min_severity(args))
+    elif args.action == "snooze":
+        result = snooze_todo(
+            get_cache_dir(),
+            args.todo_key,
+            seconds=args.seconds,
+            reason=args.reason,
+            min_severity=_resolve_min_severity(args),
+        )
+    else:
+        result = clear_todo_state(get_cache_dir(), args.todo_key)
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"TODO state update: ok={result.get('ok', False)}, key={result.get('todo_key', '')}, state={result.get('state', '')}")
+        if result.get("message"):
+            print(result["message"])
+        if result.get("snoozed_until"):
+            print(f"Snoozed until: {result['snoozed_until']}")
+    return 0 if result.get("ok", False) else 1
+
+
 def run_streaming_config(args: argparse.Namespace) -> int:
     """Print the current streaming configuration."""
     from hometools.streaming.setup import print_streaming_config
@@ -337,6 +511,11 @@ def _run_sync(args, default_source, default_target, sync_fn, label: str) -> int:
     else:
         print(f"Sync complete: {len(operations)} {label} file(s) copied.")
     return 0
+
+
+def _resolve_min_severity(args: argparse.Namespace) -> str:
+    """Resolve the effective severity threshold for issue-derived commands."""
+    return "error" if getattr(args, "only_errors", False) else args.min_severity
 
 
 def main(argv: Sequence[str] | None = None) -> int:
