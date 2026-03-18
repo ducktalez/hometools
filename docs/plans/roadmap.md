@@ -25,9 +25,9 @@
 - Serverstatus-Seite mit Managementaufgaben
 - Metadaten-Änderungen vom Handy: Review-Queue → erst bei "Akzeptieren" schreiben
 - Dynamisches Synchronisieren: Änderungs-DB für zielgerichtetes Handy-Update
-- Scheduler für planbare, zyklische Aufgaben
+- Scheduler für planbare, zyklische Aufgaben (erster Stub: Issues → `todo_candidates.json`)
 - Management-Server: Sync + Streaming steuern, NAS-Ordner automatisch scannen
-- Fehler/Warnungen zusätzlich in offenes Aufgaben-File → Scheduler prüft → TODOs erzeugen
+- Fehler/Warnungen zusätzlich in offenes Aufgaben-File → Scheduler prüft → TODOs erzeugen (Grundlage implementiert)
 
 ### Streaming UI
 - "Recently Added"-Sektion

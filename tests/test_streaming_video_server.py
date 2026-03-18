@@ -37,13 +37,41 @@ def test_video_items_returns_loading_state_while_index_builds(tmp_path):
 def test_video_status_endpoint_returns_cache_diagnostics(tmp_path):
     client = TestClient(create_app(tmp_path))
 
-    with patch("hometools.streaming.video.server._video_index_cache.status", return_value={"building": True, "cached_count": 0}):
+    with (
+        patch("hometools.streaming.video.server._video_index_cache.status", return_value={"building": True, "cached_count": 0}),
+        patch(
+            "hometools.streaming.core.issue_registry.summarize_issue_and_todos",
+            return_value={
+                "issues": {
+                    "count": 1,
+                    "warnings": 1,
+                    "errors": 0,
+                    "criticals": 0,
+                    "items": [],
+                    "top_issue": None,
+                    "min_severity": "WARNING",
+                },
+                "todos": {
+                    "count": 1,
+                    "source_issue_count": 1,
+                    "active_count": 1,
+                    "acknowledged_count": 0,
+                    "snoozed_count": 0,
+                    "cooldown_count": 0,
+                    "top_todo": None,
+                    "min_severity": "WARNING",
+                },
+            },
+        ),
+    ):
         response = client.get("/api/video/status")
 
     assert response.status_code == 200
     data = response.json()
     assert "detail" in data
     assert "cache" in data
+    assert "issues" in data
+    assert "todos" in data
     assert data["cache"]["building"] is True
 
 
