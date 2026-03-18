@@ -18,6 +18,7 @@ _LOCK = threading.Lock()
 _VERSION = 1
 _DEFAULT_SEVERITY = "WARNING"
 _DEFAULT_TODO_COOLDOWN_SECONDS = 3600
+_DEFAULT_TODO_UI_LIMIT = 3
 
 
 def _utc_now() -> str:
@@ -462,6 +463,29 @@ def _build_todo_summary_from_payload(payload: dict[str, Any], todo_state: dict[s
         else:
             active_items.append(item)
     top_todo = active_items[0] if active_items else (items[0] if items else None)
+    state_items = todo_state.get("items") if isinstance(todo_state, dict) else None
+    if not isinstance(state_items, dict):
+        state_items = {}
+
+    def _public_item(item: dict[str, Any]) -> dict[str, Any]:
+        todo_key = str(item.get("todo_key", ""))
+        persisted = state_items.get(todo_key)
+        persisted_dict = persisted if isinstance(persisted, dict) else {}
+        runtime_state = _todo_runtime_state(todo_state, item, cooldown_seconds)
+        return {
+            "todo_key": todo_key,
+            "severity": normalize_severity(str(item.get("severity", _DEFAULT_SEVERITY))),
+            "priority": str(item.get("priority", "P3")),
+            "category": str(item.get("category", "general")),
+            "message": str(item.get("message", "")),
+            "suggested_action": str(item.get("suggested_action", "")),
+            "state": runtime_state,
+            "reason": str(persisted_dict.get("reason", "")),
+            "snoozed_until": persisted_dict.get("snoozed_until"),
+            "count": int(item.get("count", 0)),
+        }
+
+    public_items = [_public_item(item) for item in items[:_DEFAULT_TODO_UI_LIMIT]]
     return {
         "min_severity": payload.get("min_severity", normalize_severity(_DEFAULT_SEVERITY)),
         "count": len(items),
@@ -470,6 +494,7 @@ def _build_todo_summary_from_payload(payload: dict[str, Any], todo_state: dict[s
         "acknowledged_count": len(acknowledged_items),
         "snoozed_count": len(snoozed_items),
         "cooldown_count": len(cooldown_items),
+        "items": public_items,
         "top_todo": top_todo,
     }
 
@@ -565,6 +590,31 @@ def clear_todo_state(cache_dir: Path, todo_key: str) -> dict[str, Any]:
     return _write_todo_state_item(cache_dir, todo_key, state="cleared")
 
 
+def update_todo_state_action(
+    cache_dir: Path,
+    *,
+    todo_key: str,
+    action: str,
+    reason: str = "",
+    seconds: int = _DEFAULT_TODO_COOLDOWN_SECONDS,
+    min_severity: str = _DEFAULT_SEVERITY,
+) -> dict[str, Any]:
+    """Apply a UI/API friendly TODO state action and return the operation result."""
+    normalized_action = str(action or "").strip().lower()
+    if normalized_action == "acknowledge":
+        return acknowledge_todo(cache_dir, todo_key, reason=reason, min_severity=min_severity)
+    if normalized_action == "snooze":
+        return snooze_todo(cache_dir, todo_key, seconds=max(int(seconds), 1), reason=reason, min_severity=min_severity)
+    if normalized_action == "clear":
+        return clear_todo_state(cache_dir, todo_key)
+    return {
+        "ok": False,
+        "todo_key": todo_key,
+        "state": "invalid",
+        "message": f"Unsupported TODO action: {action}",
+    }
+
+
 def summarize_todos(
     cache_dir: Path,
     *,
@@ -589,6 +639,7 @@ def summarize_todos(
             "acknowledged_count": 0,
             "snoozed_count": 0,
             "cooldown_count": 0,
+            "items": [],
             "top_todo": None,
         }
 
@@ -621,6 +672,7 @@ def summarize_issue_and_todos(
                 "acknowledged_count": 0,
                 "snoozed_count": 0,
                 "cooldown_count": 0,
+                "items": [],
                 "top_todo": None,
             },
         }

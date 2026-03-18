@@ -8,7 +8,7 @@ TODO_KEY ?=
 TODO_ACTION ?= acknowledge
 TODO_SECONDS ?= 3600
 
-.PHONY: help lint format test parity streaming-config issues issues-json issues-errors todos todos-json scheduler-once todo-state \
+.PHONY: help lint format test parity streaming-config issues issues-json issues-errors todos todos-json scheduler-once todo-state dashboard dashboard-json \
 	serve-audio serve-video serve-all \
 	serve-audio-safe serve-video-safe serve-all-safe \
 	reset reset-hard reset-all-hard \
@@ -28,6 +28,8 @@ help:
 	@echo "  todos-json          - derive TODO candidates as JSON"
 	@echo "  scheduler-once      - run the first scheduler stub once and persist todo_candidates.json"
 	@echo "  todo-state          - acknowledge/snooze/clear TODO state (TODO_KEY=..., TODO_ACTION=..., TODO_SECONDS=... for snooze)"
+	@echo "  dashboard           - show combined issues/TODOs/scheduler dashboard"
+	@echo "  dashboard-json      - show combined dashboard as JSON"
 	@echo "  serve-audio         - start audio server"
 	@echo "  serve-video         - start video server"
 	@echo "  serve-all           - start both servers"
@@ -79,6 +81,12 @@ scheduler-once:
 
 todo-state:
 	$(PYTHON) -m hometools stream-todo-state --todo-key "$(TODO_KEY)" --action $(TODO_ACTION) --seconds $(TODO_SECONDS)
+
+dashboard:
+	$(PYTHON) -m hometools stream-dashboard
+
+dashboard-json:
+	$(PYTHON) -m hometools stream-dashboard --json
 
 serve-audio:
 	$(PYTHON) -m hometools serve-audio

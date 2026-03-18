@@ -26,6 +26,7 @@ venv/
 # Local data & test artifacts
 wa_data/
 tmp/
+.tmp_*/
 
 # OS
 Thumbs.db

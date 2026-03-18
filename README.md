@@ -102,6 +102,10 @@ A collection of Python tools for managing personal media libraries — music fil
   - Es sollte überlegt werden ob nicht mit N8N hier eine Logik generiert werden kann, auf jede Person zugeschnitten, damit alle Ordner richtig interpretiert werden.
 - Wir sollten eine Liste führen mit Technologien, die in Zukunft eventuell ersetzt werden sollen. Entweder in Architecture oder Implementation Plan sollte hier vielleicht auch ein Diskussionsbereich für genau solche Überlegungen festgelegt werden. Wo hältst du es für am sinnvollsten? 
 - Für den Hard Reset sollte ein Parameter prüfen, ob es sich um einen Produktivstand handelt. Wenn ja, sollte der Hard Reset nicht möglich sein. 
+- Es sollten für den Nutzer potenzielle Chores-Aufgaben angelegt werden. 
+  - Ein Beispiel für so eine Aufgabe wäre, die Videos zu analysieren, die sich im Download Folder befinden, die aber in relativ schlechter Qualität vorhanden sind. 
+    - Auch fehlende Folgen bei Serien sollten markiert werden.
+    - Für die Ausnahmen sollte ein JSON-File oder in der Datenbank gespeichert werden. Warum man sich darum nicht kümmert bzw. einfach zu ignorieren sollte, auch akzeptabel sein. 
 
 ## Features
 
@@ -188,6 +192,8 @@ hometools stream-issues --only-errors --fail-on-match
 ```
 
 Die Status-Endpunkte (`/api/audio/status`, `/api/video/status`) enthalten zusätzlich kompakte `issues`- und `todos`-Summaries, damit spätere Dashboards offene Unregelmäßigkeiten und aktive/snoozed/acknowledged Aufgaben direkt mit anzeigen können.
+
+Die gemeinsame Streaming-UI nutzt diese `todos`-Summary inzwischen direkt und kann den obersten Task über denselben Shared-Core-Flow bestätigen, snoozen oder zurücksetzen. Beide Server verwenden dafür identische Endpunkte: `POST /api/audio/todos/state` bzw. `POST /api/video/todos/state`.
 
 Safe-Mode (`HOMETOOLS_STREAM_SAFE_MODE=true` oder `--safe-mode`) deaktiviert absichtlich Snapshot-/Thumbnail-Warmups sowie Service-Worker-/Offline-Features. Gedacht als robuster Fallback, wenn NAS/UNC-Pfade oder Cache-Artefakte Probleme machen.
 

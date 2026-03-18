@@ -1131,7 +1131,6 @@ def render_player_js(
   var OFFLINE_ENABLED = """
         + ("true" if enable_offline else "false")
         + """;
-  var STATUS_PATH = API_PATH.substring(0, API_PATH.lastIndexOf('/')) + '/status';
 
   /* Placeholder SVG thumbnails — same dimensions as real thumbs so layout never shifts.
      Simple dark-grey squares with a subtle icon silhouette. */
@@ -1218,6 +1217,7 @@ def render_player_js(
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(function() { _toastEl.classList.remove('visible'); }, durationMs || 4000);
   }
+
 """
         + waveform_setup_js
         + """
@@ -1303,12 +1303,6 @@ def render_player_js(
     }, 1500);
   }
 
-  function fetchCatalogStatus() {
-    return fetch(STATUS_PATH, { cache: 'no-store' })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .catch(function() { return null; });
-  }
-
   function loadInitialCatalog() {
     if (allItems.length) {
       console.info('Initial catalog already present in page payload:', allItems.length, 'items');
@@ -1329,13 +1323,11 @@ def render_player_js(
           throw new Error(data.error);
         }
         if (data && data.loading) {
-          console.info('Initial catalog still building; loading status endpoint');
-          return fetchCatalogStatus().then(function(status) {
-            var detail = status && status.detail ? status.detail : 'Library cache is warming in the background.';
-            showLoadingState(detail);
-            scheduleInitialCatalogRetry(detail);
-            return [];
-          });
+          var detail = data.detail || 'Library cache is warming in the background.';
+          console.info('Initial catalog still building:', detail);
+          showLoadingState(detail);
+          scheduleInitialCatalogRetry(detail);
+          return [];
         }
         if (initialCatalogRetryTimer) {
           window.clearTimeout(initialCatalogRetryTimer);
