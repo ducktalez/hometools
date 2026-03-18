@@ -85,6 +85,31 @@ class TestServerEndpointParity:
         assert "issues" in video_status.json()
         assert "todos" in audio_status.json()
         assert "todos" in video_status.json()
+        assert "items" in audio_status.json()["todos"]
+        assert "items" in video_status.json()["todos"]
+
+    def test_both_servers_have_todo_state_endpoint(self, tmp_path, monkeypatch):
+        """Both servers must expose the same TODO action endpoint shape."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.core.issue_registry import record_issue
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        monkeypatch.setenv("HOMETOOLS_CACHE_DIR", str(tmp_path))
+        record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        audio_todo_key = audio_client.get("/api/audio/status").json()["todos"]["items"][0]["todo_key"]
+        video_todo_key = video_client.get("/api/video/status").json()["todos"]["items"][0]["todo_key"]
+
+        audio_resp = audio_client.post("/api/audio/todos/state", json={"todo_key": audio_todo_key, "action": "acknowledge"})
+        video_resp = video_client.post("/api/video/todos/state", json={"todo_key": video_todo_key, "action": "acknowledge"})
+
+        assert audio_resp.status_code == 200
+        assert video_resp.status_code == 200
+        assert audio_resp.json().keys() == video_resp.json().keys()
 
     def test_both_servers_have_icons(self):
         """Both servers must provide icon endpoints."""

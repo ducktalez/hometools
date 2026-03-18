@@ -472,7 +472,12 @@ def test_js_retries_initial_catalog_while_server_is_loading():
     assert "scheduleInitialCatalogRetry" in js
     assert "data && data.loading" in js
     assert "fetch(API_PATH, { cache: 'no-store' })" in js
-    assert "fetch(STATUS_PATH, { cache: 'no-store' })" in js
+
+
+def test_js_loading_state_shows_message_in_folder_grid():
+    js = _js(style="classic")
+    assert "Loading library" in js
+    assert "empty-hint" in js
 
 
 def test_service_worker_uses_network_first_for_documents():

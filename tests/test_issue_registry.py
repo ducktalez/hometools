@@ -287,6 +287,20 @@ def test_summarize_issue_and_todos_returns_both_sections(tmp_path):
     assert result["todos"]["active_count"] == 1
 
 
+def test_summarize_todos_exposes_ui_items_with_runtime_state(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
+    todo_key = generate_todo_candidates(tmp_path)["items"][0]["todo_key"]
+    acknowledge_todo(tmp_path, todo_key, reason="known")
+
+    summary = summarize_todos(tmp_path)
+
+    assert summary["items"]
+    assert summary["items"][0]["todo_key"] == todo_key
+    assert summary["items"][0]["state"] == "acknowledged"
+    assert summary["items"][0]["reason"] == "known"
+    assert "suggested_action" in summary["items"][0]
+
+
 def test_stream_todos_returns_nonzero_when_candidates_exist(monkeypatch, tmp_path):
     monkeypatch.setenv("HOMETOOLS_CACHE_DIR", str(tmp_path))
     record_issue(tmp_path, source="hometools.test", severity="ERROR", message="boom")
@@ -382,3 +396,125 @@ def test_stream_todo_state_clear_reactivates_todo(monkeypatch, tmp_path):
 
     assert rc == 0
     assert summarize_todos(tmp_path)["active_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+
+def test_build_dashboard_data_returns_all_sections(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data
+
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
+
+    data = build_dashboard_data(tmp_path)
+
+    assert "issues" in data
+    assert "todos" in data
+    assert "last_scheduler_run" in data
+    assert "cache_dir" in data
+    assert "min_severity" in data
+    assert data["issues"]["count"] == 1
+    assert data["todos"]["count"] == 1
+
+
+def test_build_dashboard_data_empty_cache(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data
+
+    data = build_dashboard_data(tmp_path)
+
+    assert data["issues"]["count"] == 0
+    assert data["todos"]["count"] == 0
+    assert data["last_scheduler_run"] is None
+
+
+def test_build_dashboard_data_includes_last_scheduler_run(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data
+
+    record_issue(tmp_path, source="hometools.test", severity="ERROR", message="boom")
+    run_scheduler_once(tmp_path, cooldown_seconds=3600)
+
+    data = build_dashboard_data(tmp_path)
+
+    assert data["last_scheduler_run"] is not None
+    assert data["last_scheduler_run"]["status"] == "ok"
+
+
+def test_format_dashboard_table_contains_box_drawing(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data, format_dashboard_table
+
+    record_issue(tmp_path, source="hometools.test", severity="WARNING", message="warn")
+
+    data = build_dashboard_data(tmp_path)
+    table = format_dashboard_table(data)
+
+    assert "┌" in table
+    assert "└" in table
+    assert "│" in table
+    assert "Issues" in table
+    assert "TODOs" in table
+    assert "Scheduler" in table
+
+
+def test_format_dashboard_table_shows_severity_counts(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data, format_dashboard_table
+
+    record_issue(tmp_path, source="hometools.a", severity="WARNING", message="warn")
+    record_issue(tmp_path, source="hometools.b", severity="ERROR", message="err")
+
+    data = build_dashboard_data(tmp_path)
+    table = format_dashboard_table(data)
+
+    assert "W=1" in table
+    assert "E=1" in table
+
+
+def test_stream_dashboard_json_output(monkeypatch, tmp_path):
+    from hometools.cli import run_stream_dashboard
+
+    monkeypatch.setenv("HOMETOOLS_CACHE_DIR", str(tmp_path))
+    record_issue(tmp_path, source="hometools.test", severity="ERROR", message="boom")
+
+    rc = run_stream_dashboard(
+        Namespace(
+            json=True,
+            min_severity="warning",
+            only_errors=False,
+            max_items=5,
+            fail_on_match=False,
+        )
+    )
+
+    assert rc == 0
+
+
+def test_stream_dashboard_fail_on_active_todos(monkeypatch, tmp_path):
+    from hometools.cli import run_stream_dashboard
+
+    monkeypatch.setenv("HOMETOOLS_CACHE_DIR", str(tmp_path))
+    record_issue(tmp_path, source="hometools.test", severity="ERROR", message="boom")
+
+    rc = run_stream_dashboard(
+        Namespace(
+            json=True,
+            min_severity="warning",
+            only_errors=False,
+            max_items=5,
+            fail_on_match=True,
+        )
+    )
+
+    assert rc == 1
+
+
+def test_build_dashboard_data_respects_max_todo_items(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data
+
+    record_issue(tmp_path, source="hometools.a", severity="WARNING", message="warn-a")
+    record_issue(tmp_path, source="hometools.b", severity="ERROR", message="err-b")
+    record_issue(tmp_path, source="hometools.c", severity="CRITICAL", message="crit-c")
+
+    data = build_dashboard_data(tmp_path, max_todo_items=1)
+
+    assert len(data["todos"]["items"]) == 1

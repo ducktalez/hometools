@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from hometools.streaming.core.issue_registry import record_issue
 from hometools.streaming.video.server import create_app
 
 
@@ -22,10 +23,10 @@ def test_video_items_returns_loading_state_while_index_builds(tmp_path):
     client = TestClient(create_app(tmp_path))
 
     with (
-        patch("hometools.streaming.video.server.check_library_accessible", return_value=(True, "ok")),
         patch("hometools.streaming.video.server._video_index_cache.ensure_background_refresh", return_value=True),
         patch("hometools.streaming.video.server._video_index_cache.get_cached", return_value=[]),
         patch("hometools.streaming.video.server._video_index_cache.is_building", return_value=True),
+        patch("hometools.streaming.video.server.check_library_accessible", return_value=(True, "ok")),
     ):
         response = client.get("/api/video/items")
 
@@ -58,6 +59,7 @@ def test_video_status_endpoint_returns_cache_diagnostics(tmp_path):
                     "acknowledged_count": 0,
                     "snoozed_count": 0,
                     "cooldown_count": 0,
+                    "items": [{"todo_key": "todo::1", "state": "active", "message": "test"}],
                     "top_todo": None,
                     "min_severity": "WARNING",
                 },
@@ -73,6 +75,24 @@ def test_video_status_endpoint_returns_cache_diagnostics(tmp_path):
     assert "issues" in data
     assert "todos" in data
     assert data["cache"]["building"] is True
+
+
+def test_video_todo_state_endpoint_snoozes_and_returns_updated_todos(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOMETOOLS_CACHE_DIR", str(tmp_path))
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
+    client = TestClient(create_app(tmp_path))
+
+    todo_key = client.get("/api/video/status").json()["todos"]["items"][0]["todo_key"]
+    response = client.post(
+        "/api/video/todos/state",
+        json={"todo_key": todo_key, "action": "snooze", "seconds": 120, "reason": "later"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["result"]["state"] == "snoozed"
+    assert data["todos"]["snoozed_count"] == 1
 
 
 def test_video_home_safe_mode_omits_service_worker_registration(tmp_path):

@@ -136,6 +136,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     stream_scheduler.set_defaults(func=run_stream_scheduler)
 
+    stream_dashboard = subparsers.add_parser(
+        "stream-dashboard", help="Show a combined dashboard of open issues, TODO candidates and scheduler state."
+    )
+    stream_dashboard.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    stream_dashboard.add_argument(
+        "--min-severity",
+        choices=["warning", "error", "critical"],
+        default="warning",
+        help="Only include items at or above this severity.",
+    )
+    stream_dashboard.add_argument("--only-errors", action="store_true", help="Shortcut for --min-severity error.")
+    stream_dashboard.add_argument("--max-items", type=int, default=5, help="Max TODO items to display.")
+    stream_dashboard.add_argument(
+        "--fail-on-match",
+        action="store_true",
+        help="Return exit code 1 when active TODO candidates are present.",
+    )
+    stream_dashboard.set_defaults(func=run_stream_dashboard)
+
     stream_todo_state = subparsers.add_parser(
         "stream-todo-state", help="Acknowledge, snooze or clear the state of a grouped streaming TODO task."
     )
@@ -467,6 +486,25 @@ def run_stream_todo_state(args: argparse.Namespace) -> int:
         if result.get("snoozed_until"):
             print(f"Snoozed until: {result['snoozed_until']}")
     return 0 if result.get("ok", False) else 1
+
+
+def run_stream_dashboard(args: argparse.Namespace) -> int:
+    """Show a combined dashboard of open issues, TODOs and scheduler state."""
+    from hometools.config import get_cache_dir
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data, format_dashboard_table
+
+    setup_logging(log_file=None)
+    data = build_dashboard_data(
+        get_cache_dir(),
+        min_severity=_resolve_min_severity(args),
+        max_todo_items=max(int(getattr(args, "max_items", 5)), 1),
+    )
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        print(format_dashboard_table(data))
+    active = int((data.get("todos") or {}).get("active_count", 0))
+    return 1 if args.fail_on_match and active else 0
 
 
 def run_streaming_config(args: argparse.Namespace) -> int:

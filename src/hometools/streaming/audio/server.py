@@ -157,17 +157,17 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
     def audio_tracks(q: str | None = None, artist: str | None = None, sort: str = "artist") -> dict[str, object]:
         t0 = time.monotonic()
         logger.info("GET /api/audio/tracks — start (q=%r, artist=%r, sort=%r)", q, artist, sort)
-        ok, msg = check_library_accessible(resolved_library_dir)
-        if not ok:
-            return {
-                "library_dir": str(resolved_library_dir),
-                "count": 0,
-                "items": [],
-                "artists": [],
-                "error": msg,
-                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-            }
         if resolved_safe_mode:
+            ok, msg = check_library_accessible(resolved_library_dir)
+            if not ok:
+                return {
+                    "library_dir": str(resolved_library_dir),
+                    "count": 0,
+                    "items": [],
+                    "artists": [],
+                    "error": msg,
+                    "query": {"q": q or "", "artist": artist or "all", "sort": sort},
+                }
             tracks = build_audio_index(resolved_library_dir, cache_dir=None)
             filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
             logger.info(
@@ -191,9 +191,19 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         )
         tracks = _audio_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
         building = _audio_index_cache.is_building()
-        cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
         cache_elapsed = time.monotonic() - cache_t0
         if building and not tracks:
+            ok, msg = check_library_accessible(resolved_library_dir)
+            if not ok:
+                return {
+                    "library_dir": str(resolved_library_dir),
+                    "count": 0,
+                    "items": [],
+                    "artists": [],
+                    "error": msg,
+                    "query": {"q": q or "", "artist": artist or "all", "sort": sort},
+                }
+            cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
             status_payload = build_index_status_payload(
                 library_dir=resolved_library_dir,
                 item_label="audio",
@@ -218,6 +228,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         query_t0 = time.monotonic()
         filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
         query_elapsed = time.monotonic() - query_t0
+        cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
         logger.info(
             "GET /api/audio/tracks — %d/%d items in %.1fs (cache=%.2fs, query=%.2fs, refresh_started=%s, building=%s, q=%r, artist=%r, sort=%r)",
             len(filtered),
@@ -278,6 +289,34 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             todo_summary=issue_todo_summary["todos"],
         )
         return payload
+
+    @app.post("/api/audio/todos/state")
+    def audio_todo_state(payload: dict[str, object]) -> dict[str, object]:
+        from hometools.streaming.core.issue_registry import summarize_todos, update_todo_state_action
+
+        todo_key = str(payload.get("todo_key") or "").strip()
+        action = str(payload.get("action") or "").strip().lower()
+        if not todo_key:
+            raise HTTPException(status_code=400, detail="todo_key is required")
+        if action not in {"acknowledge", "snooze", "clear"}:
+            raise HTTPException(status_code=400, detail="action must be acknowledge, snooze or clear")
+
+        result = update_todo_state_action(
+            resolved_cache_dir,
+            todo_key=todo_key,
+            action=action,
+            reason=str(payload.get("reason") or "").strip(),
+            seconds=int(payload.get("seconds") or 3600),
+        )
+        if not bool(result.get("ok", False)):
+            detail = str(result.get("message") or "TODO state update failed")
+            raise HTTPException(status_code=404 if result.get("state") == "missing" else 400, detail=detail)
+
+        return {
+            "ok": True,
+            "result": result,
+            "todos": summarize_todos(resolved_cache_dir),
+        }
 
     @app.get("/api/audio/metadata")
     def audio_metadata(path: str) -> dict[str, object]:
