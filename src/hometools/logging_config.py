@@ -3,6 +3,7 @@
 import logging
 import logging.handlers
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -19,19 +20,21 @@ def get_log_dir() -> Path:
     return log_dir
 
 
-def setup_logging(level=logging.INFO, log_file: str | None = "hometools.log"):
+def setup_logging(level=logging.INFO, log_file: str | None = "hometools.log", *, log_name: str = "hometools"):
     """Configure logging for the entire hometools package.
 
     Call once at application startup (e.g. in your CLI entry-point).
 
     When *log_file* is ``"auto"`` the log is written to
-    ``~/hometools-cache/logs/hometools.log`` (rotated daily-ish by size).
+    ``~/hometools-cache/logs/<log_name>-YYYYMMDD-HHMMSS.log``.
     Pass ``None`` to disable file logging entirely.
     """
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
 
     if log_file == "auto":
-        path = get_log_dir() / "hometools.log"
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        safe_log_name = log_name.replace("/", "-").replace("\\", "-").strip() or "hometools"
+        path = get_log_dir() / f"{safe_log_name}-{timestamp}.log"
         file_handler = logging.handlers.RotatingFileHandler(
             path,
             maxBytes=5 * 1024 * 1024,
@@ -46,4 +49,5 @@ def setup_logging(level=logging.INFO, log_file: str | None = "hometools.log"):
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=handlers,
+        force=True,
     )

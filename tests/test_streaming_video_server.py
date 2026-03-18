@@ -45,3 +45,25 @@ def test_video_status_endpoint_returns_cache_diagnostics(tmp_path):
     assert "detail" in data
     assert "cache" in data
     assert data["cache"]["building"] is True
+
+
+def test_video_home_safe_mode_omits_service_worker_registration(tmp_path):
+    client = TestClient(create_app(tmp_path, safe_mode=True))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "serviceWorker.register('/sw.js')" not in response.text
+    assert 'id="offline-btn"' not in response.text
+    assert "Safe Mode" in response.text
+
+
+def test_video_items_safe_mode_reports_flag(tmp_path):
+    video = tmp_path / "Movie.mp4"
+    video.write_bytes(b"")
+    client = TestClient(create_app(tmp_path, safe_mode=True))
+
+    response = client.get("/api/video/items")
+
+    assert response.status_code == 200
+    assert response.json()["safe_mode"] is True

@@ -6,7 +6,9 @@ from hometools.config import (
     get_audio_library_dir,
     get_audio_nas_dir,
     get_stream_bind,
+    get_stream_index_cache_ttl,
     get_stream_port,
+    get_stream_safe_mode,
     get_video_library_dir,
     get_video_nas_dir,
 )
@@ -41,3 +43,13 @@ def test_stream_bind_uses_defaults_when_env_missing(monkeypatch):
     monkeypatch.delenv("HOMETOOLS_STREAM_HOST", raising=False)
     monkeypatch.delenv("HOMETOOLS_STREAM_PORT", raising=False)
     assert get_stream_bind() == ("127.0.0.1", 8010)
+
+
+def test_stream_index_cache_ttl_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_STREAM_INDEX_CACHE_TTL", "42")
+    assert get_stream_index_cache_ttl() == 42
+
+
+def test_stream_safe_mode_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_STREAM_SAFE_MODE", "true")
+    assert get_stream_safe_mode() is True
