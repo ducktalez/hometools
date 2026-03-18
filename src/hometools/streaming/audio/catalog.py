@@ -16,6 +16,8 @@ INSTRUCTIONS (local):
 
 from __future__ import annotations
 
+import logging
+import time
 from pathlib import Path
 
 from hometools.audio.metadata import audiofile_assume_artist_title, get_popm_rating
@@ -29,6 +31,8 @@ from hometools.utils import get_audio_files_in_folder
 
 # Legacy alias so existing imports keep working
 AudioTrack = MediaItem
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "AudioTrack",
@@ -51,10 +55,22 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
+    t0 = time.monotonic()
     root = safe_resolve(library_dir)
+    scan_t0 = time.monotonic()
+    audio_files = get_audio_files_in_folder(root)
+    scan_elapsed = time.monotonic() - scan_t0
     tracks: list[MediaItem] = []
+    cached_thumbnails = 0
 
-    for audio_file in get_audio_files_in_folder(root):
+    logger.info(
+        "Building audio index for %s — %d files discovered in %.2fs",
+        root,
+        len(audio_files),
+        scan_elapsed,
+    )
+
+    for audio_file in audio_files:
         relative_path = safe_resolve(audio_file).relative_to(root).as_posix()
         artist, title = audiofile_assume_artist_title(audio_file)
 
@@ -62,6 +78,7 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         if cache_dir is not None:
             thumb = check_thumbnail_cached(cache_dir, "audio", relative_path)
             if thumb is not None:
+                cached_thumbnails += 1
                 thumbnail_url = f"/thumb?path={encode_relative_path(relative_path)}"
 
         # POPM rating: 0–255 → 0.0–5.0 stars
@@ -80,6 +97,14 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             )
         )
 
+    elapsed = time.monotonic() - t0
+    logger.info(
+        "Audio index built: %d items in %.1fs [scan=%.2fs, cached_thumbs=%d]",
+        len(tracks),
+        elapsed,
+        scan_elapsed,
+        cached_thumbnails,
+    )
     return sort_tracks(tracks, sort_by="artist")
 
 

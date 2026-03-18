@@ -16,8 +16,8 @@ Es beschreibt den **konkreten Ablauf für das aktuelle Setup** in diesem Reposit
 Diese Werte wurden lokal aus der aktuellen Konfiguration gelesen:
 
 - `HOMETOOLS_STREAM_HOST = 0.0.0.0`
-- Audio-Port: `8000`
-- Video-Port: `8001`
+- Audio-Port: `8010`
+- Video-Port: `8011`
 - `HOMETOOLS_VIDEO_PWA_DISPLAY = minimal-ui`
 
 Verfügbare IPv4-Adressen auf dem Rechner:
@@ -28,8 +28,8 @@ Verfügbare IPv4-Adressen auf dem Rechner:
 
 > Für das iPhone im Heimnetz solltest du sehr wahrscheinlich diese URLs verwenden:
 >
-> - Audio: `http://192.168.178.21:8000/`
-> - Video: `http://192.168.178.21:8001/`
+> - Audio: `http://192.168.178.21:8010/`
+> - Video: `http://192.168.178.21:8011/`
 
 Wenn der Rechner oder das Netz wechselt, bitte die vom CLI-Banner angezeigten Adressen bevorzugen.
 
@@ -77,7 +77,7 @@ Warum so?
 Auf dem iPhone in Safari öffnen:
 
 ```text
-http://192.168.178.21:8000/
+http://192.168.178.21:8010/
 ```
 
 Prüfen:
@@ -91,7 +91,7 @@ Prüfen:
 Dann in Safari öffnen:
 
 ```text
-http://192.168.178.21:8001/
+http://192.168.178.21:8011/
 ```
 
 Prüfen:

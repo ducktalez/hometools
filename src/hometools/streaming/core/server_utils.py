@@ -125,6 +125,39 @@ code {{ background:#282828; padding:0.15rem 0.4rem; border-radius:4px; font-size
 </div></body></html>"""
 
 
+def build_index_status_payload(
+    *,
+    library_dir: Path,
+    item_label: str,
+    library_ok: bool,
+    library_message: str,
+    cache_status: dict[str, object],
+) -> dict[str, object]:
+    """Return a normalized API payload describing index-build state.
+
+    Used by both audio and video servers so the frontend can diagnose slow
+    background scans consistently.
+    """
+    path_str = str(library_dir)
+    is_unc = path_str.startswith("\\\\") or path_str.startswith("//")
+    detail = library_message
+    if library_ok and bool(cache_status.get("building")):
+        runtime = cache_status.get("build_running_for_seconds")
+        if runtime is not None:
+            detail = f"Building {item_label} index in background for {float(runtime):.1f}s"
+        else:
+            detail = f"Building {item_label} index in background"
+        if is_unc:
+            detail += ". UNC/NAS libraries can be very slow on the first scan; a local LIBRARY_DIR plus NAS sync is recommended."
+
+    return {
+        "library_dir": path_str,
+        "library_accessible": library_ok,
+        "detail": detail,
+        "cache": cache_status,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Path resolution
 # ---------------------------------------------------------------------------
@@ -205,7 +238,7 @@ def render_pwa_manifest(
 def render_pwa_service_worker() -> str:
     """Return a service worker JS for PWA caching, offline UI, and download support."""
     return """\
-const CACHE_NAME = 'hometools-v4';
+const CACHE_NAME = 'hometools-v5';
 const DOWNLOAD_CACHE = 'hometools-downloads-v1';
 
 self.addEventListener('install', event => {
@@ -256,8 +289,22 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // Static assets (HTML/CSS/JS) — cache first, fallback to network
-  if (event.request.destination === 'document' || 
+  // HTML / navigation — network first, cache fallback
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request).then(resp => {
+        const clone = resp.clone();
+        caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+        return resp;
+      }).catch(() =>
+        caches.match(event.request).then(r => r || new Response('Offline — page not cached', { status: 503 }))
+      )
+    );
+    return;
+  }
+
+  // Static assets (JS/CSS) — cache first, fallback to network
+  if (
       event.request.destination === 'script' || 
       event.request.destination === 'style') {
     event.respondWith(
@@ -308,8 +355,21 @@ self.addEventListener('message', event => {
 
 function openDownloadDB() {
   return new Promise((resolve, reject) => {
-    const dbReq = indexedDB.open('hometools-downloads', 1);
+    const dbReq = indexedDB.open('hometools-downloads', 2);
     dbReq.onerror = () => reject(new Error('IndexedDB open failed'));
+    dbReq.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      let store;
+      if (!db.objectStoreNames.contains('downloads')) {
+        store = db.createObjectStore('downloads', { keyPath: 'id', autoIncrement: true });
+      } else {
+        store = e.target.transaction.objectStore('downloads');
+      }
+      if (!store.indexNames.contains('streamUrl')) store.createIndex('streamUrl', 'streamUrl', { unique: true });
+      if (!store.indexNames.contains('status')) store.createIndex('status', 'status', { unique: false });
+      if (!store.indexNames.contains('timestamp')) store.createIndex('timestamp', 'timestamp', { unique: false });
+      if (!store.indexNames.contains('title')) store.createIndex('title', 'title', { unique: false });
+    };
     dbReq.onsuccess = () => resolve(dbReq.result);
   });
 }
@@ -806,7 +866,14 @@ body.modal-open { overflow: hidden; }
   display: flex; align-items: center; justify-content: center;
   opacity: 0; transition: opacity 0.15s;
 }
-.folder-card:hover .folder-play-btn { opacity: 1; }
+/* Touch devices: always show play button at low opacity */
+@media (hover: none) {
+  .folder-play-btn { opacity: 0.55; }
+}
+/* Mouse/trackpad: reveal on hover */
+@media (hover: hover) {
+  .folder-card:hover .folder-play-btn { opacity: 1; }
+}
 .folder-play-btn:hover { background: #1ed760; }
 .back-btn {
   background: var(--surface2); border: 1px solid #444; color: var(--accent);
@@ -866,12 +933,27 @@ body.modal-open { overflow: hidden; }
   position: static; opacity: 0; width: 30px; height: 30px; font-size: 0.8rem;
   flex-shrink: 0;
 }
-.folder-grid.list-mode .folder-card:hover .folder-play-btn { opacity: 1; }
+@media (hover: none) {
+  .folder-grid.list-mode .folder-play-btn { opacity: 0.55; }
+}
+@media (hover: hover) {
+  .folder-grid.list-mode .folder-card:hover .folder-play-btn { opacity: 1; }
+}
 
 @media (max-width: 480px) {
   .player-info { flex: 0 0 90px; }
   .folder-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
+/* toast notification */
+.ht-toast {
+  position: fixed; bottom: 5rem; left: 50%; transform: translateX(-50%);
+  background: #e53935; color: #fff; padding: 0.6rem 1.2rem;
+  border-radius: 8px; font-size: 0.85rem; z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5); opacity: 0;
+  transition: opacity 0.3s; pointer-events: none;
+  max-width: 90vw; text-align: center; word-break: break-word;
+}
+.ht-toast.visible { opacity: 1; }
 """
 
 
@@ -1033,6 +1115,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var API_PATH = '"""
         + api_path
         + """';
+  var STATUS_PATH = API_PATH.substring(0, API_PATH.lastIndexOf('/')) + '/status';
 
   /* Placeholder SVG thumbnails — same dimensions as real thumbs so layout never shifts.
      Simple dark-grey squares with a subtle icon silhouette. */
@@ -1045,6 +1128,8 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var filteredItems = [];
   var currentIndex = -1;
   var inPlaylist = false;
+  var initialCatalogRetryTimer = null;
+  var initialCatalogRetryCount = 0;
 
   var player       = document.getElementById('player');
   var btnPlay      = document.getElementById('btn-play');
@@ -1097,6 +1182,25 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+  }
+  var _toastEl = null;
+  var _toastTimer = 0;
+  function showToast(msg, durationMs) {
+    if (!_toastEl) {
+      _toastEl = document.createElement('div');
+      _toastEl.className = 'ht-toast';
+      document.body.appendChild(_toastEl);
+    }
+    _toastEl.textContent = msg;
+    _toastEl.classList.add('visible');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function() { _toastEl.classList.remove('visible'); }, durationMs || 4000);
   }
 """
         + waveform_setup_js
@@ -1174,13 +1278,33 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     applyViewMode();
   }
 
+  function scheduleInitialCatalogRetry(reason) {
+    if (initialCatalogRetryTimer) return;
+    console.info('Initial catalog retry scheduled:', reason || 'loading');
+    initialCatalogRetryTimer = window.setTimeout(function() {
+      initialCatalogRetryTimer = null;
+      loadInitialCatalog();
+    }, 1500);
+  }
+
+  function fetchCatalogStatus() {
+    return fetch(STATUS_PATH, { cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .catch(function() { return null; });
+  }
+
   function loadInitialCatalog() {
     if (allItems.length) {
+      console.info('Initial catalog already present in page payload:', allItems.length, 'items');
       return Promise.resolve(allItems);
     }
-    showLoadingState('Loading library…');
-    return fetch(API_PATH)
+    initialCatalogRetryCount += 1;
+    showLoadingState(initialCatalogRetryCount > 1 ? 'Loading library… (warming cache)' : 'Loading library…');
+    var t0 = Date.now();
+    console.info('Initial catalog fetch started:', API_PATH);
+    return fetch(API_PATH, { cache: 'no-store' })
       .then(function(r) {
+        console.info('Initial catalog response received after', Date.now() - t0, 'ms with status', r.status);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
@@ -1188,7 +1312,22 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
         if (data && data.error) {
           throw new Error(data.error);
         }
+        if (data && data.loading) {
+          console.info('Initial catalog still building; loading status endpoint');
+          return fetchCatalogStatus().then(function(status) {
+            var detail = status && status.detail ? status.detail : 'Library cache is warming in the background.';
+            showLoadingState(detail);
+            scheduleInitialCatalogRetry(detail);
+            return [];
+          });
+        }
+        if (initialCatalogRetryTimer) {
+          window.clearTimeout(initialCatalogRetryTimer);
+          initialCatalogRetryTimer = null;
+        }
+        initialCatalogRetryCount = 0;
         allItems = data && Array.isArray(data.items) ? data.items : [];
+        console.info('Initial catalog parsed after', Date.now() - t0, 'ms:', allItems.length, 'items');
         showFolderView();
         return allItems;
       })
@@ -1286,7 +1425,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
         '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         '<div class="folder-name">' + escHtml(f.name) + '</div>' +
         '<div class="folder-count">' + f.count + ' ' + noun + '</div>' +
-        '<button class="folder-play-btn" title="Play all">\\u25B6</button>' +
+        '<button class="folder-play-btn" title="Play all">\\u25B6\\uFE0E</button>' +
       '</div>';
     });
     c.files.forEach(function(it, i) {
@@ -1428,7 +1567,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
           '" data-artist="' + escHtml(t.artist || '') +
           '" data-relative-path="' + escHtml(t.relative_path || '') +
           '" data-thumbnail-url="' + escHtml(t.thumbnail_url || '') +
-          '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">\\u2B07</button>' +
+          '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">\\u2193\\uFE0E</button>' +
         '</li>';
     }).join('');
     document.querySelectorAll('.track-item').forEach(function(el) {
@@ -1437,6 +1576,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
+        e.preventDefault();
         var url = btn.dataset.streamUrl;
         var title = btn.dataset.title;
         var meta = {
@@ -1447,7 +1587,9 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
         };
         if (btn.classList.contains('cached')) {
           deleteTrackDownload(url, btn);
-        } else if (!btn.classList.contains('downloading')) {
+        } else if (btn.classList.contains('downloading')) {
+          cancelDownload(url, btn);
+        } else {
           downloadTrack(url, title, btn, meta);
         }
       });
@@ -1457,7 +1599,23 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
 
   /* ── offline download management ── */
   var downloadDB = null;
-  var OFFLINE_SOFT_LIMIT = 50 * 1024 * 1024;
+  var OFFLINE_SOFT_LIMIT = 500 * 1024 * 1024;
+  var activeDownloads = {};
+
+  function cancelDownload(streamUrl, btn) {
+    var controller = activeDownloads[streamUrl];
+    if (controller) {
+      controller.abort();
+      delete activeDownloads[streamUrl];
+    }
+    if (btn) {
+      btn.classList.remove('downloading');
+      btn.classList.remove('cached');
+      btn.textContent = '\\u2193\\uFE0E';
+      btn.title = 'Download';
+    }
+    showToast('Download abgebrochen');
+  }
 
   function revokeOfflineUrl() {
     if (currentOfflineUrl) {
@@ -1776,7 +1934,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
         var url = btn.dataset.streamUrl;
         btn.classList.remove('cached');
         if (!btn.classList.contains('downloading')) {
-          btn.textContent = '\\u2B07';
+          btn.textContent = '\\u2193\\uFE0E';
           btn.title = 'Download';
         }
         if (cached[url]) {
@@ -1794,13 +1952,19 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     btn.classList.add('downloading');
     btn.classList.remove('cached');
     btn.textContent = '0%';
-    btn.title = 'Download läuft';
+    btn.title = 'Download l\\u00e4uft \\u2014 klicken zum Abbrechen';
 
-    fetch(streamUrl).then(function(response) {
+    var controller = new AbortController();
+    activeDownloads[streamUrl] = controller;
+
+    fetch(streamUrl, { signal: controller.signal }).then(function(response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       var total = parseInt(response.headers.get('content-length'), 10) || 0;
+      if (total > OFFLINE_SOFT_LIMIT) {
+        throw new Error('Datei zu gro\\u00df f\\u00fcr Offline-Speicher (' + formatBytes(total) + ', max ' + formatBytes(OFFLINE_SOFT_LIMIT) + ')');
+      }
       return Promise.resolve(total > 0 ? ensureStorageBudget(total, streamUrl) : true).then(function(ok) {
-        if (!ok) throw new Error('Offline-Speicher voll');
+        if (!ok) throw new Error('Offline-Speicher voll \\u2014 l\\u00f6sche alte Downloads oder erh\\u00f6he den Speicher');
         var received = 0;
         var reader = response.body.getReader();
         var chunks = [];
@@ -1821,28 +1985,31 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
           var blob = new Blob(chunks, { type: response.headers.get('content-type') || 'application/octet-stream' });
           return ensureStorageBudget(blob.size, streamUrl).then(function(stillOk) {
             if (!stillOk) throw new Error('Offline-Speicher voll');
-            return new Promise(function(resolve, reject) {
-              var tx = downloadDB.transaction('downloads', 'readwrite');
-              var store = tx.objectStore('downloads');
-              store.put({
-                streamUrl: streamUrl,
-                title: title,
-                artist: meta && meta.artist ? meta.artist : '',
-                relativePath: meta && meta.relativePath ? meta.relativePath : '',
-                thumbnailUrl: meta && meta.thumbnailUrl ? meta.thumbnailUrl : '',
-                mediaType: meta && meta.mediaType ? meta.mediaType : ITEM_NOUN,
-                blob: blob,
-                size: blob.size,
-                timestamp: Date.now(),
-                status: 'ready'
+            return deleteDownloadByStreamUrl(streamUrl).then(function() {
+              return new Promise(function(resolve, reject) {
+                var tx = downloadDB.transaction('downloads', 'readwrite');
+                var store = tx.objectStore('downloads');
+                store.add({
+                  streamUrl: streamUrl,
+                  title: title,
+                  artist: meta && meta.artist ? meta.artist : '',
+                  relativePath: meta && meta.relativePath ? meta.relativePath : '',
+                  thumbnailUrl: meta && meta.thumbnailUrl ? meta.thumbnailUrl : '',
+                  mediaType: meta && meta.mediaType ? meta.mediaType : ITEM_NOUN,
+                  blob: blob,
+                  size: blob.size,
+                  timestamp: Date.now(),
+                  status: 'ready'
+                });
+                tx.oncomplete = resolve;
+                tx.onerror = function() { reject(tx.error || new Error('IndexedDB write failed')); };
               });
-              tx.oncomplete = resolve;
-              tx.onerror = function() { reject(tx.error || new Error('IndexedDB write failed')); };
             });
           });
         });
       });
     }).then(function() {
+      delete activeDownloads[streamUrl];
       btn.classList.remove('downloading');
       btn.classList.add('cached');
       btn.textContent = '\\u2713';
@@ -1850,11 +2017,14 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
       updateAllDownloadButtons();
       refreshOfflineLibrary();
     }).catch(function(err) {
+      delete activeDownloads[streamUrl];
+      if (err && err.name === 'AbortError') return;
       console.error('Download failed:', err);
       btn.classList.remove('downloading');
       btn.classList.remove('cached');
-      btn.textContent = '\\u2B07';
+      btn.textContent = '\\u2193\\uFE0E';
       btn.title = 'Download fehlgeschlagen';
+      showToast(err && err.message ? err.message : 'Download fehlgeschlagen');
       refreshOfflineLibrary();
     });
   }
@@ -1865,7 +2035,7 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
       if (btn) {
         btn.classList.remove('cached');
         btn.classList.remove('downloading');
-        btn.textContent = '\\u2B07';
+        btn.textContent = '\\u2193\\uFE0E';
         btn.title = 'Download';
       }
       refreshOfflineLibrary();
@@ -2129,8 +2299,10 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   document.addEventListener('visibilitychange', function() {
     if (!isVideoPlayer) return;
     if (document.hidden && wasPlaying) {
-      /* App going to background — video may already be paused by browser.
-         bgAudio is already playing (muted) — unmute it so audio continues. */
+      /* App going to background — explicitly pause the video to prevent
+         double audio on desktop (desktop browsers do NOT auto-pause video).
+         On mobile, the browser already paused it so this is a no-op. */
+      player.pause();
       if (bgAudio && !bgAudio.paused) {
         bgAudio.currentTime = player.currentTime;
         bgAudio.muted = false;
@@ -2329,10 +2501,15 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
     playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
   });
   player.addEventListener('pause', function() {
-    /* Don't change UI when the browser auto-paused for background,
+    /* Don't change state when the browser auto-paused for background,
        or when bg audio has taken over playback */
     if (document.hidden) return;
-    if (!player.ended && !bgAudioIsActive()) btnPlay.textContent = '\\u25B6';
+    if (bgAudioIsActive()) return;
+    /* User-initiated pause (custom button OR native controls) */
+    wasPlaying = false;
+    if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
+    stopBgSync();
+    if (!player.ended) btnPlay.textContent = '\\u25B6';
   });
   player.addEventListener('play',  function() { btnPlay.textContent = '\\u23F8'; });
   player.addEventListener('timeupdate', function() {
@@ -2506,9 +2683,9 @@ def render_media_page(
   <div class="filter-bar view-hidden">
     <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
     <select id="sort-field">
-      <option value="title">Title &UpDownArrow;</option>
-      <option value="artist">Artist &UpDownArrow;</option>
-      <option value="path">Path &UpDownArrow;</option>
+      <option value="title">Title &#x21C5;</option>
+      <option value="artist">Artist &#x21C5;</option>
+      <option value="path">Path &#x21C5;</option>
     </select>
   </div>
 

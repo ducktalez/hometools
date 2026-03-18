@@ -9,13 +9,14 @@ from __future__ import annotations
 import json as _json
 import logging
 import mimetypes
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from hometools.audio.sanitize import split_stem
-from hometools.config import get_audio_library_dir, get_cache_dir, get_player_bar_style
+from hometools.config import get_audio_library_dir, get_cache_dir, get_player_bar_style, get_stream_index_cache_ttl
 from hometools.constants import AUDIO_SUFFIX
 from hometools.streaming.audio.catalog import (
     AudioTrack,
@@ -24,7 +25,9 @@ from hometools.streaming.audio.catalog import (
     list_artists,
     query_tracks,
 )
+from hometools.streaming.core.index_cache import IndexCache
 from hometools.streaming.core.server_utils import (
+    build_index_status_payload,
     check_library_accessible,
     render_error_page,
     render_media_page,
@@ -35,6 +38,8 @@ from hometools.streaming.core.server_utils import (
     resolve_media_path,
 )
 from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
+
+_audio_index_cache = IndexCache(build_audio_index, ttl=float(get_stream_index_cache_ttl()), label="audio-index")
 
 AUDIO_CSS_EXTRA = """
 .track-item.active .track-num::before { content: '♪'; color: var(--accent); }
@@ -78,29 +83,46 @@ def create_app(library_dir: Path | None = None) -> Any:
     async def lifespan(_app: FastAPI):
         import asyncio
 
+        startup_t0 = time.monotonic()
+        logger.info("Audio server startup: library=%s cache=%s", resolved_library_dir, resolved_cache_dir)
+        check_t0 = time.monotonic()
         ok, msg = await asyncio.to_thread(check_library_accessible, resolved_library_dir)
+        logger.info("Audio startup library check finished in %.2fs: %s", time.monotonic() - check_t0, msg)
         if not ok:
             import logging
 
             logging.getLogger(__name__).warning("Audio-Bibliothek: %s", msg)
         else:
-            # Trigger thumbnail generation in a background daemon thread so
-            # the server is immediately responsive.
-            try:
-                work = await asyncio.to_thread(
-                    collect_thumbnail_work,
-                    resolved_library_dir,
-                    resolved_cache_dir,
-                )
-                start_background_thumbnail_generation(work)
-            except Exception:
-                import logging
+            cached = _audio_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
+            started_index_refresh = _audio_index_cache.ensure_background_refresh(
+                resolved_library_dir,
+                cache_dir=resolved_cache_dir,
+            )
+            logger.info(
+                "Audio startup index state: cached_items=%d refresh_started=%s building=%s",
+                len(cached),
+                started_index_refresh,
+                _audio_index_cache.is_building(),
+            )
 
-                logging.getLogger(__name__).debug(
-                    "Failed to start background audio thumbnail generation",
-                    exc_info=True,
-                )
+            def _prepare_thumbnails() -> None:
+                try:
+                    collect_t0 = time.monotonic()
+                    work = collect_thumbnail_work(resolved_library_dir, resolved_cache_dir)
+                    collect_elapsed = time.monotonic() - collect_t0
+                    started = start_background_thumbnail_generation(work)
+                    logger.info(
+                        "Audio startup thumbnail work prepared: %d items in %.2fs (started=%s)",
+                        len(work),
+                        collect_elapsed,
+                        started,
+                    )
+                except Exception:
+                    logger.debug("Failed to start background audio thumbnail generation", exc_info=True)
 
+            threading.Thread(target=_prepare_thumbnails, daemon=True, name="audio-thumb-bootstrap").start()
+
+        logger.info("Audio server startup complete in %.2fs", time.monotonic() - startup_t0)
         yield
 
     app = FastAPI(title="hometools audio streaming prototype", lifespan=lifespan)
@@ -129,6 +151,8 @@ def create_app(library_dir: Path | None = None) -> Any:
 
     @app.get("/api/audio/tracks")
     def audio_tracks(q: str | None = None, artist: str | None = None, sort: str = "artist") -> dict[str, object]:
+        t0 = time.monotonic()
+        logger.info("GET /api/audio/tracks — start (q=%r, artist=%r, sort=%r)", q, artist, sort)
         ok, msg = check_library_accessible(resolved_library_dir)
         if not ok:
             return {
@@ -139,15 +163,74 @@ def create_app(library_dir: Path | None = None) -> Any:
                 "error": msg,
                 "query": {"q": q or "", "artist": artist or "all", "sort": sort},
             }
-        tracks = build_audio_index(resolved_library_dir, cache_dir=resolved_cache_dir)
+        cache_t0 = time.monotonic()
+        refresh_started = _audio_index_cache.ensure_background_refresh(
+            resolved_library_dir,
+            cache_dir=resolved_cache_dir,
+        )
+        tracks = _audio_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
+        building = _audio_index_cache.is_building()
+        cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        cache_elapsed = time.monotonic() - cache_t0
+        if building and not tracks:
+            status_payload = build_index_status_payload(
+                library_dir=resolved_library_dir,
+                item_label="audio",
+                library_ok=True,
+                library_message="ok",
+                cache_status=cache_status,
+            )
+            logger.info(
+                "GET /api/audio/tracks — loading state in %.2fs (refresh_started=%s, status=%s)",
+                cache_elapsed,
+                refresh_started,
+                status_payload["detail"],
+            )
+            return {
+                "count": 0,
+                "items": [],
+                "artists": [],
+                "loading": True,
+                **status_payload,
+                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
+            }
+        query_t0 = time.monotonic()
         filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
+        query_elapsed = time.monotonic() - query_t0
+        logger.info(
+            "GET /api/audio/tracks — %d/%d items in %.1fs (cache=%.2fs, query=%.2fs, refresh_started=%s, building=%s, q=%r, artist=%r, sort=%r)",
+            len(filtered),
+            len(tracks),
+            time.monotonic() - t0,
+            cache_elapsed,
+            query_elapsed,
+            refresh_started,
+            building,
+            q,
+            artist,
+            sort,
+        )
         return {
             "library_dir": str(resolved_library_dir),
             "count": len(filtered),
             "items": [t.to_dict() for t in filtered],
             "artists": list_artists(tracks),
+            "refreshing": building,
+            "cache": cache_status,
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
+
+    @app.get("/api/audio/status")
+    def audio_status() -> dict[str, object]:
+        ok, msg = check_library_accessible(resolved_library_dir)
+        cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        return build_index_status_payload(
+            library_dir=resolved_library_dir,
+            item_label="audio",
+            library_ok=ok,
+            library_message=msg,
+            cache_status=cache_status,
+        )
 
     @app.get("/api/audio/metadata")
     def audio_metadata(path: str) -> dict[str, object]:

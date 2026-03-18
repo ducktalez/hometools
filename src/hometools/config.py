@@ -101,7 +101,7 @@ def get_stream_host() -> str:
 
 def get_stream_port() -> int:
     """Return the shared default port (used by single-server commands)."""
-    return _get_int_from_env("HOMETOOLS_STREAM_PORT", 8000)
+    return _get_int_from_env("HOMETOOLS_STREAM_PORT", 8010)
 
 
 def get_audio_port() -> int:
@@ -117,6 +117,15 @@ def get_video_port() -> int:
 def get_stream_bind() -> tuple[str, int]:
     """Return host and port tuple for the local streaming web server."""
     return get_stream_host(), get_stream_port()
+
+
+def get_stream_index_cache_ttl() -> int:
+    """Return the TTL for cached streaming indexes in seconds.
+
+    A longer TTL avoids expensive full-library rescans on frequent reloads,
+    while background refresh keeps stale snapshots up to date.
+    """
+    return _get_int_from_env("HOMETOOLS_STREAM_INDEX_CACHE_TTL", 900)
 
 
 # ---------------------------------------------------------------------------

@@ -200,7 +200,7 @@ Die Native Apps können auch von dieser Abstraction profitieren:
 
 ```swift
 // iOS App: Verbindet sich zum generischen Server
-let serverURL = URL(string: "http://localhost:8001")
+let serverURL = URL(string: "http://localhost:8011")
 // Ob Audio oder Video — gleicher Code!
 ```
 

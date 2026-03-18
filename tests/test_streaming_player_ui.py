@@ -397,6 +397,28 @@ def test_pause_handler_checks_document_hidden():
     assert "document.hidden" in js
 
 
+def test_pause_handler_clears_was_playing():
+    """The pause event must clear wasPlaying so tab-switch does not resume."""
+    js = _js(style="classic")
+    # The pause handler should set wasPlaying = false when visible (user-initiated)
+    assert "wasPlaying = false" in js
+    # Must also stop bgAudio and sync timer
+    assert "bgAudio.pause()" in js or "bgAudio.muted = true" in js
+
+
+def test_pause_handler_stops_bg_audio():
+    """A user pause (native controls) must also stop bgAudio and sync timer."""
+    js = _js(style="classic")
+    assert "stopBgSync()" in js
+
+
+def test_visibility_hidden_pauses_video():
+    """Going hidden must pause the video to prevent double audio on desktop."""
+    js = _js(style="classic")
+    # The visibilitychange handler should call player.pause() when going hidden
+    assert "player.pause()" in js
+
+
 # ---------------------------------------------------------------------------
 # playTrack robustness & metadata refresh
 # ---------------------------------------------------------------------------
@@ -438,5 +460,25 @@ def test_js_loads_initial_catalog_async():
     """The shell should fetch the catalog asynchronously after initial page render."""
     js = _js(style="classic")
     assert "function loadInitialCatalog" in js
-    assert "fetch(API_PATH)" in js
+    assert "fetch(API_PATH, { cache: 'no-store' })" in js
     assert "Loading library" in js
+    assert "Initial catalog fetch started" in js
+    assert "Initial catalog response received after" in js
+
+
+def test_js_retries_initial_catalog_while_server_is_loading():
+    """The client should poll again when the server reports a loading state."""
+    js = _js(style="classic")
+    assert "scheduleInitialCatalogRetry" in js
+    assert "data && data.loading" in js
+    assert "fetch(API_PATH, { cache: 'no-store' })" in js
+    assert "fetch(STATUS_PATH, { cache: 'no-store' })" in js
+
+
+def test_service_worker_uses_network_first_for_documents():
+    """HTML navigations should prefer fresh network responses to avoid stale shell pages."""
+    from hometools.streaming.core.server_utils import render_pwa_service_worker
+
+    sw = render_pwa_service_worker()
+    assert "event.request.mode === 'navigate'" in sw
+    assert "Offline — page not cached" in sw

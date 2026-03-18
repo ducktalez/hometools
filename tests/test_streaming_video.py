@@ -1,5 +1,6 @@
 """Tests for the video streaming catalog and sync."""
 
+import os
 from unittest.mock import patch
 
 from hometools.streaming.video.catalog import (
@@ -139,3 +140,57 @@ def test_build_video_index_partial_metadata_uses_fallback(tmp_path):
     assert len(items) == 1
     assert items[0].title == "Funny Movie"
     assert items[0].artist == "Comedy"
+
+
+def test_build_video_index_reuses_persistent_metadata_cache(tmp_path):
+    """Unchanged video files should reuse cached metadata across rebuilds."""
+    cache_dir = tmp_path / "cache"
+    (tmp_path / "movie.mp4").write_bytes(b"video")
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", return_value={"title": "Cached Title", "artist": "Cached Artist"}):
+        first = build_video_index(tmp_path, cache_dir=cache_dir)
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", side_effect=AssertionError("mutagen should not run")):
+        second = build_video_index(tmp_path, cache_dir=cache_dir)
+
+    assert first[0].title == "Cached Title"
+    assert second[0].title == "Cached Title"
+    assert second[0].artist == "Cached Artist"
+
+
+def test_build_video_index_caches_negative_metadata_results(tmp_path):
+    """Files without embedded tags should also skip repeated mutagen reads."""
+    genre = tmp_path / "Action"
+    genre.mkdir()
+    (genre / "Borat.mp4").write_bytes(b"video")
+    cache_dir = tmp_path / "cache"
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", return_value=None):
+        first = build_video_index(tmp_path, cache_dir=cache_dir)
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", side_effect=AssertionError("mutagen should not run")):
+        second = build_video_index(tmp_path, cache_dir=cache_dir)
+
+    assert first[0].title == "Borat"
+    assert second[0].title == "Borat"
+    assert second[0].artist == "Action"
+
+
+def test_build_video_index_refreshes_metadata_cache_when_file_changes(tmp_path):
+    """A changed file must invalidate the cached metadata entry."""
+    video = tmp_path / "movie.mp4"
+    video.write_bytes(b"v1")
+    cache_dir = tmp_path / "cache"
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", return_value={"title": "First Title", "artist": "A"}):
+        build_video_index(tmp_path, cache_dir=cache_dir)
+
+    video.write_bytes(b"v2-updated")
+    stat = video.stat()
+    os.utime(video, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+
+    with patch("hometools.streaming.video.catalog._read_metadata_fast", return_value={"title": "Second Title", "artist": "B"}):
+        refreshed = build_video_index(tmp_path, cache_dir=cache_dir)
+
+    assert refreshed[0].title == "Second Title"
+    assert refreshed[0].artist == "B"

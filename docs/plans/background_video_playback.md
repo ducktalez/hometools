@@ -197,8 +197,8 @@ aber **keine echte Home-Screen-App mehr** (nur Browser-Link).
 **To-Do: Zwei-Server-Architektur**
 
 Perspektive: zwei Instanzen der Video-App starten:
-1. **Port 8001 — `display: standalone`** (schöne App, Fullscreen, aber kein Background)
-2. **Port 8002 — `display: minimal-ui`** (Web-Link, aber Background + PiP)
+1. **Port 8011 — `display: standalone`** (schöne App, Fullscreen, aber kein Background)
+2. **Port 8012 — `display: minimal-ui`** (Web-Link, aber Background + PiP)
 
 Benutzer kann dann wählen, welche Variante ihnen besser gefällt, oder beide nutzen.
 Implementierung erfordert: Umgebungsvariable `VIDEO_PWA_DISPLAY_MODE` in `render_video_index_html()`.

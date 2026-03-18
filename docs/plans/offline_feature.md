@@ -30,7 +30,7 @@ Benutzer können Songs/Videos vom Handy aus herunterladen und offline abspielen 
 ## Architektur
 
 ```
-hometools streaming server (Port 8001)
+hometools streaming server (Port 8011)
 │
 ├─ UI (klassisch)
 │  └─ Neue Buttons: "📥 Download", "⚙️ Offline-Speicher"

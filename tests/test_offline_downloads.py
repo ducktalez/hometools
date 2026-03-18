@@ -55,6 +55,25 @@ class TestServiceWorkerOfflineSupport:
         assert "DOWNLOAD_CACHED" in sw
         assert "DOWNLOAD_DELETED" in sw
 
+    def test_service_worker_db_version_matches_main_js(self):
+        """Service worker must open IndexedDB at the same version as the main JS."""
+        from hometools.streaming.core.server_utils import render_pwa_service_worker
+
+        sw = render_pwa_service_worker()
+        js = _js()
+
+        # Both must use version 2
+        assert "'hometools-downloads', 2" in sw
+        assert "'hometools-downloads', 2" in js
+
+    def test_service_worker_handles_db_upgrade(self):
+        """Service worker must handle onupgradeneeded for IndexedDB."""
+        from hometools.streaming.core.server_utils import render_pwa_service_worker
+
+        sw = render_pwa_service_worker()
+        assert "onupgradeneeded" in sw
+        assert "createObjectStore" in sw
+
 
 class TestOfflinePlayback:
     """Service worker offline playback support."""
@@ -126,7 +145,7 @@ class TestTrackDownloadButtons:
         """downloadTrack must fetch with progress and store blob in IndexedDB."""
         js = _js()
         assert "function downloadTrack" in js
-        assert "fetch(streamUrl)" in js
+        assert "fetch(streamUrl" in js
         assert "getReader()" in js
         assert "new Blob" in js
 
@@ -150,11 +169,13 @@ class TestTrackDownloadButtons:
         assert "stopPropagation" in js
 
     def test_js_dl_btn_toggle_behavior(self):
-        """Clicking a cached button should delete, clicking uncached should download."""
+        """Clicking a cached button should delete, clicking uncached should download, clicking downloading should cancel."""
         js = _js()
         assert "deleteTrackDownload" in js
         assert "downloadTrack" in js
         assert "classList.contains('cached')" in js
+        assert "classList.contains('downloading')" in js
+        assert "cancelDownload" in js
 
     def test_js_init_download_db_called_at_startup(self):
         """initDownloadDB must be called during init."""
@@ -175,6 +196,32 @@ class TestTrackDownloadButtons:
         assert "relativePath" in js
         assert "mediaType" in js
         assert "artist" in js
+
+    def test_js_has_cancel_download_function(self):
+        """cancelDownload must abort an active download via AbortController."""
+        js = _js()
+        assert "function cancelDownload" in js
+        assert "controller.abort()" in js
+        assert "activeDownloads" in js
+        assert "AbortError" in js
+
+    def test_js_download_uses_abort_controller(self):
+        """downloadTrack must use AbortController for cancellation support."""
+        js = _js()
+        assert "new AbortController" in js
+        assert "signal: controller.signal" in js
+        assert "delete activeDownloads[streamUrl]" in js
+
+    def test_js_download_uses_store_add(self):
+        """downloadTrack must use store.add() not store.put() for Chrome compat."""
+        js = _js()
+        # store.add() works with autoIncrement keyPath without providing the key
+        assert "store.add({" in js
+
+    def test_js_download_button_has_prevent_default(self):
+        """Download button click must call preventDefault to avoid side effects."""
+        js = _js()
+        assert "e.preventDefault()" in js
 
 
 class TestOfflineLibraryUI:
@@ -215,7 +262,7 @@ class TestStorageQuotaHandling:
         assert "OFFLINE_SOFT_LIMIT" in js
         assert "function pruneOldDownloads" in js
         assert "function ensureStorageBudget" in js
-        assert "50 * 1024 * 1024" in js
+        assert "500 * 1024 * 1024" in js
 
     def test_js_updates_storage_summary(self):
         js = _js()

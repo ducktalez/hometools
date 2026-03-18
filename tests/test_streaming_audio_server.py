@@ -138,6 +138,35 @@ def test_audio_home_renders_shell_without_building_index(tmp_path):
     assert "Loading library" in response.text
 
 
+def test_audio_tracks_returns_loading_state_while_index_builds(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    with (
+        patch("hometools.streaming.audio.server.check_library_accessible", return_value=(True, "ok")),
+        patch("hometools.streaming.audio.server._audio_index_cache.ensure_background_refresh", return_value=True),
+        patch("hometools.streaming.audio.server._audio_index_cache.get_cached", return_value=[]),
+        patch("hometools.streaming.audio.server._audio_index_cache.is_building", return_value=True),
+    ):
+        response = client.get("/api/audio/tracks")
+
+    assert response.status_code == 200
+    assert response.json()["loading"] is True
+    assert response.json()["items"] == []
+
+
+def test_audio_status_endpoint_returns_cache_diagnostics(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    with patch("hometools.streaming.audio.server._audio_index_cache.status", return_value={"building": True, "cached_count": 0}):
+        response = client.get("/api/audio/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "detail" in data
+    assert "cache" in data
+    assert data["cache"]["building"] is True
+
+
 def test_thumb_returns_404_when_thumbnail_is_missing(tmp_path):
     client = TestClient(create_app(tmp_path))
 
