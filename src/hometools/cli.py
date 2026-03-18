@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -116,6 +117,16 @@ def _get_local_ips() -> list[str]:
     return ips or ["127.0.0.1"]
 
 
+def _console_print(text: str = "") -> None:
+    """Print text safely even on Windows consoles without full Unicode support."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        sanitized = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        print(sanitized)
+
+
 def _print_server_banner(current: str, host: str, port: int) -> None:
     """Print a banner showing both configured server URLs.
 
@@ -134,18 +145,18 @@ def _print_server_banner(current: str, host: str, port: int) -> None:
     else:
         hosts_to_show = [host]
 
-    print("\n  ╔═ Verbindungsadressen ════════════════════════════╗")
+    _console_print("\n  ╔═ Verbindungsadressen ════════════════════════════╗")
 
     for _i, h in enumerate(hosts_to_show):
         audio_url = f"http://{h}:{audio_port}/"
         video_url = f"http://{h}:{video_port}/"
 
-        print("  ║                                                  ║")
-        print(f"  ║  🎵  {audio_url:<37}")
-        print(f"  ║  🎬  {video_url:<37}")
+        _console_print("  ║                                                  ║")
+        _console_print(f"  ║  🎵  {audio_url:<37}")
+        _console_print(f"  ║  🎬  {video_url:<37}")
 
-    print("  ╚════════════════════════════════════════════════╝")
-    print()
+    _console_print("  ╚════════════════════════════════════════════════╝")
+    _console_print()
 
 
 def _check_library_dir(path: Path, label: str) -> None:
@@ -156,8 +167,8 @@ def _check_library_dir(path: Path, label: str) -> None:
     if ok:
         return
 
-    print(f"\n⚠  {label}-Bibliothek: {msg}")
-    print("   Server startet trotzdem — die Bibliothek kann später verfügbar werden.\n")
+    _console_print(f"\n⚠  {label}-Bibliothek: {msg}")
+    _console_print("   Server startet trotzdem — die Bibliothek kann später verfügbar werden.\n")
 
 
 # ---------------------------------------------------------------------------
@@ -252,8 +263,8 @@ def run_setup_pycharm(args: argparse.Namespace) -> int:
 
     created = generate_pycharm_configs(args.project_root.resolve())
     for p in created:
-        print(f"  ✓ {p.name}")
-    print(f"\n{len(created)} PyCharm run configuration(s) created. Restart PyCharm to see them.")
+        _console_print(f"  ✓ {p.name}")
+    _console_print(f"\n{len(created)} PyCharm run configuration(s) created. Restart PyCharm to see them.")
     return 0
 
 

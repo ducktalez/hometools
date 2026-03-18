@@ -41,6 +41,7 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ### 🟡 Medium Priority
 
+- Änderungen am Server müssen nicht mit erfolgreichen Tests der Tools abgeschlossen werden. Vielleicht kann man hier etwas Aufwand sparen. Das muss nur im Pre-Commit-Hook stattfinden, Nach Änderungen reicht es nur, die betroffenen Tests nochmal zu machen und auch bei denen nur wenn eine Änderung der Ergebnisse möglich ist. 
 - Clean extensive device-checks. Are they all necessary?
 - iphone-pitfall: der Pause-button ist immernoch ein emoji.
 - Plan: Restrukturiere den Inhalt in Tools komplett neu und schreibe für alles, inklusive aller möglichen oder denkbaren Edge Cases Tests.
@@ -100,6 +101,7 @@ A collection of Python tools for managing personal media libraries — music fil
 - Server: Photo-Management: Alles online oder zumindest mit einem lokalen Server
 - Jeder Nutzer hat eine andere Ordnerstruktur. Es wird zwar eine generelle Ordnerstruktur vorgegeben; jedoch sollte folgendes diskutiert werden.
   - Es sollte überlegt werden ob nicht mit N8N hier eine Logik generiert werden kann, auf jede Person zugeschnitten, damit alle Ordner richtig interpretiert werden.
+- Wir sollten eine Liste führen mit Technologien, die in Zukunft eventuell ersetzt werden sollen. Entweder in Architecture oder Implementation Plan sollte hier vielleicht auch ein Diskussionsbereich für genau solche Überlegungen festgelegt werden. Wo hältst du es für am sinnvollsten? 
 
 ## Features
 
@@ -149,13 +151,13 @@ HOMETOOLS_AUDIO_NAS_DIR=Z:/Music
 HOMETOOLS_VIDEO_LIBRARY_DIR=C:/Media/video-library
 HOMETOOLS_VIDEO_NAS_DIR=Z:/Video
 HOMETOOLS_STREAM_HOST=0.0.0.0
-HOMETOOLS_AUDIO_PORT=8000
-HOMETOOLS_VIDEO_PORT=8001
+HOMETOOLS_AUDIO_PORT=8010
+HOMETOOLS_VIDEO_PORT=8011
 ```
 
 ```powershell
 hometools streaming-config        # show current config overview
-hometools serve-all               # start audio (:8000) + video (:8001)
+hometools serve-all               # start audio (:8010) + video (:8011)
 hometools sync-audio --dry-run    # preview audio sync
 hometools sync-video              # copy video files from NAS
 ```

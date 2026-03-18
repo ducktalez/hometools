@@ -9,15 +9,24 @@ from __future__ import annotations
 import json as _json
 import logging
 import mimetypes
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from hometools.config import get_cache_dir, get_player_bar_style, get_video_library_dir, get_video_pwa_display_mode
+from hometools.config import (
+    get_cache_dir,
+    get_player_bar_style,
+    get_stream_index_cache_ttl,
+    get_video_library_dir,
+    get_video_pwa_display_mode,
+)
 from hometools.constants import VIDEO_SUFFIX
 from hometools.streaming.core.catalog import list_artists, query_items
+from hometools.streaming.core.index_cache import IndexCache
 from hometools.streaming.core.server_utils import (
+    build_index_status_payload,
     check_library_accessible,
     render_error_page,
     render_media_page,
@@ -31,6 +40,8 @@ from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_backg
 from hometools.streaming.video.catalog import build_video_index, collect_thumbnail_work
 
 logger = logging.getLogger(__name__)
+
+_video_index_cache = IndexCache(build_video_index, ttl=float(get_stream_index_cache_ttl()), label="video-index")
 
 VIDEO_CSS_EXTRA = """
 :root { --accent: #bb86fc; }
@@ -83,29 +94,46 @@ def create_app(library_dir: Path | None = None) -> Any:
     async def lifespan(_app: FastAPI):
         import asyncio
 
+        startup_t0 = time.monotonic()
+        logger.info("Video server startup: library=%s cache=%s", resolved_library_dir, resolved_cache_dir)
+        check_t0 = time.monotonic()
         ok, msg = await asyncio.to_thread(check_library_accessible, resolved_library_dir)
+        logger.info("Video startup library check finished in %.2fs: %s", time.monotonic() - check_t0, msg)
         if not ok:
             import logging
 
             logging.getLogger(__name__).warning("Video-Bibliothek: %s", msg)
         else:
-            # Trigger thumbnail generation in a background daemon thread so
-            # the server is immediately responsive.
-            try:
-                work = await asyncio.to_thread(
-                    collect_thumbnail_work,
-                    resolved_library_dir,
-                    resolved_cache_dir,
-                )
-                start_background_thumbnail_generation(work)
-            except Exception:
-                import logging
+            cached = _video_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
+            started_index_refresh = _video_index_cache.ensure_background_refresh(
+                resolved_library_dir,
+                cache_dir=resolved_cache_dir,
+            )
+            logger.info(
+                "Video startup index state: cached_items=%d refresh_started=%s building=%s",
+                len(cached),
+                started_index_refresh,
+                _video_index_cache.is_building(),
+            )
 
-                logging.getLogger(__name__).debug(
-                    "Failed to start background video thumbnail generation",
-                    exc_info=True,
-                )
+            def _prepare_thumbnails() -> None:
+                try:
+                    collect_t0 = time.monotonic()
+                    work = collect_thumbnail_work(resolved_library_dir, resolved_cache_dir)
+                    collect_elapsed = time.monotonic() - collect_t0
+                    started = start_background_thumbnail_generation(work)
+                    logger.info(
+                        "Video startup thumbnail work prepared: %d items in %.2fs (started=%s)",
+                        len(work),
+                        collect_elapsed,
+                        started,
+                    )
+                except Exception:
+                    logger.debug("Failed to start background video thumbnail generation", exc_info=True)
 
+            threading.Thread(target=_prepare_thumbnails, daemon=True, name="video-thumb-bootstrap").start()
+
+        logger.info("Video server startup complete in %.2fs", time.monotonic() - startup_t0)
         yield
 
     app = FastAPI(title="hometools video streaming prototype", lifespan=lifespan)
@@ -135,6 +163,7 @@ def create_app(library_dir: Path | None = None) -> Any:
     @app.get("/api/video/items")
     def video_items(q: str | None = None, artist: str | None = None, sort: str = "title") -> dict[str, object]:
         t0 = time.monotonic()
+        logger.info("GET /api/video/items — start (q=%r, artist=%r, sort=%r)", q, artist, sort)
         ok, msg = check_library_accessible(resolved_library_dir)
         if not ok:
             logger.warning("GET /api/video/items — library not accessible: %s", msg)
@@ -146,17 +175,75 @@ def create_app(library_dir: Path | None = None) -> Any:
                 "error": msg,
                 "query": {"q": q or "", "artist": artist or "all", "sort": sort},
             }
-        items = build_video_index(resolved_library_dir, cache_dir=resolved_cache_dir)
+        cache_t0 = time.monotonic()
+        refresh_started = _video_index_cache.ensure_background_refresh(
+            resolved_library_dir,
+            cache_dir=resolved_cache_dir,
+        )
+        items = _video_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
+        building = _video_index_cache.is_building()
+        cache_status = _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        cache_elapsed = time.monotonic() - cache_t0
+        if building and not items:
+            status_payload = build_index_status_payload(
+                library_dir=resolved_library_dir,
+                item_label="video",
+                library_ok=True,
+                library_message="ok",
+                cache_status=cache_status,
+            )
+            logger.info(
+                "GET /api/video/items — loading state in %.2fs (refresh_started=%s, status=%s)",
+                cache_elapsed,
+                refresh_started,
+                status_payload["detail"],
+            )
+            return {
+                "count": 0,
+                "items": [],
+                "artists": [],
+                "loading": True,
+                **status_payload,
+                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
+            }
+        query_t0 = time.monotonic()
         filtered = query_items(items, q=q, artist=artist, sort_by=sort)
+        query_elapsed = time.monotonic() - query_t0
         elapsed = time.monotonic() - t0
-        logger.info("GET /api/video/items — %d/%d items in %.1fs (q=%r, artist=%r)", len(filtered), len(items), elapsed, q, artist)
+        logger.info(
+            "GET /api/video/items — %d/%d items in %.1fs (cache=%.2fs, query=%.2fs, refresh_started=%s, building=%s, q=%r, artist=%r, sort=%r)",
+            len(filtered),
+            len(items),
+            elapsed,
+            cache_elapsed,
+            query_elapsed,
+            refresh_started,
+            building,
+            q,
+            artist,
+            sort,
+        )
         return {
             "library_dir": str(resolved_library_dir),
             "count": len(filtered),
             "items": [i.to_dict() for i in filtered],
             "artists": list_artists(items),
+            "refreshing": building,
+            "cache": cache_status,
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
+
+    @app.get("/api/video/status")
+    def video_status() -> dict[str, object]:
+        ok, msg = check_library_accessible(resolved_library_dir)
+        cache_status = _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        return build_index_status_payload(
+            library_dir=resolved_library_dir,
+            item_label="video",
+            library_ok=ok,
+            library_message=msg,
+            cache_status=cache_status,
+        )
 
     @app.get("/api/video/metadata")
     def video_metadata(path: str) -> dict[str, object]:
@@ -180,10 +267,12 @@ def create_app(library_dir: Path | None = None) -> Any:
             meta = None
 
         if meta:
-            if meta.get("title", "").strip():
-                title = meta["title"].strip()
-            if meta.get("artist", "").strip():
-                artist = meta["artist"].strip()
+            meta_title = str(meta.get("title") or "")
+            meta_artist = str(meta.get("artist") or "")
+            if meta_title.strip():
+                title = meta_title.strip()
+            if meta_artist.strip():
+                artist = meta_artist.strip()
 
         logger.debug("GET /api/video/metadata — %s → title=%r artist=%r", path, title, artist)
         return {"title": title, "artist": artist, "rating": 0.0}

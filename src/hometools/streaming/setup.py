@@ -8,7 +8,9 @@ Run ``hometools setup-pycharm`` to generate PyCharm run configurations.
 from __future__ import annotations
 
 import logging
-import threading
+import subprocess
+import sys
+import time
 from pathlib import Path
 from xml.etree.ElementTree import Element, ElementTree, SubElement, indent
 
@@ -22,6 +24,17 @@ from hometools.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _console_print(text: str = "") -> None:
+    """Print text safely even on consoles without full Unicode support."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        sanitized = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        print(sanitized)
+
 
 # ---------------------------------------------------------------------------
 # Config overview
@@ -74,12 +87,38 @@ def streaming_config_table() -> str:
 
 def print_streaming_config() -> None:
     """Print the current streaming configuration to stdout."""
-    print(streaming_config_table())
+    _console_print(streaming_config_table())
 
 
 # ---------------------------------------------------------------------------
 # Dual-server launcher
 # ---------------------------------------------------------------------------
+
+
+def _build_serve_subprocess_command(
+    command: str,
+    *,
+    host: str,
+    port: int,
+    library_dir: Path,
+) -> list[str]:
+    """Return the subprocess command used by ``serve_all``.
+
+    Audio and video are launched as separate Python processes so they do not
+    share in-process globals such as thumbnail workers or index caches.
+    """
+    return [
+        sys.executable,
+        "-m",
+        "hometools",
+        command,
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--library-dir",
+        str(library_dir),
+    ]
 
 
 def serve_all(
@@ -91,42 +130,71 @@ def serve_all(
 ) -> None:
     """Start audio and video streaming servers on separate ports.
 
-    Blocks until interrupted (Ctrl+C).
+    Runs each server in its own subprocess to avoid shared-process coupling
+    between audio and video (thumbnail worker globals, index rebuild locks,
+    cold-start file scans, etc.).  Blocks until interrupted (Ctrl+C).
     """
-    import uvicorn
-
     resolved_host = host or get_stream_host()
     resolved_audio_port = audio_port or get_audio_port()
     resolved_video_port = video_port or get_video_port()
     resolved_audio_dir = audio_dir or get_audio_library_dir()
     resolved_video_dir = video_dir or get_video_library_dir()
 
-    # Lazy imports to keep startup fast
-    from hometools.streaming.audio.server import create_app as create_audio_app
-    from hometools.streaming.video.server import create_app as create_video_app
+    audio_cmd = _build_serve_subprocess_command(
+        "serve-audio",
+        host=resolved_host,
+        port=resolved_audio_port,
+        library_dir=resolved_audio_dir,
+    )
+    video_cmd = _build_serve_subprocess_command(
+        "serve-video",
+        host=resolved_host,
+        port=resolved_video_port,
+        library_dir=resolved_video_dir,
+    )
 
-    audio_app = create_audio_app(resolved_audio_dir)
-    video_app = create_video_app(resolved_video_dir)
+    logger.info("serve-all launching audio subprocess: %s", audio_cmd)
+    logger.info("serve-all launching video subprocess: %s", video_cmd)
 
-    audio_cfg = uvicorn.Config(audio_app, host=resolved_host, port=resolved_audio_port)
-    video_cfg = uvicorn.Config(video_app, host=resolved_host, port=resolved_video_port)
+    _console_print(f"🎵  Audio server → http://{resolved_host}:{resolved_audio_port}/")
+    _console_print(f"🎬  Video server → http://{resolved_host}:{resolved_video_port}/")
+    _console_print("Press Ctrl+C to stop both servers.\n")
 
-    audio_server = uvicorn.Server(audio_cfg)
-    video_server = uvicorn.Server(video_cfg)
-
-    print(f"🎵  Audio server → http://{resolved_host}:{resolved_audio_port}/")
-    print(f"🎬  Video server → http://{resolved_host}:{resolved_video_port}/")
-    print("Press Ctrl+C to stop both servers.\n")
-
-    # Run video in a daemon thread, audio on the main thread so Ctrl+C works.
-    video_thread = threading.Thread(target=video_server.run, daemon=True)
-    video_thread.start()
+    audio_proc = subprocess.Popen(audio_cmd)
+    video_proc = subprocess.Popen(video_cmd)
+    logger.info(
+        "serve-all subprocesses started: audio pid=%s, video pid=%s",
+        audio_proc.pid,
+        video_proc.pid,
+    )
 
     try:
-        audio_server.run()
+        while True:
+            audio_rc = audio_proc.poll()
+            video_rc = video_proc.poll()
+            if audio_rc is not None or video_rc is not None:
+                logger.warning(
+                    "serve-all child exit detected: audio_rc=%s, video_rc=%s",
+                    audio_rc,
+                    video_rc,
+                )
+                break
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        logger.info("serve-all interrupted by user — stopping child processes")
     finally:
-        video_server.should_exit = True
-        video_thread.join(timeout=3)
+        for proc, name in ((audio_proc, "audio"), (video_proc, "video")):
+            if proc.poll() is None:
+                logger.info("Stopping %s subprocess pid=%s", name, proc.pid)
+                proc.terminate()
+        for proc, name in ((audio_proc, "audio"), (video_proc, "video")):
+            try:
+                proc.wait(timeout=5)
+                logger.info("%s subprocess exited with rc=%s", name, proc.returncode)
+            except subprocess.TimeoutExpired:
+                logger.warning("%s subprocess did not exit in time — killing pid=%s", name, proc.pid)
+                proc.kill()
+                proc.wait(timeout=5)
 
 
 # ---------------------------------------------------------------------------

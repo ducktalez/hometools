@@ -1,6 +1,7 @@
 """Tests for the streaming setup module."""
 
 from hometools.streaming.setup import (
+    _build_serve_subprocess_command,
     generate_pycharm_configs,
     streaming_config_table,
 )
@@ -51,3 +52,18 @@ def test_generate_pycharm_configs_idempotent(tmp_path):
     generate_pycharm_configs(tmp_path)
     second_contents = {p.name: p.read_text(encoding="utf-8") for p in (tmp_path / ".idea" / "runConfigurations").iterdir()}
     assert first_contents == second_contents
+
+
+def test_build_serve_subprocess_command_contains_explicit_runtime_values(tmp_path):
+    cmd = _build_serve_subprocess_command(
+        "serve-video",
+        host="0.0.0.0",
+        port=8011,
+        library_dir=tmp_path,
+    )
+
+    assert cmd[0]
+    assert cmd[1:4] == ["-m", "hometools", "serve-video"]
+    assert "--host" in cmd and "0.0.0.0" in cmd
+    assert "--port" in cmd and "8011" in cmd
+    assert "--library-dir" in cmd and str(tmp_path) in cmd

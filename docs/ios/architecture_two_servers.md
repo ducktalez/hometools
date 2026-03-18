@@ -29,10 +29,10 @@ Auf iOS gibt es einen **Trade-off bei PWA-Konfiguration** (nicht unsolvbar, aber
 ```
 Benutzer
    ↓
-   ├─→ localhost:8001 (display: standalone)
+   ├─→ localhost:8011 (display: standalone)
    │   └─ Schöne App ✨
    │
-   └─→ localhost:8002 (display: minimal-ui)
+   └─→ localhost:8012 (display: minimal-ui)
        └─ Vollständiger Funktionsumfang 🔊
 ```
 
@@ -40,24 +40,24 @@ Benutzer
 
 ```bash
 # Terminal 1: Schöne App
-hometools stream-video --port 8001 \
+hometools stream-video --port 8011 \
   --env HOMETOOLS_VIDEO_PWA_DISPLAY=standalone
 
 # Terminal 2: Funktionale App
-hometools stream-video --port 8002 \
+hometools stream-video --port 8012 \
   --env HOMETOOLS_VIDEO_PWA_DISPLAY=minimal-ui
 ```
 
 ### iOS Nutzung
 
 **Szenario 1: Ich will Fullscreen und eine installierte App**
-- Safari: `http://localhost:8001`
+- Safari: `http://localhost:8011`
 - "Add to Home Screen" → echte PWA-App installiert
 - Fullscreen-Button funktioniert ✅
 - Background-Audio funktioniert nicht ❌
 
 **Szenario 2: Ich will Background-Audio und PiP**
-- Safari: `http://localhost:8002`
+- Safari: `http://localhost:8012`
 - "Add to Home Screen" → Web-Link (nicht echte App)
 - Home-Taste → Audio läuft weiter ✅
 - PiP-Miniplayer funktioniert ✅

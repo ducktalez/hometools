@@ -318,13 +318,13 @@ else {
 cd hometools
 python -m venv .venv
 .venv\Scripts\activate
-hometools serve-video --port 8001
+hometools serve-video --port 8011
 
 # Terminal 2: Xcode (iOS Simulator)
 cd ios/HometoolsVideo
 open HometoolsVideo.xcodeproj
 # Build + Run in Simulator
-# WKWebView lädt: http://localhost:8001
+# WKWebView lädt: http://localhost:8011
 ```
 
 ### App Store Release
@@ -416,7 +416,7 @@ hometools/
    - Keine App-internen Server
 
 ### 2. **PWA und Native App sind parallel nutzbar**
-   - PWA: `http://localhost:8001` im Safari
+   - PWA: `http://localhost:8011` im Safari
    - Native App: WKWebView im selben Backend
    - Oder: Native App zeigt PWA von anderem Device
 

@@ -64,6 +64,24 @@ class TestServerEndpointParity:
         assert audio_client.get("/sw.js").status_code == 200
         assert video_client.get("/sw.js").status_code == 200
 
+    def test_both_servers_have_status_endpoint(self):
+        """Both servers must expose cache/index diagnostics."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app())
+        video_client = TestClient(create_video_app())
+
+        audio_status = audio_client.get("/api/audio/status")
+        video_status = video_client.get("/api/video/status")
+
+        assert audio_status.status_code == 200
+        assert video_status.status_code == 200
+        assert "cache" in audio_status.json()
+        assert "cache" in video_status.json()
+
     def test_both_servers_have_icons(self):
         """Both servers must provide icon endpoints."""
         from fastapi.testclient import TestClient

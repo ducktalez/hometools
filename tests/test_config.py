@@ -40,4 +40,4 @@ def test_stream_port_from_env(monkeypatch):
 def test_stream_bind_uses_defaults_when_env_missing(monkeypatch):
     monkeypatch.delenv("HOMETOOLS_STREAM_HOST", raising=False)
     monkeypatch.delenv("HOMETOOLS_STREAM_PORT", raising=False)
-    assert get_stream_bind() == ("127.0.0.1", 8000)
+    assert get_stream_bind() == ("127.0.0.1", 8010)

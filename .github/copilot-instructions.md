@@ -6,21 +6,6 @@ Python CLI tool collection + two local FastAPI streaming servers (audio & video)
 
 Always run commands from the repo root. The virtualenv is `hometools-env/`.
 
-```powershell
-# Install (editable + dev deps) — always do this after pulling or changing pyproject.toml
-pip install -e ".[dev]"
-
-# Lint (ruff) — must pass before commit
-ruff check src/ tests/              # lint
-ruff format --check src/ tests/     # format check
-
-# Test — must pass before commit (~6 s, 280+ tests)
-python -m pytest tests/ -q
-
-# Pre-commit runs both ruff + pytest automatically
-pre-commit run --all-files
-```
-
 **No GitHub Actions / CI pipeline.** Validation is pre-commit only (ruff lint+format, pytest, feature-parity tests).
 
 ## Project Layout
@@ -54,4 +39,7 @@ After any change, run in this order:
 3. `python -m pytest tests/ -q` — all tests must pass
 4. If you changed streaming UI or API: also run `python -m pytest tests/test_feature_parity.py -v` — catches audio↔video drift
 
+## Maintaining these docs
 
+- **When you identify fundamental changes **, update `docs/architecture.md`.
+- **When you identify an open task**, add it to `docs/IMPLEMENTATION_PLAN.md`.

@@ -17,6 +17,7 @@ INSTRUCTIONS (local):
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -32,6 +33,8 @@ from hometools.streaming.core.thumbnailer import check_thumbnail_cached
 from hometools.utils import get_files_in_folder
 
 logger = logging.getLogger(__name__)
+
+_METADATA_CACHE_FILE = "video_metadata_cache.json"
 
 __all__ = [
     "MediaItem",
@@ -115,6 +118,50 @@ def _read_metadata_fast(p: Path) -> dict[str, str] | None:
     return None
 
 
+def _metadata_cache_path(cache_dir: Path) -> Path:
+    """Return the on-disk metadata cache path inside the shadow cache."""
+    return cache_dir / _METADATA_CACHE_FILE
+
+
+def _load_metadata_cache(cache_dir: Path) -> dict[str, dict[str, object]]:
+    """Load the persistent metadata cache from disk.
+
+    Returns an empty dict on any error or schema mismatch.
+    """
+    try:
+        path = _metadata_cache_path(cache_dir)
+        if not path.exists():
+            return {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and isinstance(raw.get("items"), dict):
+            return raw["items"]
+        if isinstance(raw, dict):
+            return raw
+    except Exception:
+        logger.debug("Could not load video metadata cache from %s", cache_dir, exc_info=True)
+    return {}
+
+
+def _save_metadata_cache(cache_dir: Path, cache: dict[str, dict[str, object]]) -> None:
+    """Persist the metadata cache to disk.  Never raises."""
+    try:
+        path = _metadata_cache_path(cache_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"version": 1, "items": cache}
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        logger.debug("Could not save video metadata cache to %s", cache_dir, exc_info=True)
+
+
+def _file_signature(p: Path) -> tuple[int, int]:
+    """Return a stable file signature based on mtime and size."""
+    try:
+        stat = p.stat()
+        return getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000)), stat.st_size
+    except OSError:
+        return 0, 0
+
+
 def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> list[MediaItem]:
     """Build a read-only video index from a local video library.
 
@@ -129,22 +176,66 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
 
     t0 = time.monotonic()
     root = safe_resolve(library_dir)
+    scan_t0 = time.monotonic()
+    video_files = get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX)
+    scan_elapsed = time.monotonic() - scan_t0
     items: list[MediaItem] = []
     meta_hits = 0
+    metadata_cache = _load_metadata_cache(cache_dir) if cache_dir is not None else {}
+    metadata_cache_loaded = len(metadata_cache)
+    metadata_cache_dirty = False
+    metadata_cache_hits = 0
+    metadata_cache_misses = 0
+    stale_cache_entries = 0
+    mutagen_reads = 0
+    seen_relative_paths: set[str] = set()
 
-    for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
+    logger.info(
+        "Building video index for %s — %d files discovered in %.2fs",
+        root,
+        len(video_files),
+        scan_elapsed,
+    )
+
+    for video_file in video_files:
         relative_path = safe_resolve(video_file).relative_to(root).as_posix()
+        seen_relative_paths.add(relative_path)
 
-        # Fast metadata: mutagen only, no ffprobe (avoids subprocess per file)
-        meta = _read_metadata_fast(video_file)
-        if meta and meta.get("title", "").strip():
-            title = meta["title"].strip()
+        meta = None
+        if cache_dir is not None:
+            sig_mtime_ns, sig_size = _file_signature(video_file)
+            cached = metadata_cache.get(relative_path)
+            if isinstance(cached, dict) and cached.get("mtime_ns") == sig_mtime_ns and cached.get("size") == sig_size:
+                metadata_cache_hits += 1
+                cached_title = str(cached.get("title") or "")
+                cached_artist = str(cached.get("artist") or "")
+                if cached_title or cached_artist:
+                    meta = {"title": cached_title, "artist": cached_artist}
+            else:
+                metadata_cache_misses += 1
+                mutagen_reads += 1
+                meta = _read_metadata_fast(video_file)
+                metadata_cache[relative_path] = {
+                    "mtime_ns": sig_mtime_ns,
+                    "size": sig_size,
+                    "title": meta.get("title", "") if meta else "",
+                    "artist": meta.get("artist", "") if meta else "",
+                }
+                metadata_cache_dirty = True
+        else:
+            mutagen_reads += 1
+            meta = _read_metadata_fast(video_file)
+
+        meta_title = str(meta.get("title") or "") if meta else ""
+        if meta_title.strip():
+            title = meta_title.strip()
             meta_hits += 1
         else:
             title = _title_from_filename(video_file.stem)
 
-        if meta and meta.get("artist", "").strip():
-            folder = meta["artist"].strip()
+        meta_artist = str(meta.get("artist") or "") if meta else ""
+        if meta_artist.strip():
+            folder = meta_artist.strip()
         else:
             folder = _folder_as_artist(video_file, root)
 
@@ -165,12 +256,41 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             )
         )
 
+    if cache_dir is not None:
+        stale_keys = [key for key in metadata_cache if key not in seen_relative_paths]
+        if stale_keys:
+            stale_cache_entries = len(stale_keys)
+            for key in stale_keys:
+                metadata_cache.pop(key, None)
+            metadata_cache_dirty = True
+        if metadata_cache_dirty:
+            save_t0 = time.monotonic()
+            _save_metadata_cache(cache_dir, metadata_cache)
+            logger.info(
+                "Video metadata cache updated: %d entries written to %s in %.2fs",
+                len(metadata_cache),
+                _metadata_cache_path(cache_dir),
+                time.monotonic() - save_t0,
+            )
+        logger.info(
+            "Video metadata cache stats: loaded=%d hits=%d misses=%d stale_removed=%d mutagen_reads=%d",
+            metadata_cache_loaded,
+            metadata_cache_hits,
+            metadata_cache_misses,
+            stale_cache_entries,
+            mutagen_reads,
+        )
+
     elapsed = time.monotonic() - t0
     logger.info(
-        "Video index built: %d items (%d with embedded metadata) in %.1fs",
+        "Video index built: %d items (%d with embedded metadata) in %.1fs [scan=%.2fs, mutagen_reads=%d, cache_hits=%d, cache_misses=%d]",
         len(items),
         meta_hits,
         elapsed,
+        scan_elapsed,
+        mutagen_reads,
+        metadata_cache_hits,
+        metadata_cache_misses,
     )
     return sort_videos(items, sort_by="title")
 

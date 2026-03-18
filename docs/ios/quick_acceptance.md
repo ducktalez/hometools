@@ -23,8 +23,8 @@ Für den konkreten Ablauf mit den aktuellen Server-URLs siehe [test_runbook.md](
 ## 5-Minuten-Check
 
 ### 1. Seite öffnen
-- [ ] Audio- oder Video-Server in Safari öffnen
-- [ ] UI lädt vollständig
+- [x] Audio- oder Video-Server in Safari öffnen
+- [x] UI lädt vollständig
 - [ ] `Offline`-Button ist sichtbar
 
 ### 2. Einen Download auslösen
