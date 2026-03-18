@@ -32,6 +32,14 @@ def _get_int_from_env(name: str, default: int) -> int:
         raise RuntimeError(f"{name} must be an integer, got: {raw!r}") from exc
 
 
+def _get_bool_from_env(name: str, default: bool = False) -> bool:
+    """Return a boolean environment variable with a permissive parser."""
+    raw = os.environ.get(name)
+    if raw in (None, ""):
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def get_tmdb_api_key() -> str:
     """Return the TMDB API key from the environment."""
     key = os.environ.get("TMDB_API_KEY", "")
@@ -126,6 +134,11 @@ def get_stream_index_cache_ttl() -> int:
     while background refresh keeps stale snapshots up to date.
     """
     return _get_int_from_env("HOMETOOLS_STREAM_INDEX_CACHE_TTL", 900)
+
+
+def get_stream_safe_mode() -> bool:
+    """Return whether streaming servers should run in minimal no-cache safe mode."""
+    return _get_bool_from_env("HOMETOOLS_STREAM_SAFE_MODE", False)
 
 
 # ---------------------------------------------------------------------------

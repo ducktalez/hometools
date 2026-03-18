@@ -12,6 +12,7 @@ from hometools.config import (
     get_audio_nas_dir,
     get_audio_port,
     get_stream_host,
+    get_stream_safe_mode,
     get_video_library_dir,
     get_video_nas_dir,
     get_video_port,
@@ -25,6 +26,7 @@ def _add_serve_parser(subparsers, name: str, help_text: str, func):
     p.add_argument("--library-dir", type=Path, default=None, help="Local library directory.")
     p.add_argument("--host", default=None, help="Bind host.")
     p.add_argument("--port", type=int, default=None, help="Bind port.")
+    p.add_argument("--safe-mode", action="store_true", help="Disable streaming caches and PWA extras for a minimal fallback mode.")
     p.set_defaults(func=func)
     return p
 
@@ -57,10 +59,25 @@ def build_parser() -> argparse.ArgumentParser:
     serve_all.add_argument("--host", default=None, help="Bind host.")
     serve_all.add_argument("--audio-port", type=int, default=None, help="Audio server port.")
     serve_all.add_argument("--video-port", type=int, default=None, help="Video server port.")
+    serve_all.add_argument("--safe-mode", action="store_true", help="Run both servers in minimal no-cache safe mode.")
     serve_all.set_defaults(func=run_serve_all)
 
     stream_cfg = subparsers.add_parser("streaming-config", help="Show current streaming configuration.")
     stream_cfg.set_defaults(func=run_streaming_config)
+
+    stream_reset = subparsers.add_parser("stream-reset", help="Remove generated streaming artefacts for one server.")
+    stream_reset.add_argument("--server", choices=["audio", "video", "all"], required=True)
+    stream_reset.add_argument("--hard", action="store_true", help="Also delete thumbnails, metadata caches and failure entries.")
+    stream_reset.set_defaults(func=run_stream_reset)
+
+    stream_prewarm = subparsers.add_parser(
+        "stream-prewarm",
+        help="Build streaming index snapshots and thumbnails without starting the server.",
+    )
+    stream_prewarm.add_argument("--server", choices=["audio", "video"], required=True)
+    stream_prewarm.add_argument("--mode", choices=["missing", "full"], default="missing")
+    stream_prewarm.add_argument("--scope", choices=["all", "index", "thumbnails"], default="all")
+    stream_prewarm.set_defaults(func=run_stream_prewarm)
 
     setup_pc = subparsers.add_parser("setup-pycharm", help="Generate PyCharm run configurations for streaming.")
     setup_pc.add_argument("--project-root", type=Path, default=Path.cwd())
@@ -182,13 +199,14 @@ def run_serve_audio(args: argparse.Namespace) -> int:
 
     from hometools.streaming.audio.server import create_app
 
-    setup_logging(log_file="auto")
+    setup_logging(log_file="auto", log_name="audio")
     host = args.host or get_stream_host()
     port = args.port or get_audio_port()
     library = args.library_dir or get_audio_library_dir()
+    safe_mode = args.safe_mode or get_stream_safe_mode()
     _check_library_dir(library, "Audio")
     _print_server_banner("audio", host, port)
-    app = create_app(library)
+    app = create_app(library, safe_mode=safe_mode)
     uvicorn.run(app, host=host, port=port)
     return 0
 
@@ -212,13 +230,14 @@ def run_serve_video(args: argparse.Namespace) -> int:
 
     from hometools.streaming.video.server import create_app
 
-    setup_logging(log_file="auto")
+    setup_logging(log_file="auto", log_name="video")
     host = args.host or get_stream_host()
     port = args.port or get_video_port()
     library = args.library_dir or get_video_library_dir()
+    safe_mode = args.safe_mode or get_stream_safe_mode()
     _check_library_dir(library, "Video")
     _print_server_banner("video", host, port)
-    app = create_app(library)
+    app = create_app(library, safe_mode=safe_mode)
     uvicorn.run(app, host=host, port=port)
     return 0
 
@@ -240,11 +259,38 @@ def run_serve_all(args: argparse.Namespace) -> int:
     """Start both streaming servers on separate ports."""
     from hometools.streaming.setup import serve_all
 
-    setup_logging(log_file="auto")
+    setup_logging(log_file="auto", log_name="serve-all")
     serve_all(
         host=args.host or get_stream_host(),
         audio_port=args.audio_port or get_audio_port(),
         video_port=args.video_port or get_video_port(),
+        safe_mode=args.safe_mode or get_stream_safe_mode(),
+    )
+    return 0
+
+
+def run_stream_reset(args: argparse.Namespace) -> int:
+    """Delete generated streaming artefacts for one or both servers."""
+    from hometools.streaming.core.maintenance import reset_stream_generated
+
+    setup_logging(log_file=None)
+    results = reset_stream_generated(args.server, hard=args.hard)
+    for result in results:
+        print(f"[{result.server}] removed {len(result.removed_paths)} path(s), failure entries cleared: {result.failure_entries_removed}")
+        for path in result.removed_paths:
+            print(f"  - {path}")
+    return 0
+
+
+def run_stream_prewarm(args: argparse.Namespace) -> int:
+    """Build cache artefacts for one server without starting uvicorn."""
+    from hometools.streaming.core.maintenance import prewarm_stream
+
+    setup_logging(log_file=None)
+    result = prewarm_stream(args.server, mode=args.mode, scope=args.scope)
+    print(
+        f"[{result.server}] prewarm complete — mode={result.mode}, scope={result.scope}, "
+        f"index_items={result.index_count}, thumbnails_generated={result.thumbnails_generated}, thumbnails_skipped={result.thumbnails_skipped}"
     )
     return 0
 

@@ -102,6 +102,7 @@ A collection of Python tools for managing personal media libraries — music fil
 - Jeder Nutzer hat eine andere Ordnerstruktur. Es wird zwar eine generelle Ordnerstruktur vorgegeben; jedoch sollte folgendes diskutiert werden.
   - Es sollte überlegt werden ob nicht mit N8N hier eine Logik generiert werden kann, auf jede Person zugeschnitten, damit alle Ordner richtig interpretiert werden.
 - Wir sollten eine Liste führen mit Technologien, die in Zukunft eventuell ersetzt werden sollen. Entweder in Architecture oder Implementation Plan sollte hier vielleicht auch ein Diskussionsbereich für genau solche Überlegungen festgelegt werden. Wo hältst du es für am sinnvollsten? 
+- Für den Hard Reset sollte ein Parameter prüfen, ob es sich um einen Produktivstand handelt. Wenn ja, sollte der Hard Reset nicht möglich sein. 
 
 ## Features
 
@@ -161,6 +162,16 @@ hometools serve-all               # start audio (:8010) + video (:8011)
 hometools sync-audio --dry-run    # preview audio sync
 hometools sync-video              # copy video files from NAS
 ```
+
+### Wartung / Debugging
+
+- `make reset-hard SERVER=audio` — löscht generierte Audio-Artefakte (Logs, Index-Snapshot, Thumbnails, Failure-Registry-Einträge)
+- `make reset-all-hard` — harter Reset für beide Streaming-Server
+- `make prewarm SERVER=video MODE=missing SCOPE=all` — baut Index-Snapshot + fehlende Thumbnails vor, ohne den Server zu starten
+- `make video-reindex` — erzwingt kompletten Neuaufbau des Video-Index-Snapshots
+- `make serve-all-safe` — startet beide Server im Safe-Mode
+
+Safe-Mode (`HOMETOOLS_STREAM_SAFE_MODE=true` oder `--safe-mode`) deaktiviert absichtlich Snapshot-/Thumbnail-Warmups sowie Service-Worker-/Offline-Features. Gedacht als robuster Fallback, wenn NAS/UNC-Pfade oder Cache-Artefakte Probleme machen.
 
 ## Project Structure
 

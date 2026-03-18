@@ -101,13 +101,14 @@ def _build_serve_subprocess_command(
     host: str,
     port: int,
     library_dir: Path,
+    safe_mode: bool = False,
 ) -> list[str]:
     """Return the subprocess command used by ``serve_all``.
 
     Audio and video are launched as separate Python processes so they do not
     share in-process globals such as thumbnail workers or index caches.
     """
-    return [
+    cmd = [
         sys.executable,
         "-m",
         "hometools",
@@ -119,6 +120,9 @@ def _build_serve_subprocess_command(
         "--library-dir",
         str(library_dir),
     ]
+    if safe_mode:
+        cmd.append("--safe-mode")
+    return cmd
 
 
 def serve_all(
@@ -127,6 +131,7 @@ def serve_all(
     host: str | None = None,
     audio_port: int | None = None,
     video_port: int | None = None,
+    safe_mode: bool = False,
 ) -> None:
     """Start audio and video streaming servers on separate ports.
 
@@ -145,12 +150,14 @@ def serve_all(
         host=resolved_host,
         port=resolved_audio_port,
         library_dir=resolved_audio_dir,
+        safe_mode=safe_mode,
     )
     video_cmd = _build_serve_subprocess_command(
         "serve-video",
         host=resolved_host,
         port=resolved_video_port,
         library_dir=resolved_video_dir,
+        safe_mode=safe_mode,
     )
 
     logger.info("serve-all launching audio subprocess: %s", audio_cmd)

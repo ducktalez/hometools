@@ -19,6 +19,7 @@ from hometools.config import (
     get_cache_dir,
     get_player_bar_style,
     get_stream_index_cache_ttl,
+    get_stream_safe_mode,
     get_video_library_dir,
     get_video_pwa_display_mode,
 )
@@ -65,7 +66,7 @@ def resolve_video_path(library_dir: Path, encoded_relative_path: str) -> Path:
     return resolve_media_path(library_dir, encoded_relative_path, VIDEO_SUFFIX)
 
 
-def render_video_index_html(items) -> str:
+def render_video_index_html(items, *, safe_mode: bool = False) -> str:
     """Render the video player UI — dark theme, folder grid, inline video element."""
     items_json = _json.dumps([i.to_dict() for i in items], ensure_ascii=False)
 
@@ -78,17 +79,19 @@ def render_video_index_html(items) -> str:
         api_path="/api/video/items",
         item_noun="video",
         theme_color="#bb86fc",
-        player_bar_style=get_player_bar_style(),
+        player_bar_style="classic" if safe_mode else get_player_bar_style(),
+        safe_mode=safe_mode,
     )
 
 
-def create_app(library_dir: Path | None = None) -> Any:
+def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None) -> Any:
     """Create the FastAPI application for local video streaming."""
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import FileResponse, HTMLResponse
 
     resolved_library_dir = (library_dir or get_video_library_dir()).expanduser()
     resolved_cache_dir = get_cache_dir()
+    resolved_safe_mode = get_stream_safe_mode() if safe_mode is None else safe_mode
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -103,7 +106,7 @@ def create_app(library_dir: Path | None = None) -> Any:
             import logging
 
             logging.getLogger(__name__).warning("Video-Bibliothek: %s", msg)
-        else:
+        elif not resolved_safe_mode:
             cached = _video_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
             started_index_refresh = _video_index_cache.ensure_background_refresh(
                 resolved_library_dir,
@@ -132,6 +135,8 @@ def create_app(library_dir: Path | None = None) -> Any:
                     logger.debug("Failed to start background video thumbnail generation", exc_info=True)
 
             threading.Thread(target=_prepare_thumbnails, daemon=True, name="video-thumb-bootstrap").start()
+        else:
+            logger.warning("Video server running in SAFE MODE — caches, PWA and thumbnail warmups are disabled")
 
         logger.info("Video server startup complete in %.2fs", time.monotonic() - startup_t0)
         yield
@@ -155,7 +160,7 @@ def create_app(library_dir: Path | None = None) -> Any:
         if not ok:
             logger.warning("GET / — library not accessible: %s", msg)
             return HTMLResponse(render_error_page("hometools video", "🎬", msg, resolved_library_dir))
-        html = render_video_index_html([])
+        html = render_video_index_html([], safe_mode=resolved_safe_mode)
         elapsed = time.monotonic() - t0
         logger.info("GET / — shell rendered in %.2fs (HTML: %d bytes)", elapsed, len(html))
         return HTMLResponse(html)
@@ -173,6 +178,23 @@ def create_app(library_dir: Path | None = None) -> Any:
                 "items": [],
                 "artists": [],
                 "error": msg,
+                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
+            }
+        if resolved_safe_mode:
+            items = build_video_index(resolved_library_dir, cache_dir=None)
+            filtered = query_items(items, q=q, artist=artist, sort_by=sort)
+            logger.info(
+                "GET /api/video/items — SAFE MODE returned %d/%d items in %.1fs",
+                len(filtered),
+                len(items),
+                time.monotonic() - t0,
+            )
+            return {
+                "library_dir": str(resolved_library_dir),
+                "count": len(filtered),
+                "items": [i.to_dict() for i in filtered],
+                "artists": list_artists(items),
+                "safe_mode": True,
                 "query": {"q": q or "", "artist": artist or "all", "sort": sort},
             }
         cache_t0 = time.monotonic()
@@ -236,12 +258,32 @@ def create_app(library_dir: Path | None = None) -> Any:
     @app.get("/api/video/status")
     def video_status() -> dict[str, object]:
         ok, msg = check_library_accessible(resolved_library_dir)
-        cache_status = _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        cache_status = (
+            {
+                "label": "video-index",
+                "building": False,
+                "cached_count": 0,
+                "fresh": False,
+                "ttl_seconds": 0,
+                "cache_age_seconds": None,
+                "library_dir": str(resolved_library_dir),
+                "snapshot_path": "",
+                "snapshot_exists": False,
+                "build_running_for_seconds": None,
+                "last_build_started_at": None,
+                "last_build_finished_at": None,
+                "last_build_duration_seconds": None,
+                "last_build_reason": "safe-mode",
+                "last_error": "",
+            }
+            if resolved_safe_mode
+            else _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        )
         return build_index_status_payload(
             library_dir=resolved_library_dir,
             item_label="video",
             library_ok=ok,
-            library_message=msg,
+            library_message="Safe mode active — no cache snapshot or thumbnail warmup" if resolved_safe_mode else msg,
             cache_status=cache_status,
         )
 

@@ -962,7 +962,13 @@ body.modal-open { overflow: hidden; }
 # ---------------------------------------------------------------------------
 
 
-def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = "\U0001f3b5", player_bar_style: str = "classic") -> str:
+def render_player_js(
+    api_path: str,
+    item_noun: str = "track",
+    file_emoji: str = "\U0001f3b5",
+    player_bar_style: str = "classic",
+    enable_offline: bool = True,
+) -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
     Default view is a folder list (configurable via toggle to grid).
@@ -1115,6 +1121,9 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   var API_PATH = '"""
         + api_path
         + """';
+  var OFFLINE_ENABLED = """
+        + ("true" if enable_offline else "false")
+        + """;
   var STATUS_PATH = API_PATH.substring(0, API_PATH.lastIndexOf('/')) + '/status';
 
   /* Placeholder SVG thumbnails — same dimensions as real thumbs so layout never shifts.
@@ -2548,7 +2557,12 @@ def render_player_js(api_path: str, item_noun: str = "track", file_emoji: str = 
   sortField.addEventListener('change', applyFilter);
 
   /* ── init ── */
-  if (typeof indexedDB !== 'undefined') {
+  if (!OFFLINE_ENABLED) {
+    if (offlineStatusPill) {
+      offlineStatusPill.textContent = 'Safe Mode';
+      offlineStatusPill.classList.add('is-offline');
+    }
+  } else if (typeof indexedDB !== 'undefined') {
     initDownloadDB().catch(function(err) {
       console.warn('IndexedDB not available:', err);
     }).then(function() {
@@ -2581,6 +2595,7 @@ def render_media_page(
     item_noun: str = "track",
     theme_color: str = "#1db954",
     player_bar_style: str = "classic",
+    safe_mode: bool = False,
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -2593,15 +2608,62 @@ def render_media_page(
     ``waveform`` — two-row layout with audio waveform / video thumbnails.
     """
     css = render_base_css() + extra_css
-    js = render_player_js(api_path=api_path, item_noun=item_noun, file_emoji=emoji, player_bar_style=player_bar_style)
+    js = render_player_js(
+        api_path=api_path,
+        item_noun=item_noun,
+        file_emoji=emoji,
+        player_bar_style=player_bar_style,
+        enable_offline=not safe_mode,
+    )
     is_video = media_element_tag == "video"
-    pwa_tags = render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
-    sw_register = """
+    pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
+    sw_register = (
+        ""
+        if safe_mode
+        else """
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(function(){});
     }
   </script>"""
+    )
+    mode_controls_html = (
+        '<span class="offline-status-pill is-offline" id="offline-status-pill">Safe Mode</span>'
+        if safe_mode
+        else (
+            '<button class="offline-btn" id="offline-btn" title="Offline-Bibliothek öffnen">Offline</button>'
+            '<span class="offline-status-pill" id="offline-status-pill">Online</span>'
+        )
+    )
+    offline_library_html = (
+        ""
+        if safe_mode
+        else """
+  <div class="offline-library" id="offline-library" hidden>
+    <div class="offline-panel">
+      <div class="offline-head">
+        <div class="offline-title-wrap">
+          <div class="offline-title">Offline-Bibliothek</div>
+          <div class="offline-subtitle">Gespeicherte Downloads verwalten und direkt offline abspielen</div>
+        </div>
+        <button class="offline-close" id="offline-close" title="Schließen">Schließen</button>
+      </div>
+      <div class="offline-summary" id="offline-storage-summary">Noch keine Offline-Downloads.</div>
+      <div class="offline-summary-detail" id="offline-storage-detail"></div>
+      <div class="offline-toolbar">
+        <select id="offline-sort">
+          <option value="newest">Neueste zuerst</option>
+          <option value="oldest">Älteste zuerst</option>
+          <option value="title">Titel A–Z</option>
+          <option value="size">Größte zuerst</option>
+        </select>
+        <button class="offline-action-btn" id="offline-persist-btn" type="button">Speicher persistent halten</button>
+        <button class="offline-action-btn" id="offline-prune-btn" type="button">Alte Downloads aufräumen</button>
+      </div>
+      <ul class="offline-download-list" id="offline-download-list"></ul>
+    </div>
+  </div>"""
+    )
 
     if player_bar_style == "waveform":
         player_bar_html = f"""
@@ -2668,8 +2730,7 @@ def render_media_page(
     <span class="logo">{emoji} {html.escape(title)}</span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">&#9654; Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">&#9776;</button>
-    <button class="offline-btn" id="offline-btn" title="Offline-Bibliothek öffnen">Offline</button>
-    <span class="offline-status-pill" id="offline-status-pill">Online</span>
+    {mode_controls_html}
     <span class="track-count" id="track-count"></span>
   </header>
 
@@ -2694,30 +2755,7 @@ def render_media_page(
     <ul class="track-list" id="track-list"></ul>
   </div>
 
-  <div class="offline-library" id="offline-library" hidden>
-    <div class="offline-panel">
-      <div class="offline-head">
-        <div class="offline-title-wrap">
-          <div class="offline-title">Offline-Bibliothek</div>
-          <div class="offline-subtitle">Gespeicherte Downloads verwalten und direkt offline abspielen</div>
-        </div>
-        <button class="offline-close" id="offline-close" title="Schließen">Schließen</button>
-      </div>
-      <div class="offline-summary" id="offline-storage-summary">Noch keine Offline-Downloads.</div>
-      <div class="offline-summary-detail" id="offline-storage-detail"></div>
-      <div class="offline-toolbar">
-        <select id="offline-sort">
-          <option value="newest">Neueste zuerst</option>
-          <option value="oldest">Älteste zuerst</option>
-          <option value="title">Titel A–Z</option>
-          <option value="size">Größte zuerst</option>
-        </select>
-        <button class="offline-action-btn" id="offline-persist-btn" type="button">Speicher persistent halten</button>
-        <button class="offline-action-btn" id="offline-prune-btn" type="button">Alte Downloads aufräumen</button>
-      </div>
-      <ul class="offline-download-list" id="offline-download-list"></ul>
-    </div>
-  </div>
+{offline_library_html}
 
   <{media_element_tag} id="player" preload="auto" playsinline{" controls autopictureinpicture" if media_element_tag == "video" else ""}></{media_element_tag}>
 {player_bar_html}

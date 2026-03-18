@@ -167,6 +167,28 @@ def test_audio_status_endpoint_returns_cache_diagnostics(tmp_path):
     assert data["cache"]["building"] is True
 
 
+def test_audio_home_safe_mode_omits_service_worker_registration(tmp_path):
+    client = TestClient(create_app(tmp_path, safe_mode=True))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "serviceWorker.register('/sw.js')" not in response.text
+    assert 'id="offline-btn"' not in response.text
+    assert "Safe Mode" in response.text
+
+
+def test_audio_tracks_safe_mode_reports_flag(tmp_path):
+    audio = tmp_path / "Artist - Song.mp3"
+    audio.write_bytes(b"")
+    client = TestClient(create_app(tmp_path, safe_mode=True))
+
+    response = client.get("/api/audio/tracks")
+
+    assert response.status_code == 200
+    assert response.json()["safe_mode"] is True
+
+
 def test_thumb_returns_404_when_thumbnail_is_missing(tmp_path):
     client = TestClient(create_app(tmp_path))
 

@@ -67,3 +67,15 @@ def test_build_serve_subprocess_command_contains_explicit_runtime_values(tmp_pat
     assert "--host" in cmd and "0.0.0.0" in cmd
     assert "--port" in cmd and "8011" in cmd
     assert "--library-dir" in cmd and str(tmp_path) in cmd
+
+
+def test_build_serve_subprocess_command_appends_safe_mode_flag(tmp_path):
+    cmd = _build_serve_subprocess_command(
+        "serve-audio",
+        host="127.0.0.1",
+        port=8010,
+        library_dir=tmp_path,
+        safe_mode=True,
+    )
+
+    assert cmd[-1] == "--safe-mode"
