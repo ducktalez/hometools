@@ -1,6 +1,6 @@
 """Tests for the shared streaming core — models, catalog, sync, server_utils."""
 
-from hometools.streaming.core.catalog import list_artists, query_items, sort_items
+from hometools.streaming.core.catalog import list_artists, parse_season_episode, query_items, sort_items
 from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import render_media_page, resolve_media_path
 from hometools.streaming.core.sync import copy_reason, plan_sync, sync_library
@@ -51,6 +51,97 @@ def test_list_artists_excludes_empty():
         MediaItem("b.mp3", "Song", "Muse", "u2", "audio"),
     ]
     assert list_artists(items) == ["Muse"]
+
+
+# ---------------------------------------------------------------------------
+# Season / episode parsing
+# ---------------------------------------------------------------------------
+
+
+def test_parse_season_episode_standard():
+    assert parse_season_episode("Breaking.Bad.S02E03.720p.mkv") == (2, 3)
+
+
+def test_parse_season_episode_lowercase():
+    assert parse_season_episode("show.s01e10.title.mp4") == (1, 10)
+
+
+def test_parse_season_episode_large_episode():
+    assert parse_season_episode("Anime S01E1034 Title.mp4") == (1, 1034)
+
+
+def test_parse_season_episode_x_pattern():
+    assert parse_season_episode("show.1x05.title.mp4") == (1, 5)
+
+
+def test_parse_season_episode_x_pattern_two_digit_season():
+    assert parse_season_episode("show.12x03.title.mkv") == (12, 3)
+
+
+def test_parse_season_episode_no_match():
+    assert parse_season_episode("Random Movie 2024.mp4") == (0, 0)
+
+
+def test_parse_season_episode_empty_string():
+    assert parse_season_episode("") == (0, 0)
+
+
+def test_parse_season_episode_prefers_s_pattern_over_x():
+    # When both patterns match, S##E## should win (it comes first)
+    assert parse_season_episode("show.S03E04.1x02.mp4") == (3, 4)
+
+
+# ---------------------------------------------------------------------------
+# Series sort ordering
+# ---------------------------------------------------------------------------
+
+
+def test_sort_items_series_by_season_episode():
+    """Series episodes in the same folder must be sorted by (season, episode)."""
+    items = [
+        MediaItem("s/S01E10.mp4", "Ep 10", "Show", "u1", "video", season=1, episode=10),
+        MediaItem("s/S01E02.mp4", "Ep 2", "Show", "u2", "video", season=1, episode=2),
+        MediaItem("s/S02E01.mp4", "Ep 1", "Show", "u3", "video", season=2, episode=1),
+        MediaItem("s/S01E01.mp4", "Ep 1", "Show", "u4", "video", season=1, episode=1),
+    ]
+    sorted_items = sort_items(items, "artist")
+    assert [(i.season, i.episode) for i in sorted_items] == [
+        (1, 1),
+        (1, 2),
+        (1, 10),
+        (2, 1),
+    ]
+
+
+def test_sort_items_non_series_unaffected():
+    """Items without season/episode still sort by title within the same folder."""
+    items = [
+        MediaItem("a/Z.mp4", "Zulu", "Folder", "u1", "video"),
+        MediaItem("a/A.mp4", "Alpha", "Folder", "u2", "video"),
+    ]
+    sorted_items = sort_items(items, "artist")
+    assert [i.title for i in sorted_items] == ["Alpha", "Zulu"]
+
+
+def test_sort_items_mixed_series_and_non_series():
+    """Non-series items (season=0, episode=0) sort before series episodes."""
+    items = [
+        MediaItem("a/S01E02.mp4", "Ep 2", "Folder", "u1", "video", season=1, episode=2),
+        MediaItem("a/intro.mp4", "Intro", "Folder", "u2", "video"),
+        MediaItem("a/S01E01.mp4", "Ep 1", "Folder", "u3", "video", season=1, episode=1),
+    ]
+    sorted_items = sort_items(items, "artist")
+    assert [i.title for i in sorted_items] == ["Intro", "Ep 1", "Ep 2"]
+
+
+def test_sort_items_by_title_also_uses_season_episode():
+    """Title sort should also use season/episode for same-title items."""
+    items = [
+        MediaItem("s/S01E10.mp4", "Show", "A", "u1", "video", season=1, episode=10),
+        MediaItem("s/S01E02.mp4", "Show", "A", "u2", "video", season=1, episode=2),
+    ]
+    sorted_items = sort_items(items, "title")
+    assert [(i.season, i.episode) for i in sorted_items] == [(1, 2), (1, 10)]
 
 
 # ---------------------------------------------------------------------------

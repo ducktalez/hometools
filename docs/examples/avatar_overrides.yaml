@@ -1,0 +1,145 @@
+# hometools media overrides — Avatar: Der Herr der Elemente
+# Platziere diese Datei im Serienordner neben den Videodateien.
+# Felder die nicht gesetzt sind, werden automatisch aus dem Dateinamen erkannt.
+
+series_title: "Avatar: Der Herr der Elemente"
+
+episodes:
+  # ===== Staffel 1 — Buch 1: Wasser =====
+  "Avatar S01E01 German 2005 DVDRiP REPACK XviD-SiMPTY.avi":
+    title: "Der Junge im Eisberg"
+  "Avatar S01E02 German 2005 DVDRiP XviD-SiMPTY.mp4":
+    title: "Der Avatar kehrt zurück"
+  "Avatar S01E03 German 2005 DVDRiP XviD-SiMPTY.flv":
+    title: "Der südliche Lufttempel"
+  "Avatar S01E04 German 2005 DVDRiP XviD-SiMPTY.flv":
+    title: "Die Krieger von Kyoshi"
+  # S01E05 fehlt (König von Omashu)
+  "Avatar S01E06 German 2005 FS DVDRiP XviD-SiMPTY.flv":
+    title: "Gefangen"
+  "Avatar S01E07 German 2005 FS DVDRiP XviD-SiMPTY.mp4":
+    title: "Die Geisterwelt (Wintersonnenwende Teil 1)"
+  "Avatar S01E08 German 2005 FS DVDRiP XviD-SiMPTY.flv":
+    title: "Avatar Roku (Wintersonnenwende Teil 2)"
+  "Avatar S01E09 Die Schriftrolle German FS DVDRiP XviD-CRiSP.flv":
+    title: "Die Schriftrolle"
+  "Avatar S01E10 Jet der Rebell German FS DVDRiP XviD-CRiSP.flv":
+    title: "Jet der Rebell"
+  "Avatar S01E11 Grabenkaempfe German FS DVDRiP XviD-CRiSP.flv":
+    title: "Grabenkämpfe"
+  "Avatar S01E12 Der Sturm German FS DVDRiP XviD-CRiSP.flv":
+    title: "Der Sturm"
+  "Avatar S01E13 Der blaue Geist German FS DVDRiP XviD-CRiSP.flv":
+    title: "Der blaue Geist"
+  "Avatar S01E14 Die Wahrsagerin German FS DVDRiP XviD-CRiSP.flv":
+    title: "Die Wahrsagerin"
+  "Avatar S01E15 Bato vom Wasserstamm German FS DVDRiP XviD-CRiSP.flv":
+    title: "Bato vom Wasserstamm"
+  "Avatar S01E16 Die Macht des Feuers German FS DVDRiP XviD-CRiSP.flv":
+    title: "Die Macht des Feuers"
+  "Avatar S01E17 Luftakrobaten German FS DVDRip XviD-CRiSP.flv":
+    title: "Luftakrobaten"
+  "Avatar S01E18 Der Meister der Wasserbaendiger German FS DVDRip XviD-CRiSP.avi":
+    title: "Der Meister der Wasserbändiger"
+  "Avatar S01E19 Die Belagerung des Nordens Teil 1 German FS DVDRip XviD-CRiSP.flv":
+    title: "Die Belagerung des Nordens (Teil 1)"
+  "Avatar S01E20 Die Belagerung des Nordens Teil 2 German FS DVDRip XviD-CRiSP.flv":
+    title: "Die Belagerung des Nordens (Teil 2)"
+
+  # ===== Staffel 2 — Buch 2: Erde =====
+  "Avatar S02E01 Der Avatar Zustand German ANiME FS DVDRip XviD-CRiSP.mp4":
+    title: "Der Avatar-Zustand"
+  "Avatar S02E02 Die Hoehle der Verliebten German FS DVDRip XviD-CRiSP.avi":
+    title: "Die Höhle der Verliebten"
+  "Avatar S02E03 Rueckkehr nach Omashu German FS DVDRip XviD-CRiSP.flv":
+    title: "Rückkehr nach Omashu"
+  "Avatar S02E04 Der Sumpf ruft German FS DVDRip XviD-CRiSP.flv":
+    title: "Der Sumpf ruft"
+  "Avatar S02E05 Der Tag des Avatar German FS DVDRip XviD-CRiSP.mp4":
+    title: "Der Tag des Avatar"
+  "Avatar S02E06 Der blinde Bandit German FS DVDRip XviD-CRiSP.avi":
+    title: "Der blinde Bandit"
+  "Avatar S02E07 Sukos Erinnerungen German FS DVDRip XviD-CRiSP.avi.mp4":
+    title: "Zukos Erinnerungen"
+  "Avatar S02e08.mp4":
+    title: "Die Verfolgungsjagd"
+  "Avatar S02E09 Hartes Training German FS DVDRip XviD-CRiSP.mp4":
+    title: "Hartes Training"
+  "Avatar S02E10 Wissen ist Macht German FS DVDRip XviD-CRiSP.mp4":
+    title: "Wissen ist Macht"
+  "Avatar S02E11 In der Wueste German FS DVDRip XviD-CRiSP.flv":
+    title: "In der Wüste"
+  "Avatar S02E12 Der Schlangenpass German FS DVDRip XviD-CRiSP.mp4":
+    title: "Der Schlangenpass"
+  "Avatar S02E13 Bedrohlicher Bohrer German FS DVDRip XviD-CRiSP.flv":
+    title: "Bedrohlicher Bohrer"
+  "Avatar S02e14.mp4":
+    title: "Die Stadt der Mauern und Geheimnisse"
+  "Avatar S02E15 --FILLER--Geschichten aus Ba Sing Se German FS DVDRip XviD-CRiSP.flv":
+    title: "Geschichten aus Ba Sing Se"
+  "Avatar S02E16 Armer Appa German FS DVDRip XviD-CRiSP.mp4":
+    title: "Armer Appa"
+  "Avatar S02E17 Der Laogai See German FS DVDRip XviD-CRiSP.mp4":
+    title: "Der Laogai-See"
+  "Avatar S02E18 Der Erdkoenig German FS DVDRip XviD-CRiSP.flv":
+    title: "Der Erdkönig"
+  "Avatar S02E19 Der Guru German FS DVDRip XviD-CRiSP.flv":
+    title: "Der Guru"
+  "Avatar S02E20 Ein fataler Niedergang German FS DVDRip XviD-CRiSP.flv":
+    title: "Ein fataler Niedergang"
+
+  # ===== Staffel 3 — Buch 3: Feuer =====
+  "Avatar S03E01 Aang erwacht German ANiME FS dTV XViD-PL4SM4.flv":
+    title: "Aang erwacht"
+  "Avatar S03E02 German FS DVDRiP XViD-ETM.mp4":
+    title: "Die Stirnband-Party"
+  "Avatar S03E03 Die bemalte Lady German ANiME FS dTV XViD-PL4SM4.flv":
+    title: "Die bemalte Lady"
+  "Avatar S03E04 Sokka und sein Meister German ANiME FS dTV XViD-PL4SM4.avi":
+    title: "Sokka und sein Meister"
+  "Avatar S03E05 German FS DVDRiP XViD-ETM.flv":
+    title: "Der Strand"
+  "Avatar S03E06 German FS DVDRiP XViD-ETM.flv":
+    title: "Der Flüchtling"
+  "Avatar S03E07 Gauner und Fallen German ANiME FS dTV XViD-PL4SM4.flv":
+    title: "Gauner und Fallen"
+  "Avatar S03E08 Drama um Hama German ANiME FS dTV XViD-PL4SM4.flv":
+    title: "Drama um Hama"
+  "Avatar S03E09 Durch den Wind German ANiME FS dTV XViD-PL4SM4.flv":
+    title: "Durch den Wind"
+  "Avatar S03E10 Der Tag der schwarzen Sonne Teil 1 German ANiME FS dTV XViD-PL4SM4.flv":
+    title: "Der Tag der Schwarzen Sonne (Teil 1)"
+  "Avatar S03E11 Der Tag der Schwarzen Sonne.mp4":
+    title: "Der Tag der Schwarzen Sonne (Teil 2)"
+  "Avatar S03E12 Der Westliche Lufttempel German ANiME FS dTV XViD-FR34KTV.flv":
+    title: "Der westliche Lufttempel"
+  "Avatar S03E13 German FS DVDRiP XViD-ETM.mp4":
+    title: "Die Feuerbändiger-Meister"
+  "Avatar S03E14 Der Brodelnde Fels Teil 2 German ANiME FS dTV XViD INTERNAL-FR34KTV.flv":
+    title: "Der brodelnde Fels (Teil 2)"
+  # S03E15 fehlt (Der brodelnde Fels Teil 1)
+  "Avatar S03E16 German FS DVDRiP XViD-ETM.flv":
+    title: "Die südlichen Invasoren"
+  "Avatar S03E17 Auf die Buehne fertig los German ANiME FS dTV XViD INTERNAL-FR34KTV.flv":
+    title: "Auf die Bühne, fertig, los!"
+  # S03E18-21: Sozins Komet (Finale, doppelt vorhanden — dTV + DVDRip)
+  "Avatar S03E18 Zosins Komet Teil 1 Der Phoenix Koenig German ANiME FS dTV XViD INTERNAL-FR34KTV.flv":
+    title: "Sozins Komet (Teil 1) — Der Phönix-König"
+  "Avatar Der Herr der Elemente S03E18 German FS DVDRiP XViD-ETM.mp4":
+    title: "Sozins Komet (Teil 1) — Der Phönix-König [DVDRip]"
+  "Avatar S03E19 German FS DVDRiP XViD-ETM.flv":
+    title: "Sozins Komet (Teil 2) — Die alten Meister [DVDRip]"
+  "Avatar Der Herr der Elemente S03E19 German FS DVDRiP XViD-ETM.mp4":
+    title: "Sozins Komet (Teil 2) — Die alten Meister [DVDRip-2]"
+  "Avatar S03E20 Zosins Komet Teil 3 Von Angesicht zu Angesicht German ANiME FS dTV XViD INTERNAL-FR34KTV.flv":
+    title: "Sozins Komet (Teil 3) — Von Angesicht zu Angesicht"
+  "Avatar Der Herr der Elemente S03E20 German FS DVDRiP XViD-ETM.mp4":
+    title: "Sozins Komet (Teil 3) — Von Angesicht zu Angesicht [DVDRip]"
+  "Avatar S03E21 German FS DVDRiP XViD-ETM.flv":
+    title: "Sozins Komet (Teil 4) — Avatar Aang [DVDRip]"
+  "Avatar Der Herr der Elemente S03E21 German FS DVDRiP XViD-ETM.mp4":
+    title: "Sozins Komet (Teil 4) — Avatar Aang [DVDRip-2]"
+  "Avatar S03E23 German FS DVDRiP XViD-ETM ((Kinox to FAIL)).mp4":
+    title: "Unbekannte Episode (Quelle fragwürdig)"
+    # Diese Datei hat eine ungültige Episodennummer — S03 hat nur 21 Folgen.
+

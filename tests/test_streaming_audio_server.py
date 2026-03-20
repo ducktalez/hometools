@@ -139,7 +139,12 @@ def test_audio_home_renders_shell_without_building_index(tmp_path):
     assert "Loading library" in response.text
 
 
-def test_audio_tracks_returns_loading_state_while_index_builds(tmp_path):
+def test_audio_tracks_returns_refreshing_state_with_quick_scan_while_index_builds(tmp_path):
+    # Create a test audio file so quick scan finds it
+    sub = tmp_path / "TestArtist"
+    sub.mkdir()
+    (sub / "song.mp3").write_bytes(b"")
+
     client = TestClient(create_app(tmp_path))
 
     with (
@@ -151,8 +156,10 @@ def test_audio_tracks_returns_loading_state_while_index_builds(tmp_path):
         response = client.get("/api/audio/tracks")
 
     assert response.status_code == 200
-    assert response.json()["loading"] is True
-    assert response.json()["items"] == []
+    data = response.json()
+    assert data["refreshing"] is True
+    assert len(data["items"]) >= 1
+    assert "loading" not in data
 
 
 def test_audio_status_endpoint_returns_cache_diagnostics(tmp_path):

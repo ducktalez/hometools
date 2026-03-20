@@ -24,9 +24,10 @@ import time
 from pathlib import Path
 
 from hometools.constants import VIDEO_SUFFIX
-from hometools.streaming.core.catalog import list_artists
+from hometools.streaming.core.catalog import list_artists, parse_season_episode
 from hometools.streaming.core.catalog import query_items as query_videos
 from hometools.streaming.core.catalog import sort_items as sort_videos
+from hometools.streaming.core.media_overrides import apply_overrides
 from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import safe_resolve
 from hometools.streaming.core.thumbnailer import check_thumbnail_cached
@@ -245,6 +246,8 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             if thumb is not None:
                 thumbnail_url = f"/thumb?path={encode_relative_path(relative_path)}"
 
+        season, episode = parse_season_episode(video_file.name)
+
         items.append(
             MediaItem(
                 relative_path=relative_path,
@@ -253,6 +256,8 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 stream_url=f"/video/stream?path={encode_relative_path(relative_path)}",
                 media_type="video",
                 thumbnail_url=thumbnail_url,
+                season=season,
+                episode=episode,
             )
         )
 
@@ -292,6 +297,10 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         metadata_cache_hits,
         metadata_cache_misses,
     )
+
+    # Apply per-folder YAML overrides (title, season, episode, series_title)
+    items = apply_overrides(items, root)
+
     return sort_videos(items, sort_by="title")
 
 

@@ -194,3 +194,55 @@ def test_build_video_index_refreshes_metadata_cache_when_file_changes(tmp_path):
 
     assert refreshed[0].title == "Second Title"
     assert refreshed[0].artist == "B"
+
+
+# ---------------------------------------------------------------------------
+# Series episode ordering
+# ---------------------------------------------------------------------------
+
+
+def test_build_video_index_detects_season_episode(tmp_path):
+    """build_video_index should extract season/episode from filenames."""
+    series = tmp_path / "Breaking Bad"
+    series.mkdir()
+    (series / "Breaking.Bad.S02E05.720p.mp4").write_bytes(b"")
+    (series / "Breaking.Bad.S01E01.Pilot.mp4").write_bytes(b"")
+
+    items = build_video_index(tmp_path)
+    assert len(items) == 2
+
+    ep1 = next(i for i in items if i.episode == 1)
+    ep5 = next(i for i in items if i.episode == 5)
+
+    assert ep1.season == 1
+    assert ep1.episode == 1
+    assert ep5.season == 2
+    assert ep5.episode == 5
+
+
+def test_build_video_index_series_sorted_chronologically(tmp_path):
+    """Series episodes must be ordered by season then episode, not title."""
+    series = tmp_path / "Show"
+    series.mkdir()
+    # Create files in non-chronological order
+    (series / "Show S01E10 Finale.mp4").write_bytes(b"")
+    (series / "Show S01E02 Second.mp4").write_bytes(b"")
+    (series / "Show S02E01 Premiere.mp4").write_bytes(b"")
+    (series / "Show S01E01 Pilot.mp4").write_bytes(b"")
+
+    items = build_video_index(tmp_path)
+    assert len(items) == 4
+
+    # Verify chronological ordering
+    episodes = [(i.season, i.episode) for i in items]
+    assert episodes == [(1, 1), (1, 2), (1, 10), (2, 1)]
+
+
+def test_build_video_index_non_series_have_zero_season_episode(tmp_path):
+    """Non-series files should have season=0 and episode=0."""
+    (tmp_path / "Random Movie.mp4").write_bytes(b"")
+
+    items = build_video_index(tmp_path)
+    assert len(items) == 1
+    assert items[0].season == 0
+    assert items[0].episode == 0

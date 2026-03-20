@@ -474,6 +474,16 @@ def test_js_retries_initial_catalog_while_server_is_loading():
     assert "fetch(API_PATH, { cache: 'no-store' })" in js
 
 
+def test_js_shows_indexing_toast_for_refreshing_state():
+    """When data.refreshing is set, the UI should show an indexing toast, not a full-screen loader."""
+    js = _js(style="classic")
+    assert "showIndexingToast" in js
+    assert "hideIndexingToast" in js
+    assert "scheduleBackgroundRefresh" in js
+    assert "data.refreshing" in js
+    assert "ht-indexing-toast" in js
+
+
 def test_js_loading_state_shows_message_in_folder_grid():
     js = _js(style="classic")
     assert "Loading library" in js

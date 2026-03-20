@@ -1,7 +1,7 @@
 """Persistent registry for open streaming irregularities.
 
 Stores current open issues in JSON and appends every observation to a JSONL
-file so a future scheduler can derive TODOs or alerts from it.
+file so a future scheduler can derive tasks or alerts from it.
 """
 
 from __future__ import annotations
@@ -19,6 +19,149 @@ _VERSION = 1
 _DEFAULT_SEVERITY = "WARNING"
 _DEFAULT_TODO_COOLDOWN_SECONDS = 3600
 _DEFAULT_TODO_UI_LIMIT = 3
+
+# ---------------------------------------------------------------------------
+# Action hints — structured CLI recommendations per category
+# ---------------------------------------------------------------------------
+
+_ACTION_HINT_MAP: dict[str, list[dict[str, str]]] = {
+    "thumbnail": [
+        {
+            "action_id": "prewarm-thumbnails",
+            "label": "Thumbnail-Prewarm ausführen",
+            "cli_command": "hometools stream-prewarm --server {server} --mode missing --scope thumbnails",
+            "make_target": "{server}-prewarm",
+        },
+    ],
+    "metadata": [
+        {
+            "action_id": "check-metadata",
+            "label": "Metadaten der betroffenen Dateien prüfen",
+            "cli_command": "hometools stream-issues --min-severity error --json",
+            "make_target": "issues-errors",
+        },
+    ],
+    "sync": [
+        {
+            "action_id": "check-nas",
+            "label": "NAS-Erreichbarkeit und Sync-Status prüfen",
+            "cli_command": "hometools sync-{server} --dry-run",
+            "make_target": "",
+        },
+    ],
+    "cache": [
+        {
+            "action_id": "reindex",
+            "label": "Index neu aufbauen",
+            "cli_command": "hometools stream-prewarm --server {server} --mode full --scope index",
+            "make_target": "{server}-reindex",
+        },
+    ],
+    "streaming": [
+        {
+            "action_id": "check-server-status",
+            "label": "Server-Status prüfen",
+            "cli_command": "hometools stream-dashboard --json",
+            "make_target": "dashboard-json",
+        },
+    ],
+}
+
+
+def _derive_action_hints(category: str, source: str) -> list[dict[str, str]]:
+    """Return structured action hints for a task category.
+
+    Placeholders like ``{server}`` are resolved from the source string.
+    """
+    templates = _ACTION_HINT_MAP.get(category, [])
+    if not templates:
+        return []
+    server = "audio" if "audio" in source.lower() else "video"
+    hints: list[dict[str, str]] = []
+    for tpl in templates:
+        hints.append({k: v.replace("{server}", server) for k, v in tpl.items()})
+    return hints
+
+
+# ---------------------------------------------------------------------------
+# Noise rules — source-specific thresholds to suppress low-signal task candidates
+# ---------------------------------------------------------------------------
+
+_NOISE_RULES: list[dict[str, Any]] = [
+    {
+        "source_prefix": "hometools.streaming.core.thumbnailer",
+        "category": "thumbnail",
+        "min_severity_for_todo": "ERROR",
+        "min_count_for_todo": 1,
+    },
+    {
+        "source_prefix": "hometools.streaming",
+        "category": "streaming",
+        "min_severity_for_todo": "ERROR",
+        "min_count_for_todo": 2,
+    },
+]
+
+
+def _apply_noise_rules(candidate: dict[str, Any]) -> bool:
+    """Return ``True`` if *candidate* passes noise filtering.
+
+    CRITICAL issues always pass.  Otherwise the first matching rule
+    determines whether the candidate's severity and count are high enough.
+    """
+    severity = normalize_severity(str(candidate.get("severity", _DEFAULT_SEVERITY)))
+    if severity == "CRITICAL":
+        return True
+    source = str(candidate.get("source", ""))
+    category = str(candidate.get("category", ""))
+    count = int(candidate.get("count", 1))
+    for rule in _NOISE_RULES:
+        prefix = str(rule.get("source_prefix", ""))
+        rule_cat = str(rule.get("category", ""))
+        if not (source.startswith(prefix) and (not rule_cat or rule_cat == category)):
+            continue
+        min_sev = normalize_severity(str(rule.get("min_severity_for_todo", _DEFAULT_SEVERITY)))
+        min_count = int(rule.get("min_count_for_todo", 1))
+        if _severity_rank(severity) < _severity_rank(min_sev):
+            return False
+        return count >= min_count
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Root-cause deduplication — cross-source grouping by message patterns
+# ---------------------------------------------------------------------------
+
+_ROOT_CAUSE_PATTERNS: dict[str, list[str]] = {
+    "library-unreachable": [
+        "library not accessible",
+        "nas offline",
+        "connection refused",
+        "network is unreachable",
+        "timed out",
+    ],
+    "ffmpeg-missing": [
+        "filenotfounderror",
+        "ffmpeg",
+        "ffprobe",
+        "no such file or directory",
+    ],
+    "permission-denied": [
+        "permission denied",
+        "access denied",
+        "errno 13",
+    ],
+}
+
+
+def _derive_root_cause(item: dict[str, Any]) -> str | None:
+    """Return a root-cause ID when the item's message matches a known pattern."""
+    text = f"{item.get('source', '')} {item.get('message', '')}".lower()
+    for root_cause, patterns in _ROOT_CAUSE_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in text:
+                return root_cause
+    return None
 
 
 def _utc_now() -> str:
@@ -42,7 +185,7 @@ def get_issue_events_path(cache_dir: Path) -> Path:
 
 
 def get_todo_candidates_path(cache_dir: Path) -> Path:
-    """Return the JSON file containing derived scheduler TODO candidates."""
+    """Return the JSON file containing derived scheduler task candidates."""
     return get_issue_dir(cache_dir) / "todo_candidates.json"
 
 
@@ -52,7 +195,7 @@ def get_scheduler_runs_path(cache_dir: Path) -> Path:
 
 
 def get_todo_state_path(cache_dir: Path) -> Path:
-    """Return the JSON file storing scheduler TODO cooldown state."""
+    """Return the JSON file storing scheduler task cooldown state."""
     return get_issue_dir(cache_dir) / "todo_state.json"
 
 
@@ -238,6 +381,9 @@ def _build_todo_family_key(item: dict[str, Any], category: str) -> str:
     explicit_family = details.get("issue_family") or details.get("family")
     if explicit_family:
         return f"{category}|{source}|{explicit_family}"
+    root_cause = _derive_root_cause(item)
+    if root_cause:
+        return f"root-cause|{root_cause}"
     return f"{category}|{source}"
 
 
@@ -320,6 +466,7 @@ def _aggregate_todo_candidates(items: list[dict[str, Any]]) -> list[dict[str, An
             "first_seen": group["first_seen"] or "",
             "last_seen": group["last_seen"] or "",
             "suggested_action": _suggested_action(category, representative),
+            "action_hints": _derive_action_hints(category, str(group["source"])),
             "details": representative.get("details", {}) or {},
         }
         candidates.append(candidate)
@@ -428,7 +575,9 @@ def _build_todo_payload_from_items(items: list[dict[str, Any]], min_severity: st
         key=lambda item: (_score_issue(item), str(item.get("last_seen", "")), str(item.get("issue_key", ""))),
         reverse=True,
     )
-    candidates = _aggregate_todo_candidates(ranked_issues)
+    all_candidates = _aggregate_todo_candidates(ranked_issues)
+    candidates = [c for c in all_candidates if _apply_noise_rules(c)]
+    noise_suppressed_count = len(all_candidates) - len(candidates)
     candidates.sort(
         key=lambda item: (int(item.get("score", 0)), str(item.get("last_seen", "")), str(item.get("todo_key", ""))),
         reverse=True,
@@ -441,6 +590,7 @@ def _build_todo_payload_from_items(items: list[dict[str, Any]], min_severity: st
         "min_severity": normalize_severity(min_severity),
         "source_issue_count": len(items),
         "count": len(candidates),
+        "noise_suppressed_count": noise_suppressed_count,
         "items": candidates,
         "top_todo": candidates[0] if candidates else None,
     }
@@ -479,6 +629,7 @@ def _build_todo_summary_from_payload(payload: dict[str, Any], todo_state: dict[s
             "category": str(item.get("category", "general")),
             "message": str(item.get("message", "")),
             "suggested_action": str(item.get("suggested_action", "")),
+            "action_hints": list(item.get("action_hints") or []),
             "state": runtime_state,
             "reason": str(persisted_dict.get("reason", "")),
             "snoozed_until": persisted_dict.get("snoozed_until"),
@@ -490,6 +641,7 @@ def _build_todo_summary_from_payload(payload: dict[str, Any], todo_state: dict[s
         "min_severity": payload.get("min_severity", normalize_severity(_DEFAULT_SEVERITY)),
         "count": len(items),
         "source_issue_count": int(payload.get("source_issue_count", 0)),
+        "noise_suppressed_count": int(payload.get("noise_suppressed_count", 0)),
         "active_count": len(active_items),
         "acknowledged_count": len(acknowledged_items),
         "snoozed_count": len(snoozed_items),
@@ -518,7 +670,7 @@ def _write_todo_state_item(
 ) -> dict[str, Any]:
     candidate = _find_todo_candidate_by_key(cache_dir, todo_key, min_severity=min_severity)
     if candidate is None and state != "cleared":
-        return {"ok": False, "todo_key": todo_key, "state": "missing", "message": "TODO candidate not found"}
+        return {"ok": False, "todo_key": todo_key, "state": "missing", "message": "Task candidate not found"}
 
     try:
         with _LOCK:
@@ -533,7 +685,7 @@ def _write_todo_state_item(
                     "ok": bool(removed is not None),
                     "todo_key": todo_key,
                     "state": "cleared",
-                    "message": "TODO state cleared" if removed is not None else "TODO state not found",
+                    "message": "Task state cleared" if removed is not None else "Task state not found",
                 }
 
             updated_at = _utc_now()
@@ -565,11 +717,11 @@ def _write_todo_state_item(
             "snoozed_until": entry.get("snoozed_until"),
         }
     except Exception:
-        return {"ok": False, "todo_key": todo_key, "state": state, "message": "Failed to update TODO state"}
+        return {"ok": False, "todo_key": todo_key, "state": state, "message": "Failed to update task state"}
 
 
 def acknowledge_todo(cache_dir: Path, todo_key: str, *, reason: str = "", min_severity: str = _DEFAULT_SEVERITY) -> dict[str, Any]:
-    """Acknowledge a grouped TODO task so it stays suppressed until severity escalates."""
+    """Acknowledge a grouped task so it stays suppressed until severity escalates."""
     return _write_todo_state_item(cache_dir, todo_key, state="acknowledged", reason=reason, min_severity=min_severity)
 
 
@@ -581,12 +733,12 @@ def snooze_todo(
     reason: str = "",
     min_severity: str = _DEFAULT_SEVERITY,
 ) -> dict[str, Any]:
-    """Snooze a grouped TODO task for a bounded duration."""
+    """Snooze a grouped task for a bounded duration."""
     return _write_todo_state_item(cache_dir, todo_key, state="snoozed", reason=reason, snooze_seconds=seconds, min_severity=min_severity)
 
 
 def clear_todo_state(cache_dir: Path, todo_key: str) -> dict[str, Any]:
-    """Clear any persisted acknowledge/snooze state for a grouped TODO task."""
+    """Clear any persisted acknowledge/snooze state for a grouped task."""
     return _write_todo_state_item(cache_dir, todo_key, state="cleared")
 
 
@@ -599,7 +751,7 @@ def update_todo_state_action(
     seconds: int = _DEFAULT_TODO_COOLDOWN_SECONDS,
     min_severity: str = _DEFAULT_SEVERITY,
 ) -> dict[str, Any]:
-    """Apply a UI/API friendly TODO state action and return the operation result."""
+    """Apply a UI/API friendly task state action and return the operation result."""
     normalized_action = str(action or "").strip().lower()
     if normalized_action == "acknowledge":
         return acknowledge_todo(cache_dir, todo_key, reason=reason, min_severity=min_severity)
@@ -611,7 +763,7 @@ def update_todo_state_action(
         "ok": False,
         "todo_key": todo_key,
         "state": "invalid",
-        "message": f"Unsupported TODO action: {action}",
+        "message": f"Unsupported action: {action}",
     }
 
 
@@ -621,7 +773,7 @@ def summarize_todos(
     min_severity: str = _DEFAULT_SEVERITY,
     cooldown_seconds: int = _DEFAULT_TODO_COOLDOWN_SECONDS,
 ) -> dict[str, Any]:
-    """Return a compact summary of grouped TODO tasks and their current runtime state."""
+    """Return a compact summary of grouped tasks and their current runtime state."""
     normalized_min_severity = normalize_severity(min_severity)
     try:
         all_items = load_open_issues(cache_dir)
@@ -650,7 +802,7 @@ def summarize_issue_and_todos(
     min_severity: str = _DEFAULT_SEVERITY,
     cooldown_seconds: int = _DEFAULT_TODO_COOLDOWN_SECONDS,
 ) -> dict[str, Any]:
-    """Return issue and TODO summaries using a single open-issue load."""
+    """Return issue and task summaries using a single open-issue load."""
     normalized_min_severity = normalize_severity(min_severity)
     try:
         all_items = load_open_issues(cache_dir)
@@ -797,7 +949,7 @@ def generate_todo_candidates(
     max_items: int | None = None,
     persist: bool = True,
 ) -> dict[str, Any]:
-    """Derive scheduler TODO candidates from the current open issues.
+    """Derive scheduler task candidates from the current open issues.
 
     Never raises. Optionally persists the generated payload to
     ``todo_candidates.json`` for later scheduler/dashboard use.
@@ -831,10 +983,10 @@ def run_scheduler_once(
     max_items: int | None = None,
     cooldown_seconds: int = _DEFAULT_TODO_COOLDOWN_SECONDS,
 ) -> dict[str, Any]:
-    """Run the first scheduler stub once and persist derived TODO candidates.
+    """Run the first scheduler stub once and persist derived task candidates.
 
     This intentionally does not execute any maintenance action yet. It only
-    translates current open issues into a stable TODO candidate file and appends
+    translates current open issues into a stable task candidate file and appends
     a compact scheduler-run event for automation.
     """
     normalized_min_severity = normalize_severity(min_severity)
@@ -846,6 +998,15 @@ def run_scheduler_once(
             suppressed_items = [item for item in todos.get("items", []) if item not in active_items]
             new_state = _update_todo_state_unlocked(todo_state, active_items)
             _atomic_write_json(get_todo_state_path(cache_dir), new_state)
+        # Collect deduplicated action hints from active tasks
+        seen_action_ids: set[str] = set()
+        action_hints: list[dict[str, str]] = []
+        for item in active_items:
+            for hint in item.get("action_hints") or []:
+                aid = str(hint.get("action_id", ""))
+                if aid and aid not in seen_action_ids:
+                    seen_action_ids.add(aid)
+                    action_hints.append(hint)
         result = {
             "timestamp": _utc_now(),
             "status": "ok",
@@ -853,10 +1014,12 @@ def run_scheduler_once(
             "cooldown_seconds": max(int(cooldown_seconds), 0),
             "open_issue_count": int(todos.get("source_issue_count", 0)),
             "todo_count": int(todos.get("count", 0)),
+            "noise_suppressed_count": int(todos.get("noise_suppressed_count", 0)),
             "active_todo_count": len(active_items),
             "suppressed_todo_count": len(suppressed_items),
             "active_items": active_items,
             "suppressed_keys": [str(item.get("todo_key", "")) for item in suppressed_items],
+            "action_hints": action_hints,
             "todo_candidates_path": str(get_todo_candidates_path(cache_dir)),
             "top_todo": active_items[0] if active_items else todos.get("top_todo"),
         }
@@ -871,10 +1034,12 @@ def run_scheduler_once(
             "cooldown_seconds": max(int(cooldown_seconds), 0),
             "open_issue_count": 0,
             "todo_count": 0,
+            "noise_suppressed_count": 0,
             "active_todo_count": 0,
             "suppressed_todo_count": 0,
             "active_items": [],
             "suppressed_keys": [],
+            "action_hints": [],
             "todo_candidates_path": str(get_todo_candidates_path(cache_dir)),
             "top_todo": None,
         }

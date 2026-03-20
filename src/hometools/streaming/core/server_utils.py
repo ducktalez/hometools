@@ -665,8 +665,8 @@ body.modal-open { overflow: hidden; }
 .track-item.active { background: #183320; }
 .track-item.active .track-artist { color: var(--accent); }
 .track-num {
-  width: 26px; text-align: center; font-size: 0.78rem;
-  color: var(--sub); flex-shrink: 0;
+  min-width: 26px; text-align: center; font-size: 0.78rem;
+  color: var(--sub); flex-shrink: 0; white-space: nowrap; padding-right: 4px;
 }
 .track-item.active .num-text { display: none; }
 .track-info { flex: 1 1 0; min-width: 0; }
@@ -677,6 +677,24 @@ body.modal-open { overflow: hidden; }
 .track-artist {
   font-size: 0.8rem; color: var(--sub); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* missing episode placeholder */
+.track-item.missing-episode {
+  opacity: 0.35; pointer-events: none; min-height: 32px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.track-item.missing-episode .track-title { font-style: italic; }
+/* conversion badge for non-native formats */
+.convert-badge {
+  display: inline-block; font-size: 0.65rem; color: #f5a623;
+  margin-left: 5px; vertical-align: middle; opacity: 0.8;
+  title: attr(data-tip);
+}
+/* original-title toggle */
+.orig-title-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.78rem; color: var(--sub); cursor: pointer; user-select: none;
+  white-space: nowrap; flex-shrink: 0;
 }
 .track-dl-btn {
   background: none; border: 1px solid #555; color: var(--sub);
@@ -961,6 +979,25 @@ body.modal-open { overflow: hidden; }
   max-width: 90vw; text-align: center; word-break: break-word;
 }
 .ht-toast.visible { opacity: 1; }
+/* indexing toast (top-right info notification) */
+.ht-indexing-toast {
+  position: fixed; top: 0.75rem; right: 0.75rem;
+  background: rgba(50,50,50,0.92); color: #ccc; padding: 0.45rem 0.9rem;
+  border-radius: 6px; font-size: 0.78rem; z-index: 9998;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35); opacity: 0;
+  transition: opacity 0.3s; pointer-events: none;
+  max-width: 320px; text-align: left; word-break: break-word;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.ht-indexing-toast.visible { opacity: 1; }
+.ht-indexing-toast .spinner {
+  display: inline-block; width: 10px; height: 10px;
+  border: 2px solid #666; border-top-color: #ccc;
+  border-radius: 50%; animation: ht-spin 0.8s linear infinite;
+  margin-right: 6px; vertical-align: middle;
+}
+@keyframes ht-spin { to { transform: rotate(360deg); } }
 """
 
 
@@ -1160,6 +1197,7 @@ def render_player_js(
   var timeDur      = document.getElementById('time-dur');
   var searchInput  = document.getElementById('search-input');
   var sortField    = document.getElementById('sort-field');
+  var showOrigChk  = document.getElementById('show-original-titles');
   var folderGrid   = document.getElementById('folder-grid');
   var trackView    = document.getElementById('track-view');
   var filterBar    = document.querySelector('.filter-bar');
@@ -1216,6 +1254,51 @@ def render_player_js(
     _toastEl.classList.add('visible');
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(function() { _toastEl.classList.remove('visible'); }, durationMs || 4000);
+  }
+
+  var _indexToastEl = null;
+  var _indexRefreshTimer = null;
+  function showIndexingToast(msg) {
+    if (!_indexToastEl) {
+      _indexToastEl = document.createElement('div');
+      _indexToastEl.className = 'ht-indexing-toast';
+      document.body.appendChild(_indexToastEl);
+    }
+    _indexToastEl.innerHTML = '<span class="spinner"></span>' + escHtml(msg || 'Indexing…');
+    _indexToastEl.classList.add('visible');
+  }
+  function hideIndexingToast() {
+    if (_indexToastEl) _indexToastEl.classList.remove('visible');
+    if (_indexRefreshTimer) { clearTimeout(_indexRefreshTimer); _indexRefreshTimer = null; }
+  }
+  function scheduleBackgroundRefresh() {
+    if (_indexRefreshTimer) return;
+    _indexRefreshTimer = setTimeout(function() {
+      _indexRefreshTimer = null;
+      fetch(API_PATH, { cache: 'no-store' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+          if (!data || data.error) return;
+          if (data.refreshing) {
+            var detail = data.detail || 'Building index…';
+            showIndexingToast(detail);
+            scheduleBackgroundRefresh();
+            /* Update items if more are now available */
+            var newItems = data && Array.isArray(data.items) ? data.items : [];
+            if (newItems.length > allItems.length) {
+              allItems = newItems;
+              showFolderView();
+            }
+            return;
+          }
+          /* Full index ready */
+          hideIndexingToast();
+          allItems = data && Array.isArray(data.items) ? data.items : [];
+          console.info('Background refresh complete:', allItems.length, 'items');
+          showFolderView();
+        })
+        .catch(function() { scheduleBackgroundRefresh(); });
+    }, 2000);
   }
 
 """
@@ -1309,7 +1392,9 @@ def render_player_js(
       return Promise.resolve(allItems);
     }
     initialCatalogRetryCount += 1;
-    showLoadingState(initialCatalogRetryCount > 1 ? 'Loading library… (warming cache)' : 'Loading library…');
+    if (initialCatalogRetryCount <= 1) {
+      showLoadingState('Loading library…');
+    }
     var t0 = Date.now();
     console.info('Initial catalog fetch started:', API_PATH);
     return fetch(API_PATH, { cache: 'no-store' })
@@ -1322,10 +1407,11 @@ def render_player_js(
         if (data && data.error) {
           throw new Error(data.error);
         }
-        if (data && data.loading) {
+        /* Handle loading state (truly empty, no quick scan available) */
+        if (data && data.loading && (!data.items || data.items.length === 0)) {
           var detail = data.detail || 'Library cache is warming in the background.';
-          console.info('Initial catalog still building:', detail);
-          showLoadingState(detail);
+          console.info('Initial catalog still building (empty):', detail);
+          showIndexingToast(detail);
           scheduleInitialCatalogRetry(detail);
           return [];
         }
@@ -1337,6 +1423,15 @@ def render_player_js(
         allItems = data && Array.isArray(data.items) ? data.items : [];
         console.info('Initial catalog parsed after', Date.now() - t0, 'ms:', allItems.length, 'items');
         showFolderView();
+        /* If still building, show indexing toast and poll for updates */
+        if (data && data.refreshing) {
+          var refreshDetail = data.detail || 'Building index in background…';
+          console.info('Catalog served from quick scan, index still building:', refreshDetail);
+          showIndexingToast(refreshDetail);
+          scheduleBackgroundRefresh();
+        } else {
+          hideIndexingToast();
+        }
         return allItems;
       })
       .catch(function(err) {
@@ -1533,19 +1628,73 @@ def render_player_js(
       });
     }
     items = items.slice().sort(function(a, b) {
-      if (sortBy === 'title') return a.title.localeCompare(b.title) || a.relative_path.localeCompare(b.relative_path);
+      var sa = a.season || 0, sb = b.season || 0;
+      var ea = a.episode || 0, eb = b.episode || 0;
+      if (sortBy === 'title') {
+        /* Series-aware title sort: prefer season/episode when present */
+        if (sa > 0 || sb > 0) {
+          if (sa !== sb) return sa - sb;
+          if (ea !== eb) return ea - eb;
+        }
+        return a.title.localeCompare(b.title) || a.relative_path.localeCompare(b.relative_path);
+      }
       if (sortBy === 'path') return a.relative_path.localeCompare(b.relative_path);
-      return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
+      /* artist sort: group by folder, then season/episode within */
+      var ad = a.artist.localeCompare(b.artist);
+      if (ad !== 0) return ad;
+      if (sa !== sb) return sa - sb;
+      if (ea !== eb) return ea - eb;
+      return a.title.localeCompare(b.title);
     });
     renderTracks(items);
   }
 
   /* ── track list rendering ── */
+  var NATIVE_EXT = ['.mp4','.m4v','.webm','.ogg','.ogv','.mp3','.m4a','.aac','.opus','.flac','.wav'];
+  function needsConversion(rp) {
+    if (!rp) return false;
+    var dot = rp.lastIndexOf('.');
+    if (dot < 0) return false;
+    return NATIVE_EXT.indexOf(rp.substring(dot).toLowerCase()) < 0;
+  }
+  function filenameFromPath(rp) {
+    if (!rp) return '';
+    var slash = rp.lastIndexOf('/');
+    var name = slash >= 0 ? rp.substring(slash + 1) : rp;
+    var dot = name.lastIndexOf('.');
+    return dot > 0 ? name.substring(0, dot) : name;
+  }
+
   function markActive() {
-    document.querySelectorAll('.track-item').forEach(function(el, i) {
-      el.classList.toggle('active', i === currentIndex);
-      if (i === currentIndex) el.scrollIntoView({ block: 'nearest' });
+    document.querySelectorAll('.track-item:not(.missing-episode)').forEach(function(el) {
+      var idx = Number(el.dataset.index);
+      el.classList.toggle('active', idx === currentIndex);
+      if (idx === currentIndex) el.scrollIntoView({ block: 'nearest' });
     });
+  }
+
+  /* insert placeholder rows for missing episodes within the same season */
+  function withMissingEpisodes(tracks) {
+    /* only insert gaps if all tracks are series episodes */
+    var allSeries = tracks.length > 0 && tracks.every(function(t) { return (t.season || 0) > 0; });
+    if (!allSeries) return tracks;
+
+    var result = [];
+    for (var i = 0; i < tracks.length; i++) {
+      var t = tracks[i];
+      /* insert gap placeholders within the same season */
+      if (i > 0) {
+        var prev = tracks[i - 1];
+        if ((prev.season || 0) === (t.season || 0)) {
+          var gap = (t.episode || 0) - (prev.episode || 0);
+          for (var g = 1; g < gap && g < 20; g++) {
+            result.push({ _missing: true, season: prev.season, episode: (prev.episode || 0) + g });
+          }
+        }
+      }
+      result.push(t);
+    }
+    return result;
   }
 
   function renderTracks(tracks) {
@@ -1556,18 +1705,36 @@ def render_player_js(
       trackList.innerHTML = '<li class="empty-hint">No matching items.</li>';
       return;
     }
-    trackList.innerHTML = tracks.map(function(t, i) {
+    var showOrig = showOrigChk && showOrigChk.checked;
+    var displayTracks = withMissingEpisodes(tracks);
+    var realIdx = 0;
+    trackList.innerHTML = displayTracks.map(function(t) {
+      /* missing episode placeholder */
+      if (t._missing) {
+        var seLabel = 'S' + String(t.season).padStart(2, '0') + 'E' + String(t.episode).padStart(2, '0');
+        return '<li class="track-item missing-episode">' +
+          '<span class="track-num"><span class="num-text">' + seLabel + '</span></span>' +
+          '<div class="track-info"><div class="track-title">—</div></div></li>';
+      }
+      var idx = realIdx++;
+      var isSeries = (t.season || 0) > 0;
+      var numLabel = isSeries
+        ? 'S' + String(t.season).padStart(2, '0') + 'E' + String(t.episode).padStart(2, '0')
+        : String(idx + 1);
+      var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
       var subtitle = t.artist || t.relative_path;
       var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
+      var extraCls = idx === currentIndex ? ' active' : '';
       var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
-      return '<li class="track-item' + (i === currentIndex ? ' active' : '') +
-        '" data-index="' + i + '">' +
-        '<span class="track-num"><span class="num-text">' + (i + 1) + '</span></span>' +
+      var convertBadge = needsConversion(t.relative_path) ? '<span class="convert-badge" title="Wird on-the-fly konvertiert">\\u26A1</span>' : '';
+      return '<li class="track-item' + extraCls +
+        '" data-index="' + idx + '">' +
+        '<span class="track-num"><span class="num-text">' + numLabel + '</span></span>' +
         '<div class="thumb-wrap track-thumb-wrap">' +
         '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         ratingBar + '</div>' +
         '<div class="track-info">' +
-          '<div class="track-title">' + escHtml(t.title) + '</div>' +
+          '<div class="track-title">' + escHtml(displayTitle) + convertBadge + '</div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
         '</div>' +
         '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
@@ -1578,7 +1745,7 @@ def render_player_js(
           '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">\\u2193\\uFE0E</button>' +
         '</li>';
     }).join('');
-    document.querySelectorAll('.track-item').forEach(function(el) {
+    document.querySelectorAll('.track-item:not(.missing-episode)').forEach(function(el) {
       el.addEventListener('click', function() { playTrack(Number(el.dataset.index)); });
     });
     document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
@@ -2554,6 +2721,13 @@ def render_player_js(
   });
   searchInput.addEventListener('input', applyFilter);
   sortField.addEventListener('change', applyFilter);
+  if (showOrigChk) {
+    showOrigChk.checked = localStorage.getItem('ht-show-orig') === '1';
+    showOrigChk.addEventListener('change', function() {
+      localStorage.setItem('ht-show-orig', showOrigChk.checked ? '1' : '0');
+      applyFilter();
+    });
+  }
 
   /* ── init ── */
   if (!OFFLINE_ENABLED) {
@@ -2742,6 +2916,7 @@ def render_media_page(
   <!-- filter bar (visible inside a folder) -->
   <div class="filter-bar view-hidden">
     <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
+    <label class="orig-title-toggle" title="Originale Dateinamen anzeigen"><input type="checkbox" id="show-original-titles" /> Original</label>
     <select id="sort-field">
       <option value="title">Title &#x21C5;</option>
       <option value="artist">Artist &#x21C5;</option>

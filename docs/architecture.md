@@ -34,3 +34,51 @@ Die Katalog-API-Endpunkte (`/api/audio/tracks`, `/api/video/items`) prüfen zuer
 
 `hometools stream-dashboard` kombiniert Issues, TODO-Kandidaten und den letzten Scheduler-Lauf in einer einzigen Box-Drawing-Tabelle. Daten-Logik lebt in `streaming/core/issue_registry.py`, Präsentation in `streaming/core/issue_dashboard.py`. Unterstützt `--json` für maschinelle Auswertung und `--fail-on-match` als Scheduler-Gate.
 
+## Action Hints
+
+TODO-Kandidaten und Scheduler-Ergebnisse enthalten ein `action_hints`-Feld mit strukturierten CLI-Empfehlungen pro Kategorie. Jeder Hint hat `action_id`, `label`, `cli_command` und `make_target`. Mapping in `_ACTION_HINT_MAP`: `thumbnail` → `prewarm-thumbnails`, `cache` → `reindex`, `sync` → `check-nas`, `metadata` → `check-metadata`. Platzhalter `{server}` wird aus dem Source-String aufgelöst.
+
+## Noise-Unterdrückung
+
+`_NOISE_RULES` in `issue_registry.py` definieren quellspezifische Schwellen. Jede Regel hat `source_prefix`, `category`, `min_severity_for_todo` und `min_count_for_todo`. CRITICAL-Issues passieren immer. Noise-gefilterte Kandidaten werden als `noise_suppressed_count` im Payload und Dashboard ausgewiesen.
+
+## Root-Cause-Deduplizierung
+
+`_ROOT_CAUSE_PATTERNS` in `issue_registry.py` gruppieren Issues über Sources und Kategorien hinweg nach gemeinsamer Root-Cause. Erkannte Muster (`library-unreachable`, `ffmpeg-missing`, `permission-denied`) erzeugen einen einzigen TODO statt mehrerer per-Source-TODOs. Der Family-Key wird dann `root-cause|{cause_id}` statt `{category}|{source}`.
+
+## Serien-Episoden-Ordnung (Video)
+
+`parse_season_episode()` in `streaming/core/catalog.py` ist die zentrale Funktion zur Extraktion von Staffel/Episode aus Dateinamen. Unterstützte Muster: `S##E##` und `##x##` (Priorität in dieser Reihenfolge). Gibt `(0, 0)` zurück wenn kein Muster erkannt wird — wirft nie Exceptions.
+
+`MediaItem` trägt die Felder `season: int = 0` und `episode: int = 0`. `build_video_index()` und `quick_folder_scan()` befüllen diese automatisch. `sort_items()` sortiert innerhalb desselben Ordners (artist) nach `(season, episode, title)`, wodurch Serien-Episoden chronologisch statt alphabetisch geordnet werden. Der Client-seitige JS-Sort in `applyFilter()` verwendet dieselbe Logik.
+
+`serie_path_to_numbers()` in `video/organizer.py` delegiert an die Shared-Funktion, wirft aber weiterhin `ValueError` für den Organizer-Workflow.
+
+## YAML-Media-Overrides
+
+Per-Ordner `hometools_overrides.yaml`-Dateien erlauben manuelle Korrektur von Anzeigenamen, Staffel/Episode-Nummern und dem Serientitel. Ähnlich zu Jellyfin NFO-Dateien, aber als einzelne YAML-Datei pro Ordner.
+
+**Modul:** `streaming/core/media_overrides.py`
+
+**Dateiformat:**
+```yaml
+series_title: "Avatar: Der Herr der Elemente"
+episodes:
+  "filename.mp4":
+    title: "Episodentitel"
+    season: 1
+    episode: 1
+```
+
+**Ablauf:**
+1. `load_all_overrides(library_root)` scannt alle Unterordner nach Override-Dateien
+2. `apply_overrides(items, library_root)` erstellt neue `MediaItem`-Instanzen mit überschriebenen Werten (frozen dataclass)
+3. `series_title` überschreibt das `artist`-Feld (Ordnername) für alle Items im Ordner
+4. Fehlende Felder behalten ihren auto-detektierten Wert
+5. Integration in `build_video_index()` (vor dem Sortieren) und `quick_folder_scan()`
+
+**Design-Regeln:**
+- Override-Dateien leben im Library-Ordner neben den Media-Dateien
+- Fehlerhafte/fehlende YAML wird lautlos ignoriert (robustes Fallback)
+- `MediaItem` wird nie mutiert — neue Instanzen bei Override
+
