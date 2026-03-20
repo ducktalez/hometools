@@ -2,11 +2,13 @@
 
 ## Next tasks
 
-- **Auto-Rename-Service für Serien** — Automatische Umbenennung von Serien-Dateien anhand von TMDB-Metadaten. Soll als `hometools rename-series <path>` CLI-Befehl funktionieren und die bestehende `series_rename_episodes()` in `video/organizer.py` als Backend nutzen. Vorher `hometools_overrides.yaml` aus dem Ordner lesen und als zusätzliche Quelle für korrekte Namen verwenden. Renames werden vorgeschlagen, nie auto-angewendet (Architektur-Regel #9).
-  - Mögliche Erweiterung: `hometools generate-overrides <path>` — YAML-Vorlage mit TMDB-Daten generieren, die der User prüfen und dann als Override-Datei ablegen kann.
+- **Recently Added-Sektion** — Neue "Kürzlich hinzugefügt"-Ansicht in der Streaming-UI. `sort_items()` um `mtime`-basierte Sortierung erweitern oder separaten Endpunkt `/api/<media>/recent` mit den N neuesten Dateien bereitstellen. UI-Tab/Filter in `server_utils.py` ergänzen. Muss für Audio und Video funktionieren (shared core).
+
+- **Wiedergabe-Fortschritt speichern** — Letzte Wiedergabeposition pro Datei geräteübergreifend speichern. Server-seitiger Endpunkt `POST /api/<media>/progress` (speichert `{relative_path, position_seconds, timestamp}`), Client-JS sendet Progress-Updates und lädt beim Öffnen den letzten Stand. JSON-basierter Storage im Cache-Verzeichnis. Shared core, da für Audio und Video identisch.
 
 ## Done
 
+- Auto-Rename-Service für Serien — `hometools rename-series <path>` CLI-Befehl mit `--dry-run`, `--recursive`, `--language`; refaktorierte `series_rename_episodes()` gibt `from_to`-Dict zurück statt direkt umzubenennen (Architektur-Regel #9); Override-Support via `hometools_overrides.yaml` (`FolderOverrides`); `hometools generate-overrides <path>` generiert YAML-Vorlage aus TMDB-Daten; robustere Exception-Behandlung (`IndexError`/`KeyError` bei leeren TMDB-Ergebnissen)
 - Server-seitige Transkodierung für nicht-streambare Formate — `streaming/core/remux.py` mit `needs_remux()`, `probe_codecs()`, `can_copy_codecs()`, `remux_stream()`; `/video/stream`-Endpoint remuxed (container-copy) oder transkodiert (XviD→H.264) on-the-fly zu fragmented MP4; UI zeigt ⚡-Badge bei Dateien, die Konvertierung benötigen; `NON_STREAMABLE_EXT`-Markierung entfernt (alle Formate jetzt streambar)
 - Serien-Episoden-Ordnung — `parse_season_episode()` in `streaming/core/catalog.py` als zentrale Parsing-Funktion; `MediaItem` um `season`/`episode` erweitert; `sort_items()` und Client-JS sortieren Serien chronologisch statt alphabetisch; `serie_path_to_numbers()` in `video/organizer.py` refactored auf Shared-Funktion
 - YAML-Overrides (`hometools_overrides.yaml`) — Per-Ordner YAML-Dateien für Anzeigenamen, Staffel/Episode und Serientitel; `streaming/core/media_overrides.py` mit `load_overrides()`, `load_all_overrides()`, `apply_overrides()`; Integration in `build_video_index()` und `quick_folder_scan()`

@@ -175,6 +175,31 @@ def build_parser() -> argparse.ArgumentParser:
     setup_pc.add_argument("--project-root", type=Path, default=Path.cwd())
     setup_pc.set_defaults(func=run_setup_pycharm)
 
+    # Video organizer
+    rename_series = subparsers.add_parser(
+        "rename-series",
+        help="Propose TMDB-based renames for series episodes in a folder.",
+    )
+    rename_series.add_argument("path", type=Path, help="Series folder (or parent of multiple series folders).")
+    rename_series.add_argument("--language", default="de", help="TMDB language code (default: de).")
+    rename_series.add_argument("--dry-run", action="store_true", help="Show proposals without prompting for confirmation.")
+    rename_series.add_argument("--recursive", action="store_true", help="Recurse into subdirectories (treat path as series root).")
+    rename_series.set_defaults(func=run_rename_series)
+
+    gen_overrides = subparsers.add_parser(
+        "generate-overrides",
+        help="Generate a hometools_overrides.yaml template from TMDB data.",
+    )
+    gen_overrides.add_argument("path", type=Path, help="Series folder to scan.")
+    gen_overrides.add_argument("--language", default="de", help="TMDB language code (default: de).")
+    gen_overrides.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output file path (default: hometools_overrides.yaml in the series folder).",
+    )
+    gen_overrides.set_defaults(func=run_generate_overrides)
+
     return parser
 
 
@@ -523,6 +548,117 @@ def run_setup_pycharm(args: argparse.Namespace) -> int:
     for p in created:
         _console_print(f"  ✓ {p.name}")
     _console_print(f"\n{len(created)} PyCharm run configuration(s) created. Restart PyCharm to see them.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Video organizer handlers
+# ---------------------------------------------------------------------------
+
+
+def _init_tmdb(language: str = "de"):
+    """Initialise the TMDB client and return ``(tv, season_api)``."""
+    from tmdbv3api import TV, Season, TMDb
+
+    from hometools.config import get_tmdb_api_key
+
+    tmdb = TMDb()
+    tmdb.api_key = get_tmdb_api_key()
+    tmdb.language = language
+    return TV(), Season()
+
+
+def run_rename_series(args: argparse.Namespace) -> int:
+    """Propose TMDB-based renames for series episodes."""
+    from hometools.streaming.core.media_overrides import load_overrides
+    from hometools.utils import user_rename_from_to_dict
+    from hometools.video.organizer import series_rename_episodes
+
+    setup_logging(log_file=None)
+    path: Path = args.path.resolve()
+    if not path.is_dir():
+        _console_print(f"Fehler: {path} ist kein Verzeichnis.")
+        return 2
+
+    tv, season_api = _init_tmdb(args.language)
+
+    dirs = []
+    if args.recursive:
+        for d in sorted(path.glob("**/*/")):
+            if any(x in str(d) for x in ["#recycle", "#REST"]):
+                continue
+            if d.is_dir():
+                dirs.append(d)
+    else:
+        dirs = [path]
+
+    total_proposals = 0
+    for dir_p in dirs:
+        overrides = load_overrides(dir_p)
+        try:
+            from_to = series_rename_episodes(dir_p, season_api, tv, overrides=overrides)
+        except Exception as ex:
+            _console_print(f"Fehler bei {dir_p.name}: {ex}")
+            continue
+
+        if not from_to:
+            continue
+
+        _console_print(f"\n{'─' * 60}")
+        _console_print(f"  📂 {dir_p.name}  ({len(from_to)} Vorschläge)")
+        _console_print(f"{'─' * 60}")
+        for old, new in from_to.items():
+            _console_print(f"  \033[31m{old.name}\033[0m")
+            _console_print(f"  \033[32m→ {new.name}\033[0m")
+            _console_print()
+
+        total_proposals += len(from_to)
+
+        if not args.dry_run:
+            user_rename_from_to_dict(from_to, confirm_each=False)
+
+    if total_proposals == 0:
+        _console_print("Keine Umbenennung nötig — alle Dateien sind bereits korrekt benannt.")
+    elif args.dry_run:
+        _console_print(f"\nDry-Run: {total_proposals} Umbenennung(en) vorgeschlagen. Ohne --dry-run ausführen zum Anwenden.")
+    return 0
+
+
+def run_generate_overrides(args: argparse.Namespace) -> int:
+    """Generate a hometools_overrides.yaml template from TMDB data."""
+    import yaml
+
+    from hometools.streaming.core.media_overrides import OVERRIDE_FILENAME
+    from hometools.video.organizer import generate_overrides_yaml
+
+    setup_logging(log_file=None)
+    path: Path = args.path.resolve()
+    if not path.is_dir():
+        _console_print(f"Fehler: {path} ist kein Verzeichnis.")
+        return 2
+
+    tv, season_api = _init_tmdb(args.language)
+
+    data = generate_overrides_yaml(path, season_api, tv)
+    if data is None:
+        _console_print(f"Keine TMDB-Daten für: {path.name}")
+        return 1
+
+    output_path = args.output or (path / OVERRIDE_FILENAME)
+
+    yaml_str = yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    if output_path.exists():
+        _console_print(f"⚠  Datei existiert bereits: {output_path}")
+        x = input("  Überschreiben? (Enter=ja, beliebig=nein) ")
+        if x != "":
+            _console_print("Abgebrochen.")
+            return 0
+
+    output_path.write_text(yaml_str, encoding="utf-8")
+    _console_print(f"✓ Override-Vorlage geschrieben: {output_path}")
+    _console_print(f"  {len(data.get('episodes', {}))} Episode(n), Serientitel: {data.get('series_title', '?')}")
+    _console_print("  Bitte prüfen und bei Bedarf anpassen.")
     return 0
 
 
