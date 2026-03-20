@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tmdbv3api import TV, Movie, Season
 
+    from hometools.streaming.core.media_overrides import FolderOverrides
+
 from hometools.config import get_tmdb_api_key
 from hometools.constants import VIDEO_SUFFIX
 from hometools.utils import (
@@ -217,9 +219,21 @@ def series_rename_episodes(
     season_api: Season,
     tv: TV,
     ignore_substrings: list[str] | None = None,
-):
-    """Rename series episodes in *dir_p* based on TMDB metadata."""
-    series_name = re.sub(r"#|\(engl\)", "", dir_p.name, flags=re.IGNORECASE)
+    overrides: FolderOverrides | None = None,
+) -> dict[Path, Path]:
+    """Build a rename mapping for series episodes in *dir_p* based on TMDB metadata.
+
+    When *overrides* is provided, ``series_title`` replaces the folder-derived
+    series name and per-episode ``title`` overrides replace the TMDB episode
+    name.
+
+    Returns a ``{old_path: new_path}`` dict.  The caller is responsible for
+    presenting the proposals and applying them (architecture rule #9).
+    """
+    if overrides and overrides.series_title:
+        series_name = overrides.series_title
+    else:
+        series_name = re.sub(r"#|\(engl\)", "", dir_p.name, flags=re.IGNORECASE)
     if ignore_substrings:
         for ss in ignore_substrings:
             series_name = re.sub(ss, "", series_name)
@@ -227,9 +241,9 @@ def series_rename_episodes(
     tmdb_search = tv.search(series_name)
     try:
         e_dict = tmdb_serie_infos(tmdb_search["results"][0].id, season_api, tv)
-    except TypeError:
+    except (TypeError, IndexError, KeyError):
         logger.warning(f"Skipping (no TMDB data): {series_name}")
-        return
+        return {}
 
     from_to: dict[Path, Path] = {}
 
@@ -241,13 +255,31 @@ def series_rename_episodes(
             continue
 
         s, e = se["season"], se["episode"]
+
+        # Check per-episode override for season/episode numbers
+        ep_ov = overrides.episodes.get(p.name) if overrides else None
+        if ep_ov is not None:
+            if ep_ov.season is not None:
+                s = ep_ov.season
+            if ep_ov.episode is not None:
+                e = ep_ov.episode
+
         p_stem = re.sub(r"[._]", " ", p.stem)
         p_stem = re.sub(r"\(\)", " ", p_stem)
         p_stem = re.sub(r"\(engl\)", "", p_stem)
         p_stem = re.sub(series_name, "", p_stem, flags=re.IGNORECASE)
         p_stem = re.sub(r"S\d{1,2}E\d{1,4}", "", p_stem, flags=re.IGNORECASE)
 
-        db_name = e_dict[s][e]["tmdb"].name
+        # Use override title if available, otherwise fall back to TMDB
+        if ep_ov is not None and ep_ov.title:
+            db_name = ep_ov.title
+        else:
+            try:
+                db_name = e_dict[s][e]["tmdb"].name
+            except (KeyError, IndexError):
+                logger.warning(f"No TMDB data for S{s:02d}E{e:02d} in {dir_p.name}")
+                continue
+
         remove_words = set(re.split(r"\W", db_name) + re.split(r"\W", re_umlaute_replace(db_name)))
         remove_words = sorted(remove_words, key=len, reverse=True)
         for w in (x for x in remove_words if len(x) > 1):
@@ -265,7 +297,7 @@ def series_rename_episodes(
         if p != new_path:
             from_to[p] = new_path
 
-    user_rename_from_to_dict(from_to, confirm_each=False)
+    return from_to
 
 
 # ---------------------------------------------------------------------------
@@ -291,11 +323,68 @@ def run_series_renaming(series_root: Path, language: str = "de"):
         if not dir_p.is_dir():
             continue
         try:
-            series_rename_episodes(
+            from_to = series_rename_episodes(
                 dir_p,
                 season_api,
                 tv,
                 ignore_substrings=[r"\(engl, gersub\)", r"\(engl\)", "1-8", "9-Rest"],
             )
+            if from_to:
+                user_rename_from_to_dict(from_to, confirm_each=False)
         except Exception as ex:
             logger.error(f"Error renaming {dir_p}: {ex}")
+
+
+def generate_overrides_yaml(
+    dir_p: Path,
+    season_api: Season,
+    tv: TV,
+    ignore_substrings: list[str] | None = None,
+) -> dict | None:
+    """Generate a ``hometools_overrides.yaml`` data structure for *dir_p*.
+
+    Searches TMDB for the series name (derived from the folder name) and
+    maps each video file to its TMDB episode title plus season/episode
+    numbers.  Returns the raw dict suitable for YAML serialisation, or
+    ``None`` when no TMDB data could be found.
+
+    Does **not** write any files — the caller decides where to persist.
+    """
+    series_name = re.sub(r"#|\(engl\)", "", dir_p.name, flags=re.IGNORECASE)
+    if ignore_substrings:
+        for ss in ignore_substrings:
+            series_name = re.sub(ss, "", series_name)
+
+    tmdb_search = tv.search(series_name)
+    try:
+        serie_id = tmdb_search["results"][0].id
+        e_dict = tmdb_serie_infos(serie_id, season_api, tv)
+        tmdb_title = tmdb_search["results"][0].name
+    except (TypeError, IndexError, KeyError):
+        logger.warning(f"No TMDB data for: {series_name}")
+        return None
+
+    episodes: dict[str, dict] = {}
+    for p in sorted(get_files_in_folder(dir_p, suffix_accepted=VIDEO_SUFFIX)):
+        try:
+            se = serie_path_to_numbers(p)
+        except ValueError:
+            logger.warning(f"Could not parse S##E## from {p}")
+            continue
+
+        s, e = se["season"], se["episode"]
+        try:
+            db_name = e_dict[s][e]["tmdb"].name
+        except (KeyError, IndexError):
+            db_name = ""
+
+        episodes[p.name] = {
+            "title": db_name,
+            "season": s,
+            "episode": e,
+        }
+
+    return {
+        "series_title": tmdb_title,
+        "episodes": episodes,
+    }

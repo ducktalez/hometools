@@ -44,7 +44,7 @@
 - ✅ ~~Failure-Tracking für Thumbnails~~ → implementiert (thumbnail_failures.json)
 
 ### Video-spezifisch
-- Ordnerstruktur-Interpretation für Video Server (Umbenennungen nur als Liste vorschlagen!)
+- ✅ ~~Ordnerstruktur-Interpretation für Video Server~~ → `rename-series` / `generate-overrides` CLI implementiert
 - Englische Serien: Metadaten in englisch laden, englische Titel einfügen
 - Sprach-Varianten verlinken ("Malcolm Mittendrin" ↔ "Malcolm in the Middle")
 - Untertitelfiles + TMDB-Integration, Pfadanpassungen bei Umbenennung
@@ -79,4 +79,5 @@
 ## ✅ Erledigt
 - Thumbnail Failure-Tracking → `thumbnail_failures.json`, MTime-basierter Retry
 - Phase 1 Offline-Download Feature (PWA)
+- Auto-Rename-Service für Serien → `rename-series` + `generate-overrides` CLI-Befehle
 
