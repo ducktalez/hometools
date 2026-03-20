@@ -1,6 +1,6 @@
-"""CLI dashboard for streaming issues and TODO candidates.
+"""CLI dashboard for streaming issues and task candidates.
 
-Combines issue summaries, TODO state and last scheduler run into a single
+Combines issue summaries, task state and last scheduler run into a single
 compact table view. Data retrieval is delegated to :mod:`issue_registry`;
 this module handles only presentation.
 """
@@ -129,6 +129,11 @@ def format_dashboard_table(data: dict[str, Any]) -> str:
             f"status={last_run.get('status', '?')} active={last_run.get('active_todo_count', 0)} "
             f"suppressed={last_run.get('suppressed_todo_count', 0)}"
         )
+    for item in todos.get("items", []):
+        for hint in item.get("action_hints") or []:
+            cmd = str(hint.get("cli_command", ""))
+            label = str(hint.get("label", ""))
+            value_strings.append(f"→ {label}: {cmd}" if label else f"→ {cmd}")
 
     label_width = 12
     min_value_width = 40
@@ -164,13 +169,16 @@ def format_dashboard_table(data: dict[str, Any]) -> str:
     lines.append(sep)
 
     # TODOs section
-    lines.append(
-        row(
-            "TODOs",
-            f"active={todos.get('active_count', 0)} ack={todos.get('acknowledged_count', 0)} "
-            f"snoozed={todos.get('snoozed_count', 0)} cooldown={todos.get('cooldown_count', 0)}",
-        )
-    )
+    noise_suppressed = int(todos.get("noise_suppressed_count", 0))
+    todo_summary_parts = [
+        f"active={todos.get('active_count', 0)}",
+        f"ack={todos.get('acknowledged_count', 0)}",
+        f"snoozed={todos.get('snoozed_count', 0)}",
+        f"cooldown={todos.get('cooldown_count', 0)}",
+    ]
+    if noise_suppressed:
+        todo_summary_parts.append(f"noise={noise_suppressed}")
+    lines.append(row("TODOs", " ".join(todo_summary_parts)))
     todo_items = todos.get("items", [])
     for item in todo_items:
         state_tag = f" ({item.get('state', 'active')})" if item.get("state", "active") != "active" else ""
@@ -181,7 +189,7 @@ def format_dashboard_table(data: dict[str, Any]) -> str:
             )
         )
     if not todo_items:
-        lines.append(row("", "No TODO candidates."))
+        lines.append(row("", "No task candidates."))
 
     lines.append(sep)
 
@@ -197,6 +205,32 @@ def format_dashboard_table(data: dict[str, Any]) -> str:
         )
     else:
         lines.append(row("Scheduler", "No runs recorded."))
+
+    lines.append(sep)
+
+    # Action hints section
+    all_hints: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    for item in todos.get("items", []):
+        for hint in item.get("action_hints") or []:
+            aid = str(hint.get("action_id", ""))
+            if aid and aid not in seen_ids:
+                seen_ids.add(aid)
+                all_hints.append(hint)
+    if isinstance(last_run, dict):
+        for hint in last_run.get("action_hints") or []:
+            aid = str(hint.get("action_id", ""))
+            if aid and aid not in seen_ids:
+                seen_ids.add(aid)
+                all_hints.append(hint)
+    if all_hints:
+        lines.append(row("Actions", f"{len(all_hints)} recommended"))
+        for hint in all_hints:
+            cmd = str(hint.get("cli_command", ""))
+            label = str(hint.get("label", ""))
+            lines.append(row("", f"→ {label}: {cmd}" if label else f"→ {cmd}"))
+    else:
+        lines.append(row("Actions", "No action hints."))
 
     lines.append(sep)
 

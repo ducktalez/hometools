@@ -29,6 +29,8 @@ class MediaItem:
     media_type: str  # "audio" or "video"
     thumbnail_url: str = ""  # URL to shadow-cached thumbnail (empty = no thumb)
     rating: float = 0.0  # 0.0–5.0 star rating (POPM for audio, 0.0 = unrated)
+    season: int = 0  # series season number (0 = not a series episode)
+    episode: int = 0  # series episode number (0 = not a series episode)
 
     def to_dict(self) -> dict[str, str]:
         """Return a JSON-serializable representation."""

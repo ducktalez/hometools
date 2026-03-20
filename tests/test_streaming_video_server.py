@@ -19,7 +19,12 @@ def test_video_home_renders_shell_without_building_index(tmp_path):
     assert "Loading library" in response.text
 
 
-def test_video_items_returns_loading_state_while_index_builds(tmp_path):
+def test_video_items_returns_refreshing_state_with_quick_scan_while_index_builds(tmp_path):
+    # Create a test video file so quick scan finds it
+    sub = tmp_path / "TestFolder"
+    sub.mkdir()
+    (sub / "clip.mp4").write_bytes(b"")
+
     client = TestClient(create_app(tmp_path))
 
     with (
@@ -31,8 +36,10 @@ def test_video_items_returns_loading_state_while_index_builds(tmp_path):
         response = client.get("/api/video/items")
 
     assert response.status_code == 200
-    assert response.json()["loading"] is True
-    assert response.json()["items"] == []
+    data = response.json()
+    assert data["refreshing"] is True
+    assert len(data["items"]) >= 1
+    assert "loading" not in data
 
 
 def test_video_status_endpoint_returns_cache_diagnostics(tmp_path):

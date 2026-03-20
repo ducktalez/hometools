@@ -182,11 +182,18 @@ def tmdb_serie_infos(serie_id: int, season_api: Season, tv: TV) -> dict:
 
 
 def serie_path_to_numbers(p: Path) -> dict:
-    """Extract season and episode numbers from a filename."""
-    match = re.search(r"S(\d{1,2})E(\d{1,4})", p.stem, flags=re.IGNORECASE)
-    if not match:
+    """Extract season and episode numbers from a filename.
+
+    Delegates to :func:`~hometools.streaming.core.catalog.parse_season_episode`
+    for the actual regex matching, but raises ``ValueError`` when no pattern
+    is found (organizer workflows need strict validation).
+    """
+    from hometools.streaming.core.catalog import parse_season_episode
+
+    season, episode = parse_season_episode(p.stem)
+    if season == 0 and episode == 0:
         raise ValueError(f"No S##E## pattern found in: {p.stem}")
-    return {"season": int(match.group(1)), "episode": int(match.group(2))}
+    return {"season": season, "episode": episode}
 
 
 def delete_jellyfin_meta_files(p: Path):

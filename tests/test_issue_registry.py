@@ -216,7 +216,7 @@ def test_run_scheduler_once_suppresses_repeat_within_cooldown(tmp_path):
 
 
 def test_run_scheduler_once_emits_again_on_severity_escalation(tmp_path):
-    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="WARNING", message="thumbnail failed")
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
     first = run_scheduler_once(tmp_path, cooldown_seconds=3600)
     record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="CRITICAL", message="thumbnail failed harder")
 
@@ -518,3 +518,163 @@ def test_build_dashboard_data_respects_max_todo_items(tmp_path):
     data = build_dashboard_data(tmp_path, max_todo_items=1)
 
     assert len(data["todos"]["items"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Action Hints
+# ---------------------------------------------------------------------------
+
+
+def test_scheduler_emits_action_hints_for_thumbnail_issues(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
+
+    result = run_scheduler_once(tmp_path, cooldown_seconds=3600)
+
+    assert result["action_hints"]
+    action_ids = [h["action_id"] for h in result["action_hints"]]
+    assert "prewarm-thumbnails" in action_ids
+
+
+def test_scheduler_emits_action_hints_for_cache_issues(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.audio.cache", severity="ERROR", message="index rebuild failed")
+
+    result = run_scheduler_once(tmp_path, cooldown_seconds=3600)
+
+    assert result["action_hints"]
+    action_ids = [h["action_id"] for h in result["action_hints"]]
+    assert "reindex" in action_ids
+    # Check server placeholder was resolved
+    assert any("audio" in h.get("cli_command", "") for h in result["action_hints"])
+
+
+def test_todo_candidates_include_action_hints(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.audio.sync", severity="ERROR", message="NAS sync failed")
+
+    payload = generate_todo_candidates(tmp_path)
+
+    assert payload["count"] >= 1
+    item = payload["items"][0]
+    assert "action_hints" in item
+    action_ids = [h["action_id"] for h in item["action_hints"]]
+    assert "check-nas" in action_ids
+
+
+def test_action_hints_deduplicated_in_scheduler_result(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed A")
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed B")
+
+    result = run_scheduler_once(tmp_path, cooldown_seconds=3600)
+
+    action_ids = [h["action_id"] for h in result["action_hints"]]
+    assert action_ids.count("prewarm-thumbnails") == 1
+
+
+# ---------------------------------------------------------------------------
+# Noise Rules
+# ---------------------------------------------------------------------------
+
+
+def test_noise_rules_suppress_thumbnail_warnings(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="WARNING", message="thumbnail failed")
+
+    payload = generate_todo_candidates(tmp_path)
+
+    assert payload["source_issue_count"] == 1
+    assert payload["count"] == 0
+    assert payload["noise_suppressed_count"] == 1
+
+
+def test_noise_rules_pass_thumbnail_errors(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
+
+    payload = generate_todo_candidates(tmp_path)
+
+    assert payload["count"] == 1
+    assert payload["noise_suppressed_count"] == 0
+
+
+def test_noise_rules_never_suppress_critical(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="CRITICAL", message="thumbnail system crashed")
+
+    payload = generate_todo_candidates(tmp_path)
+
+    assert payload["count"] == 1
+    assert payload["noise_suppressed_count"] == 0
+
+
+def test_noise_rules_pass_non_matching_sources(tmp_path):
+    record_issue(tmp_path, source="hometools.metadata", severity="WARNING", message="metadata parse warning")
+
+    payload = generate_todo_candidates(tmp_path)
+
+    assert payload["count"] == 1
+    assert payload["noise_suppressed_count"] == 0
+
+
+def test_todo_summary_includes_noise_suppressed_count(tmp_path):
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="WARNING", message="thumbnail failed")
+
+    summary = summarize_todos(tmp_path)
+
+    assert summary["noise_suppressed_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Root-Cause Deduplication
+# ---------------------------------------------------------------------------
+
+
+def test_dedup_groups_across_sources_by_root_cause(tmp_path):
+    record_issue(
+        tmp_path,
+        source="hometools.streaming.core.thumbnailer",
+        severity="ERROR",
+        message="library not accessible: NAS offline",
+    )
+    record_issue(
+        tmp_path,
+        source="hometools.streaming.core.index_cache",
+        severity="ERROR",
+        message="library not accessible: timeout",
+    )
+
+    payload = generate_todo_candidates(tmp_path)
+
+    # Both issues share root cause "library-unreachable" → grouped into 1 task
+    assert payload["source_issue_count"] == 2
+    assert payload["count"] == 1
+    assert len(payload["items"][0]["issue_keys"]) == 2
+
+
+def test_dedup_separate_todos_without_root_cause(tmp_path):
+    record_issue(tmp_path, source="hometools.a", severity="ERROR", message="problem alpha")
+    record_issue(tmp_path, source="hometools.b", severity="ERROR", message="problem beta")
+
+    payload = generate_todo_candidates(tmp_path)
+
+    # Different sources, no root cause match → separate tasks
+    assert payload["count"] == 2
+
+
+def test_dashboard_shows_action_hints_section(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data, format_dashboard_table
+
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="ERROR", message="thumbnail failed")
+
+    data = build_dashboard_data(tmp_path)
+    table = format_dashboard_table(data)
+
+    assert "Actions" in table
+    assert "prewarm-thumbnails" in table or "Prewarm" in table
+
+
+def test_dashboard_shows_noise_info(tmp_path):
+    from hometools.streaming.core.issue_dashboard import build_dashboard_data, format_dashboard_table
+
+    record_issue(tmp_path, source="hometools.streaming.core.thumbnailer", severity="WARNING", message="thumbnail warning")
+    record_issue(tmp_path, source="hometools.test", severity="ERROR", message="real error")
+
+    data = build_dashboard_data(tmp_path)
+    table = format_dashboard_table(data)
+
+    assert "noise=1" in table

@@ -25,6 +25,7 @@ from hometools.streaming.audio.catalog import (
     list_artists,
     query_tracks,
 )
+from hometools.streaming.core.catalog import quick_folder_scan
 from hometools.streaming.core.index_cache import IndexCache
 from hometools.streaming.core.server_utils import (
     build_index_status_payload,
@@ -211,17 +212,26 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
                 library_message="ok",
                 cache_status=cache_status,
             )
+            # Quick scan for immediate folder display
+            quick_items = quick_folder_scan(
+                resolved_library_dir,
+                suffixes=AUDIO_SUFFIX,
+                media_type="audio",
+                stream_url_prefix="/audio/stream",
+            )
+            filtered = query_tracks(quick_items, q=q, artist=artist, sort_by=sort)
             logger.info(
-                "GET /api/audio/tracks — loading state in %.2fs (refresh_started=%s, status=%s)",
-                cache_elapsed,
+                "GET /api/audio/tracks — quick scan %d items in %.2fs (refresh_started=%s, status=%s)",
+                len(quick_items),
+                time.monotonic() - cache_t0,
                 refresh_started,
                 status_payload["detail"],
             )
             return {
-                "count": 0,
-                "items": [],
-                "artists": [],
-                "loading": True,
+                "count": len(filtered),
+                "items": [t.to_dict() for t in filtered],
+                "artists": list_artists(quick_items),
+                "refreshing": True,
                 **status_payload,
                 "query": {"q": q or "", "artist": artist or "all", "sort": sort},
             }
@@ -309,7 +319,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             seconds=int(payload.get("seconds") or 3600),
         )
         if not bool(result.get("ok", False)):
-            detail = str(result.get("message") or "TODO state update failed")
+            detail = str(result.get("message") or "Task state update failed")
             raise HTTPException(status_code=404 if result.get("state") == "missing" else 400, detail=detail)
 
         return {

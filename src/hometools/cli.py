@@ -96,24 +96,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     stream_issues.set_defaults(func=run_stream_issues)
 
-    stream_todos = subparsers.add_parser("stream-todos", help="Derive TODO candidates from the current open streaming irregularities.")
+    stream_todos = subparsers.add_parser("stream-todos", help="Derive task candidates from the current open streaming irregularities.")
     stream_todos.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     stream_todos.add_argument(
         "--min-severity",
         choices=["warning", "error", "critical"],
         default="warning",
-        help="Only derive TODOs from issues at or above this severity.",
+        help="Only derive tasks from issues at or above this severity.",
     )
     stream_todos.add_argument("--only-errors", action="store_true", help="Shortcut for --min-severity error.")
-    stream_todos.add_argument("--max-items", type=int, default=None, help="Limit the number of generated TODO candidates.")
+    stream_todos.add_argument("--max-items", type=int, default=None, help="Limit the number of generated task candidates.")
     stream_todos.add_argument(
         "--fail-on-match",
         action="store_true",
-        help="Return exit code 1 when filtered TODO candidates are present.",
+        help="Return exit code 1 when filtered task candidates are present.",
     )
     stream_todos.set_defaults(func=run_stream_todos)
 
-    stream_scheduler = subparsers.add_parser("stream-scheduler", help="Run the first scheduler stub once (issues -> TODO candidates).")
+    stream_scheduler = subparsers.add_parser("stream-scheduler", help="Run the first scheduler stub once (issues -> task candidates).")
     stream_scheduler.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     stream_scheduler.add_argument(
         "--min-severity",
@@ -122,22 +122,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only process issues at or above this severity.",
     )
     stream_scheduler.add_argument("--only-errors", action="store_true", help="Shortcut for --min-severity error.")
-    stream_scheduler.add_argument("--max-items", type=int, default=None, help="Limit the number of generated TODO candidates.")
+    stream_scheduler.add_argument("--max-items", type=int, default=None, help="Limit the number of generated task candidates.")
     stream_scheduler.add_argument(
         "--cooldown-seconds",
         type=int,
         default=3600,
-        help="Suppress already emitted TODO tasks for this many seconds unless severity increases.",
+        help="Suppress already emitted tasks for this many seconds unless severity increases.",
     )
     stream_scheduler.add_argument(
         "--fail-on-match",
         action="store_true",
-        help="Return exit code 1 when generated TODO candidates are present.",
+        help="Return exit code 1 when generated task candidates are present.",
     )
     stream_scheduler.set_defaults(func=run_stream_scheduler)
 
     stream_dashboard = subparsers.add_parser(
-        "stream-dashboard", help="Show a combined dashboard of open issues, TODO candidates and scheduler state."
+        "stream-dashboard", help="Show a combined dashboard of open issues, task candidates and scheduler state."
     )
     stream_dashboard.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     stream_dashboard.add_argument(
@@ -147,18 +147,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only include items at or above this severity.",
     )
     stream_dashboard.add_argument("--only-errors", action="store_true", help="Shortcut for --min-severity error.")
-    stream_dashboard.add_argument("--max-items", type=int, default=5, help="Max TODO items to display.")
+    stream_dashboard.add_argument("--max-items", type=int, default=5, help="Max task items to display.")
     stream_dashboard.add_argument(
         "--fail-on-match",
         action="store_true",
-        help="Return exit code 1 when active TODO candidates are present.",
+        help="Return exit code 1 when active task candidates are present.",
     )
     stream_dashboard.set_defaults(func=run_stream_dashboard)
 
     stream_todo_state = subparsers.add_parser(
-        "stream-todo-state", help="Acknowledge, snooze or clear the state of a grouped streaming TODO task."
+        "stream-todo-state", help="Acknowledge, snooze or clear the state of a grouped streaming task."
     )
-    stream_todo_state.add_argument("--todo-key", required=True, help="Grouped TODO key from stream-todos / stream-scheduler output.")
+    stream_todo_state.add_argument("--todo-key", required=True, help="Grouped task key from stream-todos / stream-scheduler output.")
     stream_todo_state.add_argument("--action", choices=["acknowledge", "snooze", "clear"], required=True)
     stream_todo_state.add_argument("--reason", default="", help="Optional note stored with the state change.")
     stream_todo_state.add_argument("--seconds", type=int, default=3600, help="Snooze duration in seconds (only used with --action snooze).")
@@ -166,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--min-severity",
         choices=["warning", "error", "critical"],
         default="warning",
-        help="Severity threshold used to resolve the current TODO candidate.",
+        help="Severity threshold used to resolve the current task candidate.",
     )
     stream_todo_state.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     stream_todo_state.set_defaults(func=run_stream_todo_state)
@@ -408,7 +408,7 @@ def run_stream_issues(args: argparse.Namespace) -> int:
 
 
 def run_stream_todos(args: argparse.Namespace) -> int:
-    """Derive and print TODO candidates from open irregularities."""
+    """Derive and print task candidates from open irregularities."""
     from hometools.config import get_cache_dir
     from hometools.streaming.core.issue_registry import generate_todo_candidates
 
@@ -422,14 +422,14 @@ def run_stream_todos(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print(f"TODO candidates >= {payload['min_severity']}: {payload['count']} (from {payload['source_issue_count']} open issue(s))")
+        print(f"Task candidates >= {payload['min_severity']}: {payload['count']} (from {payload['source_issue_count']} open issue(s))")
         for item in payload["items"]:
             print(f"- [{item['priority']}/{item['severity']}] {item['source']}: {item['message']} (count={item['count']})")
     return 1 if args.fail_on_match and payload["count"] else 0
 
 
 def run_stream_scheduler(args: argparse.Namespace) -> int:
-    """Run the first scheduler stub once and persist TODO candidates."""
+    """Run the first scheduler stub once and persist task candidates."""
     from hometools.config import get_cache_dir
     from hometools.streaming.core.issue_registry import run_scheduler_once
 
@@ -447,15 +447,15 @@ def run_stream_scheduler(args: argparse.Namespace) -> int:
             f"Scheduler run complete: status={result['status']}, open_issues={result['open_issue_count']}, "
             f"todo_candidates={result['todo_count']}, active={result['active_todo_count']}, suppressed={result['suppressed_todo_count']}"
         )
-        print(f"TODO file: {result['todo_candidates_path']}")
+        print(f"Task file: {result['todo_candidates_path']}")
         top_todo = result.get("top_todo")
         if isinstance(top_todo, dict):
-            print(f"Top TODO: [{top_todo.get('priority', '?')}] {top_todo.get('message', '')}")
+            print(f"Top task: [{top_todo.get('priority', '?')}] {top_todo.get('message', '')}")
     return 1 if args.fail_on_match and result["active_todo_count"] else 0
 
 
 def run_stream_todo_state(args: argparse.Namespace) -> int:
-    """Update acknowledge/snooze state for a grouped TODO task."""
+    """Update acknowledge/snooze state for a grouped task."""
     from hometools.config import get_cache_dir
     from hometools.streaming.core.issue_registry import acknowledge_todo, clear_todo_state, snooze_todo
 
@@ -480,7 +480,7 @@ def run_stream_todo_state(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        print(f"TODO state update: ok={result.get('ok', False)}, key={result.get('todo_key', '')}, state={result.get('state', '')}")
+        print(f"Task state update: ok={result.get('ok', False)}, key={result.get('todo_key', '')}, state={result.get('state', '')}")
         if result.get("message"):
             print(result["message"])
         if result.get("snoozed_until"):
@@ -489,7 +489,7 @@ def run_stream_todo_state(args: argparse.Namespace) -> int:
 
 
 def run_stream_dashboard(args: argparse.Namespace) -> int:
-    """Show a combined dashboard of open issues, TODOs and scheduler state."""
+    """Show a combined dashboard of open issues, tasks and scheduler state."""
     from hometools.config import get_cache_dir
     from hometools.streaming.core.issue_dashboard import build_dashboard_data, format_dashboard_table
 

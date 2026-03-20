@@ -24,7 +24,7 @@ from hometools.config import (
     get_video_pwa_display_mode,
 )
 from hometools.constants import VIDEO_SUFFIX
-from hometools.streaming.core.catalog import list_artists, query_items
+from hometools.streaming.core.catalog import list_artists, query_items, quick_folder_scan
 from hometools.streaming.core.index_cache import IndexCache
 from hometools.streaming.core.server_utils import (
     build_index_status_payload,
@@ -225,17 +225,26 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
                 library_message="ok",
                 cache_status=cache_status,
             )
+            # Quick scan for immediate folder display
+            quick_items = quick_folder_scan(
+                resolved_library_dir,
+                suffixes=VIDEO_SUFFIX,
+                media_type="video",
+                stream_url_prefix="/video/stream",
+            )
+            filtered = query_items(quick_items, q=q, artist=artist, sort_by=sort)
             logger.info(
-                "GET /api/video/items — loading state in %.2fs (refresh_started=%s, status=%s)",
-                cache_elapsed,
+                "GET /api/video/items — quick scan %d items in %.2fs (refresh_started=%s, status=%s)",
+                len(quick_items),
+                time.monotonic() - cache_t0,
                 refresh_started,
                 status_payload["detail"],
             )
             return {
-                "count": 0,
-                "items": [],
-                "artists": [],
-                "loading": True,
+                "count": len(filtered),
+                "items": [i.to_dict() for i in filtered],
+                "artists": list_artists(quick_items),
+                "refreshing": True,
                 **status_payload,
                 "query": {"q": q or "", "artist": artist or "all", "sort": sort},
             }
@@ -324,7 +333,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             seconds=int(payload.get("seconds") or 3600),
         )
         if not bool(result.get("ok", False)):
-            detail = str(result.get("message") or "TODO state update failed")
+            detail = str(result.get("message") or "Task state update failed")
             raise HTTPException(status_code=404 if result.get("state") == "missing" else 400, detail=detail)
 
         return {
@@ -335,8 +344,9 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
     @app.get("/api/video/metadata")
     def video_metadata(path: str) -> dict[str, object]:
-        """Re-read embedded metadata for a single video file."""
+        """Re-read embedded metadata for a single video file, with YAML overrides."""
         from hometools.audio.metadata import read_embedded_metadata
+        from hometools.streaming.core.media_overrides import load_overrides
         from hometools.streaming.video.catalog import _folder_as_artist, _title_from_filename
 
         try:
@@ -362,11 +372,25 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             if meta_artist.strip():
                 artist = meta_artist.strip()
 
+        # Apply per-folder YAML overrides (same as build_video_index)
+        folder = file_path.parent
+        folder_ov = load_overrides(folder)
+        if folder_ov is not None:
+            if folder_ov.series_title:
+                artist = folder_ov.series_title
+            ep_ov = folder_ov.episodes.get(file_path.name)
+            if ep_ov is not None and ep_ov.title is not None:
+                title = ep_ov.title
+
         logger.debug("GET /api/video/metadata — %s → title=%r artist=%r", path, title, artist)
         return {"title": title, "artist": artist, "rating": 0.0}
 
     @app.get("/video/stream")
-    def video_stream(path: str) -> FileResponse:
+    def video_stream(path: str):
+        from fastapi.responses import StreamingResponse
+
+        from hometools.streaming.core.remux import needs_remux, remux_stream
+
         try:
             file_path = resolve_video_path(resolved_library_dir, path)
         except FileNotFoundError as exc:
@@ -375,6 +399,19 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         except ValueError as exc:
             logger.warning("GET /video/stream — invalid path: %s (%s)", path, exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        if needs_remux(file_path):
+            # On-the-fly remux/transcode to fragmented MP4 (like Jellyfin)
+            logger.info("GET /video/stream — remuxing %s for browser playback", file_path.name)
+            return StreamingResponse(
+                remux_stream(file_path),
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f'inline; filename="{file_path.stem}.mp4"',
+                    "Cache-Control": "no-store",
+                },
+            )
+
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         logger.debug("GET /video/stream — serving %s (%s)", file_path.name, media_type)
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
