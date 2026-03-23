@@ -157,6 +157,35 @@ Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progr
 Alle Player-Buttons und UI-Controls verwenden **inline SVGs** statt Unicode-Zeichen. iOS rendert Unicode-Steuerzeichen (▶ ◄ ► ⏸ ⊞ ↓) als farbige Emojis, was das Layout zerstört.
 
 **Konvention:**
-- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY` in `server_utils.py`
-- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST` — über `innerHTML` gesetzt (nicht `textContent`)
+- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN` in `server_utils.py`
+- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN` — über `innerHTML` gesetzt (nicht `textContent`)
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
+
+## PWA Shortcuts & Deep Linking
+
+**Module:** `streaming/core/shortcuts.py`, `streaming/core/server_utils.py` (JS)
+
+Benutzer können einzelne Medien-Items als Favoriten „pinnen" und auf den Home-Bildschirm speichern.
+
+### Deep Linking
+
+URL-Parameter `?id=<relative_path>` auf der Root-Route (`/`) beider Server. Das JS liest den Parameter nach dem Catalog-Load, navigiert automatisch zum Ordner des Items und startet die Wiedergabe. Die URL wird danach via `history.replaceState` bereinigt.
+
+### Shortcuts API
+
+- `GET /api/<media>/shortcuts` — gespeicherte Shortcuts laden
+- `POST /api/<media>/shortcuts` — Shortcut hinzufügen/aktualisieren (`{id, title}`)
+- `DELETE /api/<media>/shortcuts?id=…` — Shortcut entfernen
+
+Storage: `<cache_dir>/shortcuts/<server>.json` (Audio/Video getrennt). Thread-sicher, atomare Schreibzugriffe, max. 20 Shortcuts.
+
+### Manifest-Integration
+
+`render_pwa_manifest()` akzeptiert optionale `shortcuts`-Liste. Beide Server laden beim `/manifest.json`-Request die gespeicherten Shortcuts und betten sie als PWA-Shortcuts ein. Dadurch erscheinen Favoriten bei Long-Press auf das App-Icon (Android) bzw. im Share-Sheet (iOS 16.4+).
+
+### UI
+
+Jeder Track in der Liste hat einen Pin-Button (`track-pin-btn`, `IC_PIN` SVG). Klick ruft die Shortcuts-API auf und öffnet:
+- **iOS/Android:** `navigator.share()` mit Deep-Link-URL
+- **Desktop Fallback:** `navigator.clipboard.writeText()` mit Toast-Hinweis
+

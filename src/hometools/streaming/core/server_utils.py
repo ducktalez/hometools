@@ -36,6 +36,7 @@ SVG_MENU = '<svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6" stroke="
 SVG_DOWNLOAD = '<svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 SVG_CHECK = '<svg viewBox="0 0 24 24"><polyline points="4,12 10,18 20,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 SVG_FOLDER_PLAY = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>'
+SVG_PIN = '<svg viewBox="0 0 24 24"><path d="M16 4l4 4-2.5 2.5 1.5 5.5-6-6-5 5v-2l3.5-3.5L6 4h2l5 1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +232,7 @@ def render_pwa_manifest(
     theme_color: str = "#1db954",
     background_color: str = "#121212",
     display_mode: str = "standalone",
+    shortcuts: list[dict[str, object]] | None = None,
 ) -> str:
     """Return a PWA manifest.json as string.
 
@@ -238,6 +240,9 @@ def render_pwa_manifest(
     ``standalone`` — no browser UI (feels native, best for audio).
     ``minimal-ui`` — minimal back-button; allows PiP & fullscreen on iOS
                      (required for video background playback).
+
+    *shortcuts* — optional list of PWA shortcut dicts with keys
+    ``name``, ``short_name``, ``url``, and optionally ``icons``.
     """
     import json
 
@@ -254,6 +259,8 @@ def render_pwa_manifest(
             {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
         ],
     }
+    if shortcuts:
+        manifest["shortcuts"] = shortcuts
     return json.dumps(manifest, indent=2, ensure_ascii=False)
 
 
@@ -730,10 +737,25 @@ body.modal-open { overflow: hidden; }
 }
 .track-dl-btn.downloading {
   color: #ffcc00; border-color: #ffcc00; font-size: 0.65rem;
-  pointer-events: none;
+  cursor: pointer;
 }
 @keyframes dl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 .track-dl-btn.downloading { animation: dl-pulse 1.2s ease-in-out infinite; }
+.track-pin-btn {
+  background: none; border: 1px solid #555; color: var(--sub);
+  border-radius: 50%; width: 28px; height: 28px;
+  cursor: pointer; flex-shrink: 0; margin-left: 4px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0; line-height: 1;
+}
+.track-pin-btn svg { width: 14px; height: 14px; fill: currentColor; pointer-events: none; }
+.track-pin-btn:hover { color: var(--accent); border-color: var(--accent); }
+.track-pin-btn.pinned {
+  color: var(--accent); border-color: var(--accent);
+  background: rgba(29, 185, 84, 0.12);
+}
 .track-thumb {
   width: 40px; height: 40px; border-radius: 4px; object-fit: cover;
   flex-shrink: 0; background: var(--surface2);
@@ -1240,6 +1262,7 @@ def render_player_js(
   var IC_DL    = '<svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var IC_CHECK = '<svg viewBox="0 0 24 24"><polyline points="4,12 10,18 20,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var IC_FOLDER_PLAY = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>';
+  var IC_PIN = '<svg viewBox="0 0 24 24"><path d="M16 4l4 4-2.5 2.5 1.5 5.5-6-6-5 5v-2l3.5-3.5L6 4h2l5 1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
@@ -1876,6 +1899,9 @@ def render_player_js(
           '" data-relative-path="' + escHtml(t.relative_path || '') +
           '" data-thumbnail-url="' + escHtml(t.thumbnail_url || '') +
           '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">' + IC_DL + '</button>' +
+        '<button class="track-pin-btn" data-relative-path="' + escHtml(t.relative_path || '') +
+          '" data-title="' + escHtml(t.title) +
+          '" title="Favorit">' + IC_PIN + '</button>' +
         '</li>';
     }).join('');
     document.querySelectorAll('.track-item:not(.missing-episode)').forEach(function(el) {
@@ -1902,6 +1928,15 @@ def render_player_js(
         }
       });
     });
+    document.querySelectorAll('.track-pin-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        var item = filteredItems.find(function(it) { return it.relative_path === btn.dataset.relativePath; });
+        if (item) toggleFavorite(item, btn);
+      });
+    });
+    updateFavoriteButtons();
     updateAllDownloadButtons();
   }
 
@@ -2858,6 +2893,99 @@ def render_player_js(
 
   backBtn.addEventListener('click', goBack);
   playAllBtn.addEventListener('click', playAllCurrent);
+
+  /* ── Favoriten — speichern & teilen ── */
+  var _savedFavorites = {};
+
+  function loadFavorites() {
+    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
+    fetch(base + '/shortcuts')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        _savedFavorites = {};
+        if (data && Array.isArray(data.items)) {
+          data.items.forEach(function(s) { _savedFavorites[s.id] = true; });
+        }
+        updateFavoriteButtons();
+      })
+      .catch(function() {});
+  }
+
+  function updateFavoriteButtons() {
+    document.querySelectorAll('.track-pin-btn').forEach(function(btn) {
+      var rp = btn.dataset.relativePath;
+      if (_savedFavorites[rp]) {
+        btn.classList.add('pinned');
+        btn.title = 'Favorit entfernen';
+      } else {
+        btn.classList.remove('pinned');
+        btn.title = 'Favorit';
+      }
+    });
+  }
+
+  function toggleFavorite(item, btn) {
+    if (!item || !item.relative_path) return;
+    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
+    var isPinned = _savedFavorites[item.relative_path];
+
+    if (isPinned) {
+      /* Remove favorite */
+      fetch(base + '/shortcuts?id=' + encodeURIComponent(item.relative_path), { method: 'DELETE' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function() {
+          delete _savedFavorites[item.relative_path];
+          if (btn) { btn.classList.remove('pinned'); btn.title = 'Favorit'; }
+          showToast('Favorit entfernt');
+        })
+        .catch(function() {});
+    } else {
+      /* Add favorite */
+      fetch(base + '/shortcuts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: item.relative_path,
+          title: item.title || item.relative_path,
+          icon: '/thumb?path=' + encodeURIComponent(item.relative_path)
+        })
+      })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function() {
+        _savedFavorites[item.relative_path] = true;
+        if (btn) { btn.classList.add('pinned'); btn.title = 'Favorit entfernen'; }
+        showToast('Als Favorit gespeichert');
+        /* On mobile: additionally offer share sheet for home screen shortcut */
+        if (navigator.share && ('ontouchstart' in window || navigator.maxTouchPoints > 0)) {
+          var deepUrl = window.location.origin + '/?id=' + encodeURIComponent(item.relative_path);
+          setTimeout(function() {
+            navigator.share({
+              title: item.title || 'Favorit',
+              text: item.title || '',
+              url: deepUrl
+            }).catch(function() {});
+          }, 600);
+        }
+      })
+      .catch(function() { showToast('Favorit konnte nicht gespeichert werden'); });
+    }
+  }
+
+  function showToast(msg) {
+    var t = document.getElementById('ht-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'ht-toast';
+      t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;z-index:9999;font-size:14px;max-width:90%;text-align:center;transition:opacity .3s';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.style.display = 'none'; }, 300); }, 3500);
+  }
+
   viewToggle.addEventListener('click', function() {
     viewMode = viewMode === 'list' ? 'grid' : 'list';
     localStorage.setItem('ht-view-mode', viewMode);
@@ -2890,7 +3018,33 @@ def render_player_js(
     refreshOfflineLibrary();
   }
   applyViewMode();
-  loadInitialCatalog();
+
+  /* ── Deep Linking: ?id=relative/path auto-navigates & plays ── */
+  var _deepLinkId = (new URLSearchParams(window.location.search)).get('id');
+
+  function handleDeepLink() {
+    if (!_deepLinkId || !allItems.length) return;
+    var target = allItems.find(function(it) { return it.relative_path === _deepLinkId; });
+    if (!target) { _deepLinkId = null; return; }
+    /* Navigate to the item's parent folder */
+    var slash = _deepLinkId.lastIndexOf('/');
+    currentPath = slash > 0 ? _deepLinkId.substring(0, slash) : '';
+    /* Gather siblings in that folder */
+    var c = contentsAt(currentPath);
+    var siblings = c.files.length ? c.files : itemsUnder(currentPath);
+    var idx = siblings.findIndex(function(it) { return it.relative_path === _deepLinkId; });
+    if (idx < 0) { idx = 0; }
+    showPlaylist(siblings, true, idx);
+    /* Clean the URL so reload doesn't re-trigger deep link */
+    var cleanUrl = window.location.pathname;
+    history.replaceState(null, '', cleanUrl);
+    _deepLinkId = null;
+  }
+
+  loadInitialCatalog().then(function() {
+    handleDeepLink();
+    loadFavorites();
+  });
 }());
 """
     )
