@@ -1,27 +1,70 @@
 # Implementation Plan
 
-## Next tasks
+## Current Sprint — Backlog High Items
 
-- **Phase 2: PWA Shortcuts** — Einzelne Filme/Songs auf Home-Bildschirm speichern (Deep Linking + Quick Access)
+- **Management-Server & Scheduler** — Status-Dashboard, Auto-NAS-Sync, zyklische Aufgaben
+- **Metadata-Editing vom Handy** — Änderungen in Review-Queue, Schreiben erst nach Akzeptanz
+
+## Backlog — High
+
+- **Phase 3: Native iOS Apps** — Hybrid WebView Wrapper für Video + Audio → [plans/native_app_plan.md](plans/native_app_plan.md)
+
+## Backlog — Medium
+
+### Streaming UI (Audio + Video)
+- Shuffle-Modus (+ gewichteter Shuffle nach Bewertung bei Long Touch)
+- Songwertung (1–5 Sterne) in UI + ID3-POPM-Tags speichern
+- Wiedergabelisten erstellen und verwalten
+- Crossfade für nahtlose Song-Übergänge
+- Swipe-Gesten für mobile Navigation
+- Filteroptionen für die Suche
+- Offline-Downloads-Liste (alle heruntergeladenen Dateien anzeigen)
+- Songtexte anzeigen (aus ID3-Tags)
+- „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB)
+- Tags bei Musik nutzen
+
+### Video-spezifisch
+- Sprache/Untertitel/Auflösung taggen und auswählbar machen
+- Multi-Language-Linking („Malcolm Mittendrin" ↔ „Malcolm in the Middle")
+- Englische Serien: Metadaten + Titel in Englisch laden
+- „Intro überspringen" (TMDB-Daten oder manuelle Markierung)
+- Scan-Hinweise: Filesystem-Organisation ausreichend?
+- Untertitelfiles + TMDB-Integration bei Umbenennungen
+
+### Infrastruktur
+- Tools-Code restrukturieren + umfassende Tests (Edge Cases, Dummy-Dateien)
+- Optionales HTTPS
+- Geräteübergreifende Fortschritts-Synchronisation
+- iOS Background Video Playback → [plans/background_video_playback.md](plans/background_video_playback.md)
+
+## Backlog — Low / Experimental
+
+- **DJ-Extension** — Mixing, Stems (Gesang/Instrumental/Beat), BPM-Analyse, Auto-DJ-Modus
+- **„Fernsehsender"** — automatische Wiedergabe nach Plan, mit Werbe-Einspielern
+- **„MTV"-Modus** — Musikvideos + visuelle Begleitung zu Musik
+- **„Sleep Mode"** — nur Audio aus Serien, kein Bildschirm
+- **Photo-Management-Server**
+- **HTTP-Obscurification** — Port-Knock statt HTTPS für Privat-Server
+- **Pro-Nutzer Ordnerstruktur** (N8N-Integration)
+- **Lennyface-Board**
 
 ## Done
 
-- FastStart-Erkennung für MP4-Dateien — `has_faststart()` in `streaming/core/remux.py` parst die MP4-Atom-Struktur (ftyp/moov/mdat) und erkennt Dateien mit `moov`-Atom am Ende; `/video/stream`-Endpoint leitet solche Dateien automatisch durch `remux_stream()` (`-c copy -movflags frag_keyframe+empty_moov`) statt per `FileResponse` — Browser kann sofort abspielen statt die gesamte Datei herunterzuladen; 7 neue Tests für `has_faststart()` und Endpoint-Integration
-
-- SVG-Icons statt Unicode/Emoji — Alle Player-Buttons (Play/Pause/Prev/Next/PiP), Folder-Play, Download, Back, View-Toggle und Menu von Unicode-Zeichen auf inline SVGs umgestellt; rendert auf iOS/Android/Desktop konsistent ohne Emoji-Darstellung; CSS und JS für `innerHTML`-Swap angepasst; `IC_PLAY`/`IC_PAUSE`/`IC_DL`/`IC_CHECK`/`IC_GRID`/`IC_LIST` als JS-Variablen
-- Shadow-Cache ins Repository — Default von `get_cache_dir()` auf `.hometools-cache/` im Repo-Root geändert (war `~/hometools-cache`); `.gitignore` aktualisiert; `HOMETOOLS_CACHE_DIR` überschreibt weiterhin; Copilot-Instructions und `architecture.md` aktualisiert
-- Große Thumbnails (480 px) — Zweite Thumbnail-Größe (`THUMB_LG_MAX_PX = 480`, Suffix `.thumb-lg.jpg`) neben den kleinen (120 px); `_generate_large_thumbnail()` im Background-Worker; `/thumb?size=lg` Endpoint auf Audio- und Video-Server; `thumbnail_lg_url`-Feld auf `MediaItem`; Ordner-Karten nutzen große Thumbnails (Fallback auf kleine); Tests und Feature-Parity erweitert
-
-- Wiedergabe-Fortschritt speichern — Neues Shared-Core-Modul `streaming/core/progress.py` mit thread-sicherem, atomarem JSON-Storage im Shadow-Cache (`progress/playback_progress.json`); `POST /api/<media>/progress` speichert `{relative_path, position_seconds, duration}`, `GET /api/<media>/progress?path=…` lädt gespeicherten Stand; Client-JS sendet debounced Progress alle 5s via `timeupdate`, speichert sofort bei Pause, löscht bei `ended`; beim Track-Wechsel wird letzte Position geladen und mit Toast „Fortfahren bei X:XX" angezeigt; Feature-Parity für Audio und Video
-- Recently Added-Sektion — `MediaItem` um `mtime`-Feld erweitert (Unix-Timestamp der Datei); `sort_items()` um `"recent"`-Sortieroption ergänzt (absteigend nach `mtime`, Titel als Tiebreaker); Audio-, Video- und Quick-Folder-Scan befüllen `mtime` per `stat()`; Sort-Dropdown im UI um „Neueste ⇅"-Option erweitert; Client-JS sortiert ebenfalls nach `mtime`; Service-Worker-Cache-Version hochgezählt (v5→v6)
-- Server-seitige Transkodierung für nicht-streambare Formate — `streaming/core/remux.py` mit `needs_remux()`, `probe_codecs()`, `can_copy_codecs()`, `remux_stream()`; `/video/stream`-Endpoint remuxed (container-copy) oder transkodiert (XviD→H.264) on-the-fly zu fragmented MP4; UI zeigt ⚡-Badge bei Dateien, die Konvertierung benötigen; `NON_STREAMABLE_EXT`-Markierung entfernt (alle Formate jetzt streambar)
-- Serien-Episoden-Ordnung — `parse_season_episode()` in `streaming/core/catalog.py` als zentrale Parsing-Funktion; `MediaItem` um `season`/`episode` erweitert; `sort_items()` und Client-JS sortieren Serien chronologisch statt alphabetisch; `serie_path_to_numbers()` in `video/organizer.py` refactored auf Shared-Funktion
-- YAML-Overrides (`hometools_overrides.yaml`) — Per-Ordner YAML-Dateien für Anzeigenamen, Staffel/Episode und Serientitel; `streaming/core/media_overrides.py` mit `load_overrides()`, `load_all_overrides()`, `apply_overrides()`; Integration in `build_video_index()` und `quick_folder_scan()`
-- Action Hints — Scheduler und Task-Kandidaten enthalten strukturierte `action_hints` mit `action_id`, `cli_command` und `make_target` pro Kategorie (thumbnail → prewarm, cache → reindex, sync → check-nas, usw.)
-- Noise-Unterdrückung — quellspezifische `_NOISE_RULES` filtern niedrigschwellige Tasks (z. B. Thumbnail-WARNINGs); CRITICALs passieren immer; `noise_suppressed_count` in Payload und Dashboard
-- Root-Cause-Deduplizierung — `_ROOT_CAUSE_PATTERNS` gruppieren Issues über Sources und Kategorien hinweg nach Root-Cause (z. B. `library-unreachable`, `ffmpeg-missing`, `permission-denied`)
-- CLI-Dashboard (`stream-dashboard`) — kombinierte Ansicht aus Issues, Task-Kandidaten und letztem Scheduler-Lauf als Box-Drawing-Tabelle; `--json` und `--fail-on-match` Flags; Makefile-Targets `dashboard` / `dashboard-json`
-- Verwaiste `.tmp_*`-Testverzeichnisse aufgeräumt und in `.gitignore` eingetragen
-- Issues/Tasks-Leiste aus der Browser-UI entfernt — Issues/Tasks werden nur noch serverseitig geloggt und über API-Endpunkte bereitgestellt
-- Katalog-API-Endpunkte optimiert: Cache-First statt Library-Check-First → Server ist sofort nutzbar während Index-Rebuild
-
+- Phase 2: PWA Shortcuts — Deep Linking (`?id=`), Shortcuts API + JSON-Storage, Manifest-Generator, Pin-Button pro Item, Share-Sheet/Clipboard
+- Phase 1: Offline-Download Feature (PWA) — Service Worker, IndexedDB, Offline-Playback
+- FastStart-Erkennung für MP4-Dateien (`has_faststart()`, Auto-Remux)
+- SVG-Icons statt Unicode/Emoji (alle Buttons, iOS-kompatibel)
+- Shadow-Cache ins Repository (`.hometools-cache/`, `HOMETOOLS_CACHE_DIR`)
+- Große Thumbnails 480 px (`/thumb?size=lg`, Background-Worker)
+- Wiedergabe-Fortschritt speichern (`progress.py`, Resume-Toast)
+- Recently Added Sortierung (`mtime`-Feld, „Neueste ⇅")
+- On-the-fly Remux/Transcode (`remux.py`, FLV/AVI/MKV → frag-MP4)
+- Serien-Episoden-Ordnung (`parse_season_episode()`, S##E## / ##x##)
+- YAML-Overrides (`hometools_overrides.yaml`, Anzeigenamen/Staffel/Episode)
+- Action Hints (strukturierte CLI-Empfehlungen pro Task-Kategorie)
+- Noise-Unterdrückung (quellspezifische Schwellen, `_NOISE_RULES`)
+- Root-Cause-Deduplizierung (`_ROOT_CAUSE_PATTERNS`)
+- CLI-Dashboard (`stream-dashboard`, Box-Drawing, `--json`)
+- Issues/Tasks aus Browser-UI entfernt (nur API + CLI)
+- Cache-First API (Server sofort nutzbar während Index-Rebuild)
+- Verwaiste `.tmp_*`-Testverzeichnisse aufgeräumt

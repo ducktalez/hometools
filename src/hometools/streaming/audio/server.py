@@ -415,6 +415,37 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             raise HTTPException(status_code=404, detail="Thumbnail not found")
         return FileResponse(thumb_path, media_type="image/jpeg")
 
+    # --- Shortcuts API ---
+
+    @app.get("/api/audio/shortcuts")
+    def audio_shortcuts() -> dict[str, object]:
+        """Return saved PWA shortcuts for the audio server."""
+        from hometools.streaming.core.shortcuts import load_shortcuts
+
+        return {"items": load_shortcuts(resolved_cache_dir, "audio")}
+
+    @app.post("/api/audio/shortcuts")
+    def audio_add_shortcut(payload: dict[str, str]) -> dict[str, object]:
+        """Add or update a PWA shortcut."""
+        from hometools.streaming.core.shortcuts import save_shortcut
+
+        item_id = payload.get("id", "")
+        title = payload.get("title", "")
+        if not item_id or not title:
+            raise HTTPException(status_code=400, detail="id and title are required")
+        url = f"/?id={item_id}"
+        icon = payload.get("icon", f"/thumb?path={item_id}")
+        shortcuts = save_shortcut(resolved_cache_dir, "audio", item_id=item_id, title=title, url=url, icon=icon)
+        return {"items": shortcuts}
+
+    @app.delete("/api/audio/shortcuts")
+    def audio_remove_shortcut(id: str) -> dict[str, object]:
+        """Remove a PWA shortcut by item id."""
+        from hometools.streaming.core.shortcuts import remove_shortcut
+
+        shortcuts = remove_shortcut(resolved_cache_dir, "audio", id)
+        return {"items": shortcuts}
+
     # --- PWA endpoints ---
     _AUDIO_THEME = "#1db954"
 
@@ -422,8 +453,20 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
     def manifest():
         from fastapi.responses import JSONResponse
 
+        from hometools.streaming.core.shortcuts import load_shortcuts
+
+        saved = load_shortcuts(resolved_cache_dir, "audio")
+        pwa_shortcuts = [
+            {
+                "name": s["title"],
+                "short_name": s["title"][:25],
+                "url": s.get("url", f"/?id={s['id']}"),
+                "icons": [{"src": s.get("icon", "/icon.svg"), "sizes": "any"}],
+            }
+            for s in saved
+        ]
         return JSONResponse(
-            content=_json.loads(render_pwa_manifest("hometools audio", "Audio", theme_color=_AUDIO_THEME)),
+            content=_json.loads(render_pwa_manifest("hometools audio", "Audio", theme_color=_AUDIO_THEME, shortcuts=pwa_shortcuts or None)),
             media_type="application/manifest+json",
         )
 

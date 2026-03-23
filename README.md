@@ -10,103 +10,25 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
-### 🔴 High Priority
+Vollständiger Implementierungsplan mit Backlog: **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**
 
-- **Phase 1: Offline-Download Feature (PWA)** — ✅ Code fertig
-  - Siehe [docs/plans/offline_feature.md](docs/plans/offline_feature.md)
-  - ✅ Service Worker, Download UI, IndexedDB, Offline-Playback, Storage-Quota/Pruning, automatisierte Tests
-  - 📱 **Manuelle Abnahme auf iPhone/iPad:** [docs/ios/quick_acceptance.md](docs/ios/quick_acceptance.md) (5 min) oder [docs/ios/device_validation.md](docs/ios/device_validation.md) (vollständig)
+**Aktuell:** Management-Server & Scheduler, Metadata-Editing
+**Nächste:** Phase 3 — Native iOS Apps
 
-- **Phase 2: PWA Shortcuts — Quick Win** — Woche 2-3
-  - Siehe [docs/plans/pwa_shortcuts.md](docs/plans/pwa_shortcuts.md)
-  - Speichere einzelne Filme/Songs auf Home-Bildschirm
-  - Deep Linking + Quick Access (~8-10h)
-  - 🎯 Native-App-Feeling ohne native App
-  - **Output:** Favoriten direkt zugänglich
+## PyCharm Run-Konfigurationen
 
-- **Phase 3: Native iOS Apps (Hybrid WebView Wrapper)** — Woche 4-6
-  - Siehe [docs/plans/native_app_plan.md](docs/plans/native_app_plan.md)
-  - Zwei separate Apps: HometoolsVideo + HometoolsAudio
-  - WebView Wrapper (reuse PWA-Code 100%)
-  - Native Features: Background Audio, Lock Screen, Persistent Storage
-  - **Strategy:** Minimal Swift Code (~2000 LOC total, vs. 15000+ pure native)
-  - **Timeline:** ~3-4 weeks für beide Apps
-  - **Output:** App Store ready native Apps mit voller iOS-Integration
+Im Repo unter `.idea/runConfigurations/` liegen fertige Konfigurationen:
 
-### 🟡 Medium Priority
-  - Ich will eine Seite, die den Serverstatus anzeigt und wichtige Managementaufgaben repräsentiert.
-  - Vom Handy aus soll man die Metadaten von Files ändern können. Diese sollen aber nicht direkt eingetragen werden sondern in einer Liste festgehalten. Erst wenn man diese Liste im Management Server "akzeptiert" hat, werden die Metadaten in den Files festgeschrieben.
-  - dynamisches synchronisieren: Die neuesten Änderungen müssen in einer Datenbank festgehalten werden so dass man das Handy zielgerichtet updaten kann.
-  - Ein Scheduler, der die wichtigsten Aufgaben planbar und zyklisch ausführt.
-
-### 🟡 Medium Priority
-
-- Clean extensive device-checks. Are they all necessary?
-- ~~iphone-pitfall: der Pause-button ist immernoch ein emoji.~~ ✅ Alle Buttons nutzen jetzt inline SVGs
-- Plan: Restrukturiere den Inhalt in Tools komplett neu und schreibe für alles, inklusive aller möglichen oder denkbaren Edge Cases Tests.
-  - In WA Unterdaten findest du zwei LUTs, die hierfür herangezogen werden können. Vermutlich ist es dennoch sinnvoll, dieses Lookup Table File dauerhaft aus dem Repo zu entfernen und durch generelle Tests und Edge Cases zu ersetzen.
-  - Ich halte beim Analysieren von sehr großen Datenbeständen Lookup Tables generell für eine gute Idee. So muss nicht bei jedem Test jedes Pfeil neu angeschaut werden. Bitte schaue hier was übliche State of the Art Lösungen sind.
-  - Für die Tests sollten auch sehr einfache Dateien aller möglichen Audio- und Video-Files Teil des Tests sein. Entweder sollten diese automatisch generiert werden falls das denn möglich ist. Sie könnten zum Beispiel dummy Daten enthalten oder aber wir kopieren sehr kleine Files für die Tests in ein Testdir.
-- Für den Video Server sollen folgende Regelungen zur Interpretation Der Ordner Struktur implementiert werden.
-  - Es können Umbenennungen vorgeschlagen werden. Diese dürfen aber auf keinen Fall direkt durchgeführt werden sondern sollen als Liste generiert werden. In den Tools soll hier dafür auch der Code angepasst werden.
-- Management Server & Scheduler
-  - Status-Dashboard (Server, Syncs, Tasks)
-  - Metadata-Änderungen in Review-Queue
-  - Auto-Sync-Scheduler (regelmäßig NAS scannen)
-- Fehler/Warnungen/Errors werden zusätzlich als offene Unregelmäßigkeiten in `HOMETOOLS_CACHE_DIR/issues/open_issues.json` gesammelt; der Scheduler bündelt ähnliche Probleme zu stabileren Aufgaben in `todo_candidates.json` und dämpft Wiederholungen per Cooldown (`hometools stream-scheduler --json`)
-- OPTIONALE https-kommunikation. Es handelt sich um einen privaten Streaming-Server und wir erwarten keine Angriffe. HTTP ist schneller.
-- Für englische Serien müssen die Metadaten anders geladen werden und das Programm, welches die Files automatisch umbennt, muss hier die englischen Titel etc. einfügen. Bisher ist das nicht der Fall.
-- Implement a "Recently Added" section in the streaming UI
-- Während des Scans der Files für den Audio- und Video Streaming Server: Hinweise wenn die Organisation mit dem Filesystem genügend Informationen gibt oder ob es Probleme geben kann
-- "Malcolm mittendrin" (deutsch) vs. "Malcolm in the Middle" vs. "Malcolm Mittendrin [engl]" - Lösung finden.
-  - Deutsche und englische Versionen einer Serie müssen irgendwie miteinander verlinkt werden, damit man nicht zwei Einträge in der UI hat.
-  - Ich will eine Verlinkung bereits durch die richtige Namensgebung in der Ordnerstruktur ermöglichen. Ist das überhaupt eine gute Idee?
-  - Ein Match wäre dann ein Match wenn der Serientitel im Ordner gleich ist, bloß mit einem "(engl)" oder "[engl]" dahinter. Die Files in dem Ordner sollen aber nach der original englischen Serie benannt werden. (zB. 'Malcolm Mittendrin (engl)/Malcolm in the Middle S01E01.mp4').
-- Untertitelfiles verwenden und in die TMDB-Integration einbinden. Pfadanpassungen bei Namensänderungen nicht vergessen
-- "swipe"-gesture für die mobile UI implementieren (z.B. für "Ordner nach oben/zurück gehen, ...")
-- "Zufällige Wiedergabe" (shuffle) in der Audio-Streaming UI. Mit Long Touch soll ein anderer Shuffle-Modus genutzt werden bei dem die Songs proportional zu ihrer Bewertung häufiger oder weniger oft dran kommen.
-- Songwertung (1–5 Sterne) in der UI anzeigen und in den ID3-POPM-Tags speichern
-- Feature: "Ähnliche Titel" vorschlagen basierend auf Artist/Genre/Album (Audio) oder TMDB-Genre/Regisseur/Schauspieler (Video)
-- Feature: "Wiedergabelisten" erstellen und verwalten in der Audio-Streaming UI, mit Möglichkeit zur manuellen Sortierung
-- Feature: Tags bei Musik nutzen
-- Videostreaming Medianeigenschaften taggen:
-  - Sprache und Untertiteloptionen in Ordnern einblenden (nachladen, wenn vorhanden). Hier gilt zu beachten dass es mehrere Arten der Untertitel geben kann. Entweder sind sie als Files vorhanden oder aber das gesamte Video hat die Untertitel eingeblendet.
-  - Auflösung ()ab 1080p, 4K, ...). Codec denkbar auch, aber ich sehe keinen direkten Nutzen davon
-  - Bei mehreren Sprachen soll bei Klick auf eine der Sprach-Flaggen das entsprechende File ausgewählt werden.
-  - Es soll angezeigt werden ob ein File heruntergeladen worden ist und wenn man drauf klickt soll man den Speicherplatz wieder freigeben können.
-- Alle runtergeladenen Dateien sollen in einer Offline-Downloads-Liste aufgelistet werden.
-- Filteroptionen für die Suche
-- Minimum an HTTP-Sicherheit durch Obscurification? Verschlüsselung ist aufwendig.
-  - Ich würde gerne HTTP als Standard lassen denn es ist ja ein privater Server.
-  - Aber ich würde gerne eine komische Connection haben wollen damit das nicht bei dem Standardportscan direkt auffliegt.
-  - Das heißt es würde ein Protokoll genutzt werden, das dazu führt dass die Schnittstelle bei einem Port Scan nicht antwortet wenn ein bestimmtes Bit an einer bestimmten Stelle nicht gesetzt ist. Es funktioniert nur wenn man eben da ein Passwort übergibt.
-- DJ-feature (Plan):
-  - Musiktitel übereinanderlegen (mixen)? Automatische Übergänge?
-  - DJ-feature: songs automatisch aufeinander abstimmen (BPM, Tonart) und nahtlos überblenden. Besondere Songeigenschaften (zum mixen oder samplen) beim laden der lieder speichern (oder vom Nutzer beschreiben lassen).
-- Anzeige von Songtexten (sofern in den ID3-Tags vorhanden) in der Audio-Streaming UI
-- Plan: Einführung eines Management-servers, der die Synchronisation und das Streaming steuert, damit man nicht von Hand die Synchronisation und das Starten der Server triggern muss. Hier muss auch ein Scheduler regelmäßig die NAS-Ordner scannen und die Synchronisation triggern, damit die Streaming-Server immer auf dem neuesten Stand sind. Scheduler muss auch entwickelt werden.
-- Plan: Letzte Wiedergabe + Fortschrittsanzeige in der Streaming-UI speichern, damit man auch von einem anderen Gerät aus weitermachen kann. Hier muss auch die Synchronisation der Fortschrittsdaten zwischen den Geräten implementiert werden (z.B. über eine JSON-Datei oder eine kleine Datenbank).
-- "Intro überspringen" Feature für die Video-Streaming UI, basierend auf TMDB-Daten oder manueller Markierung
-- "Crossfade" Feature für die Audio-Streaming UI, um nahtlose Übergänge zwischen Songs zu ermöglichen
-- DJ-extension: Bei songs für die DJ-Nutzung sollten folgende Spuren extrahiert werden (Gespeichert im Schattenverzeichnis): Gesang, Instrumental, Bass/Beat. Loopregionen sollen festgelegt werden.
-- DJ-extension: Um flüssige Übergänge zu ermöglichen müssen die BPM von Songs, die abweichen, schneller oder langsamer abgespielt werden können. Hier muss eine solche Funktion implementiert werden. Zusätzlich würde ich auch gerne bei einem Long Touch auf den Pause-Button eine Scroll-Funktion nach oben und unten aufploppen lassen, wo man die BPM einstellen kann und so auch die Abspiel-Geschwindigkeit verändern kann.
-- DJ-extension: Zwischen Songs braucht Er ist ein Analyse-Autor, der schaut ob ein flüssiger Übergang möglich ist oder ob es eine andere Art von Übergang braucht.
-- DJ-extension: "Keep something playing"-option, um zu verhindern, dass gar nichts läuft.
-- DJ-extension: "Auto-DJ"-modus, in dem die Software automatisch Songs auswählt und Übergänge basierend auf den analysierten Eigenschaften erstellt, um eine kontinuierliche Wiedergabe zu gewährleisten. Hier sollte auch die Möglichkeit bedacht werden, eine Art Geschichte aus den Songs zu machen und verschiedene aufeinander folgende Themes etc. zu ermöglichen.
-- "Fernsehsender", der automatisch (nach Plan) immer Serien oder Filme oder Musikvideos oder News abspielt. Lustig wäre, einen Plan für die Zukunft anzulegen und für diesen Plan kurze Werbung einzuspielen. Also quasi morgen 20:15 Uhr kommt Shrek. Auch diese kurzen Einspieler, die man früher hatte mit Toggo oder sowas, wären lustig.
-- "Fernsehsender" MTV-version: Zu allen Liedern wird einfach das Musikvideo abgespielt, z.B. von YouTube. Musikvideos könnten auch hinterlegt werden. Ansonsten wird Musik abgespielt aber es gibt eine dazu passende visuelle Begleitung. Das heißt ein DJ bei Partymucke, irgendwelche Night Ride oder Surfvideos bei Drum&Bass oder auch nur ein Feuer. Auf jeden Fall soll irgendeine Visualisierung zu eigentlich vorrangig abgespielter Musik stattfinden.
-- "Sleep Mode" Video stream radio: Gibt einfach nur das Audio aus einer Serie wieder so dass man aber keine Helligkeit hat beim Schlafen.
-- Ein lennyface-board
-- Server: Photo-Management: Alles online oder zumindest mit einem lokalen Server
-- Jeder Nutzer hat eine andere Ordnerstruktur. Es wird zwar eine generelle Ordnerstruktur vorgegeben; jedoch sollte folgendes diskutiert werden.
-  - Es sollte überlegt werden ob nicht mit N8N hier eine Logik generiert werden kann, auf jede Person zugeschnitten, damit alle Ordner richtig interpretiert werden.
-- Wir sollten eine Liste führen mit Technologien, die in Zukunft eventuell ersetzt werden sollen. Entweder in Architecture oder Implementation Plan sollte hier vielleicht auch ein Diskussionsbereich für genau solche Überlegungen festgelegt werden. Wo hältst du es für am sinnvollsten? 
-- Für den Hard Reset sollte ein Parameter prüfen, ob es sich um einen Produktivstand handelt. Wenn ja, sollte der Hard Reset nicht möglich sein. 
-- Es sollten für den Nutzer potenzielle Chores-Aufgaben angelegt werden. 
-  - Ein Beispiel für so eine Aufgabe wäre, die Videos zu analysieren, die sich im Download Folder befinden, die aber in relativ schlechter Qualität vorhanden sind. 
-    - Auch fehlende Folgen bei Serien sollten markiert werden.
-    - Für die Ausnahmen sollte ein JSON-File oder in der Datenbank gespeichert werden. Warum man sich darum nicht kümmert bzw. einfach zu ignorieren sollte, auch akzeptabel sein.
-    - 
+| Konfiguration | Beschreibung |
+|---|---|
+| **Serve All** | Audio + Video Server starten |
+| **Serve Audio** | Nur Audio-Server |
+| **Serve Video** | Nur Video-Server |
+| **Run Tests** | Vollständige Test-Suite (`pytest -q`) |
+| **Feature Parity Tests** | Audio↔Video Drift-Erkennung |
+| **Ruff Check + Format** | Lint + Auto-Fix |
+| **Dashboard** | CLI-Issues/TODOs Dashboard |
+| **Streaming Config** | Aktuelle Konfiguration anzeigen |
 ## Features
 
 ### Music Library
