@@ -83,7 +83,8 @@ def test_classic_html_has_inline_range():
     page = _page(style="classic")
     assert 'id="progress-bar"' in page
     assert 'id="waveform-canvas"' not in page
-    assert 'id="progress-track"' not in page
+    # Classic mode now has progress-track for sprite sheet preview support
+    assert 'id="progress-track"' in page
 
 
 def test_classic_html_has_controls():
@@ -169,7 +170,9 @@ def test_classic_js_has_no_waveform_data():
 def test_classic_js_has_no_thumb_video():
     js = _js(style="classic")
     assert "thumbVideo" not in js
-    assert "mousemove" not in js
+    # Classic mode now has sprite-based mousemove for video scrubber preview
+    assert "spriteData" in js
+    assert "mousemove" in js
 
 
 def test_classic_js_has_stub_functions():
@@ -216,7 +219,9 @@ def test_waveform_js_has_waveform_data():
 
 def test_waveform_js_has_thumb_video():
     js = _js(style="waveform")
-    assert "thumbVideo" in js
+    # thumbVideo replaced by sprite sheet approach
+    assert "spriteData" in js
+    assert "spriteImg" in js
     assert "mousemove" in js
     assert "mouseleave" in js
     assert "drawImage" in js

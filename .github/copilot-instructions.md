@@ -24,12 +24,13 @@ Always run commands from the repo root. The virtualenv is `hometools-env/`.
 4. **No side effects at import time.** All work behind CLI commands or explicit calls.
 5. **Robust exception handling.** Every public function returns sensible defaults on failure (`None`, `False`, `[]`). Never crash the caller.
 6. **No blocking.** Thumbnail generation, network I/O, file scans → background threads or deferred. Server startup must be instant.
-7. **Shadow cache (`~/hometools-cache/`)** mirrors library structure. Never modify original media files. MTime-based invalidation. Failure registry (`thumbnail_failures.json`) prevents infinite retries.
+7. **Shadow cache (`.hometools-cache/`)** in the repo root mirrors library structure. Override with `HOMETOOLS_CACHE_DIR`. Never modify original media files. MTime-based invalidation. Failure registry (`thumbnail_failures.json`) prevents infinite retries.
 8. **Caching coordination.** Server-side (shadow cache), client-side (Service Worker, IndexedDB), and PWA caching must stay in sync. API response shape changes require updating both `server_utils.py` (generated JS) and the Service Worker.
 9. **File renames must be proposed, never auto-applied.** User confirms explicitly.
 10. **Sync only on explicit CLI command.** Never auto-pull from NAS.
 11. **Logging, not print.** `logging.getLogger(__name__)` in library code.
 12. **ffmpeg/ffprobe** are optional runtime deps (thumbnail extraction, silence trimming). Always handle `FileNotFoundError` gracefully.
+13. **No Unicode/Emoji for UI controls.** All buttons use inline SVGs (defined as `SVG_*` constants in `server_utils.py` and `IC_*` JS variables). Never use Unicode chars like `▶ ◄ ► ⏸ ⊞ ↓` — iOS renders them as coloured emojis.
 
 ## Validation Checklist
 
@@ -41,5 +42,6 @@ After any change, run in this order:
 
 ## Maintaining these docs
 
-- **When you identify fundamental changes **, update `docs/architecture.md`.
+- **When moving a task to "Done" in `IMPLEMENTATION_PLAN.md`**, always add or update the corresponding section in `docs/architecture.md`. No Done-item without architecture entry.
+- **When you identify fundamental changes**, update `docs/architecture.md`.
 - **When you identify an open task**, add it to `docs/IMPLEMENTATION_PLAN.md`.

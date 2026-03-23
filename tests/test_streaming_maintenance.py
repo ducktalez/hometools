@@ -56,7 +56,9 @@ def test_prewarm_stream_builds_audio_index_snapshot(monkeypatch, tmp_path):
 
     assert result.server == "audio"
     assert result.index_count == 1
-    assert (cache_dir / "indexes" / "audio-index.json").exists()
+    # Snapshot is saved with a library-dir hash in the filename
+    index_files = list((cache_dir / "indexes").glob("audio-index*.json"))
+    assert index_files, "No audio index snapshot found"
 
 
 def test_prewarm_stream_full_resets_video_metadata_cache(monkeypatch, tmp_path):
@@ -74,4 +76,6 @@ def test_prewarm_stream_full_resets_video_metadata_cache(monkeypatch, tmp_path):
 
     assert result.server == "video"
     assert result.index_count == 1
-    assert (cache_dir / "indexes" / "video-index.json").exists()
+    # Snapshot is saved with a library-dir hash in the filename
+    index_files = list((cache_dir / "indexes").glob("video-index*.json"))
+    assert index_files, "No video index snapshot found"

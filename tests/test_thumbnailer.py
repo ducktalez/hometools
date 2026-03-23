@@ -6,13 +6,22 @@ from unittest.mock import patch
 
 from hometools.streaming.core.thumbnailer import (
     FAILURE_FILE,
+    SPRITE_META_SUFFIX,
+    SPRITE_SUFFIX,
+    THUMB_LG_MAX_PX,
+    THUMB_LG_SUFFIX,
     THUMB_SUFFIX,
     _compute_seek_seconds,
     _failure_key,
     check_thumbnail_cached,
+    check_thumbnail_lg_cached,
     ensure_thumbnail,
     extract_audio_cover,
     extract_video_thumbnail,
+    generate_sprite_sheet,
+    get_sprite_meta_path,
+    get_sprite_path,
+    get_thumbnail_lg_path,
     get_thumbnail_path,
     load_failures,
     record_failure,
@@ -38,6 +47,90 @@ def test_get_thumbnail_path_video():
 
 def test_thumb_suffix_is_jpeg():
     assert THUMB_SUFFIX.endswith(".jpg")
+
+
+def test_get_thumbnail_lg_path():
+    p = get_thumbnail_lg_path(Path("/cache"), "video", "Series/ep01.mp4")
+    assert p == Path("/cache/video/Series/ep01.mp4" + THUMB_LG_SUFFIX)
+
+
+def test_thumb_lg_suffix_is_jpeg():
+    assert THUMB_LG_SUFFIX.endswith(".jpg")
+    assert THUMB_LG_SUFFIX != THUMB_SUFFIX
+
+
+def test_thumb_lg_max_px_is_larger():
+    assert THUMB_LG_MAX_PX > 120
+
+
+def test_check_thumbnail_lg_cached_returns_path_when_exists(tmp_path):
+    cache = tmp_path / "cache"
+    thumb = cache / "video" / ("ep01.mp4" + THUMB_LG_SUFFIX)
+    thumb.parent.mkdir(parents=True)
+    thumb.write_bytes(b"\xff\xd8dummy-lg")
+
+    result = check_thumbnail_lg_cached(cache, "video", "ep01.mp4")
+    assert result == thumb
+
+
+def test_check_thumbnail_lg_cached_returns_none_when_missing(tmp_path):
+    cache = tmp_path / "cache"
+    assert check_thumbnail_lg_cached(cache, "video", "ep01.mp4") is None
+
+
+# ---------------------------------------------------------------------------
+# Sprite sheet path helpers
+# ---------------------------------------------------------------------------
+
+
+def test_get_sprite_path():
+    p = get_sprite_path(Path("/cache"), "Movie/clip.mp4")
+    assert p == Path("/cache/video/Movie/clip.mp4" + SPRITE_SUFFIX)
+
+
+def test_get_sprite_meta_path():
+    p = get_sprite_meta_path(Path("/cache"), "Movie/clip.mp4")
+    assert p == Path("/cache/video/Movie/clip.mp4" + SPRITE_META_SUFFIX)
+
+
+def test_sprite_suffix_is_jpeg():
+    assert SPRITE_SUFFIX.endswith(".jpg")
+
+
+def test_sprite_meta_suffix_is_json():
+    assert SPRITE_META_SUFFIX.endswith(".json")
+
+
+def test_generate_sprite_sheet_returns_false_without_ffmpeg(tmp_path):
+    """generate_sprite_sheet returns False gracefully when ffmpeg is not found."""
+    cache = tmp_path / "cache"
+    media = tmp_path / "video.mp4"
+    media.write_bytes(b"")
+
+    with (
+        patch(
+            "hometools.streaming.core.thumbnailer._get_video_duration",
+            return_value=60.0,
+        ),
+        patch(
+            "subprocess.run",
+            side_effect=FileNotFoundError("ffmpeg not found"),
+        ),
+    ):
+        assert generate_sprite_sheet(media, cache, "video.mp4") is False
+
+
+def test_generate_sprite_sheet_skips_short_videos(tmp_path):
+    """Videos shorter than 2 seconds should not get sprite sheets."""
+    cache = tmp_path / "cache"
+    media = tmp_path / "short.mp4"
+    media.write_bytes(b"")
+
+    with patch(
+        "hometools.streaming.core.thumbnailer._get_video_duration",
+        return_value=1.0,
+    ):
+        assert generate_sprite_sheet(media, cache, "short.mp4") is False
 
 
 # ---------------------------------------------------------------------------

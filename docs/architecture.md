@@ -82,3 +82,81 @@ episodes:
 - Fehlerhafte/fehlende YAML wird lautlos ignoriert (robustes Fallback)
 - `MediaItem` wird nie mutiert — neue Instanzen bei Override
 
+## Shadow-Cache
+
+Das Shadow-Cache-Verzeichnis (Default: `.hometools-cache/` im Repo-Root, überschreibbar via `HOMETOOLS_CACHE_DIR`) speichert alle generierten Artefakte:
+
+- `audio/` — Audio-Thumbnails (Cover-Art, 120px + 480px)
+- `video/` — Video-Thumbnails (Frame-Extraktion via ffmpeg, 120px + 480px)
+- `indexes/` — Persisted Index-Snapshots (JSON, library-dir-spezifisch via MD5-Hash)
+- `progress/` — Wiedergabe-Fortschritt (JSON)
+- `issues/` — Issue-Registry, TODO-Kandidaten, Scheduler-Logs
+- `logs/` — Server-Log-Dateien
+- `thumbnail_failures.json` — Failure-Registry für fehlgeschlagene Thumbnails
+- `video_metadata_cache.json` — Persistierter Metadaten-Cache (ffprobe-Ergebnisse)
+
+### Index-Snapshots
+
+Der vollständige Index wird nach einem erfolgreichen Rebuild atomar als JSON-Snapshot gespeichert (`_save_snapshot`). **Es gibt kein inkrementelles Speichern während des Builds** — wird der Server während der Indizierung beendet, geht der laufende Scan-Fortschritt verloren. Der **letzte erfolgreiche Snapshot bleibt erhalten** und wird beim nächsten Start als Fallback geladen, sodass der Server sofort funktionsfähig ist (ohne Scan-Wartezeit).
+
+### Thumbnails
+
+Zwei Größen pro Mediendatei:
+- **Klein** (120px, `.thumb.jpg`) — für Listen- und Grid-Ansichten, schnell ladend
+- **Groß** (480px, `.thumb-lg.jpg`) — für Serien-Vorschauen und Detail-Ansichten, nachladend
+
+Beide werden im Hintergrund-Thread generiert (`start_background_thumbnail_generation`). MTime-basierte Invalidierung: Thumbnails werden regeneriert wenn die Quelldatei neuer ist.
+
+## On-the-fly Remux & FastStart
+
+**Modul:** `streaming/core/remux.py`
+
+Nicht alle Videoformate sind direkt im Browser streambar. Der Remux-Mechanismus löst zwei Probleme:
+
+### Nicht-native Container (FLV, AVI, MKV)
+
+`needs_remux(path)` erkennt anhand der Dateiendung, ob ein Container nicht nativ vom Browser unterstützt wird. Solche Dateien werden on-the-fly über ffmpeg als **Fragmented MP4** (`-movflags frag_keyframe+empty_moov`) gestreamt.
+
+- **Container Copy** (`-c copy`): Wenn die enthaltenen Codecs browserkompatibel sind (H.264/H.265 Video, AAC/MP3/Opus Audio) — `can_copy_codecs()` prüft via `probe_codecs()` (ffprobe).
+- **Transcode**: Wenn die Codecs nicht kompatibel sind (z. B. XviD → H.264, MP2 → AAC).
+
+### Non-FastStart MP4s
+
+`has_faststart(path)` liest die MP4-Atom-Struktur (ftyp/moov/mdat) und erkennt Dateien, bei denen das `moov`-Atom am Ende liegt. Solche Dateien können vom Browser nicht gestreamt werden (HTTP 200 statt 206, gesamte Datei muss heruntergeladen werden).
+
+**Lösung:** Der `/video/stream`-Endpoint erkennt Non-FastStart-MP4s und leitet sie automatisch durch `remux_stream()` mit `-c copy -movflags frag_keyframe+empty_moov`. Für den Browser transparent — sofortige Wiedergabe.
+
+**Design-Regeln:**
+- Originaldateien werden **nie** modifiziert
+- Remux-Ergebnisse werden **nicht** gecacht — immer on-the-fly (vermeidet Speicherprobleme bei großen Dateien)
+- UI zeigt ein ⚡-Badge bei Dateien, die Konvertierung benötigen
+- `ffmpeg`/`ffprobe`-Fehler werden graceful behandelt (optimistisches Fallback auf `FileResponse`)
+
+## Wiedergabe-Fortschritt
+
+**Modul:** `streaming/core/progress.py`
+
+Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progress.json`). Speichert pro Datei `{relative_path, position_seconds, duration}`.
+
+**Endpoints (Audio + Video):**
+- `POST /api/<media>/progress` — speichert Position
+- `GET /api/<media>/progress?path=…` — lädt gespeicherte Position
+
+**Client-Verhalten:**
+- Debounced Save alle 5 Sekunden via `timeupdate`-Event
+- Sofortiges Speichern bei Pause
+- Löschung bei `ended`
+- Beim Track-Wechsel: letzte Position laden, Toast „Fortfahren bei X:XX" anzeigen
+
+## Recently Added (Sortierung nach Neuheit)
+
+`MediaItem` trägt ein `mtime`-Feld (Unix-Timestamp der Datei, via `stat()`). Die Sortier-Option `"recent"` sortiert absteigend nach `mtime` mit Titel als Tiebreaker. Sowohl server-seitig (`sort_items()`) als auch client-seitig (`applyFilter()`) implementiert.
+
+## SVG-Icons
+
+Alle Player-Buttons und UI-Controls verwenden **inline SVGs** statt Unicode-Zeichen. iOS rendert Unicode-Steuerzeichen (▶ ◄ ► ⏸ ⊞ ↓) als farbige Emojis, was das Layout zerstört.
+
+**Konvention:**
+- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY` in `server_utils.py`
+- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST` — über `innerHTML` gesetzt (nicht `textContent`)
+- Alle SVGs nutzen `currentColor` für Theme-Kompatibilität

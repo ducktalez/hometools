@@ -42,7 +42,7 @@ A collection of Python tools for managing personal media libraries — music fil
 ### 🟡 Medium Priority
 
 - Clean extensive device-checks. Are they all necessary?
-- iphone-pitfall: der Pause-button ist immernoch ein emoji.
+- ~~iphone-pitfall: der Pause-button ist immernoch ein emoji.~~ ✅ Alle Buttons nutzen jetzt inline SVGs
 - Plan: Restrukturiere den Inhalt in Tools komplett neu und schreibe für alles, inklusive aller möglichen oder denkbaren Edge Cases Tests.
   - In WA Unterdaten findest du zwei LUTs, die hierfür herangezogen werden können. Vermutlich ist es dennoch sinnvoll, dieses Lookup Table File dauerhaft aus dem Repo zu entfernen und durch generelle Tests und Edge Cases zu ersetzen.
   - Ich halte beim Analysieren von sehr großen Datenbeständen Lookup Tables generell für eine gute Idee. So muss nicht bei jedem Test jedes Pfeil neu angeschaut werden. Bitte schaue hier was übliche State of the Art Lösungen sind.
@@ -105,8 +105,8 @@ A collection of Python tools for managing personal media libraries — music fil
 - Es sollten für den Nutzer potenzielle Chores-Aufgaben angelegt werden. 
   - Ein Beispiel für so eine Aufgabe wäre, die Videos zu analysieren, die sich im Download Folder befinden, die aber in relativ schlechter Qualität vorhanden sind. 
     - Auch fehlende Folgen bei Serien sollten markiert werden.
-    - Für die Ausnahmen sollte ein JSON-File oder in der Datenbank gespeichert werden. Warum man sich darum nicht kümmert bzw. einfach zu ignorieren sollte, auch akzeptabel sein. 
-
+    - Für die Ausnahmen sollte ein JSON-File oder in der Datenbank gespeichert werden. Warum man sich darum nicht kümmert bzw. einfach zu ignorieren sollte, auch akzeptabel sein.
+    - 
 ## Features
 
 ### Music Library

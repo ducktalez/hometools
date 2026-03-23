@@ -144,6 +144,38 @@ def test_sort_items_by_title_also_uses_season_episode():
     assert [(i.season, i.episode) for i in sorted_items] == [(1, 2), (1, 10)]
 
 
+def test_sort_items_by_recent():
+    """Recent sort orders by mtime descending (newest first)."""
+    items = [
+        MediaItem("a.mp3", "Old", "A", "u1", "audio", mtime=1000.0),
+        MediaItem("b.mp3", "New", "B", "u2", "audio", mtime=3000.0),
+        MediaItem("c.mp3", "Mid", "C", "u3", "audio", mtime=2000.0),
+    ]
+    sorted_items = sort_items(items, "recent")
+    assert [i.title for i in sorted_items] == ["New", "Mid", "Old"]
+
+
+def test_sort_items_by_recent_tiebreaker():
+    """Items with same mtime sort alphabetically by title."""
+    items = [
+        MediaItem("a.mp3", "Zulu", "A", "u1", "audio", mtime=1000.0),
+        MediaItem("b.mp3", "Alpha", "B", "u2", "audio", mtime=1000.0),
+    ]
+    sorted_items = sort_items(items, "recent")
+    assert [i.title for i in sorted_items] == ["Alpha", "Zulu"]
+
+
+def test_media_item_has_mtime_field():
+    """MediaItem includes mtime in to_dict() with default 0.0."""
+    item = MediaItem("a.mp3", "Song", "Artist", "/stream", "audio")
+    d = item.to_dict()
+    assert "mtime" in d
+    assert d["mtime"] == 0.0
+
+    item_with_mtime = MediaItem("b.mp3", "Song2", "Artist", "/stream", "audio", mtime=12345.6)
+    assert item_with_mtime.mtime == 12345.6
+
+
 # ---------------------------------------------------------------------------
 # Sync helpers
 # ---------------------------------------------------------------------------
@@ -229,3 +261,26 @@ def test_render_media_page_contains_expected_elements():
     assert 'id="folder-grid"' in page
     assert 'id="play-all-btn"' in page
     assert "item" in page
+
+
+def test_media_item_has_thumbnail_lg_url_field():
+    """MediaItem supports thumbnail_lg_url field with empty default."""
+    item = MediaItem(
+        relative_path="a.mp4",
+        title="A",
+        artist="X",
+        stream_url="/stream",
+        media_type="video",
+    )
+    assert item.thumbnail_lg_url == ""
+
+    item2 = MediaItem(
+        relative_path="a.mp4",
+        title="A",
+        artist="X",
+        stream_url="/stream",
+        media_type="video",
+        thumbnail_lg_url="/thumb?path=a.mp4&size=lg",
+    )
+    assert item2.thumbnail_lg_url == "/thumb?path=a.mp4&size=lg"
+    assert "thumbnail_lg_url" in item2.to_dict()

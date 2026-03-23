@@ -21,7 +21,7 @@ from hometools.streaming.core.models import MediaItem, encode_relative_path
 
 logger = logging.getLogger(__name__)
 
-VALID_SORT_FIELDS = {"artist", "title", "path"}
+VALID_SORT_FIELDS = {"artist", "title", "path", "recent"}
 
 # ---------------------------------------------------------------------------
 # Season / episode parsing
@@ -74,6 +74,12 @@ def sort_items(items: list[MediaItem], sort_by: str = "artist") -> list[MediaIte
     regardless of the title string.
     """
     field = sort_by if sort_by in VALID_SORT_FIELDS else "artist"
+    if field == "recent":
+        # Newest files first, title as tiebreaker for identical mtimes
+        return sorted(
+            items,
+            key=lambda i: (-i.mtime, i.title.casefold(), i.relative_path.casefold()),
+        )
     if field == "title":
         # Series-aware title sort: non-series items sort by title first,
         # series items sort chronologically by (season, episode).
@@ -182,10 +188,10 @@ def quick_folder_scan(
             )
         )
 
-    # Apply per-folder YAML overrides (title, season, episode, series_title)
-    from hometools.streaming.core.media_overrides import apply_overrides
-
-    items = apply_overrides(items, root)
+    # Overrides are intentionally NOT applied during quick scan to keep it
+    # fast.  The full index build (build_audio_index / build_video_index)
+    # applies overrides after reading metadata — no need to duplicate
+    # the expensive load_all_overrides walk here.
 
     default_sort = "artist" if media_type == "audio" else "title"
     result = sort_items(items, sort_by=default_sort)

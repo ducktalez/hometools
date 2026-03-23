@@ -247,6 +247,8 @@ def apply_overrides(
                     rating=item.rating,
                     season=new_season,
                     episode=new_episode,
+                    mtime=item.mtime,
+                    thumbnail_lg_url=item.thumbnail_lg_url,
                 )
             )
 

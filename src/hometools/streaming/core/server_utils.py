@@ -22,6 +22,21 @@ from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# SVG Icons — inline SVGs render consistently on all platforms (no iOS emoji)
+# ---------------------------------------------------------------------------
+
+SVG_PLAY = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>'
+SVG_PAUSE = '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>'
+SVG_PREV = '<svg viewBox="0 0 24 24"><polygon points="18,3 8,12 18,21"/><rect x="5" y="3" width="3" height="18"/></svg>'
+SVG_NEXT = '<svg viewBox="0 0 24 24"><polygon points="6,3 16,12 6,21"/><rect x="16" y="3" width="3" height="18"/></svg>'
+SVG_PIP = '<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="11" width="10" height="8" rx="1"/></svg>'
+SVG_BACK = '<svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+SVG_MENU = '<svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="3" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+SVG_DOWNLOAD = '<svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+SVG_CHECK = '<svg viewBox="0 0 24 24"><polyline points="4,12 10,18 20,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+SVG_FOLDER_PLAY = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>'
+
 
 # ---------------------------------------------------------------------------
 # Library directory validation
@@ -245,7 +260,7 @@ def render_pwa_manifest(
 def render_pwa_service_worker() -> str:
     """Return a service worker JS for PWA caching, offline UI, and download support."""
     return """\
-const CACHE_NAME = 'hometools-v5';
+const CACHE_NAME = 'hometools-v7';
 const DOWNLOAD_CACHE = 'hometools-downloads-v1';
 
 self.addEventListener('install', event => {
@@ -699,10 +714,13 @@ body.modal-open { overflow: hidden; }
 .track-dl-btn {
   background: none; border: 1px solid #555; color: var(--sub);
   border-radius: 50%; width: 30px; height: 30px;
-  font-size: 0.8rem; cursor: pointer; flex-shrink: 0;
+  cursor: pointer; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
   -webkit-tap-highlight-color: transparent;
+  padding: 0; line-height: 1; font-size: 0.7rem;
+}
+.track-dl-btn svg { width: 16px; height: 16px; fill: currentColor; pointer-events: none; }
   padding: 0; line-height: 1;
 }
 .track-dl-btn:hover { color: var(--accent); border-color: var(--accent); }
@@ -777,17 +795,21 @@ body.modal-open { overflow: hidden; }
 .player-controls { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
 .ctrl-btn {
   background: none; border: none; color: var(--text);
-  cursor: pointer; font-size: 1.25rem; line-height: 1;
+  cursor: pointer; line-height: 1;
   padding: 0.35rem; border-radius: 50%; transition: color 0.12s;
   -webkit-tap-highlight-color: transparent;
+  display: flex; align-items: center; justify-content: center;
 }
+.ctrl-btn svg { width: 18px; height: 18px; fill: currentColor; pointer-events: none; }
 .ctrl-btn:hover { color: var(--accent); }
 .ctrl-btn.play-pause {
-  background: var(--accent); color: #000; font-size: 1rem;
+  background: var(--accent); color: #000;
   width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
 }
+.ctrl-btn.play-pause svg { width: 16px; height: 16px; }
 .ctrl-btn.play-pause:hover { background: #1ed760; }
-.ctrl-btn.pip-btn { font-size: 0.85rem; position: relative; }
+.ctrl-btn.pip-btn { position: relative; }
+.ctrl-btn.pip-btn svg { width: 16px; height: 16px; }
 .ctrl-btn.pip-btn.active { color: var(--accent); }
 .ctrl-btn.pip-btn[hidden] { display: none; }
 .time-label { font-size: 0.68rem; color: var(--sub); flex-shrink: 0; min-width: 2.2rem; }
@@ -803,9 +825,12 @@ body.modal-open { overflow: hidden; }
 .player-bar.classic .progress-wrap {
   flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.4rem;
 }
+.player-bar.classic .progress-track {
+  flex: 1 1 0; position: relative; min-width: 0;
+}
 .player-bar.classic input[type=range] {
   -webkit-appearance: none; appearance: none;
-  flex: 1 1 0; height: 4px; background: #555;
+  width: 100%; height: 4px; background: #555;
   border-radius: 2px; outline: none; cursor: pointer;
 }
 .player-bar.classic input[type=range]::-webkit-slider-thumb {
@@ -857,7 +882,7 @@ body.modal-open { overflow: hidden; }
 }
 .thumb-preview.visible { display: block; }
 .thumb-preview canvas {
-  display: block; width: 160px; height: 90px; border-radius: 3px;
+  display: block; max-width: 200px; border-radius: 3px;
 }
 .thumb-time {
   display: block; text-align: center; font-size: 0.72rem;
@@ -887,10 +912,11 @@ body.modal-open { overflow: hidden; }
   position: absolute; bottom: 0.75rem; right: 0.75rem;
   background: var(--accent); color: #000; border: none;
   border-radius: 50%; width: 36px; height: 36px;
-  cursor: pointer; font-size: 1rem;
+  cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   opacity: 0; transition: opacity 0.15s;
 }
+.folder-play-btn svg { width: 16px; height: 16px; fill: currentColor; pointer-events: none; }
 /* Touch devices: always show play button at low opacity */
 @media (hover: none) {
   .folder-play-btn { opacity: 0.55; }
@@ -902,17 +928,21 @@ body.modal-open { overflow: hidden; }
 .folder-play-btn:hover { background: #1ed760; }
 .back-btn {
   background: var(--surface2); border: 1px solid #444; color: var(--accent);
-  cursor: pointer; font-size: 1rem; padding: 0.3rem 0.6rem;
+  cursor: pointer; padding: 0.3rem 0.5rem;
   border-radius: 6px; display: none;
   transition: background 0.12s, color 0.12s;
+  line-height: 0;
 }
+.back-btn svg { width: 18px; height: 18px; fill: currentColor; }
 .back-btn:hover { background: #333; color: #1ed760; }
 .play-all-btn {
   background: var(--accent); color: #000; border: none;
   border-radius: 20px; padding: 0.3rem 0.8rem; cursor: pointer;
   font-size: 0.8rem; font-weight: 600; display: none;
   transition: background 0.12s; white-space: nowrap;
+  align-items: center; gap: 4px;
 }
+.play-all-btn svg { width: 14px; height: 14px; fill: currentColor; display: inline-block; vertical-align: middle; }
 .play-all-btn:hover { background: #1ed760; }
 .file-card .folder-icon { font-size: 1.6rem; }
 .view-hidden { display: none !important; }
@@ -935,10 +965,11 @@ body.modal-open { overflow: hidden; }
 /* ── View toggle (list / grid) ── */
 .view-toggle {
   background: none; border: 1px solid #444; color: var(--sub);
-  border-radius: 4px; padding: 0.25rem 0.5rem; cursor: pointer;
-  font-size: 0.85rem; transition: color 0.12s, border-color 0.12s;
-  flex-shrink: 0;
+  border-radius: 4px; padding: 0.25rem 0.4rem; cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  flex-shrink: 0; line-height: 0;
 }
+.view-toggle svg { width: 16px; height: 16px; fill: currentColor; }
 .view-toggle:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ── Folder list mode ── */
@@ -1028,35 +1059,47 @@ def render_player_js(
   var progressTrack  = document.getElementById('progress-track');
   var waveformCanvas = document.getElementById('waveform-canvas');
   var waveformCtx    = waveformCanvas ? waveformCanvas.getContext('2d') : null;
-  var thumbPreview   = document.getElementById('thumb-preview');
-  var thumbCanvas    = document.getElementById('thumb-canvas');
-  var thumbCtx       = thumbCanvas ? thumbCanvas.getContext('2d') : null;
-  var thumbTimeEl    = document.getElementById('thumb-time');
   var isAudioMode    = player.tagName === 'AUDIO';
   var isVideoMode    = player.tagName === 'VIDEO';
   var waveformData   = null;
   var waveformAbort  = null;
-  var thumbVideo     = null;
 """
     else:
-        waveform_js = ""
+        waveform_js = """
+  var progressTrack  = document.getElementById('progress-track');
+  var isAudioMode    = player.tagName === 'AUDIO';
+  var isVideoMode    = player.tagName === 'VIDEO';
+"""
 
-    if player_bar_style == "waveform":
-        waveform_setup_js = """
-  /* ── waveform (audio) & thumbnail (video) setup ── */
+    # -- sprite sheet preview (always available for video, both modes) ----------
+    sprite_preview_js = """
+  /* ── sprite sheet preview (video scrubber thumbnails) ── */
+  var thumbPreview   = document.getElementById('thumb-preview');
+  var thumbCanvas    = document.getElementById('thumb-canvas');
+  var thumbCtx       = thumbCanvas ? thumbCanvas.getContext('2d') : null;
+  var thumbTimeEl    = document.getElementById('thumb-time');
+  var spriteData     = null;
+  var spriteImg      = null;
+
+  function loadSpriteData(relativePath) {
+    spriteData = null;
+    spriteImg = null;
+    if (!isVideoMode || !relativePath) return;
+    fetch('/api/video/sprites?path=' + encodeURIComponent(relativePath))
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(meta) {
+        if (!meta || !meta.cols) return;
+        spriteData = meta;
+        var img = new Image();
+        img.onload = function() { spriteImg = img; };
+        img.src = '/thumb?path=' + encodeURIComponent(relativePath) + '&size=sprite';
+      })
+      .catch(function() {});
+  }
+
   if (isVideoMode && progressTrack) {
-    progressTrack.classList.add('video-mode');
-    thumbVideo = document.createElement('video');
-    thumbVideo.preload = 'metadata';
-    thumbVideo.muted = true;
-    thumbVideo.crossOrigin = 'anonymous';
-    thumbVideo.style.display = 'none';
-    document.body.appendChild(thumbVideo);
-    thumbVideo.addEventListener('seeked', function() {
-      if (thumbCtx) thumbCtx.drawImage(thumbVideo, 0, 0, 160, 90);
-    });
     progressTrack.addEventListener('mousemove', function(e) {
-      if (!player.duration || !isFinite(player.duration)) return;
+      if (!spriteData || !spriteImg || !player.duration || !isFinite(player.duration)) return;
       var rect = progressTrack.getBoundingClientRect();
       var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       var seekTime = ratio * player.duration;
@@ -1064,12 +1107,29 @@ def render_player_js(
       thumbPreview.style.left = pctLeft + '%';
       thumbPreview.classList.add('visible');
       thumbTimeEl.textContent = fmtTime(seekTime);
-      if (thumbVideo.getAttribute('src') !== player.src) thumbVideo.src = player.src;
-      thumbVideo.currentTime = seekTime;
+      var idx = Math.min(Math.floor(seekTime / spriteData.interval), spriteData.count - 1);
+      var col = idx % spriteData.cols;
+      var row = Math.floor(idx / spriteData.cols);
+      if (thumbCtx) {
+        thumbCanvas.width = spriteData.frame_w;
+        thumbCanvas.height = spriteData.frame_h;
+        thumbCtx.drawImage(spriteImg,
+          col * spriteData.frame_w, row * spriteData.frame_h,
+          spriteData.frame_w, spriteData.frame_h,
+          0, 0, spriteData.frame_w, spriteData.frame_h);
+      }
     });
     progressTrack.addEventListener('mouseleave', function() {
       thumbPreview.classList.remove('visible');
     });
+  }
+"""
+
+    if player_bar_style == "waveform":
+        waveform_setup_js = """
+  /* ── waveform (audio) & video mode setup ── */
+  if (isVideoMode && progressTrack) {
+    progressTrack.classList.add('video-mode');
   }
 
   function generateWaveform(url) {
@@ -1174,6 +1234,13 @@ def render_player_js(
   var FOLDER_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='6' fill='%232a2a2a'/%3E%3Cpath d='M30 45h25l7-10h28l0 0H90v40H30z' fill='%23444'/%3E%3C/svg%3E";
   var FILE_PLACEHOLDER  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='6' fill='%232a2a2a'/%3E%3Ccircle cx='54' cy='72' r='12' fill='none' stroke='%23444' stroke-width='3'/%3E%3Crect x='63' y='38' width='3' height='34' fill='%23444'/%3E%3Crect x='57' y='38' width='12' height='4' rx='1' fill='%23444'/%3E%3C/svg%3E";
 
+  /* SVG icons for play/pause — cross-platform, no emoji rendering */
+  var IC_PLAY  = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>';
+  var IC_PAUSE = '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>';
+  var IC_DL    = '<svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var IC_CHECK = '<svg viewBox="0 0 24 24"><polyline points="4,12 10,18 20,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var IC_FOLDER_PLAY = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>';
+
   var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
   var playlistItems = [];
@@ -1256,6 +1323,61 @@ def render_player_js(
     _toastTimer = setTimeout(function() { _toastEl.classList.remove('visible'); }, durationMs || 4000);
   }
 
+  /* ── playback progress persistence ── */
+  var _progressTimer = 0;
+  var _progressRelPath = '';
+  function _progressApiBase() {
+    return API_PATH.substring(0, API_PATH.lastIndexOf('/')) + '/progress';
+  }
+  function saveProgressNow() {
+    var rp = _progressRelPath;
+    if (!rp) return;
+    var pos = player.currentTime;
+    var dur = player.duration;
+    if (!isFinite(pos) || !isFinite(dur)) return;
+    if (pos < 5 || pos > dur - 5) return;
+    fetch(_progressApiBase(), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({relative_path: rp, position_seconds: pos, duration: dur})
+    }).catch(function() {});
+  }
+  function saveProgressDebounced() {
+    clearTimeout(_progressTimer);
+    _progressTimer = setTimeout(saveProgressNow, 5000);
+  }
+  function clearProgressFor(rp) {
+    if (!rp) return;
+    fetch(_progressApiBase(), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({relative_path: rp, position_seconds: 0, duration: 0})
+    }).catch(function() {});
+  }
+  function loadAndSeekProgress(rp) {
+    if (!rp) return;
+    fetch(_progressApiBase() + '?path=' + encodeURIComponent(rp))
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data || !data.items || !data.items.length) return;
+        var entry = data.items[0];
+        var pos = entry.position_seconds || 0;
+        if (pos < 5) return;
+        function doSeek() {
+          if (isFinite(player.duration) && pos < player.duration - 5) {
+            player.currentTime = pos;
+            showToast('Fortfahren bei ' + fmtTime(pos), 3000);
+          }
+        }
+        if (isFinite(player.duration) && player.duration > 0) {
+          doSeek();
+        } else {
+          player.addEventListener('loadedmetadata', doSeek, { once: true });
+        }
+      })
+      .catch(function() {});
+  }
+
   var _indexToastEl = null;
   var _indexRefreshTimer = null;
   function showIndexingToast(msg) {
@@ -1303,6 +1425,7 @@ def render_player_js(
 
 """
         + waveform_setup_js
+        + sprite_preview_js
         + """
 
   /* items under a path prefix (recursive) */
@@ -1317,6 +1440,7 @@ def render_player_js(
     var items = itemsUnder(path);
     var folderMap = {};
     var folderThumb = {};
+    var folderThumbLg = {};
     var files = [];
     var off = path ? path.length + 1 : 0;
     items.forEach(function(it) {
@@ -1327,13 +1451,14 @@ def render_player_js(
         if (!folderMap[name]) folderMap[name] = 0;
         folderMap[name]++;
         if (!folderThumb[name] && it.thumbnail_url) folderThumb[name] = it.thumbnail_url;
+        if (!folderThumbLg[name] && it.thumbnail_lg_url) folderThumbLg[name] = it.thumbnail_lg_url;
       } else {
         files.push(it);
       }
     });
     var folders = Object.keys(folderMap)
       .sort(function(a, b) { return a.localeCompare(b); })
-      .map(function(n) { return { name: n, count: folderMap[n], thumbnail_url: folderThumb[n] || '' }; });
+      .map(function(n) { return { name: n, count: folderMap[n], thumbnail_url: folderThumb[n] || '', thumbnail_lg_url: folderThumbLg[n] || '' }; });
     return { folders: folders, files: files };
   }
 
@@ -1466,14 +1591,16 @@ def render_player_js(
   }
 
   /* ── view toggle ── */
+  var IC_GRID = '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+  var IC_LIST = '<svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="3" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
   function applyViewMode() {
     if (viewMode === 'list') {
       folderGrid.classList.add('list-mode');
-      viewToggle.textContent = '\\u25A6';
+      viewToggle.innerHTML = IC_GRID;
       viewToggle.title = 'Zur Kachelansicht wechseln';
     } else {
       folderGrid.classList.remove('list-mode');
-      viewToggle.textContent = '\\u2630';
+      viewToggle.innerHTML = IC_LIST;
       viewToggle.title = 'Zur Listenansicht wechseln';
     }
   }
@@ -1523,12 +1650,12 @@ def render_player_js(
     var html = '';
     c.folders.forEach(function(f) {
       var noun = f.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
-      var thumbSrc = f.thumbnail_url || FOLDER_PLACEHOLDER;
+      var thumbSrc = f.thumbnail_lg_url || f.thumbnail_url || FOLDER_PLACEHOLDER;
       html += '<div class="folder-card" data-folder="' + escHtml(f.name) + '">' +
         '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         '<div class="folder-name">' + escHtml(f.name) + '</div>' +
         '<div class="folder-count">' + f.count + ' ' + noun + '</div>' +
-        '<button class="folder-play-btn" title="Play all">\\u25B6\\uFE0E</button>' +
+        '<button class="folder-play-btn" title="Play all">' + IC_FOLDER_PLAY + '</button>' +
       '</div>';
     });
     c.files.forEach(function(it, i) {
@@ -1630,6 +1757,12 @@ def render_player_js(
     items = items.slice().sort(function(a, b) {
       var sa = a.season || 0, sb = b.season || 0;
       var ea = a.episode || 0, eb = b.episode || 0;
+      if (sortBy === 'recent') {
+        /* newest first by mtime, title as tiebreaker */
+        var ma = a.mtime || 0, mb = b.mtime || 0;
+        if (ma !== mb) return mb - ma;
+        return a.title.localeCompare(b.title);
+      }
       if (sortBy === 'title') {
         /* Series-aware title sort: prefer season/episode when present */
         if (sa > 0 || sb > 0) {
@@ -1742,7 +1875,7 @@ def render_player_js(
           '" data-artist="' + escHtml(t.artist || '') +
           '" data-relative-path="' + escHtml(t.relative_path || '') +
           '" data-thumbnail-url="' + escHtml(t.thumbnail_url || '') +
-          '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">\\u2193\\uFE0E</button>' +
+          '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">' + IC_DL + '</button>' +
         '</li>';
     }).join('');
     document.querySelectorAll('.track-item:not(.missing-episode)').forEach(function(el) {
@@ -1786,7 +1919,7 @@ def render_player_js(
     if (btn) {
       btn.classList.remove('downloading');
       btn.classList.remove('cached');
-      btn.textContent = '\\u2193\\uFE0E';
+      btn.innerHTML = IC_DL;
       btn.title = 'Download';
     }
     showToast('Download abgebrochen');
@@ -2109,13 +2242,13 @@ def render_player_js(
         var url = btn.dataset.streamUrl;
         btn.classList.remove('cached');
         if (!btn.classList.contains('downloading')) {
-          btn.textContent = '\\u2193\\uFE0E';
+          btn.innerHTML = IC_DL;
           btn.title = 'Download';
         }
         if (cached[url]) {
           btn.classList.add('cached');
           btn.classList.remove('downloading');
-          btn.textContent = '\\u2713';
+          btn.innerHTML = IC_CHECK;
           btn.title = 'Offline gespeichert — klicken zum Entfernen';
         }
       });
@@ -2187,7 +2320,7 @@ def render_player_js(
       delete activeDownloads[streamUrl];
       btn.classList.remove('downloading');
       btn.classList.add('cached');
-      btn.textContent = '\\u2713';
+      btn.innerHTML = IC_CHECK;
       btn.title = 'Offline gespeichert — klicken zum Entfernen';
       updateAllDownloadButtons();
       refreshOfflineLibrary();
@@ -2197,7 +2330,7 @@ def render_player_js(
       console.error('Download failed:', err);
       btn.classList.remove('downloading');
       btn.classList.remove('cached');
-      btn.textContent = '\\u2193\\uFE0E';
+      btn.innerHTML = IC_DL;
       btn.title = 'Download fehlgeschlagen';
       showToast(err && err.message ? err.message : 'Download fehlgeschlagen');
       refreshOfflineLibrary();
@@ -2210,7 +2343,7 @@ def render_player_js(
       if (btn) {
         btn.classList.remove('cached');
         btn.classList.remove('downloading');
-        btn.textContent = '\\u2193\\uFE0E';
+        btn.innerHTML = IC_DL;
         btn.title = 'Download';
       }
       refreshOfflineLibrary();
@@ -2554,7 +2687,7 @@ def render_player_js(
     revokeOfflineUrl();
 
     function onPlaySuccess() {
-      btnPlay.textContent = '\u23f8';
+      btnPlay.innerHTML = IC_PAUSE;
       startBgMirror();
     }
 
@@ -2562,7 +2695,7 @@ def render_player_js(
       player.addEventListener('canplay', function() {
         player.play().then(onPlaySuccess).catch(function(e) {
           console.error('playTrack retry also failed:', e);
-          btnPlay.textContent = '\u25b6';
+          btnPlay.innerHTML = IC_PLAY;
         });
       }, { once: true });
     }
@@ -2597,11 +2730,19 @@ def render_player_js(
       playerThumb.src = FILE_PLACEHOLDER;
       playerThumb.style.display = '';
     }
-    btnPlay.textContent = '\u23f8';
+    btnPlay.innerHTML = IC_PAUSE;
     playerBar.classList.remove('view-hidden');
     markActive();
     updateMediaSession(t);
     refreshMetadata(t);
+
+    /* playback progress: track current item and try to resume */
+    clearTimeout(_progressTimer);
+    _progressRelPath = t.relative_path || '';
+    loadAndSeekProgress(_progressRelPath);
+
+    /* load sprite sheet for video scrubber preview */
+    loadSpriteData(t.relative_path || '');
 
     playOfflineOrStream(t.stream_url)
       .then(beginPlayback)
@@ -2654,14 +2795,14 @@ def render_player_js(
         bgAudio.muted = true;
       }
       player.play().then(function() { startBgMirror(); }).catch(function() {});
-      btnPlay.textContent = '\\u23F8';
+      btnPlay.innerHTML = IC_PAUSE;
     } else {
       /* Intentional user pause — clear wasPlaying */
       wasPlaying = false;
       player.pause();
       if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
       stopBgSync();
-      btnPlay.textContent = '\\u25B6';
+      btnPlay.innerHTML = IC_PLAY;
     }
   }
 
@@ -2673,6 +2814,7 @@ def render_player_js(
     playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
   });
   player.addEventListener('ended', function() {
+    clearProgressFor(_progressRelPath);
     playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
   });
   player.addEventListener('pause', function() {
@@ -2684,14 +2826,16 @@ def render_player_js(
     wasPlaying = false;
     if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
     stopBgSync();
-    if (!player.ended) btnPlay.textContent = '\\u25B6';
+    if (!player.ended) btnPlay.innerHTML = IC_PLAY;
+    saveProgressNow();
   });
-  player.addEventListener('play',  function() { btnPlay.textContent = '\\u23F8'; });
+  player.addEventListener('play',  function() { btnPlay.innerHTML = IC_PAUSE; });
   player.addEventListener('timeupdate', function() {
     if (!isFinite(player.duration)) return;
     progressBar.max = player.duration; progressBar.value = player.currentTime;
     timeCur.textContent = fmtTime(player.currentTime);
     drawWaveform(player.currentTime / player.duration);
+    saveProgressDebounced();
   });
   player.addEventListener('loadedmetadata', function() {
     timeDur.textContent = fmtTime(player.duration); progressBar.max = player.duration;
@@ -2848,10 +2992,10 @@ def render_media_page(
         <div class="player-artist" id="player-artist">&ndash;</div>
       </div>
       <div class="player-controls">
-        <button class="ctrl-btn"            id="btn-prev" title="Previous">◄</button>
-        <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">▶</button>
-        <button class="ctrl-btn"            id="btn-next" title="Next">►</button>
-        <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>⊞</button>
+        <button class="ctrl-btn"            id="btn-prev" title="Previous">{SVG_PREV}</button>
+        <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">{SVG_PLAY}</button>
+        <button class="ctrl-btn"            id="btn-next" title="Next">{SVG_NEXT}</button>
+        <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>{SVG_PIP}</button>
       </div>
     </div>
     <div class="progress-wrap">
@@ -2876,14 +3020,20 @@ def render_media_page(
       <div class="player-artist" id="player-artist">&ndash;</div>
     </div>
     <div class="player-controls">
-      <button class="ctrl-btn"            id="btn-prev" title="Previous">◄</button>
-      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">▶</button>
-      <button class="ctrl-btn"            id="btn-next" title="Next">►</button>
-      <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>⊞</button>
+      <button class="ctrl-btn"            id="btn-prev" title="Previous">{SVG_PREV}</button>
+      <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">{SVG_PLAY}</button>
+      <button class="ctrl-btn"            id="btn-next" title="Next">{SVG_NEXT}</button>
+      <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>{SVG_PIP}</button>
     </div>
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>
-      <input type="range" id="progress-bar" min="0" step="0.1" value="0" />
+      <div class="progress-track" id="progress-track">
+        <input type="range" id="progress-bar" min="0" step="0.1" value="0" />
+        <div class="thumb-preview" id="thumb-preview">
+          <canvas id="thumb-canvas" width="160" height="90"></canvas>
+          <span class="thumb-time" id="thumb-time"></span>
+        </div>
+      </div>
       <span class="time-label end" id="time-dur">0:00</span>
     </div>
   </div>"""
@@ -2899,10 +3049,10 @@ def render_media_page(
 </head>
 <body>
   <header>
-    <button class="back-btn" id="back-btn" title="Back to folders">&larr;</button>
+    <button class="back-btn" id="back-btn" title="Back to folders">{SVG_BACK}</button>
     <span class="logo">{emoji} {html.escape(title)}</span>
-    <button class="play-all-btn" id="play-all-btn" title="Play all">&#9654; Play All</button>
-    <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">&#9776;</button>
+    <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
+    <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
     {mode_controls_html}
     <span class="track-count" id="track-count"></span>
   </header>
@@ -2921,6 +3071,7 @@ def render_media_page(
       <option value="title">Title &#x21C5;</option>
       <option value="artist">Artist &#x21C5;</option>
       <option value="path">Path &#x21C5;</option>
+      <option value="recent">Neueste &#x21C5;</option>
     </select>
   </div>
 
