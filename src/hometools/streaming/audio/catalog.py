@@ -26,7 +26,7 @@ from hometools.streaming.core.catalog import query_items as query_tracks
 from hometools.streaming.core.catalog import sort_items as sort_tracks
 from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import safe_resolve
-from hometools.streaming.core.thumbnailer import check_thumbnail_cached
+from hometools.streaming.core.thumbnailer import check_thumbnail_cached, check_thumbnail_lg_cached
 from hometools.utils import get_audio_files_in_folder
 
 # Legacy alias so existing imports keep working
@@ -75,15 +75,24 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         artist, title = audiofile_assume_artist_title(audio_file)
 
         thumbnail_url = ""
+        thumbnail_lg_url = ""
         if cache_dir is not None:
             thumb = check_thumbnail_cached(cache_dir, "audio", relative_path)
             if thumb is not None:
                 cached_thumbnails += 1
                 thumbnail_url = f"/thumb?path={encode_relative_path(relative_path)}"
+            thumb_lg = check_thumbnail_lg_cached(cache_dir, "audio", relative_path)
+            if thumb_lg is not None:
+                thumbnail_lg_url = f"/thumb?path={encode_relative_path(relative_path)}&size=lg"
 
         # POPM rating: 0–255 → 0.0–5.0 stars
         raw_rating = get_popm_rating(audio_file)
         stars = round(raw_rating / 255 * 5, 1) if raw_rating > 0 else 0.0
+
+        try:
+            file_mtime = audio_file.stat().st_mtime
+        except OSError:
+            file_mtime = 0.0
 
         tracks.append(
             MediaItem(
@@ -94,6 +103,8 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 media_type="audio",
                 thumbnail_url=thumbnail_url,
                 rating=stars,
+                mtime=file_mtime,
+                thumbnail_lg_url=thumbnail_lg_url,
             )
         )
 

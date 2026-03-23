@@ -30,7 +30,7 @@
 - Fehler/Warnungen zusätzlich in offenes Aufgaben-File → Scheduler prüft → TODOs erzeugen (Grundlage implementiert)
 
 ### Streaming UI
-- "Recently Added"-Sektion
+- ✅ ~~"Recently Added"-Sektion~~ → `mtime`-basierte Sortierung „Neueste ⇅" in Sort-Dropdown
 - Shuffle-Modus (Long Touch: gewichteter Shuffle nach Bewertung)
 - Songwertung (1–5 Sterne) in UI anzeigen + ID3-POPM-Tags speichern
 - "Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB-Genre/Regisseur)
@@ -38,7 +38,7 @@
 - Tags bei Musik nutzen
 - Filteroptionen für die Suche
 - Songtexte anzeigen (aus ID3-Tags)
-- Letzte Wiedergabe + Fortschritt speichern (geräteübergreifend)
+- ✅ ~~Letzte Wiedergabe + Fortschritt speichern (geräteübergreifend)~~ → `progress.py` Core-Modul, `POST/GET /api/<media>/progress`, debounced JS, Resume-Toast
 - Swipe-Geste für mobile UI
 - Offline-Downloads-Liste
 - ✅ ~~Failure-Tracking für Thumbnails~~ → implementiert (thumbnail_failures.json)
@@ -77,6 +77,8 @@
 - Optionales HTTPS
 
 ## ✅ Erledigt
+- Wiedergabe-Fortschritt speichern → `progress.py` Core-Modul, `POST/GET /api/<media>/progress` Endpunkte, debounced JS-Speicherung, Resume-Toast
+- Recently Added-Sektion → `mtime`-Feld in `MediaItem`, `"recent"`-Sortierung in `sort_items()`, Sort-Dropdown im UI
 - Thumbnail Failure-Tracking → `thumbnail_failures.json`, MTime-basierter Retry
 - Phase 1 Offline-Download Feature (PWA)
 - Auto-Rename-Service für Serien → `rename-series` + `generate-overrides` CLI-Befehle

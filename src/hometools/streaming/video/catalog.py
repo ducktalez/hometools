@@ -30,7 +30,7 @@ from hometools.streaming.core.catalog import sort_items as sort_videos
 from hometools.streaming.core.media_overrides import apply_overrides
 from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import safe_resolve
-from hometools.streaming.core.thumbnailer import check_thumbnail_cached
+from hometools.streaming.core.thumbnailer import check_thumbnail_cached, check_thumbnail_lg_cached
 from hometools.utils import get_files_in_folder
 
 logger = logging.getLogger(__name__)
@@ -203,8 +203,10 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         seen_relative_paths.add(relative_path)
 
         meta = None
+        file_mtime = 0.0
         if cache_dir is not None:
             sig_mtime_ns, sig_size = _file_signature(video_file)
+            file_mtime = sig_mtime_ns / 1e9
             cached = metadata_cache.get(relative_path)
             if isinstance(cached, dict) and cached.get("mtime_ns") == sig_mtime_ns and cached.get("size") == sig_size:
                 metadata_cache_hits += 1
@@ -226,6 +228,10 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         else:
             mutagen_reads += 1
             meta = _read_metadata_fast(video_file)
+            try:
+                file_mtime = video_file.stat().st_mtime
+            except OSError:
+                file_mtime = 0.0
 
         meta_title = str(meta.get("title") or "") if meta else ""
         if meta_title.strip():
@@ -241,10 +247,14 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             folder = _folder_as_artist(video_file, root)
 
         thumbnail_url = ""
+        thumbnail_lg_url = ""
         if cache_dir is not None:
             thumb = check_thumbnail_cached(cache_dir, "video", relative_path)
             if thumb is not None:
                 thumbnail_url = f"/thumb?path={encode_relative_path(relative_path)}"
+            thumb_lg = check_thumbnail_lg_cached(cache_dir, "video", relative_path)
+            if thumb_lg is not None:
+                thumbnail_lg_url = f"/thumb?path={encode_relative_path(relative_path)}&size=lg"
 
         season, episode = parse_season_episode(video_file.name)
 
@@ -258,6 +268,8 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 thumbnail_url=thumbnail_url,
                 season=season,
                 episode=episode,
+                mtime=file_mtime,
+                thumbnail_lg_url=thumbnail_lg_url,
             )
         )
 

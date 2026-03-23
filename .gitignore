@@ -27,6 +27,7 @@ venv/
 wa_data/
 tmp/
 .tmp_*/
+.hometools-cache/
 
 # OS
 Thumbs.db

@@ -152,10 +152,13 @@ def get_cache_dir() -> Path:
     Mirrors the library directory structures but stores only generated
     artefacts (thumbnails, metadata caches).  Original media files are
     never touched.  Set ``HOMETOOLS_CACHE_DIR`` to override.
+
+    Default: ``.hometools-cache/`` in the repository root (next to ``src/``).
     """
+    _repo_root = Path(__file__).resolve().parent.parent.parent
     return _get_path_from_env(
         "HOMETOOLS_CACHE_DIR",
-        Path.home() / "hometools-cache",
+        _repo_root / ".hometools-cache",
     )
 
 

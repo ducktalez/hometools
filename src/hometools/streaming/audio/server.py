@@ -132,6 +132,10 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
     app = FastAPI(title="hometools audio streaming prototype", lifespan=lifespan)
 
+    # Cache quick-scan results so repeated polls during index build don't
+    # re-walk the filesystem every 2 seconds.
+    _quick_cache: dict[str, object] = {"items": [], "at": 0.0}
+
     @app.get("/health")
     def health() -> dict[str, str]:
         ok, msg = check_library_accessible(resolved_library_dir)
@@ -212,13 +216,21 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
                 library_message="ok",
                 cache_status=cache_status,
             )
-            # Quick scan for immediate folder display
-            quick_items = quick_folder_scan(
-                resolved_library_dir,
-                suffixes=AUDIO_SUFFIX,
-                media_type="audio",
-                stream_url_prefix="/audio/stream",
-            )
+            # Reuse cached quick scan if available (avoid re-walking the
+            # filesystem on every 2-second poll while the index builds).
+            now = time.monotonic()
+            if _quick_cache["items"] and (now - _quick_cache["at"]) < 30.0:
+                quick_items = _quick_cache["items"]
+                logger.debug("GET /api/audio/tracks — reusing cached quick scan (%d items)", len(quick_items))
+            else:
+                quick_items = quick_folder_scan(
+                    resolved_library_dir,
+                    suffixes=AUDIO_SUFFIX,
+                    media_type="audio",
+                    stream_url_prefix="/audio/stream",
+                )
+                _quick_cache["items"] = quick_items
+                _quick_cache["at"] = now
             filtered = query_tracks(quick_items, q=q, artist=artist, sort_by=sort)
             logger.info(
                 "GET /api/audio/tracks — quick scan %d items in %.2fs (refresh_started=%s, status=%s)",
@@ -352,6 +364,27 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
         return {"title": title, "artist": artist, "rating": stars}
 
+    @app.post("/api/audio/progress")
+    def audio_save_progress(payload: dict[str, object]) -> dict[str, object]:
+        """Save playback progress for an audio track."""
+        from hometools.streaming.core.progress import save_progress
+
+        rp = str(payload.get("relative_path") or "").strip()
+        if not rp:
+            raise HTTPException(status_code=400, detail="relative_path is required")
+        pos = float(payload.get("position_seconds") or 0)
+        dur = float(payload.get("duration") or 0)
+        ok = save_progress(resolved_cache_dir, rp, pos, dur)
+        return {"ok": ok}
+
+    @app.get("/api/audio/progress")
+    def audio_load_progress(path: str) -> dict[str, object]:
+        """Load playback progress for an audio track."""
+        from hometools.streaming.core.progress import load_progress
+
+        entry = load_progress(resolved_cache_dir, path)
+        return {"items": [entry] if entry else []}
+
     @app.get("/audio/stream")
     def audio_stream(path: str) -> FileResponse:
         try:
@@ -364,12 +397,20 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
     @app.get("/thumb")
-    def thumb(path: str) -> FileResponse:
-        """Serve a cached thumbnail image for an audio track."""
+    def thumb(path: str, size: str = "sm") -> FileResponse:
+        """Serve a cached thumbnail image for an audio track.
+
+        Pass ``?size=lg`` for the large (480 px) variant.
+        """
         from urllib.parse import unquote
 
         relative_path = unquote(path)
-        thumb_path = get_thumbnail_path(resolved_cache_dir, "audio", relative_path)
+        if size == "lg":
+            from hometools.streaming.core.thumbnailer import get_thumbnail_lg_path
+
+            thumb_path = get_thumbnail_lg_path(resolved_cache_dir, "audio", relative_path)
+        else:
+            thumb_path = get_thumbnail_path(resolved_cache_dir, "audio", relative_path)
         if not thumb_path.exists():
             raise HTTPException(status_code=404, detail="Thumbnail not found")
         return FileResponse(thumb_path, media_type="image/jpeg")

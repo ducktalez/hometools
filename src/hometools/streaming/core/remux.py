@@ -17,6 +17,12 @@ Strategy (same as Jellyfin):
 Both modes output a *fragmented MP4* (``-movflags frag_keyframe+empty_moov``)
 so the browser can start playback before the entire file is processed.
 
+An additional check detects MP4 files whose ``moov`` atom is at the end
+of the file (not *fast-start*).  These files require the browser to
+download the entire file before playback can begin.  When detected, they
+are served through the remux pipeline (``-c copy``) which outputs
+fragmented MP4 that streams instantly.
+
 Requirements:
 - ``ffmpeg`` and ``ffprobe`` must be on ``$PATH``.  If missing, the
   functions return graceful fallbacks and the caller can serve the raw
@@ -26,6 +32,7 @@ Requirements:
 from __future__ import annotations
 
 import logging
+import struct
 import subprocess
 from collections.abc import Generator
 from pathlib import Path
@@ -34,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 # Extensions that the browser <video> element can play natively
 BROWSER_NATIVE_EXTENSIONS: set[str] = {".mp4", ".m4v", ".webm", ".ogg", ".ogv"}
+
+# Extensions that should be checked for fast-start (moov before mdat)
+_FASTSTART_CHECK_EXTENSIONS: set[str] = {".mp4", ".m4v", ".mov"}
 
 # Video codecs the browser can decode (lowercased ffprobe codec_name values)
 _REMUXABLE_VIDEO_CODECS: set[str] = {
@@ -61,6 +71,57 @@ _REMUXABLE_AUDIO_CODECS: set[str] = {
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def has_faststart(file_path: Path) -> bool:
+    """Return True if the MP4/M4V file has the ``moov`` atom before ``mdat``.
+
+    A *fast-start* file can begin playback immediately because the browser
+    receives the metadata first.  Files with ``moov`` at the end require a
+    full download before playback can begin.
+
+    Returns True (optimistic) on any I/O error or for non-MP4 files.
+    """
+    if file_path.suffix.lower() not in _FASTSTART_CHECK_EXTENSIONS:
+        return True
+    try:
+        with open(file_path, "rb") as f:
+            # Walk top-level atoms.  Each atom: 4-byte size (big-endian) + 4-byte type.
+            # We only need to find whether 'moov' comes before 'mdat'.
+            pos = 0
+            while True:
+                header = f.read(8)
+                if len(header) < 8:
+                    break
+                size = struct.unpack(">I", header[:4])[0]
+                atom_type = header[4:8]
+
+                if atom_type == b"moov":
+                    return True  # moov before mdat → fast-start
+                if atom_type == b"mdat":
+                    return False  # mdat before moov → NOT fast-start
+
+                # Handle size == 0 (atom extends to EOF) and size == 1 (64-bit size)
+                if size == 0:
+                    break
+                if size == 1:
+                    ext = f.read(8)
+                    if len(ext) < 8:
+                        break
+                    size = struct.unpack(">Q", ext)[0]
+                    if size < 16:
+                        break
+                    f.seek(pos + size)
+                else:
+                    if size < 8:
+                        break
+                    f.seek(pos + size)
+                pos = f.tell()
+        # Neither moov nor mdat found → assume fast-start
+        return True
+    except (OSError, struct.error) as exc:
+        logger.debug("has_faststart check failed for %s: %s", file_path.name, exc)
+        return True  # optimistic fallback — serve via FileResponse
 
 
 def needs_remux(file_path: Path) -> bool:

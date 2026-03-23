@@ -143,6 +143,10 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
     app = FastAPI(title="hometools video streaming prototype", lifespan=lifespan)
 
+    # Cache quick-scan results so repeated polls during index build don't
+    # re-walk the filesystem every 2 seconds.
+    _quick_cache: dict[str, object] = {"items": [], "at": 0.0}
+
     @app.get("/health")
     def health() -> dict[str, str]:
         ok, msg = check_library_accessible(resolved_library_dir)
@@ -225,13 +229,21 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
                 library_message="ok",
                 cache_status=cache_status,
             )
-            # Quick scan for immediate folder display
-            quick_items = quick_folder_scan(
-                resolved_library_dir,
-                suffixes=VIDEO_SUFFIX,
-                media_type="video",
-                stream_url_prefix="/video/stream",
-            )
+            # Reuse cached quick scan if available (avoid re-walking the
+            # filesystem on every 2-second poll while the index builds).
+            now = time.monotonic()
+            if _quick_cache["items"] and (now - _quick_cache["at"]) < 30.0:
+                quick_items = _quick_cache["items"]
+                logger.debug("GET /api/video/items — reusing cached quick scan (%d items)", len(quick_items))
+            else:
+                quick_items = quick_folder_scan(
+                    resolved_library_dir,
+                    suffixes=VIDEO_SUFFIX,
+                    media_type="video",
+                    stream_url_prefix="/video/stream",
+                )
+                _quick_cache["items"] = quick_items
+                _quick_cache["at"] = now
             filtered = query_items(quick_items, q=q, artist=artist, sort_by=sort)
             logger.info(
                 "GET /api/video/items — quick scan %d items in %.2fs (refresh_started=%s, status=%s)",
@@ -385,11 +397,32 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         logger.debug("GET /api/video/metadata — %s → title=%r artist=%r", path, title, artist)
         return {"title": title, "artist": artist, "rating": 0.0}
 
+    @app.post("/api/video/progress")
+    def video_save_progress(payload: dict[str, object]) -> dict[str, object]:
+        """Save playback progress for a video file."""
+        from hometools.streaming.core.progress import save_progress
+
+        rp = str(payload.get("relative_path") or "").strip()
+        if not rp:
+            raise HTTPException(status_code=400, detail="relative_path is required")
+        pos = float(payload.get("position_seconds") or 0)
+        dur = float(payload.get("duration") or 0)
+        ok = save_progress(resolved_cache_dir, rp, pos, dur)
+        return {"ok": ok}
+
+    @app.get("/api/video/progress")
+    def video_load_progress(path: str) -> dict[str, object]:
+        """Load playback progress for a video file."""
+        from hometools.streaming.core.progress import load_progress
+
+        entry = load_progress(resolved_cache_dir, path)
+        return {"items": [entry] if entry else []}
+
     @app.get("/video/stream")
     def video_stream(path: str):
         from fastapi.responses import StreamingResponse
 
-        from hometools.streaming.core.remux import needs_remux, remux_stream
+        from hometools.streaming.core.remux import has_faststart, needs_remux, remux_stream
 
         try:
             file_path = resolve_video_path(resolved_library_dir, path)
@@ -400,7 +433,19 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             logger.warning("GET /video/stream — invalid path: %s (%s)", path, exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        if needs_remux(file_path):
+        do_remux = needs_remux(file_path)
+
+        if not do_remux and not has_faststart(file_path):
+            # MP4 with moov atom at end — browser can't start playback
+            # until the entire file is downloaded.  Remux to fragmented
+            # MP4 so playback begins immediately.
+            do_remux = True
+            logger.info(
+                "GET /video/stream — %s lacks fast-start (moov at end), remuxing to fragmented MP4",
+                file_path.name,
+            )
+
+        if do_remux:
             # On-the-fly remux/transcode to fragmented MP4 (like Jellyfin)
             logger.info("GET /video/stream — remuxing %s for browser playback", file_path.name)
             return StreamingResponse(
@@ -417,15 +462,45 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
     @app.get("/thumb")
-    def thumb(path: str) -> FileResponse:
-        """Serve a cached thumbnail image for a video file."""
+    def thumb(path: str, size: str = "sm") -> FileResponse:
+        """Serve a cached thumbnail image for a video file.
+
+        Pass ``?size=lg`` for the large (480 px) variant,
+        or ``?size=sprite`` for the sprite sheet image.
+        """
         from urllib.parse import unquote
 
         relative_path = unquote(path)
-        thumb_path = get_thumbnail_path(resolved_cache_dir, "video", relative_path)
+        if size == "lg":
+            from hometools.streaming.core.thumbnailer import get_thumbnail_lg_path
+
+            thumb_path = get_thumbnail_lg_path(resolved_cache_dir, "video", relative_path)
+        elif size == "sprite":
+            from hometools.streaming.core.thumbnailer import get_sprite_path
+
+            thumb_path = get_sprite_path(resolved_cache_dir, relative_path)
+        else:
+            thumb_path = get_thumbnail_path(resolved_cache_dir, "video", relative_path)
         if not thumb_path.exists():
             raise HTTPException(status_code=404, detail="Thumbnail not found")
         return FileResponse(thumb_path, media_type="image/jpeg")
+
+    @app.get("/api/video/sprites")
+    def video_sprites(path: str) -> dict[str, object]:
+        """Return sprite sheet metadata for a video file (or 404)."""
+        from urllib.parse import unquote
+
+        from hometools.streaming.core.thumbnailer import get_sprite_meta_path
+
+        relative_path = unquote(path)
+        meta_path = get_sprite_meta_path(resolved_cache_dir, relative_path)
+        if not meta_path.exists():
+            raise HTTPException(status_code=404, detail="Sprite sheet not generated yet")
+        try:
+            meta = _json.loads(meta_path.read_text(encoding="utf-8"))
+            return {"ok": True, **meta}
+        except Exception:
+            raise HTTPException(status_code=500, detail="Sprite metadata corrupted") from None
 
     # --- PWA endpoints ---
     _VIDEO_THEME = "#bb86fc"

@@ -192,7 +192,7 @@ class IndexCache:
         cache_dir: Path | None = None,
     ) -> dict[str, object]:
         """Return diagnostic status information for this cache instance."""
-        snapshot_path = self._snapshot_path(cache_dir)
+        snapshot_path = self._snapshot_path(cache_dir, library_dir)
         now = time.monotonic()
         with self._lock:
             cache_age = max(0.0, now - self._built_at) if self._built_at else None
@@ -266,9 +266,16 @@ class IndexCache:
         )
         return items
 
-    def _snapshot_path(self, cache_dir: Path | None) -> Path | None:
+    def _snapshot_path(self, cache_dir: Path | None, library_dir: Path | None = None) -> Path | None:
         if cache_dir is None:
             return None
+        if library_dir is not None:
+            # Include a short hash of the library_dir so that different
+            # libraries (and test tmp_paths) get independent snapshots.
+            import hashlib
+
+            dir_hash = hashlib.md5(str(library_dir).encode()).hexdigest()[:8]
+            return cache_dir / "indexes" / f"{self._label}-{dir_hash}.json"
         return cache_dir / "indexes" / f"{self._label}.json"
 
     def _load_snapshot(
@@ -276,9 +283,16 @@ class IndexCache:
         library_dir: Path,
         cache_dir: Path | None,
     ) -> tuple[list[MediaItem], float] | None:
-        path = self._snapshot_path(cache_dir)
-        if path is None or not path.exists():
+        path = self._snapshot_path(cache_dir, library_dir)
+        if path is None:
             return None
+        if not path.exists():
+            # Fall back to legacy path (without hash) for one-time migration
+            legacy = self._snapshot_path(cache_dir)
+            if legacy is not None and legacy.exists():
+                path = legacy
+            else:
+                return None
 
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -302,7 +316,7 @@ class IndexCache:
         cache_dir: Path | None,
         items: list[MediaItem],
     ) -> None:
-        path = self._snapshot_path(cache_dir)
+        path = self._snapshot_path(cache_dir, library_dir)
         if path is None:
             return
 

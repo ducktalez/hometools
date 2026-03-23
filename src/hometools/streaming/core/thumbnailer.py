@@ -45,6 +45,14 @@ logger = logging.getLogger(__name__)
 THUMB_SUFFIX = ".thumb.jpg"
 THUMB_MAX_PX = 120
 
+THUMB_LG_SUFFIX = ".thumb-lg.jpg"
+THUMB_LG_MAX_PX = 480
+
+SPRITE_SUFFIX = ".sprites.jpg"
+SPRITE_META_SUFFIX = ".sprites.json"
+SPRITE_FRAME_W = 160  # width of each frame in the sprite grid
+SPRITE_MAX_FRAMES = 40  # target number of frames per sprite sheet
+
 
 # ---------------------------------------------------------------------------
 # Pure path helpers
@@ -58,6 +66,25 @@ def get_thumbnail_path(cache_dir: Path, media_type: str, relative_path: str) -> 
     PosixPath('/cache/audio/Artist/Song.mp3.thumb.jpg')
     """
     return cache_dir / media_type / (relative_path + THUMB_SUFFIX)
+
+
+def get_thumbnail_lg_path(cache_dir: Path, media_type: str, relative_path: str) -> Path:
+    """Return the expected *large* thumbnail path inside the shadow cache.
+
+    >>> get_thumbnail_lg_path(Path("/cache"), "video", "Series/ep01.mp4")
+    PosixPath('/cache/video/Series/ep01.mp4.thumb-lg.jpg')
+    """
+    return cache_dir / media_type / (relative_path + THUMB_LG_SUFFIX)
+
+
+def get_sprite_path(cache_dir: Path, relative_path: str) -> Path:
+    """Return the sprite sheet image path inside the shadow cache (video only)."""
+    return cache_dir / "video" / (relative_path + SPRITE_SUFFIX)
+
+
+def get_sprite_meta_path(cache_dir: Path, relative_path: str) -> Path:
+    """Return the sprite sheet metadata JSON path inside the shadow cache."""
+    return cache_dir / "video" / (relative_path + SPRITE_META_SUFFIX)
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +126,8 @@ def _extract_cover_bytes(media_path: Path) -> bytes | None:
     return None
 
 
-def _resize_and_save_jpeg(raw_bytes: bytes, dest: Path) -> bool:
-    """Resize cover art to max THUMB_MAX_PX and save as JPEG."""
+def _resize_and_save_jpeg(raw_bytes: bytes, dest: Path, *, max_px: int = THUMB_MAX_PX) -> bool:
+    """Resize cover art to *max_px* on the longest side and save as JPEG."""
     try:
         import io
 
@@ -114,7 +141,7 @@ def _resize_and_save_jpeg(raw_bytes: bytes, dest: Path) -> bool:
 
     try:
         img = Image.open(io.BytesIO(raw_bytes))
-        img.thumbnail((THUMB_MAX_PX, THUMB_MAX_PX), Image.LANCZOS)
+        img.thumbnail((max_px, max_px), Image.LANCZOS)
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -125,7 +152,7 @@ def _resize_and_save_jpeg(raw_bytes: bytes, dest: Path) -> bool:
         return False
 
 
-def extract_audio_cover(media_path: Path, thumb_path: Path) -> bool:
+def extract_audio_cover(media_path: Path, thumb_path: Path, *, max_px: int = THUMB_MAX_PX) -> bool:
     """Extract embedded album cover from an audio file and save as thumbnail.
 
     Returns True if a thumbnail was created, False otherwise.
@@ -133,7 +160,7 @@ def extract_audio_cover(media_path: Path, thumb_path: Path) -> bool:
     raw = _extract_cover_bytes(media_path)
     if raw is None:
         return False
-    return _resize_and_save_jpeg(raw, thumb_path)
+    return _resize_and_save_jpeg(raw, thumb_path, max_px=max_px)
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +211,7 @@ def _compute_seek_seconds(media_path: Path) -> int:
     return _SEEK_FALLBACK_SEC
 
 
-def extract_video_thumbnail(media_path: Path, thumb_path: Path, seek_sec: int | None = None) -> bool:
+def extract_video_thumbnail(media_path: Path, thumb_path: Path, seek_sec: int | None = None, *, max_px: int = THUMB_MAX_PX) -> bool:
     """Extract a video frame via ffmpeg and save as a JPEG thumbnail.
 
     When *seek_sec* is ``None`` (default) the seek position is computed
@@ -209,7 +236,7 @@ def extract_video_thumbnail(media_path: Path, thumb_path: Path, seek_sec: int | 
                 "-frames:v",
                 "1",
                 "-vf",
-                f"scale={THUMB_MAX_PX}:-1",
+                f"scale={max_px}:-1",
                 str(thumb_path),
             ],
             capture_output=True,
@@ -225,6 +252,102 @@ def extract_video_thumbnail(media_path: Path, thumb_path: Path, seek_sec: int | 
     except Exception:
         logger.debug("Unexpected error extracting video thumb for %s", media_path, exc_info=True)
     return False
+
+
+# ---------------------------------------------------------------------------
+# Sprite sheet generation (video only)
+# ---------------------------------------------------------------------------
+
+
+def generate_sprite_sheet(
+    media_path: Path,
+    cache_dir: Path,
+    relative_path: str,
+) -> bool:
+    """Generate a sprite sheet (grid of frames) for video scrubber preview.
+
+    Produces a single JPEG image with evenly-spaced video frames arranged
+    in a grid, plus a companion JSON metadata file.  Never raises.
+
+    Returns ``True`` if the sprite sheet was created, ``False`` otherwise.
+    """
+    import math
+
+    sprite_path = get_sprite_path(cache_dir, relative_path)
+    meta_path = get_sprite_meta_path(cache_dir, relative_path)
+
+    duration = _get_video_duration(media_path)
+    if duration is None or duration < 2:
+        logger.debug("Sprite sheet skipped (too short or no duration): %s", relative_path)
+        return False
+
+    # Compute frame count and interval
+    count = min(SPRITE_MAX_FRAMES, max(8, int(duration / 5)))
+    interval = duration / count
+    cols = min(count, 10)
+    rows = math.ceil(count / cols)
+
+    sprite_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(media_path),
+                "-vf",
+                f"fps=1/{interval:.4f},scale={SPRITE_FRAME_W}:-1,tile={cols}x{rows}",
+                "-frames:v",
+                "1",
+                "-q:v",
+                "5",
+                str(sprite_path),
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+        if result.returncode != 0 or not sprite_path.exists():
+            logger.debug("Sprite ffmpeg failed for %s: %s", relative_path, result.stderr[:200])
+            return False
+    except FileNotFoundError:
+        logger.debug("ffmpeg not found — skipping sprite sheet")
+        return False
+    except subprocess.TimeoutExpired:
+        logger.debug("Sprite ffmpeg timed out for %s", relative_path)
+        return False
+    except Exception:
+        logger.debug("Sprite sheet generation error for %s", relative_path, exc_info=True)
+        return False
+
+    # Determine actual frame height from the generated image
+    frame_h = 90  # fallback
+    try:
+        from PIL import Image
+
+        with Image.open(sprite_path) as img:
+            frame_h = img.height // rows
+    except Exception:
+        pass  # use fallback
+
+    # Write metadata JSON
+    try:
+        meta = {
+            "cols": cols,
+            "rows": rows,
+            "frame_w": SPRITE_FRAME_W,
+            "frame_h": frame_h,
+            "interval": round(interval, 3),
+            "count": count,
+            "duration": round(duration, 3),
+        }
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        logger.debug("Failed to write sprite meta for %s", relative_path, exc_info=True)
+        return False
+
+    logger.debug("Sprite sheet generated: %s (%dx%d, %d frames)", relative_path, cols, rows, count)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +411,20 @@ def check_thumbnail_cached(
         return thumb_path if thumb_path.exists() else None
     except Exception:
         logger.debug("check_thumbnail_cached failed for %s", relative_path, exc_info=True)
+        return None
+
+
+def check_thumbnail_lg_cached(
+    cache_dir: Path,
+    media_type: str,
+    relative_path: str,
+) -> Path | None:
+    """Return the *large* thumbnail path only if it already exists on disk."""
+    try:
+        thumb_path = get_thumbnail_lg_path(cache_dir, media_type, relative_path)
+        return thumb_path if thumb_path.exists() else None
+    except Exception:
+        logger.debug("check_thumbnail_lg_cached failed for %s", relative_path, exc_info=True)
         return None
 
 
@@ -384,6 +521,62 @@ def _source_mtime(media_path: Path) -> float:
         return 0.0
 
 
+def _generate_large_thumbnail(
+    media_path: Path,
+    cache_dir: Path,
+    media_type: str,
+    relative_path: str,
+    src_mt: float,
+) -> bool:
+    """Generate a large thumbnail alongside the small one.  Never raises."""
+    try:
+        lg_path = get_thumbnail_lg_path(cache_dir, media_type, relative_path)
+        if lg_path.exists():
+            try:
+                lg_mt = lg_path.stat().st_mtime
+            except OSError:
+                lg_mt = 0.0
+            if src_mt <= lg_mt:
+                return True  # already up-to-date
+
+        if media_type == "audio":
+            ok = extract_audio_cover(media_path, lg_path, max_px=THUMB_LG_MAX_PX)
+        elif media_type == "video":
+            ok = extract_video_thumbnail(media_path, lg_path, max_px=THUMB_LG_MAX_PX)
+        else:
+            ok = False
+
+        if ok:
+            logger.debug("Large thumbnail generated: %s", relative_path)
+        return ok
+    except Exception:
+        logger.debug("Large thumbnail generation failed for %s", relative_path, exc_info=True)
+        return False
+
+
+def _generate_sprite_if_needed(
+    media_path: Path,
+    cache_dir: Path,
+    relative_path: str,
+    src_mt: float,
+) -> bool:
+    """Generate sprite sheet if missing or stale.  Never raises."""
+    try:
+        sprite_path = get_sprite_path(cache_dir, relative_path)
+        if sprite_path.exists():
+            try:
+                sprite_mt = sprite_path.stat().st_mtime
+            except OSError:
+                sprite_mt = 0.0
+            if src_mt <= sprite_mt:
+                return True  # already up-to-date
+
+        return generate_sprite_sheet(media_path, cache_dir, relative_path)
+    except Exception:
+        logger.debug("Sprite sheet generation failed for %s", relative_path, exc_info=True)
+        return False
+
+
 def _generate_thumbnails_worker(
     items: list[tuple[Path, Path, str, str]],
 ) -> None:
@@ -450,6 +643,13 @@ def _generate_thumbnails_worker(
                     key = _failure_key(media_type, relative_path)
                     failures.pop(key, None)
                     resolve_issue(cache_dir, f"thumbnail::{key}", resolution="thumbnail generated successfully")
+
+                    # Also generate the large thumbnail
+                    _generate_large_thumbnail(media_path, cache_dir, media_type, relative_path, src_mt)
+
+                    # Generate sprite sheet for video scrubber previews
+                    if media_type == "video":
+                        _generate_sprite_if_needed(media_path, cache_dir, relative_path, src_mt)
                 else:
                     skipped += 1
                     record_failure(

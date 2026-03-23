@@ -266,3 +266,46 @@ def test_thumb_serves_cached_thumbnail_from_shadow_cache(tmp_path):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/jpeg")
     assert response.content == b"fake-jpeg"
+
+
+# ---------------------------------------------------------------------------
+# Playback progress endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_audio_progress_save_and_load(tmp_path):
+    """POST progress and GET it back."""
+    client = TestClient(create_app(tmp_path))
+
+    resp = client.post(
+        "/api/audio/progress",
+        json={"relative_path": "Artist/Song.mp3", "position_seconds": 42.5, "duration": 180.0},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    resp = client.get("/api/audio/progress", params={"path": "Artist/Song.mp3"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["position_seconds"] == 42.5
+
+
+def test_audio_progress_empty_path_rejected(tmp_path):
+    """POST with empty relative_path returns 400."""
+    client = TestClient(create_app(tmp_path))
+
+    resp = client.post(
+        "/api/audio/progress",
+        json={"relative_path": "", "position_seconds": 10.0},
+    )
+    assert resp.status_code == 400
+
+
+def test_audio_progress_not_found(tmp_path):
+    """GET progress for unknown track returns empty items."""
+    client = TestClient(create_app(tmp_path))
+
+    resp = client.get("/api/audio/progress", params={"path": "unknown.mp3"})
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []

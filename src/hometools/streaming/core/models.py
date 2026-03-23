@@ -31,6 +31,8 @@ class MediaItem:
     rating: float = 0.0  # 0.0–5.0 star rating (POPM for audio, 0.0 = unrated)
     season: int = 0  # series season number (0 = not a series episode)
     episode: int = 0  # series episode number (0 = not a series episode)
+    mtime: float = 0.0  # file modification time (Unix timestamp, 0.0 = unknown)
+    thumbnail_lg_url: str = ""  # URL to large (480 px) shadow-cached thumbnail
 
     def to_dict(self) -> dict[str, str]:
         """Return a JSON-serializable representation."""

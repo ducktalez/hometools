@@ -122,3 +122,105 @@ def test_video_items_safe_mode_reports_flag(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["safe_mode"] is True
+
+
+# ---------------------------------------------------------------------------
+# Playback progress endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_video_progress_save_and_load(tmp_path):
+    """POST progress and GET it back."""
+    client = TestClient(create_app(tmp_path))
+
+    resp = client.post(
+        "/api/video/progress",
+        json={"relative_path": "Folder/Movie.mp4", "position_seconds": 123.4, "duration": 5400.0},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    resp = client.get("/api/video/progress", params={"path": "Folder/Movie.mp4"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["position_seconds"] == 123.4
+
+
+def test_video_progress_empty_path_rejected(tmp_path):
+    """POST with empty relative_path returns 400."""
+    client = TestClient(create_app(tmp_path))
+
+    resp = client.post(
+        "/api/video/progress",
+        json={"relative_path": "", "position_seconds": 10.0},
+    )
+    assert resp.status_code == 400
+
+
+def test_video_progress_not_found(tmp_path):
+    """GET progress for unknown track returns empty items."""
+    client = TestClient(create_app(tmp_path))
+
+    resp = client.get("/api/video/progress", params={"path": "unknown.mp4"})
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+# ---------------------------------------------------------------------------
+# Sprite sheet endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_video_sprites_returns_404_when_not_generated(tmp_path):
+    """GET /api/video/sprites returns 404 when sprite sheet is not generated yet."""
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/api/video/sprites", params={"path": "nonexistent.mp4"})
+    assert resp.status_code == 404
+
+
+def test_video_sprites_returns_metadata_when_available(tmp_path, monkeypatch):
+    """GET /api/video/sprites returns metadata JSON when sprite is generated."""
+    import json
+
+    from hometools.streaming.core.thumbnailer import get_sprite_meta_path
+
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("HOMETOOLS_CACHE_DIR", str(cache))
+
+    meta_path = get_sprite_meta_path(cache, "Series/ep01.mp4")
+    meta_path.parent.mkdir(parents=True)
+    meta_data = {"cols": 10, "rows": 4, "frame_w": 160, "frame_h": 90, "interval": 1.5, "count": 40, "duration": 60.0}
+    meta_path.write_text(json.dumps(meta_data), encoding="utf-8")
+
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/api/video/sprites", params={"path": "Series/ep01.mp4"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cols"] == 10
+    assert data["rows"] == 4
+    assert data["ok"] is True
+
+
+def test_video_thumb_sprite_returns_404_when_missing(tmp_path):
+    """GET /thumb?size=sprite returns 404 when sprite image not generated."""
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/thumb", params={"path": "nonexistent.mp4", "size": "sprite"})
+    assert resp.status_code == 404
+
+
+def test_video_thumb_sprite_serves_image(tmp_path, monkeypatch):
+    """GET /thumb?size=sprite serves the sprite sheet JPEG."""
+    from hometools.streaming.core.thumbnailer import get_sprite_path
+
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("HOMETOOLS_CACHE_DIR", str(cache))
+
+    sprite_path = get_sprite_path(cache, "clip.mp4")
+    sprite_path.parent.mkdir(parents=True)
+    sprite_path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)  # fake JPEG
+
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/thumb", params={"path": "clip.mp4", "size": "sprite"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/jpeg"

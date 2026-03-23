@@ -153,6 +153,11 @@ def reset_stream_generated(server: str, *, hard: bool = False) -> tuple[StreamRe
         failure_entries_removed = 0
 
         _remove_path(spec.cache_dir / "indexes" / f"{spec.index_label}.json", removed)
+        # Also remove hash-based snapshot files (library-dir-specific)
+        indexes_dir = spec.cache_dir / "indexes"
+        if indexes_dir.is_dir():
+            for p in indexes_dir.glob(f"{spec.index_label}-*.json"):
+                _remove_path(p, removed)
         for log_path in _iter_server_logs(name):
             _remove_path(log_path, removed)
 

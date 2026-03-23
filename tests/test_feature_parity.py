@@ -133,6 +133,30 @@ class TestServerEndpointParity:
             assert audio_resp.status_code == 200, f"Audio missing {path}"
             assert video_resp.status_code == 200, f"Video missing {path}"
 
+    def test_both_servers_have_progress_endpoints(self, tmp_path):
+        """Both servers must expose identical progress save/load endpoints."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        payload = {"relative_path": "test/file.mp4", "position_seconds": 42.0, "duration": 100.0}
+
+        audio_post = audio_client.post("/api/audio/progress", json=payload)
+        video_post = video_client.post("/api/video/progress", json=payload)
+        assert audio_post.status_code == 200
+        assert video_post.status_code == 200
+        assert audio_post.json().keys() == video_post.json().keys()
+
+        audio_get = audio_client.get("/api/audio/progress", params={"path": "test/file.mp4"})
+        video_get = video_client.get("/api/video/progress", params={"path": "test/file.mp4"})
+        assert audio_get.status_code == 200
+        assert video_get.status_code == 200
+        assert audio_get.json().keys() == video_get.json().keys()
+
 
 class TestAPIResponseParity:
     """API responses must have consistent structure."""
@@ -172,6 +196,22 @@ class TestAPIResponseParity:
             assert 'id="offline-btn"' in html
             assert 'id="offline-library"' in html
             assert 'id="offline-download-list"' in html
+
+    def test_both_home_pages_include_recent_sort_option(self, tmp_path):
+        """Both UIs must have the 'recent' sort option in the dropdown."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        for html in (audio_html, video_html):
+            assert 'value="recent"' in html
 
     def test_catalog_api_response_structure_video(self, tmp_path):
         """Video API must return consistent structure."""
@@ -237,3 +277,39 @@ class TestMediaItemSchema:
 
             missing = required_fields - set(video_dict.keys())
             assert not missing, f"Video item missing fields: {missing}"
+
+
+class TestLargeThumbnailParity:
+    """Both servers must support ?size=lg on the /thumb endpoint."""
+
+    def test_both_servers_support_thumb_size_lg(self, tmp_path):
+        """Both /thumb endpoints accept ?size=lg query parameter."""
+        import os
+        from unittest.mock import patch
+
+        from starlette.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as audio_app
+        from hometools.streaming.core.thumbnailer import get_thumbnail_lg_path
+        from hometools.streaming.video.server import create_app as video_app
+
+        cache_dir = tmp_path / "cache"
+
+        # Create large thumbnails on disk
+        for media_type in ("audio", "video"):
+            lg_path = get_thumbnail_lg_path(cache_dir, media_type, "test.mp3" if media_type == "audio" else "test.mp4")
+            lg_path.parent.mkdir(parents=True, exist_ok=True)
+            lg_path.write_bytes(b"\xff\xd8fake-large-jpeg")
+
+        lib_dir = tmp_path / "lib"
+        lib_dir.mkdir()
+
+        with patch.dict(os.environ, {"HOMETOOLS_CACHE_DIR": str(cache_dir)}):
+            audio = TestClient(audio_app(lib_dir))
+            video = TestClient(video_app(lib_dir))
+
+            r_a = audio.get("/thumb", params={"path": "test.mp3", "size": "lg"})
+            assert r_a.status_code == 200, "Audio /thumb?size=lg should return 200"
+
+            r_v = video.get("/thumb", params={"path": "test.mp4", "size": "lg"})
+            assert r_v.status_code == 200, "Video /thumb?size=lg should return 200"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,7 @@ import pytest
 from hometools.streaming.core.remux import (
     BROWSER_NATIVE_EXTENSIONS,
     can_copy_codecs,
+    has_faststart,
     needs_remux,
     probe_codecs,
     remux_stream,
@@ -119,6 +121,63 @@ def test_can_copy_codecs_false_when_probe_fails() -> None:
 
 
 # ---------------------------------------------------------------------------
+# has_faststart
+# ---------------------------------------------------------------------------
+
+
+def _make_mp4_atoms(*atom_types: bytes) -> bytes:
+    """Build a minimal MP4-like byte string with the given top-level atoms."""
+    data = b""
+    for atype in atom_types:
+        # Each atom: 8 bytes header (4-byte size + 4-byte type) + 8 bytes body
+        body = b"\x00" * 8
+        size = struct.pack(">I", 8 + len(body))
+        data += size + atype + body
+    return data
+
+
+def test_has_faststart_moov_before_mdat(tmp_path: Path) -> None:
+    f = tmp_path / "fast.mp4"
+    f.write_bytes(_make_mp4_atoms(b"ftyp", b"moov", b"mdat"))
+    assert has_faststart(f) is True
+
+
+def test_has_faststart_mdat_before_moov(tmp_path: Path) -> None:
+    f = tmp_path / "slow.mp4"
+    f.write_bytes(_make_mp4_atoms(b"ftyp", b"mdat", b"moov"))
+    assert has_faststart(f) is False
+
+
+def test_has_faststart_no_moov_no_mdat(tmp_path: Path) -> None:
+    f = tmp_path / "weird.mp4"
+    f.write_bytes(_make_mp4_atoms(b"ftyp", b"free"))
+    assert has_faststart(f) is True  # optimistic
+
+
+def test_has_faststart_non_mp4(tmp_path: Path) -> None:
+    f = tmp_path / "video.webm"
+    f.write_bytes(b"\x00" * 100)
+    assert has_faststart(f) is True  # skip check for non-mp4
+
+
+def test_has_faststart_empty_file(tmp_path: Path) -> None:
+    f = tmp_path / "empty.mp4"
+    f.write_bytes(b"")
+    assert has_faststart(f) is True  # optimistic fallback
+
+
+def test_has_faststart_io_error(tmp_path: Path) -> None:
+    f = tmp_path / "missing.mp4"
+    assert has_faststart(f) is True  # optimistic fallback
+
+
+def test_has_faststart_m4v_extension(tmp_path: Path) -> None:
+    f = tmp_path / "clip.m4v"
+    f.write_bytes(_make_mp4_atoms(b"ftyp", b"mdat", b"moov"))
+    assert has_faststart(f) is False
+
+
+# ---------------------------------------------------------------------------
 # remux_stream — mocked
 # ---------------------------------------------------------------------------
 
@@ -197,7 +256,7 @@ def test_video_stream_remuxes_flv(tmp_path: Path) -> None:
 
 
 def test_video_stream_serves_mp4_directly(tmp_path: Path) -> None:
-    """The /video/stream endpoint uses FileResponse for native .mp4 files."""
+    """The /video/stream endpoint uses FileResponse for fast-start .mp4 files."""
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
@@ -205,7 +264,8 @@ def test_video_stream_serves_mp4_directly(tmp_path: Path) -> None:
     sub = tmp_path / "TestFolder"
     sub.mkdir()
     mp4_file = sub / "clip.mp4"
-    mp4_file.write_bytes(b"\x00" * 100)
+    # Write a fake MP4 with moov before mdat (fast-start)
+    mp4_file.write_bytes(_make_mp4_atoms(b"ftyp", b"moov", b"mdat"))
 
     client = TestClient(create_app(tmp_path))
 
@@ -216,3 +276,28 @@ def test_video_stream_serves_mp4_directly(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     mock_remux.assert_not_called()
+
+
+def test_video_stream_remuxes_non_faststart_mp4(tmp_path: Path) -> None:
+    """The /video/stream endpoint remuxes .mp4 files that lack fast-start."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    sub = tmp_path / "TestFolder"
+    sub.mkdir()
+    mp4_file = sub / "slow.mp4"
+    # Write a fake MP4 with mdat before moov (NOT fast-start)
+    mp4_file.write_bytes(_make_mp4_atoms(b"ftyp", b"mdat", b"moov"))
+
+    client = TestClient(create_app(tmp_path))
+
+    with patch(
+        "hometools.streaming.core.remux.remux_stream",
+        return_value=iter([b"fakemp4data"]),
+    ) as mock_remux:
+        response = client.get("/video/stream?path=TestFolder%2Fslow.mp4")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "video/mp4"
+    mock_remux.assert_called_once()
