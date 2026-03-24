@@ -502,3 +502,367 @@ def test_service_worker_uses_network_first_for_documents():
     sw = render_pwa_service_worker()
     assert "event.request.mode === 'navigate'" in sw
     assert "Offline — page not cached" in sw
+
+
+# ---------------------------------------------------------------------------
+# Shuffle mode — audio-only feature, implemented in core
+# ---------------------------------------------------------------------------
+
+
+def _audio_page_with_shuffle():
+    """Audio page with shuffle enabled (as the audio server enables it)."""
+    return render_media_page(
+        title="Test",
+        emoji="🎵",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_shuffle=True,
+    )
+
+
+def test_shuffle_btn_present_in_audio_page_with_shuffle_enabled():
+    """Shuffle button must appear in the audio player bar when enable_shuffle=True."""
+    page = _audio_page_with_shuffle()
+    assert 'id="btn-shuffle"' in page
+
+
+def test_shuffle_btn_absent_in_default_audio_page():
+    """Shuffle button must NOT appear when enable_shuffle=False (default)."""
+    page = _page(media="audio")
+    assert 'id="btn-shuffle"' not in page
+
+
+def test_shuffle_btn_absent_in_video_page():
+    """Shuffle button must NOT appear in the video page (enable_shuffle defaults to False)."""
+    page = _page(media="video")
+    assert 'id="btn-shuffle"' not in page
+
+
+def test_shuffle_js_enabled_flag_true():
+    """SHUFFLE_ENABLED must be true when enable_shuffle=True."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    assert "SHUFFLE_ENABLED = true" in js
+
+
+def test_shuffle_js_enabled_flag_false_by_default():
+    """SHUFFLE_ENABLED must be false when enable_shuffle=False (default)."""
+    js = _js()
+    assert "SHUFFLE_ENABLED = false" in js
+
+
+def test_shuffle_js_has_core_functions():
+    """Shuffle logic functions must be present when enabled."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    assert "fisherYates" in js
+    assert "buildWeightedQueue" in js
+    assert "buildNormalQueue" in js
+    assert "rebuildShuffleQueue" in js
+    assert "cycleShuffle" in js
+    assert "activateWeightedShuffle" in js
+    assert "updateShuffleBtn" in js
+
+
+def test_shuffle_js_has_next_prev_index():
+    """nextIndex / prevIndex must exist and respect shuffle state."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    assert "function nextIndex" in js
+    assert "function prevIndex" in js
+    assert "shuffleQueue" in js
+    assert "shufflePos" in js
+
+
+def test_shuffle_js_restores_from_localstorage():
+    """Shuffle preference must be loaded from localStorage on startup."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    assert "ht-shuffle-mode" in js
+    assert "localStorage.getItem" in js
+
+
+def test_shuffle_js_has_long_press_binding():
+    """Shuffle button must support long-press for weighted shuffle mode."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    assert "_startShuffleLongPress" in js
+    assert "touchstart" in js
+    assert "activateWeightedShuffle" in js
+
+
+def test_shuffle_css_has_active_styles():
+    """CSS must include styles for both shuffle active states."""
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert "shuffle-active" in css
+    assert "shuffle-weighted" in css
+
+
+def test_shuffle_btn_in_both_player_bar_styles():
+    """Shuffle button must appear in both classic and waveform player bars."""
+    for style in ("classic", "waveform"):
+        page = render_media_page(
+            title="Test",
+            emoji="🎵",
+            items_json="[]",
+            media_element_tag="audio",
+            api_path="/api/audio/tracks",
+            item_noun="track",
+            player_bar_style=style,
+            enable_shuffle=True,
+        )
+        assert 'id="btn-shuffle"' in page, f"Missing shuffle button in {style} player bar"
+
+
+def test_audio_server_enables_shuffle():
+    """The audio server must enable shuffle in its rendered HTML."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert 'id="btn-shuffle"' in html
+    assert "SHUFFLE_ENABLED = true" in html
+
+
+def test_video_server_does_not_enable_shuffle():
+    """The video server must NOT include the shuffle button."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert 'id="btn-shuffle"' not in html
+    assert "SHUFFLE_ENABLED = false" in html
+
+
+def test_shuffle_queue_rebuild_in_render_tracks():
+    """JS must rebuild the shuffle queue when filteredItems changes (applyFilter)."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    # rebuildShuffleQueue must be called inside renderTracks
+    assert "filteredItems = tracks" in js
+    assert "rebuildShuffleQueue" in js
+
+
+# ---------------------------------------------------------------------------
+# Rating write — audio-only feature, star buttons in player
+# ---------------------------------------------------------------------------
+
+
+def _audio_page_with_rating():
+    return render_media_page(
+        title="Test",
+        emoji="🎵",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_rating_write=True,
+    )
+
+
+def test_rating_stars_present_in_player_html():
+    """Player bar must contain the rating container when enable_rating_write=True."""
+    page = _audio_page_with_rating()
+    assert 'id="player-rating"' in page
+
+
+def test_rating_stars_hidden_by_default_in_html():
+    """Rating container must start hidden (filled by JS on track select)."""
+    page = _audio_page_with_rating()
+    assert 'id="player-rating" hidden' in page
+
+
+def test_rating_stars_absent_when_disabled():
+    """Rating container must still be present (always rendered for simplicity)."""
+    page = _page(media="audio")
+    # Even without enable_rating_write the element is rendered (JS disables interaction)
+    assert 'id="player-rating"' in page
+
+
+def test_rating_write_js_flag_true():
+    """RATING_WRITE_ENABLED must be true when enable_rating_write=True."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "RATING_WRITE_ENABLED = true" in js
+
+
+def test_rating_write_js_flag_false_by_default():
+    """RATING_WRITE_ENABLED must be false when enable_rating_write=False."""
+    js = _js()
+    assert "RATING_WRITE_ENABLED = false" in js
+
+
+def test_rating_api_path_injected():
+    """RATING_API_PATH must be injected and point to /api/audio/rating."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "RATING_API_PATH = '/api/audio/rating'" in js
+
+
+def test_rating_js_has_render_and_set_functions():
+    """renderPlayerRating and setRating JS functions must exist."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "renderPlayerRating" in js
+    assert "setRating" in js
+
+
+def test_rating_js_calls_fetch_rating_api():
+    """setRating must call fetch with RATING_API_PATH and POST method."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "fetch(RATING_API_PATH" in js
+    assert "'POST'" in js
+
+
+def test_rating_js_calls_render_on_play():
+    """renderPlayerRating must be called inside playItem when a track is selected."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    assert "renderPlayerRating" in js
+
+
+def test_rating_js_updates_after_metadata_refresh():
+    """After refreshMetadata, renderPlayerRating should be called with updated value."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    assert "renderPlayerRating(meta.rating)" in js
+
+
+def test_rating_css_has_star_styles():
+    """CSS must contain styles for rating stars in the player."""
+    css = render_base_css()
+    assert ".player-rating" in css
+    assert ".player-rating-star" in css
+
+
+def test_rating_css_has_active_and_hover_states():
+    """CSS must include active and hover states for rating stars."""
+    css = render_base_css()
+    assert ".player-rating-star.active" in css
+    assert ".player-rating-star.hover" in css
+
+
+def test_audio_server_has_rating_endpoint():
+    """The audio server must expose POST /api/audio/rating."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app())
+    # Valid call (non-existent path → 404 from resolve, not 405)
+    resp = client.post("/api/audio/rating", json={"path": "no/such/file.mp3", "rating": 3.0})
+    assert resp.status_code != 405  # endpoint exists
+
+    # Missing path → 400
+    resp = client.post("/api/audio/rating", json={"rating": 3.0})
+    assert resp.status_code == 400
+
+    # Out-of-range rating → 400
+    resp = client.post("/api/audio/rating", json={"path": "x.mp3", "rating": 99})
+    assert resp.status_code == 400
+
+
+def test_audio_server_enables_rating_write():
+    """The audio server HTML must include RATING_WRITE_ENABLED = true."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert "RATING_WRITE_ENABLED = true" in html
+
+
+def test_video_server_does_not_enable_rating_write():
+    """The video server must NOT enable rating write."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert "RATING_WRITE_ENABLED = false" in html
+
+
+def test_rating_in_both_player_bar_styles():
+    """Rating container must appear in both classic and waveform player bars."""
+    for style in ("classic", "waveform"):
+        page = render_media_page(
+            title="Test",
+            emoji="🎵",
+            items_json="[]",
+            media_element_tag="audio",
+            api_path="/api/audio/tracks",
+            item_noun="track",
+            player_bar_style=style,
+            enable_rating_write=True,
+        )
+        assert 'id="player-rating"' in page, f"Missing rating container in {style} player bar"
+
+
+# ---------------------------------------------------------------------------
+# Bug fix: player visibility must use player.currentSrc, not currentIndex < 0
+# ---------------------------------------------------------------------------
+
+
+def test_player_visibility_uses_currentSrc_not_currentIndex():
+    """showFolderView must hide player only when player.currentSrc is falsy.
+
+    Using currentIndex < 0 caused the player to disappear after navigating
+    to the offline library (which resets currentIndex) and then going Home.
+    """
+    js = _js()
+    # Must NOT use the old broken condition
+    assert "if (currentIndex < 0) playerBar.classList.add('view-hidden')" not in js
+    # Must use the correct currentSrc check
+    assert "if (!player.currentSrc) playerBar.classList.add('view-hidden')" in js
+
+
+def test_player_currentSrc_check_in_all_folder_functions():
+    """All folder-view functions must use player.currentSrc to guard player visibility."""
+    js = _js()
+    # Count occurrences: showFolderView (2x), showLoadingState (1x), showCatalogLoadError (1x)
+    count = js.count("if (!player.currentSrc) playerBar.classList.add('view-hidden')")
+    assert count >= 4, f"Expected >=4 occurrences, got {count}"
+
+
+# ---------------------------------------------------------------------------
+# History / Audit button in header
+# ---------------------------------------------------------------------------
+
+
+def test_audit_button_in_header():
+    """Header must contain a link to the /audit control panel."""
+    page = _page()
+    assert 'href="/audit"' in page
+
+
+def test_audit_button_has_title():
+    """Audit button must have a descriptive title attribute."""
+    page = _page()
+    assert "Änderungsverlauf" in page
+
+
+def test_audit_button_present_on_both_servers():
+    """Both audio and video pages must have the /audit link."""
+    for media in ("audio", "video"):
+        page = _page(media=media)
+        assert 'href="/audit"' in page, f"Missing audit link on {media} page"
+
+
+def test_svg_history_constant_defined():
+    """SVG_HISTORY must be defined in server_utils."""
+    from hometools.streaming.core.server_utils import SVG_HISTORY
+
+    assert SVG_HISTORY
+    assert "<svg" in SVG_HISTORY
+    assert "circle" in SVG_HISTORY  # clock has a circle

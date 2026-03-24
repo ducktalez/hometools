@@ -37,6 +37,11 @@ SVG_DOWNLOAD = '<svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19
 SVG_CHECK = '<svg viewBox="0 0 24 24"><polyline points="4,12 10,18 20,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 SVG_FOLDER_PLAY = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>'
 SVG_PIN = '<svg viewBox="0 0 24 24"><path d="M16 4l4 4-2.5 2.5 1.5 5.5-6-6-5 5v-2l3.5-3.5L6 4h2l5 1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+SVG_STAR = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>'
+SVG_STAR_EMPTY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>'
+SVG_SHUFFLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16,3 21,3 21,8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21,16 21,21 16,21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>'
+SVG_REPEAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17,1 21,5 17,9"/><path d="M3,11V9a4,4,0,0,1,4-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21,13v2a4,4,0,0,1-4,4H3"/></svg>'
+SVG_HISTORY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12,7 12,12 15,15"/><polyline points="3.05,10 3,12 5,11.5"/></svg>'
 
 
 # ---------------------------------------------------------------------------
@@ -580,21 +585,49 @@ header {
   display: flex; align-items: center; padding-left: max(1rem, var(--sal)); padding-right: max(1rem, var(--sar)); gap: 0.75rem;
   flex-shrink: 0; border-bottom: 1px solid #333;
 }
-.logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+.logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); user-select: none; }
+.logo-home-btn {
+  background: none; border: none; font-size: 1.4rem; line-height: 1;
+  cursor: pointer; padding: 0 2px; color: inherit; flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.logo-home-btn:hover { opacity: 0.75; }
+.logo-title {
+  font-size: 1.1rem; font-weight: 700; color: var(--accent);
+  user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .track-count { font-size: 0.8rem; color: var(--sub); margin-left: auto; }
-.offline-btn, .offline-close, .offline-action-btn {
+.offline-close, .offline-action-btn {
   background: var(--surface2); color: var(--text); border: 1px solid #444;
   border-radius: 999px; cursor: pointer; padding: 0.4rem 0.8rem;
   font-size: 0.8rem; -webkit-tap-highlight-color: transparent;
 }
-.offline-btn:hover, .offline-close:hover, .offline-action-btn:hover {
+.offline-close:hover, .offline-action-btn:hover {
   color: var(--accent); border-color: var(--accent);
 }
-.offline-status-pill {
+.downloaded-pill {
   font-size: 0.72rem; color: var(--sub); border: 1px solid #3a3a3a;
   border-radius: 999px; padding: 0.28rem 0.55rem; margin-left: 0.45rem;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, border-color 0.15s;
 }
-.offline-status-pill.is-offline { color: #ffcc00; border-color: #ffcc00; }
+.downloaded-pill:hover, .downloaded-pill.has-downloads { color: var(--accent); border-color: var(--accent); }
+.downloaded-pill.is-offline { color: #ffcc00; border-color: #ffcc00; }
+.folder-filter-bar {
+  padding: 0 16px 4px; display: flex; align-items: center; gap: 8px;
+}
+.offline-folder-card { cursor: pointer; }
+.offline-folder-icon {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface2); border-radius: 6px; width: 100%; aspect-ratio: 1;
+}
+.offline-folder-icon svg { width: 36px; height: 36px; fill: var(--accent); }
+.fav-badge {
+  position: absolute; top: 0.5rem; right: 0.5rem;
+  color: var(--accent); font-size: 1rem; line-height: 1;
+  pointer-events: none; z-index: 2;
+}
+.fav-folder { border: 1px solid var(--accent); border-radius: 8px; }
 body.modal-open { overflow: hidden; }
 .offline-library {
   position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.62);
@@ -728,8 +761,6 @@ body.modal-open { overflow: hidden; }
   padding: 0; line-height: 1; font-size: 0.7rem;
 }
 .track-dl-btn svg { width: 16px; height: 16px; fill: currentColor; pointer-events: none; }
-  padding: 0; line-height: 1;
-}
 .track-dl-btn:hover { color: var(--accent); border-color: var(--accent); }
 .track-dl-btn.cached {
   color: var(--accent); border-color: var(--accent);
@@ -834,6 +865,16 @@ body.modal-open { overflow: hidden; }
 .ctrl-btn.pip-btn svg { width: 16px; height: 16px; }
 .ctrl-btn.pip-btn.active { color: var(--accent); }
 .ctrl-btn.pip-btn[hidden] { display: none; }
+/* Shuffle button active states */
+.ctrl-btn.shuffle-btn.shuffle-active { color: var(--accent); }
+.ctrl-btn.shuffle-btn.shuffle-weighted { color: var(--accent); background: rgba(29, 185, 84, 0.15); border-radius: 50%; }
+/* Rating stars in player */
+.player-rating { display: flex; gap: 1px; margin-top: 2px; }
+.player-rating[hidden] { display: none; }
+.player-rating-star { background: none; border: none; padding: 1px; cursor: pointer; color: #555; width: 15px; height: 15px; flex-shrink: 0; transition: color 0.1s; -webkit-tap-highlight-color: transparent; display: flex; align-items: center; justify-content: center; }
+.player-rating-star svg { width: 12px; height: 12px; }
+.player-rating-star.active { color: #ffd700; }
+.player-rating-star.hover { color: #ffd700; }
 .time-label { font-size: 0.68rem; color: var(--sub); flex-shrink: 0; min-width: 2.2rem; }
 .time-label.end { text-align: left; }
 
@@ -848,12 +889,13 @@ body.modal-open { overflow: hidden; }
   flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.4rem;
 }
 .player-bar.classic .progress-track {
-  flex: 1 1 0; position: relative; min-width: 0;
+  flex: 1 1 0; position: relative; min-width: 0; height: auto;
 }
 .player-bar.classic input[type=range] {
   -webkit-appearance: none; appearance: none;
   width: 100%; height: 4px; background: #555;
   border-radius: 2px; outline: none; cursor: pointer;
+  position: static; opacity: 1;
 }
 .player-bar.classic input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 12px; height: 12px;
@@ -876,21 +918,21 @@ body.modal-open { overflow: hidden; }
   display: flex; align-items: center; gap: 0.4rem;
   padding: 0.25rem max(0.75rem, var(--sal)) 0.5rem max(0.75rem, var(--sar));
 }
-.progress-track {
+.player-bar.waveform .progress-track {
   flex: 1 1 0; position: relative; height: 48px; min-width: 0; cursor: pointer;
 }
-.progress-track.video-mode { height: 28px; }
+.player-bar.waveform .progress-track.video-mode { height: 28px; }
 .waveform-canvas {
   display: block; width: 100%; height: 100%; border-radius: 4px;
 }
-.progress-track input[type=range] {
+.player-bar.waveform .progress-track input[type=range] {
   -webkit-appearance: none; appearance: none;
   position: absolute; top: 0; left: 0;
   width: 100%; height: 100%; opacity: 0;
   cursor: pointer; margin: 0; z-index: 2;
   background: transparent;
 }
-.progress-track input[type=range]::-webkit-slider-thumb {
+.player-bar.waveform .progress-track input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 1px; height: 1px; background: transparent;
 }
 
@@ -993,6 +1035,14 @@ body.modal-open { overflow: hidden; }
 }
 .view-toggle svg { width: 16px; height: 16px; fill: currentColor; }
 .view-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.audit-btn {
+  background: none; border: 1px solid #333; color: var(--sub);
+  border-radius: 4px; padding: 0.25rem 0.4rem; cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  flex-shrink: 0; line-height: 0; text-decoration: none; display: inline-flex; align-items: center;
+}
+.audit-btn svg { width: 16px; height: 16px; }
+.audit-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ── Folder list mode ── */
 .folder-grid.list-mode {
@@ -1065,6 +1115,8 @@ def render_player_js(
     file_emoji: str = "\U0001f3b5",
     player_bar_style: str = "classic",
     enable_offline: bool = True,
+    enable_shuffle: bool = False,
+    enable_rating_write: bool = False,
 ) -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
@@ -1073,6 +1125,10 @@ def render_player_js(
     (no sub-folders) are displayed as playlists.  A breadcrumb trail and
     back button allow navigating up.  View preference is stored in
     localStorage.
+
+    *enable_shuffle* activates the shuffle button in the player bar.
+    Long-pressing the shuffle button activates weighted shuffle (items with
+    higher ratings are more likely to play).  Works with offline downloads too.
     """
     # -- waveform/thumbnail JS (only for waveform mode) -----------------------
     if player_bar_style == "waveform":
@@ -1263,6 +1319,22 @@ def render_player_js(
   var IC_CHECK = '<svg viewBox="0 0 24 24"><polyline points="4,12 10,18 20,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var IC_FOLDER_PLAY = '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>';
   var IC_PIN = '<svg viewBox="0 0 24 24"><path d="M16 4l4 4-2.5 2.5 1.5 5.5-6-6-5 5v-2l3.5-3.5L6 4h2l5 1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var IC_STAR = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>';
+  var IC_SHUFFLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16,3 21,3 21,8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21,16 21,21 16,21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>';
+  var IC_STAR_FILLED = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>';
+  var IC_STAR_EMPTY  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>';
+  var SHUFFLE_ENABLED = """
+        + ("true" if enable_shuffle else "false")
+        + """;
+  var RATING_WRITE_ENABLED = """
+        + ("true" if enable_rating_write else "false")
+        + """;
+  var RATING_API_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/rating';
+  var AUDIT_UNDO_PATH = '"""
+        + api_path.rsplit("/", 1)[0].replace("/api/", "/api/")
+        + """/audit/undo';
 
   var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
@@ -1272,11 +1344,16 @@ def render_player_js(
   var inPlaylist = false;
   var initialCatalogRetryTimer = null;
   var initialCatalogRetryCount = 0;
+  /* ── Shuffle state ── */
+  var shuffleMode = false;       /* false = off, 'normal' = random, 'weighted' = rating-weighted */
+  var shuffleQueue = [];         /* pre-built queue of indices for current session */
+  var shufflePos = -1;           /* current position within shuffleQueue */
 
   var player       = document.getElementById('player');
   var btnPlay      = document.getElementById('btn-play');
   var btnPrev      = document.getElementById('btn-prev');
   var btnNext      = document.getElementById('btn-next');
+  var btnShuffle   = document.getElementById('btn-shuffle');
   var trackList    = document.getElementById('track-list');
   var trackCount   = document.getElementById('track-count');
   var playerTitle  = document.getElementById('player-title');
@@ -1292,10 +1369,10 @@ def render_player_js(
   var trackView    = document.getElementById('track-view');
   var filterBar    = document.querySelector('.filter-bar');
   var backBtn      = document.getElementById('back-btn');
-  var headerTitle  = document.querySelector('.logo');
+  var logoHomeBtn  = document.getElementById('header-logo');
+  var headerTitle  = document.getElementById('header-title');
   var playerBar    = document.querySelector('.player-bar');
   var playAllBtn   = document.getElementById('play-all-btn');
-  var offlineBtn   = document.getElementById('offline-btn');
   var offlineLibrary = document.getElementById('offline-library');
   var offlineClose = document.getElementById('offline-close');
   var offlineSort  = document.getElementById('offline-sort');
@@ -1304,7 +1381,7 @@ def render_player_js(
   var offlineDownloadList = document.getElementById('offline-download-list');
   var offlineStorageSummary = document.getElementById('offline-storage-summary');
   var offlineStorageDetail = document.getElementById('offline-storage-detail');
-  var offlineStatusPill = document.getElementById('offline-status-pill');
+  var downloadedPill = document.getElementById('downloaded-pill');
   var originalTitle = headerTitle.textContent;
   var breadcrumb  = document.getElementById('breadcrumb');
   var viewToggle  = document.getElementById('view-toggle');
@@ -1459,6 +1536,8 @@ def render_player_js(
   }
 
   /* compute direct sub-folders and loose files at a path level */
+  var IGNORED_FOLDERS = {'#recycle': true, '@eaDir': true};
+
   function contentsAt(path) {
     var items = itemsUnder(path);
     var folderMap = {};
@@ -1471,6 +1550,7 @@ def render_player_js(
       var slash = rest.indexOf('/');
       if (slash >= 0) {
         var name = rest.substring(0, slash);
+        if (IGNORED_FOLDERS[name]) return;
         if (!folderMap[name]) folderMap[name] = 0;
         folderMap[name]++;
         if (!folderThumb[name] && it.thumbnail_url) folderThumb[name] = it.thumbnail_url;
@@ -1480,8 +1560,24 @@ def render_player_js(
       }
     });
     var folders = Object.keys(folderMap)
-      .sort(function(a, b) { return a.localeCompare(b); })
-      .map(function(n) { return { name: n, count: folderMap[n], thumbnail_url: folderThumb[n] || '', thumbnail_lg_url: folderThumbLg[n] || '' }; });
+      .sort(function(a, b) {
+        /* Favorites (#-prefixed) first, then alphabetical */
+        var aFav = a.charAt(0) === '#';
+        var bFav = b.charAt(0) === '#';
+        if (aFav !== bFav) return aFav ? -1 : 1;
+        return a.localeCompare(b);
+      })
+      .map(function(n) {
+        var isFav = n.charAt(0) === '#';
+        return {
+          name: n,
+          displayName: isFav ? n.substring(1) : n,
+          isFavorite: isFav,
+          count: folderMap[n],
+          thumbnail_url: folderThumb[n] || '',
+          thumbnail_lg_url: folderThumbLg[n] || ''
+        };
+      });
     return { folders: folders, files: files };
   }
 
@@ -1505,7 +1601,7 @@ def render_player_js(
     backBtn.style.display = currentPath ? 'inline-block' : 'none';
     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
     trackCount.textContent = 'Loading…';
-    if (currentIndex < 0) playerBar.classList.add('view-hidden');
+    if (!player.currentSrc) playerBar.classList.add('view-hidden');
     folderGrid.innerHTML = '<div class="empty-hint">' + escHtml(message || 'Loading library…') + '</div>';
     renderBreadcrumb();
     applyViewMode();
@@ -1516,7 +1612,7 @@ def render_player_js(
     trackView.classList.add('view-hidden');
     filterBar.classList.add('view-hidden');
     playAllBtn.style.display = 'none';
-    if (currentIndex < 0) playerBar.classList.add('view-hidden');
+    if (!player.currentSrc) playerBar.classList.add('view-hidden');
     trackCount.textContent = 'Library unavailable';
     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
     backBtn.style.display = currentPath ? 'inline-block' : 'none';
@@ -1593,6 +1689,19 @@ def render_player_js(
   function renderBreadcrumb() {
     if (!currentPath) { breadcrumb.classList.remove('visible'); return; }
     breadcrumb.classList.add('visible');
+    /* Special offline playlist breadcrumb */
+    if (currentPath === '__offline__') {
+      breadcrumb.innerHTML = '<a data-path="">\\u{1F3E0} Home</a>' +
+        '<span class="sep">\\u203A</span>' +
+        '<span class="current">Downloaded</span>';
+      breadcrumb.querySelectorAll('a').forEach(function(a) {
+        a.addEventListener('click', function() {
+          currentPath = a.dataset.path;
+          showFolderView();
+        });
+      });
+      return;
+    }
     var parts = currentPath.split('/');
     var h = '<a data-path="">\\u{1F3E0} Home</a>';
     for (var i = 0; i < parts.length; i++) {
@@ -1629,9 +1738,24 @@ def render_player_js(
   }
 
   /* ── folder view ── */
+  var folderFilterBar = document.getElementById('folder-filter-bar');
+  var showOrigFolders = document.getElementById('show-original-folders');
+  if (showOrigFolders) {
+    showOrigFolders.checked = localStorage.getItem('ht-show-orig-folders') === '1';
+    showOrigFolders.addEventListener('change', function() {
+      localStorage.setItem('ht-show-orig-folders', showOrigFolders.checked ? '1' : '0');
+      showFolderView();
+    });
+  }
+
   function showFolderView() {
     inPlaylist = false;
     var c = contentsAt(currentPath);
+    var isRoot = !currentPath;
+    var showOrigNames = showOrigFolders && showOrigFolders.checked;
+
+    /* show/hide folder filter bar */
+    if (folderFilterBar) folderFilterBar.style.display = (isRoot && c.folders.length > 0) ? '' : 'none';
 
     /* empty library */
     if (c.folders.length === 0 && c.files.length === 0) {
@@ -1641,7 +1765,7 @@ def render_player_js(
       playAllBtn.style.display = 'none';
       headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
       backBtn.style.display = currentPath ? 'inline-block' : 'none';
-      if (currentIndex < 0) playerBar.classList.add('view-hidden');
+      if (!player.currentSrc) playerBar.classList.add('view-hidden');
       folderGrid.innerHTML = '<div class="empty-hint">No items found. Run a sync first.</div>';
       trackCount.textContent = '';
       renderBreadcrumb();
@@ -1658,7 +1782,7 @@ def render_player_js(
     folderGrid.classList.remove('view-hidden');
     trackView.classList.add('view-hidden');
     filterBar.classList.add('view-hidden');
-    if (currentIndex < 0) playerBar.classList.add('view-hidden');
+    if (!player.currentSrc) playerBar.classList.add('view-hidden');
 
     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
     backBtn.style.display = currentPath ? 'inline-block' : 'none';
@@ -1671,12 +1795,25 @@ def render_player_js(
     trackCount.textContent = label;
 
     var html = '';
+
+    /* Offline Downloads folder card — only on root */
+    if (isRoot && OFFLINE_ENABLED) {
+      html += '<div class="folder-card offline-folder-card" id="offline-folder-card">' +
+        '<div class="folder-thumb offline-folder-icon">' + IC_DL + '</div>' +
+        '<div class="folder-name">Downloaded</div>' +
+        '<div class="folder-count" id="offline-folder-count">0 downloads</div>' +
+      '</div>';
+    }
+
     c.folders.forEach(function(f) {
       var noun = f.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
       var thumbSrc = f.thumbnail_lg_url || f.thumbnail_url || FOLDER_PLACEHOLDER;
-      html += '<div class="folder-card" data-folder="' + escHtml(f.name) + '">' +
+      var displayLabel = showOrigNames ? f.name : f.displayName;
+      var favBadge = f.isFavorite && !showOrigNames ? '<span class="fav-badge" title="Favorit">' + IC_STAR + '</span>' : '';
+      html += '<div class="folder-card' + (f.isFavorite ? ' fav-folder' : '') + '" data-folder="' + escHtml(f.name) + '">' +
+        favBadge +
         '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-        '<div class="folder-name">' + escHtml(f.name) + '</div>' +
+        '<div class="folder-name">' + escHtml(displayLabel) + '</div>' +
         '<div class="folder-count">' + f.count + ' ' + noun + '</div>' +
         '<button class="folder-play-btn" title="Play all">' + IC_FOLDER_PLAY + '</button>' +
       '</div>';
@@ -1694,7 +1831,14 @@ def render_player_js(
     });
     folderGrid.innerHTML = html;
 
-    folderGrid.querySelectorAll('.folder-card:not(.file-card)').forEach(function(card) {
+    /* Offline folder card click → open offline library */
+    var offFolderCard = document.getElementById('offline-folder-card');
+    if (offFolderCard) {
+      offFolderCard.addEventListener('click', function() { openOfflineLibrary(); });
+      updateOfflineFolderCount();
+    }
+
+    folderGrid.querySelectorAll('.folder-card:not(.file-card):not(.offline-folder-card)').forEach(function(card) {
       var pb = card.querySelector('.folder-play-btn');
       card.addEventListener('click', function(e) {
         if (e.target !== pb) navigateInto(card.dataset.folder);
@@ -1745,11 +1889,22 @@ def render_player_js(
     currentIndex = -1;
     renderBreadcrumb();
     applyFilter();
-    if (autoplay && playlistItems.length) playTrack(startIdx || 0);
+    /* Rebuild shuffle queue for the new playlist */
+    if (shuffleMode) rebuildShuffleQueue(startIdx || 0);
+    if (autoplay && playlistItems.length) {
+      /* When shuffle is on, start from shuffleQueue[0] instead of startIdx */
+      var firstIdx = shuffleMode && shuffleQueue.length ? shuffleQueue[0] : (startIdx || 0);
+      playTrack(firstIdx);
+    }
   }
 
   /* ── back ── */
   function goBack() {
+    if (currentPath === '__offline__') {
+      currentPath = '';
+      showFolderView();
+      return;
+    }
     if (inPlaylist) {
       var c = contentsAt(currentPath);
       if (c.folders.length > 0) { showFolderView(); return; }
@@ -1855,6 +2010,8 @@ def render_player_js(
 
   function renderTracks(tracks) {
     filteredItems = tracks;
+    /* Rebuild shuffle queue whenever the filtered set changes */
+    if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
     var noun = tracks.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
     trackCount.textContent = tracks.length + ' ' + noun;
     if (!tracks.length) {
@@ -2150,11 +2307,11 @@ def render_player_js(
       }
       offlineStorageDetail.textContent = parts.join(' · ');
     }
-    if (offlineStatusPill) {
-      var net = navigator.onLine ? 'Online' : 'Offline';
-      offlineStatusPill.textContent = net + (info.downloads.length ? ' · ' + info.downloads.length : '');
-      offlineStatusPill.classList.toggle('is-offline', !navigator.onLine);
+    if (downloadedPill) {
+      downloadedPill.textContent = 'Downloaded (' + info.downloads.length + ')';
+      downloadedPill.classList.toggle('has-downloads', info.downloads.length > 0);
     }
+    updateOfflineFolderCount();
   }
 
   function renderOfflineDownloadList(downloads) {
@@ -2194,27 +2351,85 @@ def render_player_js(
 
   function refreshOfflineLibrary() {
     return getAllDownloads().then(function(downloads) {
-      var sortBy = offlineSort ? offlineSort.value : 'newest';
-      var sorted = sortDownloads(downloads, sortBy);
-      renderOfflineDownloadList(sorted);
-      return estimateOfflineStorage(sorted).then(function(info) {
-        renderStorageSummary(info);
-        return info;
-      });
+      /* If currently viewing the offline playlist, refresh it */
+      if (currentPath === '__offline__') {
+        var ready = downloads.filter(function(d) { return d.status === 'ready'; });
+        var sortBy = offlineSort ? offlineSort.value : 'newest';
+        var sorted = sortDownloads(ready, sortBy);
+        var items = sorted.map(function(d) {
+          return {
+            title: d.title || 'Offline-Download',
+            artist: d.artist || '',
+            relative_path: d.relativePath || d.title || d.streamUrl,
+            stream_url: d.streamUrl,
+            thumbnail_url: d.thumbnailUrl || '',
+            media_type: d.mediaType || ITEM_NOUN,
+            rating: 0
+          };
+        });
+        playlistItems = items;
+        applyFilter();
+        estimateOfflineStorage(ready).then(function(info) {
+          if (info && info.appUsage > 0) {
+            trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +
+              ' · ' + formatBytes(info.appUsage);
+          }
+        });
+      }
+      updateOfflineFolderCount();
+      return downloads;
     });
   }
 
   function openOfflineLibrary() {
-    if (!offlineLibrary) return;
-    offlineLibrary.hidden = false;
-    document.body.classList.add('modal-open');
-    refreshOfflineLibrary();
+    getAllDownloads().then(function(downloads) {
+      var ready = downloads.filter(function(d) { return d.status === 'ready'; });
+      var sortBy = offlineSort ? offlineSort.value : 'newest';
+      var sorted = sortDownloads(ready, sortBy);
+      var items = sorted.map(function(d) {
+        return {
+          title: d.title || 'Offline-Download',
+          artist: d.artist || '',
+          relative_path: d.relativePath || d.title || d.streamUrl,
+          stream_url: d.streamUrl,
+          thumbnail_url: d.thumbnailUrl || '',
+          media_type: d.mediaType || ITEM_NOUN,
+          rating: 0
+        };
+      });
+      currentPath = '__offline__';
+      showPlaylist(items, false);
+      headerTitle.textContent = 'Downloaded';
+      backBtn.style.display = 'inline-block';
+      estimateOfflineStorage(ready).then(function(info) {
+        if (info && info.appUsage > 0) {
+          trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +
+            ' · ' + formatBytes(info.appUsage);
+        }
+      });
+    });
   }
 
   function closeOfflineLibrary() {
-    if (!offlineLibrary) return;
-    offlineLibrary.hidden = true;
-    document.body.classList.remove('modal-open');
+    if (currentPath === '__offline__') {
+      currentPath = '';
+      showFolderView();
+    }
+  }
+
+  function updateOfflineFolderCount() {
+    getAllDownloads().then(function(downloads) {
+      var ready = downloads.filter(function(d) { return d.status === 'ready'; });
+      var el = document.getElementById('offline-folder-count');
+      if (el) {
+        var n = ready.length;
+        el.textContent = n + ' download' + (n !== 1 ? 's' : '');
+      }
+      if (downloadedPill) {
+        downloadedPill.textContent = 'Downloaded (' + ready.length + ')';
+        downloadedPill.classList.toggle('has-downloads', ready.length > 0);
+      }
+    });
   }
 
   function requestPersistentStorage() {
@@ -2418,8 +2633,12 @@ def render_player_js(
   function playStoredDownload(streamUrl) {
     getDownloadByStreamUrl(streamUrl).then(function(download) {
       if (!download) return;
+      /* If currently in offline playlist, find track in filtered items */
+      if (currentPath === '__offline__') {
+        var offIdx = filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; });
+        if (offIdx >= 0) { playTrack(offIdx); return; }
+      }
       var match = findItemByStreamUrl(streamUrl);
-      closeOfflineLibrary();
       if (match) {
         playTrack(match.index >= 0 ? match.index : filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; }));
         if (match.index < 0) {
@@ -2449,7 +2668,7 @@ def render_player_js(
     });
   }
 
-  if (offlineBtn) offlineBtn.addEventListener('click', openOfflineLibrary);
+  if (downloadedPill) downloadedPill.addEventListener('click', openOfflineLibrary);
   if (offlineClose) offlineClose.addEventListener('click', closeOfflineLibrary);
   if (offlineLibrary) {
     offlineLibrary.addEventListener('click', function(e) {
@@ -2715,6 +2934,13 @@ def render_player_js(
     currentIndex = typeof index === 'number' ? index : -1;
     currentStreamUrl = t.stream_url || '';
 
+    /* Sync shuffle queue position to the chosen index */
+    if (shuffleMode && shuffleQueue.length && currentIndex >= 0) {
+      var qpos = shuffleQueue.indexOf(currentIndex);
+      if (qpos >= 0) shufflePos = qpos;
+      else { shuffleQueue.unshift(currentIndex); shufflePos = 0; }
+    }
+
     /* Reset bg audio for new track */
     stopBgSync();
     if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; bgAudio.removeAttribute('src'); }
@@ -2767,8 +2993,12 @@ def render_player_js(
     }
     btnPlay.innerHTML = IC_PAUSE;
     playerBar.classList.remove('view-hidden');
+    /* Show video player element before playback starts — the CSS sets
+       #player { display:none }, so we must override with inline block */
+    if (player.tagName === 'VIDEO') player.style.display = 'block';
     markActive();
     updateMediaSession(t);
+    renderPlayerRating(t.rating || 0);
     refreshMetadata(t);
 
     /* playback progress: track current item and try to resume */
@@ -2811,6 +3041,7 @@ def render_player_js(
         }
         if (typeof meta.rating === 'number') {
           t.rating = meta.rating;
+          renderPlayerRating(meta.rating);
         }
         if (changed) {
           updateMediaSession(t);
@@ -2841,16 +3072,263 @@ def render_player_js(
     }
   }
 
+  /* ── Shuffle logic ── */
+  /* Fisher-Yates shuffle of an array in place */
+  function fisherYates(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  /* Build a weighted shuffle queue: items with higher rating appear more often.
+     Rating 0 → weight 1, Rating 5 → weight 6. Items with no rating → weight 1. */
+  function buildWeightedQueue(items) {
+    var pool = [];
+    items.forEach(function(t, idx) {
+      var w = Math.max(1, Math.round((t.rating || 0) + 1));
+      for (var i = 0; i < w; i++) pool.push(idx);
+    });
+    return fisherYates(pool);
+  }
+
+  /* Build a simple uniform shuffle queue */
+  function buildNormalQueue(items) {
+    var indices = items.map(function(_, i) { return i; });
+    return fisherYates(indices);
+  }
+
+  /* Rebuild shuffle queue — called whenever filteredItems or shuffleMode changes */
+  function rebuildShuffleQueue(startIndex) {
+    if (!shuffleMode || !filteredItems.length) { shuffleQueue = []; shufflePos = -1; return; }
+    shuffleQueue = shuffleMode === 'weighted'
+      ? buildWeightedQueue(filteredItems)
+      : buildNormalQueue(filteredItems);
+    /* Put startIndex first so current track leads */
+    if (typeof startIndex === 'number' && startIndex >= 0) {
+      var pos = shuffleQueue.indexOf(startIndex);
+      if (pos > 0) {
+        shuffleQueue.splice(pos, 1);
+        shuffleQueue.unshift(startIndex);
+      }
+    }
+    shufflePos = 0;
+  }
+
+  /* Next index respecting shuffle state */
+  function nextIndex() {
+    if (shuffleMode && shuffleQueue.length) {
+      shufflePos = (shufflePos + 1) % shuffleQueue.length;
+      /* Replenish weighted queue when exhausted */
+      if (shufflePos === 0 && shuffleMode === 'weighted') {
+        shuffleQueue = buildWeightedQueue(filteredItems);
+      }
+      return shuffleQueue[shufflePos];
+    }
+    return currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0;
+  }
+
+  /* Prev index respecting shuffle state */
+  function prevIndex() {
+    if (shuffleMode && shuffleQueue.length) {
+      shufflePos = (shufflePos - 1 + shuffleQueue.length) % shuffleQueue.length;
+      return shuffleQueue[shufflePos];
+    }
+    return currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1;
+  }
+
+  /* Toggle shuffle mode: off → normal → weighted → off */
+  function cycleShuffle() {
+    if (!shuffleMode) {
+      shuffleMode = 'normal';
+    } else if (shuffleMode === 'normal') {
+      shuffleMode = 'weighted';
+    } else {
+      shuffleMode = false;
+    }
+    localStorage.setItem('ht-shuffle-mode', shuffleMode || '');
+    updateShuffleBtn();
+    rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
+  }
+
+  /* Activate weighted shuffle directly (long-press) */
+  function activateWeightedShuffle() {
+    shuffleMode = 'weighted';
+    localStorage.setItem('ht-shuffle-mode', 'weighted');
+    updateShuffleBtn();
+    rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
+    showToast('Gewichteter Shuffle aktiv (nach Bewertung)');
+  }
+
+  function updateShuffleBtn() {
+    if (!btnShuffle) return;
+    btnShuffle.classList.toggle('shuffle-active', !!shuffleMode);
+    btnShuffle.classList.toggle('shuffle-weighted', shuffleMode === 'weighted');
+    btnShuffle.title = shuffleMode === 'weighted'
+      ? 'Shuffle (gewichtet nach Bewertung) — Long Press für Aus'
+      : shuffleMode === 'normal'
+        ? 'Shuffle (zufällig) — Klick für gewichtet, Long Press für Aus'
+        : 'Shuffle aktivieren';
+  }
+
+  /* ── Rating stars (audio-only write, display-only for video) ── */
+  var playerRatingEl = document.getElementById('player-rating');
+
+  function renderPlayerRating(stars) {
+    if (!playerRatingEl) return;
+    var rounded = Math.round(stars || 0);
+    playerRatingEl.innerHTML = '';
+    for (var i = 1; i <= 5; i++) {
+      var btn = document.createElement('button');
+      btn.className = 'player-rating-star' + (i <= rounded ? ' active' : '');
+      btn.innerHTML = i <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
+      btn.dataset.star = i;
+      btn.title = i + (i === 1 ? ' Stern' : ' Sterne');
+      if (!RATING_WRITE_ENABLED) btn.style.pointerEvents = 'none';
+      playerRatingEl.appendChild(btn);
+    }
+    playerRatingEl.removeAttribute('hidden');
+  }
+
+  function setRating(stars) {
+    if (!RATING_WRITE_ENABLED) return;
+    var t = filteredItems[currentIndex];
+    if (!t) return;
+    var prevRating = t.rating || 0;
+    fetch(RATING_API_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: t.relative_path, rating: stars })
+    })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (!d || !d.ok) return;
+        t.rating = d.rating;
+        renderPlayerRating(d.rating);
+        /* rebuild weighted shuffle queue so new rating is reflected immediately */
+        if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
+        /* show toast with undo option if entry_id was returned */
+        if (d.entry_id) {
+          showRatingToastWithUndo(stars, prevRating, d.entry_id, t);
+        } else {
+          showToast(stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben');
+        }
+      })
+      .catch(function() {});
+  }
+
+  function showRatingToastWithUndo(stars, prevStars, entryId, t) {
+    var toast = document.getElementById('toast');
+    if (!toast) { showToast(stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben'); return; }
+    var label = stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
+    /* build toast via DOM — avoids quote-escaping in onclick attribute */
+    toast.innerHTML = '';
+    var span = document.createElement('span');
+    span.textContent = label;
+    toast.appendChild(span);
+    var undoBtn = document.createElement('button');
+    undoBtn.textContent = 'Rueckgaengig';
+    undoBtn.style.cssText = 'margin-left:0.5rem;background:none;border:1px solid #888;'
+      + 'color:inherit;border-radius:4px;padding:1px 8px;cursor:pointer;font-size:0.8rem;';
+    undoBtn.addEventListener('click', function() { undoRating(undoBtn, entryId, prevStars); });
+    toast.appendChild(undoBtn);
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(function() { toast.classList.remove('show'); }, 5000);
+  }
+
+  function undoRating(btn, entryId, prevStars) {
+    btn.disabled = true; btn.textContent = '…';
+    fetch(AUDIT_UNDO_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entry_id: entryId })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var t2 = filteredItems[currentIndex];
+        if (d.ok && t2) {
+          t2.rating = prevStars;
+          renderPlayerRating(prevStars);
+          if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
+        }
+        var toast = document.getElementById('toast');
+        if (toast) {
+          toast.innerHTML = d.ok ? 'Rückgängig gemacht ✓' : ('Fehler: ' + (d.detail || '?'));
+          clearTimeout(toast._hideTimer);
+          toast._hideTimer = setTimeout(function() { toast.classList.remove('show'); }, 2500);
+        }
+      })
+      .catch(function() { showToast('Netzwerkfehler beim Rückgängig'); });
+  }
+
+  if (playerRatingEl) {
+    /* hover preview */
+    playerRatingEl.addEventListener('mouseover', function(e) {
+      var btn = e.target.closest('.player-rating-star');
+      if (!btn || !RATING_WRITE_ENABLED) return;
+      var n = parseInt(btn.dataset.star, 10);
+      playerRatingEl.querySelectorAll('.player-rating-star').forEach(function(b, i) {
+        b.classList.toggle('hover', i < n);
+      });
+    });
+    playerRatingEl.addEventListener('mouseleave', function() {
+      playerRatingEl.querySelectorAll('.player-rating-star').forEach(function(b) {
+        b.classList.remove('hover');
+      });
+    });
+    /* click to rate */
+    playerRatingEl.addEventListener('click', function(e) {
+      var btn = e.target.closest('.player-rating-star');
+      if (!btn || !RATING_WRITE_ENABLED) return;
+      setRating(parseInt(btn.dataset.star, 10));
+    });
+  }
+
+
+  if (SHUFFLE_ENABLED) {
+    var _savedShuffle = localStorage.getItem('ht-shuffle-mode');
+    if (_savedShuffle === 'normal' || _savedShuffle === 'weighted') {
+      shuffleMode = _savedShuffle;
+    }
+    updateShuffleBtn();
+  }
+
   btnPlay.addEventListener('click', togglePlay);
-  btnPrev.addEventListener('click', function() {
-    playTrack(currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1);
-  });
-  btnNext.addEventListener('click', function() {
-    playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
-  });
+  btnPrev.addEventListener('click', function() { playTrack(prevIndex()); });
+  btnNext.addEventListener('click', function() { playTrack(nextIndex()); });
+
+  /* ── Shuffle button: click = cycle modes, long-press (600 ms) = weighted ── */
+  if (SHUFFLE_ENABLED && btnShuffle) {
+    var _shuffleLongPressed = false;
+    var _shuffleLongPressTimer = null;
+    function _startShuffleLongPress() {
+      _shuffleLongPressed = false;
+      _shuffleLongPressTimer = setTimeout(function() {
+        _shuffleLongPressed = true;
+        activateWeightedShuffle();
+      }, 600);
+    }
+    function _cancelShuffleLongPress() { clearTimeout(_shuffleLongPressTimer); }
+    btnShuffle.addEventListener('mousedown', _startShuffleLongPress);
+    btnShuffle.addEventListener('mouseup', _cancelShuffleLongPress);
+    btnShuffle.addEventListener('mouseleave', _cancelShuffleLongPress);
+    btnShuffle.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      _startShuffleLongPress();
+    }, { passive: false });
+    btnShuffle.addEventListener('touchend', _cancelShuffleLongPress);
+    btnShuffle.addEventListener('touchcancel', _cancelShuffleLongPress);
+    btnShuffle.addEventListener('click', function() {
+      if (!_shuffleLongPressed) cycleShuffle();
+      _shuffleLongPressed = false;
+    });
+  }
+
   player.addEventListener('ended', function() {
     clearProgressFor(_progressRelPath);
-    playTrack(currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0);
+    playTrack(nextIndex());
   });
   player.addEventListener('pause', function() {
     /* Don't change state when the browser auto-paused for background,
@@ -2893,6 +3371,19 @@ def render_player_js(
 
   backBtn.addEventListener('click', goBack);
   playAllBtn.addEventListener('click', playAllCurrent);
+
+  /* Logo-Icon click → always navigate back to root */
+  logoHomeBtn.addEventListener('click', function() {
+    currentPath = '';
+    showFolderView();
+  });
+
+  /* Show video player element when something starts playing */
+  if (isVideoPlayer) {
+    player.addEventListener('loadeddata', function() {
+      player.style.display = 'block';
+    });
+  }
 
   /* ── Favoriten — speichern & teilen ── */
   var _savedFavorites = {};
@@ -3003,9 +3494,9 @@ def render_player_js(
 
   /* ── init ── */
   if (!OFFLINE_ENABLED) {
-    if (offlineStatusPill) {
-      offlineStatusPill.textContent = 'Safe Mode';
-      offlineStatusPill.classList.add('is-offline');
+    if (downloadedPill) {
+      downloadedPill.textContent = 'Safe Mode';
+      downloadedPill.classList.add('is-offline');
     }
   } else if (typeof indexedDB !== 'undefined') {
     initDownloadDB().catch(function(err) {
@@ -3051,6 +3542,236 @@ def render_player_js(
 
 
 # ---------------------------------------------------------------------------
+# Audit / Control-Panel HTML
+# ---------------------------------------------------------------------------
+
+_AUDIT_PANEL_CSS = """
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --bg:#121212; --surface:#1e1e1e; --surface2:#2a2a2a; --accent:#1db954;
+        --text:#e0e0e0; --sub:#999; --danger:#cf6679; --warn:#ffd700; }
+body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       font-size:14px; min-height:100vh; }
+header { display:flex; align-items:center; gap:1rem; padding:0.75rem 1.2rem;
+         background:var(--surface); border-bottom:1px solid #333; flex-wrap:wrap; }
+header h1 { font-size:1rem; font-weight:600; flex:1; }
+.filter-bar { display:flex; gap:0.5rem; flex-wrap:wrap; padding:0.75rem 1.2rem; background:var(--surface2); border-bottom:1px solid #333; }
+.filter-bar input, .filter-bar select { background:var(--bg); color:var(--text); border:1px solid #444;
+  border-radius:6px; padding:0.35rem 0.6rem; font-size:0.82rem; flex:1; min-width:140px; }
+.filter-bar input:focus, .filter-bar select:focus { outline:none; border-color:var(--accent); }
+.filter-bar button { background:var(--accent); color:#000; border:none; border-radius:6px;
+  padding:0.35rem 0.9rem; cursor:pointer; font-weight:600; font-size:0.82rem; white-space:nowrap; }
+.filter-bar button:hover { background:#1ed760; }
+.empty { text-align:center; color:var(--sub); padding:3rem 1rem; font-size:0.9rem; }
+table { width:100%; border-collapse:collapse; }
+thead th { text-align:left; padding:0.5rem 0.75rem; font-size:0.75rem; text-transform:uppercase;
+           letter-spacing:.06em; color:var(--sub); border-bottom:1px solid #333; white-space:nowrap; }
+tbody tr { border-bottom:1px solid #262626; transition:background 0.1s; }
+tbody tr:hover { background:var(--surface2); }
+tbody tr.undone { opacity:0.45; }
+td { padding:0.5rem 0.75rem; vertical-align:middle; }
+.td-time { font-size:0.72rem; color:var(--sub); white-space:nowrap; }
+.td-action { font-size:0.72rem; font-family:monospace; background:var(--surface2);
+             padding:1px 5px; border-radius:4px; white-space:nowrap; }
+.td-path { font-size:0.78rem; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.td-path a { color:var(--accent); text-decoration:none; }
+.td-path a:hover { text-decoration:underline; }
+.td-change { font-size:0.82rem; white-space:nowrap; }
+.old-val { color:var(--sub); text-decoration:line-through; }
+.arrow { color:var(--sub); margin:0 0.25rem; }
+.new-val { color:var(--accent); font-weight:600; }
+.td-undo { white-space:nowrap; }
+.undo-btn { background:none; border:1px solid #555; color:var(--text); border-radius:5px;
+            padding:0.2rem 0.55rem; cursor:pointer; font-size:0.75rem; transition:all 0.12s; }
+.undo-btn:hover { border-color:var(--warn); color:var(--warn); }
+.undo-btn:disabled { opacity:0.35; cursor:default; }
+.undo-btn.done { border-color:#555; color:var(--sub); }
+.badge-undone { font-size:0.7rem; color:var(--sub); font-style:italic; }
+.stars { color:var(--warn); letter-spacing:-1px; }
+.rating-hist-link { font-size:0.7rem; color:var(--sub); margin-left:0.4rem; text-decoration:none; }
+.rating-hist-link:hover { color:var(--accent); }
+.toast { position:fixed; bottom:1.5rem; right:1.5rem; background:var(--surface);
+         border:1px solid #444; border-radius:8px; padding:0.7rem 1rem; font-size:0.82rem;
+         box-shadow:0 4px 20px #0008; opacity:0; transform:translateY(10px);
+         transition:all 0.25s; pointer-events:none; z-index:999; }
+.toast.show { opacity:1; transform:translateY(0); pointer-events:auto; }
+"""
+
+_AUDIT_PANEL_JS = """
+var SERVER_LABEL = document.querySelector('header h1')?.textContent || '';
+
+function fmtDate(iso) {
+  try {
+    var d = new Date(iso);
+    return d.toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'})
+      + ' ' + d.toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch(e) { return iso; }
+}
+
+function fmtStars(v) {
+  if (v == null || v === '') return '–';
+  var n = parseFloat(v);
+  if (isNaN(n)) return String(v);
+  var full = Math.round(n);
+  return '★'.repeat(full) + '☆'.repeat(5 - full) + ' (' + n.toFixed(1) + ')';
+}
+
+function fmtValue(field, v) {
+  if (field === 'rating') return '<span class="stars">' + fmtStars(v) + '</span>';
+  return v == null ? '–' : String(v);
+}
+
+function showToast(msg, duration) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, duration || 2800);
+}
+
+var _entries = [];
+
+function renderTable(entries) {
+  _entries = entries;
+  var tbody = document.querySelector('#log-table tbody');
+  if (!tbody) return;
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Noch keine Einträge.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map(function(e) {
+    var undone = !!e.undone;
+    var filename = e.path ? e.path.split('/').pop() : '–';
+    var shortPath = e.path || '–';
+    var histLink = '<a class="rating-hist-link" href="?path_filter=' + encodeURIComponent(e.path) + '" title="Nur dieses File anzeigen">📋</a>';
+    var changeHtml = fmtValue(e.field, e.old_value)
+      + '<span class="arrow">→</span>'
+      + fmtValue(e.field, e.new_value);
+    var undoHtml = undone
+      ? '<span class="badge-undone">Rückgängig ' + fmtDate(e.undone_at) + '</span>'
+      : '<button class="undo-btn" data-id="' + e.entry_id + '" onclick="doUndo(this)">Rückgängig</button>';
+    return '<tr class="' + (undone ? 'undone' : '') + '">'
+      + '<td class="td-time">' + fmtDate(e.timestamp) + '</td>'
+      + '<td class="td-action">' + (e.action || '–') + '</td>'
+      + '<td class="td-path" title="' + shortPath + '">' + filename + histLink + '</td>'
+      + '<td class="td-change">' + changeHtml + '</td>'
+      + '<td class="td-undo">' + undoHtml + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function loadEntries() {
+  var path = document.getElementById('f-path')?.value || '';
+  var action = document.getElementById('f-action')?.value || '';
+  var url = '/api/' + MEDIA_TYPE + '/audit?limit=500';
+  if (path) url += '&path_filter=' + encodeURIComponent(path);
+  if (action) url += '&action_filter=' + encodeURIComponent(action);
+  fetch(url)
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) { if (d) renderTable(d.items || []); })
+    .catch(function() { showToast('Fehler beim Laden der Einträge'); });
+}
+
+function doUndo(btn) {
+  var entryId = btn.dataset.id;
+  if (!entryId) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  fetch('/api/' + MEDIA_TYPE + '/audit/undo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entry_id: entryId })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        showToast('Rückgängig gemacht ✓');
+        loadEntries();
+      } else {
+        showToast('Fehler: ' + (d.detail || 'Unbekannt'));
+        btn.disabled = false;
+        btn.textContent = 'Rückgängig';
+      }
+    })
+    .catch(function() {
+      showToast('Netzwerkfehler');
+      btn.disabled = false;
+      btn.textContent = 'Rückgängig';
+    });
+}
+
+/* Pre-fill filters from URL params */
+var _params = new URLSearchParams(window.location.search);
+if (_params.get('path_filter')) document.getElementById('f-path').value = _params.get('path_filter');
+
+document.getElementById('f-form')?.addEventListener('submit', function(e) {
+  e.preventDefault();
+  loadEntries();
+});
+document.getElementById('f-clear')?.addEventListener('click', function() {
+  document.getElementById('f-path').value = '';
+  document.getElementById('f-action').value = '';
+  history.replaceState(null, '', window.location.pathname);
+  loadEntries();
+});
+
+loadEntries();
+"""
+
+
+def render_audit_panel_html(*, server: str, media_type: str, title: str) -> str:
+    """Return the standalone audit / control-panel HTML page.
+
+    *server*     — display label, e.g. ``"hometools audio"``
+    *media_type* — ``"audio"`` or ``"video"`` (used in JS for API calls)
+    *title*      — ``<title>`` text
+    """
+    return f"""<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(title)}</title>
+  <style>{_AUDIT_PANEL_CSS}</style>
+</head>
+<body>
+  <header>
+    <h1>🗒 Audit-Log — {html.escape(server)}</h1>
+    <a href="/" style="color:var(--sub);font-size:0.82rem;text-decoration:none;">← Zurück zur App</a>
+  </header>
+  <div class="filter-bar">
+    <form id="f-form" style="display:contents">
+      <input id="f-path" type="text" placeholder="Datei-Filter (Teilstring)…">
+      <select id="f-action">
+        <option value="">Alle Aktionen</option>
+        <option value="rating_write">rating_write</option>
+        <option value="tag_write">tag_write</option>
+        <option value="file_rename">file_rename</option>
+      </select>
+      <button type="submit">Filter anwenden</button>
+      <button id="f-clear" type="button" style="background:var(--surface2);border:1px solid #555;color:var(--text);">Zurücksetzen</button>
+    </form>
+  </div>
+  <table id="log-table">
+    <thead>
+      <tr>
+        <th>Zeitpunkt</th>
+        <th>Aktion</th>
+        <th>Datei</th>
+        <th>Änderung</th>
+        <th>Rückgängig</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="5" class="empty">Lade…</td></tr>
+    </tbody>
+  </table>
+  <div id="toast" class="toast"></div>
+  <script>var MEDIA_TYPE = '{media_type}';</script>
+  <script>{_AUDIT_PANEL_JS}</script>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
 # HTML skeleton builder
 # ---------------------------------------------------------------------------
 
@@ -3067,6 +3788,8 @@ def render_media_page(
     theme_color: str = "#1db954",
     player_bar_style: str = "classic",
     safe_mode: bool = False,
+    enable_shuffle: bool = False,
+    enable_rating_write: bool = False,
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -3077,6 +3800,9 @@ def render_media_page(
     *player_bar_style* selects the bottom player layout:
     ``classic``  — single-row with inline range slider (default).
     ``waveform`` — two-row layout with audio waveform / video thumbnails.
+
+    *enable_rating_write* adds clickable rating stars to the player bar
+    and wires up the ``POST /api/<media>/rating`` endpoint (audio only).
     """
     css = render_base_css() + extra_css
     js = render_player_js(
@@ -3085,9 +3811,14 @@ def render_media_page(
         file_emoji=emoji,
         player_bar_style=player_bar_style,
         enable_offline=not safe_mode,
+        enable_shuffle=enable_shuffle,
+        enable_rating_write=enable_rating_write,
     )
     is_video = media_element_tag == "video"
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
+    shuffle_btn_html = (
+        f'<button class="ctrl-btn shuffle-btn" id="btn-shuffle" title="Shuffle">{SVG_SHUFFLE}</button>' if enable_shuffle else ""
+    )
     sw_register = (
         ""
         if safe_mode
@@ -3099,12 +3830,9 @@ def render_media_page(
   </script>"""
     )
     mode_controls_html = (
-        '<span class="offline-status-pill is-offline" id="offline-status-pill">Safe Mode</span>'
+        '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
         if safe_mode
-        else (
-            '<button class="offline-btn" id="offline-btn" title="Offline-Bibliothek öffnen">Offline</button>'
-            '<span class="offline-status-pill" id="offline-status-pill">Online</span>'
-        )
+        else '<span class="downloaded-pill" id="downloaded-pill" title="Offline-Downloads anzeigen">Downloaded (0)</span>'
     )
     offline_library_html = (
         ""
@@ -3144,12 +3872,14 @@ def render_media_page(
       <div class="player-info">
         <div class="player-title"  id="player-title">No {item_noun} selected</div>
         <div class="player-artist" id="player-artist">&ndash;</div>
+        <div class="player-rating" id="player-rating" hidden></div>
       </div>
       <div class="player-controls">
         <button class="ctrl-btn"            id="btn-prev" title="Previous">{SVG_PREV}</button>
         <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">{SVG_PLAY}</button>
         <button class="ctrl-btn"            id="btn-next" title="Next">{SVG_NEXT}</button>
         <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>{SVG_PIP}</button>
+        {shuffle_btn_html}
       </div>
     </div>
     <div class="progress-wrap">
@@ -3172,12 +3902,14 @@ def render_media_page(
     <div class="player-info">
       <div class="player-title"  id="player-title">No {item_noun} selected</div>
       <div class="player-artist" id="player-artist">&ndash;</div>
+      <div class="player-rating" id="player-rating" hidden></div>
     </div>
     <div class="player-controls">
       <button class="ctrl-btn"            id="btn-prev" title="Previous">{SVG_PREV}</button>
       <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">{SVG_PLAY}</button>
       <button class="ctrl-btn"            id="btn-next" title="Next">{SVG_NEXT}</button>
       <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>{SVG_PIP}</button>
+      {shuffle_btn_html}
     </div>
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>
@@ -3204,15 +3936,22 @@ def render_media_page(
 <body>
   <header>
     <button class="back-btn" id="back-btn" title="Back to folders">{SVG_BACK}</button>
-    <span class="logo">{emoji} {html.escape(title)}</span>
+    <button class="logo-home-btn" id="header-logo" title="Zurück zur Startseite">{emoji}</button>
+    <span class="logo-title" id="header-title">{html.escape(title)}</span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
+    <a class="audit-btn" href="/audit" title="Änderungsverlauf">{SVG_HISTORY}</a>
     {mode_controls_html}
     <span class="track-count" id="track-count"></span>
   </header>
 
   <!-- breadcrumb navigation -->
   <nav class="breadcrumb" id="breadcrumb"></nav>
+
+  <!-- folder filter bar (visible on start screen) -->
+  <div class="folder-filter-bar" id="folder-filter-bar">
+    <label class="orig-title-toggle" title="Originale Ordnernamen anzeigen"><input type="checkbox" id="show-original-folders" /> Original</label>
+  </div>
 
   <!-- folder grid (default view) -->
   <div class="folder-grid" id="folder-grid"></div>

@@ -193,7 +193,7 @@ class TestAPIResponseParity:
         video_html = video_client.get("/").text
 
         for html in (audio_html, video_html):
-            assert 'id="offline-btn"' in html
+            assert 'id="downloaded-pill"' in html
             assert 'id="offline-library"' in html
             assert 'id="offline-download-list"' in html
 
