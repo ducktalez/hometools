@@ -1,6 +1,6 @@
-"""Unified streaming setup — configure, inspect and launch both servers.
+"""Unified streaming setup — configure, inspect and launch all three servers.
 
-Run ``hometools serve-all`` to start audio + video on separate ports.
+Run ``hometools serve-all`` to start audio + video + channel on separate ports.
 Run ``hometools streaming-config`` to see the current configuration.
 Run ``hometools setup-pycharm`` to generate PyCharm run configurations.
 """
@@ -17,6 +17,8 @@ from xml.etree.ElementTree import Element, ElementTree, SubElement, indent
 from hometools.config import (
     get_audio_library_dir,
     get_audio_port,
+    get_channel_port,
+    get_channel_schedule_file,
     get_player_bar_style,
     get_stream_host,
     get_video_library_dir,
@@ -46,14 +48,27 @@ def streaming_config_table() -> str:
     host = get_stream_host()
     audio_port = get_audio_port()
     video_port = get_video_port()
+    channel_port = get_channel_port()
     audio_dir = str(get_audio_library_dir())
     video_dir = str(get_video_library_dir())
     audio_url = f"http://{host}:{audio_port}/"
     video_url = f"http://{host}:{video_port}/"
+    channel_url = f"http://{host}:{channel_port}/"
     bar_style = get_player_bar_style()
 
     # Adapt column width to longest value
-    values = [host, f"port {audio_port}", audio_dir, f"port {video_port}", video_dir, audio_url, video_url, bar_style]
+    values = [
+        host,
+        f"port {audio_port}",
+        audio_dir,
+        f"port {video_port}",
+        video_dir,
+        f"port {channel_port}",
+        audio_url,
+        video_url,
+        channel_url,
+        bar_style,
+    ]
     w = max(len(v) for v in values) + 2
 
     def row(label: str, value: str) -> str:
@@ -76,10 +91,13 @@ def streaming_config_table() -> str:
         row("Video", f"port {video_port}"),
         row("", video_dir),
         sep,
+        row("Channel", f"port {channel_port}"),
+        sep,
         row("Player", bar_style),
         sep,
         row("URLs", audio_url),
         row("", video_url),
+        row("", channel_url),
         bot,
     ]
     return "\n".join(lines)
@@ -102,6 +120,7 @@ def _build_serve_subprocess_command(
     port: int,
     library_dir: Path,
     safe_mode: bool = False,
+    schedule_file: Path | None = None,
 ) -> list[str]:
     """Return the subprocess command used by ``serve_all``.
 
@@ -122,6 +141,8 @@ def _build_serve_subprocess_command(
     ]
     if safe_mode:
         cmd.append("--safe-mode")
+    if schedule_file is not None:
+        cmd.extend(["--schedule", str(schedule_file)])
     return cmd
 
 
@@ -131,19 +152,23 @@ def serve_all(
     host: str | None = None,
     audio_port: int | None = None,
     video_port: int | None = None,
+    channel_port: int | None = None,
     safe_mode: bool = False,
+    channel_schedule: Path | None = None,
 ) -> None:
-    """Start audio and video streaming servers on separate ports.
+    """Start audio, video and channel streaming servers on separate ports.
 
     Runs each server in its own subprocess to avoid shared-process coupling
-    between audio and video (thumbnail worker globals, index rebuild locks,
-    cold-start file scans, etc.).  Blocks until interrupted (Ctrl+C).
+    between audio, video and channel (thumbnail worker globals, index rebuild
+    locks, cold-start file scans, etc.).  Blocks until interrupted (Ctrl+C).
     """
     resolved_host = host or get_stream_host()
     resolved_audio_port = audio_port or get_audio_port()
     resolved_video_port = video_port or get_video_port()
+    resolved_channel_port = channel_port or get_channel_port()
     resolved_audio_dir = audio_dir or get_audio_library_dir()
     resolved_video_dir = video_dir or get_video_library_dir()
+    resolved_schedule = channel_schedule or get_channel_schedule_file()
 
     audio_cmd = _build_serve_subprocess_command(
         "serve-audio",
@@ -159,42 +184,58 @@ def serve_all(
         library_dir=resolved_video_dir,
         safe_mode=safe_mode,
     )
+    channel_cmd = _build_serve_subprocess_command(
+        "serve-channel",
+        host=resolved_host,
+        port=resolved_channel_port,
+        library_dir=resolved_video_dir,
+        schedule_file=resolved_schedule,
+    )
 
     logger.info("serve-all launching audio subprocess: %s", audio_cmd)
     logger.info("serve-all launching video subprocess: %s", video_cmd)
+    logger.info("serve-all launching channel subprocess: %s", channel_cmd)
 
-    _console_print(f"🎵  Audio server → http://{resolved_host}:{resolved_audio_port}/")
-    _console_print(f"🎬  Video server → http://{resolved_host}:{resolved_video_port}/")
-    _console_print("Press Ctrl+C to stop both servers.\n")
+    _console_print(f"🎵  Audio server   → http://{resolved_host}:{resolved_audio_port}/")
+    _console_print(f"🎬  Video server   → http://{resolved_host}:{resolved_video_port}/")
+    _console_print(f"📺  Channel server → http://{resolved_host}:{resolved_channel_port}/")
+    _console_print("Press Ctrl+C to stop all servers.\n")
 
     audio_proc = subprocess.Popen(audio_cmd)
     video_proc = subprocess.Popen(video_cmd)
+    channel_proc = subprocess.Popen(channel_cmd)
     logger.info(
-        "serve-all subprocesses started: audio pid=%s, video pid=%s",
+        "serve-all subprocesses started: audio pid=%s, video pid=%s, channel pid=%s",
         audio_proc.pid,
         video_proc.pid,
+        channel_proc.pid,
     )
+
+    procs = [
+        (audio_proc, "audio"),
+        (video_proc, "video"),
+        (channel_proc, "channel"),
+    ]
 
     try:
         while True:
-            audio_rc = audio_proc.poll()
-            video_rc = video_proc.poll()
-            if audio_rc is not None or video_rc is not None:
-                logger.warning(
-                    "serve-all child exit detected: audio_rc=%s, video_rc=%s",
-                    audio_rc,
-                    video_rc,
-                )
-                break
-            time.sleep(0.5)
+            for proc, name in procs:
+                rc = proc.poll()
+                if rc is not None:
+                    logger.warning("serve-all child exit detected: %s rc=%s", name, rc)
+                    break
+            else:
+                time.sleep(0.5)
+                continue
+            break
     except KeyboardInterrupt:
         logger.info("serve-all interrupted by user — stopping child processes")
     finally:
-        for proc, name in ((audio_proc, "audio"), (video_proc, "video")):
+        for proc, name in procs:
             if proc.poll() is None:
                 logger.info("Stopping %s subprocess pid=%s", name, proc.pid)
                 proc.terminate()
-        for proc, name in ((audio_proc, "audio"), (video_proc, "video")):
+        for proc, name in procs:
             try:
                 proc.wait(timeout=5)
                 logger.info("%s subprocess exited with rc=%s", name, proc.returncode)
@@ -293,7 +334,8 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
     """Write PyCharm run configurations for streaming commands.
 
     ``Serve All`` is a **Compound** configuration so that PyCharm runs
-    audio and video as separate processes — each with its own Stop button.
+    audio, video and channel as separate processes — each with its own
+    Stop button.
 
     Returns the list of created files.
     """
@@ -304,6 +346,7 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
     python_configs = [
         ("Serve Audio", "hometools", "serve-audio", "serve_audio.xml"),
         ("Serve Video", "hometools", "serve-video", "serve_video.xml"),
+        ("Serve Channel", "hometools", "serve-channel", "serve_channel.xml"),
         ("Streaming Config", "hometools", "streaming-config", "streaming_config.xml"),
     ]
 
@@ -317,12 +360,13 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
         created.append(target)
         logger.info("Created run configuration: %s", target)
 
-    # Compound configuration: starts both servers as separate processes
+    # Compound configuration: starts all three servers as separate processes
     compound_root = _make_compound_config(
         "Serve All",
         [
             ("Serve Audio", "PythonConfigurationType"),
             ("Serve Video", "PythonConfigurationType"),
+            ("Serve Channel", "PythonConfigurationType"),
         ],
     )
     compound_target = run_cfg_dir / "serve_all.xml"

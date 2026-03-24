@@ -221,7 +221,7 @@ Jeder Track in der Liste hat einen Pin-Button (`track-pin-btn`, `IC_PIN` SVG). K
 
 **Modul:** `logging_config.py`
 
-`get_log_dir()` gibt `<cache_dir>/logs/` zurück und erstellt das Verzeichnis bei Bedarf. Beide Server-Commands (`serve-audio`, `serve-video`, `serve-all`) leiten Logs an eine rotierende Datei `hometools.log` (5 MB max, 3 Backups) weiter. Logs erscheinen gleichzeitig auf stdout. Sync-Commands (`sync-audio`, `sync-video`) schreiben nur auf stdout (kein `log_file`).
+`get_log_dir()` gibt `<cache_dir>/logs/` zurück und erstellt das Verzeichnis bei Bedarf. Alle Server-Commands (`serve-audio`, `serve-video`, `serve-channel`, `serve-all`) leiten Logs an eine rotierende Datei `hometools.log` (5 MB max, 3 Backups) weiter. Logs erscheinen gleichzeitig auf stdout. Sync-Commands (`sync-audio`, `sync-video`) schreiben nur auf stdout (kein `log_file`). `serve-all` startet alle drei Server (Audio, Video, Channel) als separate Subprozesse.
 
 ## Folder-Favorites (Namens-Konvention)
 
@@ -709,4 +709,147 @@ Embedded Songtexte (ID3 USLT, M4A ©lyr, FLAC/OGG LYRICS/UNSYNCEDLYRICS) können
 - Close-Button `×` und der Lyrics-Button selbst schließen das Panel.
 - Fehler beim Fetch → Fehlermeldung im Panel, kein unbehandelter Promise-Rejection.
 
+---
 
+## Fernsehsender (Channel-Server)
+
+**Module:** `streaming/channel/schedule.py`, `streaming/channel/mixer.py`, `streaming/channel/filler.py`, `streaming/channel/server.py`, `config.py`, `cli.py`
+
+### Überblick
+
+Ein dritter FastAPI-Server (neben Audio + Video), der einen **kontinuierlichen HLS-Livestream** erzeugt. Ein YAML-Programmplan (`channel_schedule.yaml`) definiert, welche Serie zu welcher Uhrzeit läuft. Zwischen den Sendungen wird automatisch Filler-Content (Clips, Musik) eingespielt. Der Stream wird live von ffmpeg gemischt — es ist ein echter Dauerstream, keine Abfolge einzelner Videos.
+
+### Architektur
+
+```
+[schedule.yaml] → ScheduleSlot → resolve_schedule()
+                                       ↓
+                              ChannelMixer (Thread)
+                           ┌─────────┴──────────┐
+                    play_slot()            play_filler()
+                           ↓                     ↓
+                    ffmpeg -f hls         ffmpeg -f hls
+                           ↓                     ↓
+                    channel.m3u8 + *.ts (append_list)
+                           ↓
+              FastAPI /stream/channel.m3u8
+                           ↓
+              Browser <video> + hls.js
+```
+
+### Module
+
+#### `schedule.py`
+- **`ScheduleSlot`** (frozen dataclass): `start_time`, `series_folder`, `strategy` (sequential/random)
+- **`ResolvedSlot`** (frozen dataclass): konkreter Dateipfad + Start/Ende-Zeitpunkt
+- **`parse_schedule_file(path)`**: YAML → dict (via PyYAML)
+- **`get_slots_for_date(data, dt)`**: Wochentagspezifische Slots, `daily` als Fallback
+- **`resolve_next_episode(library_dir, series, state_dir, strategy)`**: Nächste Episode bestimmen, State persistieren
+- **`resolve_schedule(data, library_dir, state_dir, now, lookahead_hours)`**: Löst nur Slots im Lookahead-Fenster auf — Cutoff wird **vor** `resolve_next_episode` geprüft, damit der Episode-Zähler nicht bei jedem Zyklus verbrannt wird.
+- **`get_display_schedule(data, now)`**: Gibt das Tagesprogramm für die EPG-Anzeige zurück, **ohne** Episode-State zu ändern.  Nutzt nur `get_slots_for_date` und liefert Seriename + Uhrzeit.
+- **Episode-State**: `episode_state.json` in `.hometools-cache/channel/` — `{series: next_index}`
+
+#### `mixer.py`
+- **`ChannelMixer`**: Daemon-Thread, Endlosschleife mit schedule-resolve → play_slot/play_filler
+- Konstruktor akzeptiert `channel_name` (default `"Haus-TV"`) — wird im Testbild-Overlay angezeigt
+- **EPG** wird aus `get_display_schedule` befüllt (zeigt das vollständige Tagesprogramm), **nicht** aus `resolved` (das nur Slots im Lookahead enthält)
+- Pro Slot ein eigener ffmpeg-Prozess mit `-f hls`, `-hls_flags append_list+delete_segments`
+- Video wird auf **1280×720** normalisiert (`scale`, `pad`, `setsar=1`) für nahtlose Übergänge
+- **`-ss` Offset** bei Late-Join (Zuschauer schaltet mittendrin ein)
+- **`-t` Duration** für pünktliches Ende
+- **`_seconds_until_next_slot`**: Berechnet die Filler-Dauer bis zum nächsten Slot (max 300s), statt pauschal 300s
+- Thread-sichere State-Properties: `get_now_playing()`, `get_epg()`
+- Fallback bei fehlenden Filler-Dateien: **TV-Testbild** (SMPTE-Bars + „Sendepause"-Overlay) statt schwarzem Bildschirm
+
+#### `filler.py`
+- **`scan_filler_dir(dir)`**: Video- und Audio-Dateien im Filler-Verzeichnis
+- **`select_filler(files, gap_seconds)`**: Zufällige Auswahl für die Lücke
+- **`generate_testcard_filler_args(duration, channel_name)`**: SMPTE-Testbild mit „Sendepause"-Text, Kanalname und Uhrzeit via `smptebars` + `drawtext`-Filter.  Stille Audio-Spur via `anullsrc`.  **`-re` Flag** für Echtzeit-Kodierung (verhindert, dass ffmpeg synthetische Quellen schneller als Echtzeit kodiert und der Stream nach wenigen Sekunden abbricht).
+- **`generate_black_filler_args(duration)`**: Legacy-Fallback — schwarzes Bild + Stille via `lavfi` (deprecated, durch Testbild ersetzt).  Ebenfalls mit `-re`.
+
+#### `server.py`
+- **`create_app(library_dir, schedule_file, filler_dir)`** → FastAPI
+- **Lifespan**: startet/stoppt `ChannelMixer`, reicht `channel_name` durch
+- **Player-UI**: Live-TV-Modus — **kein Seeking/Spulen**, nur Play/Pause, Lautstärke, Vollbild.  Video startet muted (Autoplay-Policy), Klick auf Video unmuted.  Custom-Controls blenden nach 3 s aus.  LIVE-Badge zeigt Stream-Status.
+- **Endpoints**:
+
+| Endpoint | Beschreibung |
+|---|---|
+| `GET /` | HTML-Seite mit hls.js-Player + EPG (Live-TV-Controls, kein Seekbar) |
+| `GET /health` | Status inkl. `mixer_running` |
+| `GET /api/channel/now` | Aktuelles Programm (Titel, Serie, Filler-Flag) |
+| `GET /api/channel/epg` | Programmübersicht (items-Array) |
+| `GET /api/channel/schedule` | Roh-Schedule aus YAML |
+| `GET /stream/channel.m3u8` | HLS-Manifest (503 wenn Mixer noch startet) |
+| `GET /stream/{segment}.ts` | HLS-Segmente |
+
+### Schedule-Format (YAML)
+
+```yaml
+channel_name: "Haus-TV"
+default_filler: "both"
+
+fill_series:
+  - "Simpsons"
+  - "#Family Guy"
+  - "Futurama"
+
+schedule:
+  - weekday: "daily"
+    slots:
+      - time: "20:00"
+        series: "Breaking Bad"
+        strategy: "sequential"
+      - time: "21:00"
+        series: "Simpsons"
+        strategy: "random"
+
+  - weekday: "saturday"
+    slots:
+      - time: "19:00"
+        series: "Malcolm Mittendrin"
+        strategy: "sequential"
+```
+
+Spezifische Wochentag-Regeln überschreiben `daily`. Wochentage auf Deutsch oder Englisch.
+
+#### `fill_series` — Dauerprogramm
+
+Wenn kein geplanter Slot aktiv ist (z.B. nachts oder vormittags), spielt der Mixer **zufällige Episoden** aus den `fill_series`-Serien ab.  Dies erzeugt einen kontinuierlichen TV-Stream statt eines Testbilds.
+
+- Jede Iteration wählt zufällig eine Serie aus der Liste, löst eine Episode per `random`-Strategie auf und spielt sie komplett ab.
+- Wenn keine der `fill_series`-Ordner existiert oder keine Episoden enthalten, fällt der Mixer auf das SMPTE-Testbild (Sendepause) zurück.
+- `fill_series` ist optional — ohne dieses Feld zeigt der Kanal außerhalb der geplanten Slots das Testbild.
+
+### Konfiguration (`.env`)
+
+| Variable | Default | Beschreibung |
+|---|---|---|
+| `HOMETOOLS_CHANNEL_PORT` | `get_video_port() + 1` (8012) | Server-Port |
+| `HOMETOOLS_CHANNEL_SCHEDULE` | `channel_schedule.yaml` (Repo-Root) | Programmplan-Datei |
+| `HOMETOOLS_CHANNEL_FILLER_DIR` | `<video-library>/filler/` | Filler-Content-Verzeichnis |
+| `HOMETOOLS_CHANNEL_ENCODER` | `libx264` | ffmpeg Encoder (`h264_nvenc`, `h264_qsv`) |
+
+### HLS-Pipeline
+
+- Segment-Dauer: 6 Sekunden (`hls_time=6`)
+- Sliding Window: 10 Segmente (`hls_list_size=10`)
+- Flags: `delete_segments+append_list` — alte Segmente werden gelöscht, Manifest wird fortgeschrieben
+- Fortlaufende Segmentnummerierung über Prozess-Neustarts hinweg
+- Alle Videos werden auf 1280×720, 25fps, H.264/AAC normalisiert
+
+### Browser-UI
+
+Minimale dunkle HTML-Seite (kein `server_utils.py`-Integration — eigenständiges Template):
+- hls.js via CDN
+- „Jetzt läuft" mit Puls-Punkt
+- EPG-Liste (auto-refresh alle 30s)
+- Fehlerbehandlung: Netzwerk-Retry, Media-Error-Recovery
+
+### Designregeln
+
+1. **Kein Feature-Parity-Test** — der Channel-Server ist kein On-Demand-Browser sondern ein Livestream; fundamental anderes Paradigma als Audio/Video.
+2. **Kein Service Worker / PWA** — der Stream ist live, Offline-Caching ergibt keinen Sinn.
+3. **ffmpeg ist Pflicht** — ohne ffmpeg startet der Mixer nicht (graceful degradation: Health-Endpoint zeigt `mixer_running: false`).
+4. **Episode-State ist persistent** — Sequential-Modus merkt sich die letzte Episode über Server-Neustarts hinweg.
+5. **CPU-Last beachten** — kontinuierliche Transkodierung ist ressourcenintensiv; `HOMETOOLS_CHANNEL_ENCODER` ermöglicht Hardware-Encoding.

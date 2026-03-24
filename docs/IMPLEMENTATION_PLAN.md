@@ -38,7 +38,6 @@
 ## Backlog — Low / Experimental
 
 - **DJ-Extension** — Mixing, Stems (Gesang/Instrumental/Beat), BPM-Analyse, Auto-DJ-Modus
-- **„Fernsehsender"** — automatische Wiedergabe nach Plan, mit Werbe-Einspielern
 - **„MTV"-Modus** — Musikvideos + visuelle Begleitung zu Musik
 - **„Sleep Mode"** — nur Audio aus Serien, kein Bildschirm
 - **Photo-Management-Server**
@@ -48,6 +47,7 @@
 
 ## Done
 
+- **Fernsehsender (Channel-Server)** — Dritter Server auf Port 8012 (`serve-channel`), kontinuierlicher HLS-Livestream via ffmpeg; YAML-Programmplan (`channel_schedule.yaml`) mit Tages-/Wochentag-Slots; pünktlicher Serienstart mit automatischer Seek-Berechnung bei Late-Join; Filler-Content (Clips/Musik) für Lücken; Episode-State-Tracking (sequential/random); `ChannelMixer` Background-Thread; Browser-UI mit hls.js + EPG + „Jetzt läuft"; `HOMETOOLS_CHANNEL_PORT`, `HOMETOOLS_CHANNEL_SCHEDULE`, `HOMETOOLS_CHANNEL_FILLER_DIR`, `HOMETOOLS_CHANNEL_ENCODER` Env-Vars; 36 Tests
 - **Schnellfilter-Chips (Track-Liste)** — Pill-Buttons „Bewertung" (zyklisch 1–5★ Minimum) und „Favoriten" (Toggle) in der Filter-Bar; AND-Logik mit Textsuche; `localStorage`-Persistenz; `updateFilterChips()` in `server_utils.py`; CSS-Klasse `.filter-chip` + `.active`.
 - **Songtexte anzeigen (Lyrics-Panel)** — Bottom-Drawer `.lyrics-panel` im Audio-Player; lazy Fetch via `GET /api/audio/lyrics?path=`; `_lyricsCache` verhindert Mehrfachfetches; auto-Update beim Track-Wechsel wenn Panel offen; `SVG_LYRICS` / `IC_LYRICS`; `enable_lyrics=True` nur im Audio-Server; `LYRICS_ENABLED` / `LYRICS_API_PATH` JS-Variablen.
 - **`make clean`** — löscht alle generierten Cache-Dateien (Thumbnails, Indexes, Progress, Issues, Logs, Shortcuts, `video_metadata_cache.json`, `thumbnail_failures.json`) unter `.hometools-cache/` und schont dabei `audit/` explizit. Python-basiert, Windows-kompatibel. Hinweis im `help`-Target und `get_cache_dir()`-Docstring.
