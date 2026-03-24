@@ -233,11 +233,6 @@ def is_audiobook_folder(folder_name: str, audiobook_dirs: list[str] | None = Non
 # ---------------------------------------------------------------------------
 
 
-def get_recent_items_limit() -> int:
-    """Return max number of recently played items to surface in the UI."""
-    return _get_int_from_env("HOMETOOLS_RECENT_LIMIT", 10)
-
-
 def get_recent_video_limit() -> int:
     """Return max number of recently played video items shown on the start screen.
 
