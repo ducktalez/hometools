@@ -1,0 +1,35 @@
+# hometools Channel Schedule — Programmplan
+#
+# Defines the TV channel program.  Each weekday can have its own
+# schedule; "daily" is the fallback for days without a specific rule.
+#
+# Slots define when a series episode starts.  Episodes are selected
+# sequentially (or randomly) from the series folder inside the video library.
+# Gaps between slots are filled with clips from the filler directory.
+#
+# fill_series: when no scheduled slot is active, random episodes from
+# these series play continuously (like a real channel's filler programming).
+# Without fill_series, a test card (Sendepause) is shown instead.
+#
+# Series folder names must match subdirectory names in HOMETOOLS_VIDEO_LIBRARY_DIR.
+
+channel_name: "Haus-TV"
+default_filler: "both"   # "music", "clips", or "both"
+
+fill_series:
+  - "Simpsons"
+  - "#Family Guy"
+  - "Futurama"
+  - "Malcolm Mittendrin"
+
+schedule:
+  - weekday: "daily"
+    slots:
+      - time: "20:00"
+        series: "Breaking Bad"
+        strategy: "sequential"
+
+      - time: "21:00"
+        series: "Simpsons"
+        strategy: "random"
+

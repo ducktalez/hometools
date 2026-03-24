@@ -12,6 +12,7 @@ from hometools.config import (
     get_audio_library_dir,
     get_audio_nas_dir,
     get_audio_port,
+    get_channel_port,
     get_stream_host,
     get_stream_safe_mode,
     get_video_library_dir,
@@ -56,12 +57,22 @@ def build_parser() -> argparse.ArgumentParser:
     _add_sync_parser(subparsers, "sync-video", "Copy new/changed video files from NAS to library.", run_sync_video)
 
     # Combined streaming
-    serve_all = subparsers.add_parser("serve-all", help="Start audio + video servers on separate ports.")
+    serve_all = subparsers.add_parser("serve-all", help="Start audio + video + channel servers on separate ports.")
     serve_all.add_argument("--host", default=None, help="Bind host.")
     serve_all.add_argument("--audio-port", type=int, default=None, help="Audio server port.")
     serve_all.add_argument("--video-port", type=int, default=None, help="Video server port.")
-    serve_all.add_argument("--safe-mode", action="store_true", help="Run both servers in minimal no-cache safe mode.")
+    serve_all.add_argument("--channel-port", type=int, default=None, help="Channel server port.")
+    serve_all.add_argument("--channel-schedule", type=Path, default=None, help="Channel schedule YAML file.")
+    serve_all.add_argument("--safe-mode", action="store_true", help="Run all servers in minimal no-cache safe mode.")
     serve_all.set_defaults(func=run_serve_all)
+
+    # Channel (TV) server
+    serve_channel = subparsers.add_parser("serve-channel", help="Start the channel (TV) live streaming server.")
+    serve_channel.add_argument("--library-dir", type=Path, default=None, help="Video library directory.")
+    serve_channel.add_argument("--host", default=None, help="Bind host.")
+    serve_channel.add_argument("--port", type=int, default=None, help="Bind port.")
+    serve_channel.add_argument("--schedule", type=Path, default=None, help="Channel schedule YAML file.")
+    serve_channel.set_defaults(func=run_serve_channel)
 
     stream_cfg = subparsers.add_parser("streaming-config", help="Show current streaming configuration.")
     stream_cfg.set_defaults(func=run_streaming_config)
@@ -373,7 +384,7 @@ def run_sync_video(args: argparse.Namespace) -> int:
 
 
 def run_serve_all(args: argparse.Namespace) -> int:
-    """Start both streaming servers on separate ports."""
+    """Start all three streaming servers on separate ports."""
     from hometools.streaming.setup import serve_all
 
     setup_logging(log_file="auto", log_name="serve-all")
@@ -381,8 +392,32 @@ def run_serve_all(args: argparse.Namespace) -> int:
         host=args.host or get_stream_host(),
         audio_port=args.audio_port or get_audio_port(),
         video_port=args.video_port or get_video_port(),
+        channel_port=getattr(args, "channel_port", None) or get_channel_port(),
         safe_mode=args.safe_mode or get_stream_safe_mode(),
+        channel_schedule=getattr(args, "channel_schedule", None),
     )
+    return 0
+
+
+def run_serve_channel(args: argparse.Namespace) -> int:
+    """Start the channel (TV) live streaming server."""
+    import uvicorn
+
+    from hometools.config import get_channel_schedule_file
+    from hometools.streaming.channel.server import create_app
+
+    setup_logging(log_file="auto", log_name="channel")
+    host = args.host or get_stream_host()
+    port = args.port or get_channel_port()
+    library = args.library_dir or get_video_library_dir()
+    schedule = args.schedule or get_channel_schedule_file()
+
+    _console_print(f"\n  📺  Channel server → http://{host}:{port}/")
+    _console_print(f"      Schedule: {schedule}")
+    _console_print(f"      Library:  {library}\n")
+
+    app = create_app(library, schedule_file=schedule)
+    uvicorn.run(app, host=host, port=port)
     return 0
 
 

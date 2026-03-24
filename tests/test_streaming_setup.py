@@ -25,7 +25,7 @@ def test_streaming_config_table_contains_urls(monkeypatch):
 def test_generate_pycharm_configs_creates_files(tmp_path):
     created = generate_pycharm_configs(tmp_path)
 
-    assert len(created) == 4
+    assert len(created) == 5
     for p in created:
         assert p.exists()
 
@@ -33,17 +33,19 @@ def test_generate_pycharm_configs_creates_files(tmp_path):
     assert "serve_all.xml" in names
     assert "serve_audio.xml" in names
     assert "serve_video.xml" in names
+    assert "serve_channel.xml" in names
 
     # Individual configs are Python run configurations
     audio_content = (tmp_path / ".idea" / "runConfigurations" / "serve_audio.xml").read_text(encoding="utf-8")
     assert "PythonConfigurationType" in audio_content
     assert "hometools" in audio_content
 
-    # Serve All is a Compound config referencing both servers
+    # Serve All is a Compound config referencing all three servers
     compound_content = (tmp_path / ".idea" / "runConfigurations" / "serve_all.xml").read_text(encoding="utf-8")
     assert "CompoundRunConfigurationType" in compound_content
     assert "Serve Audio" in compound_content
     assert "Serve Video" in compound_content
+    assert "Serve Channel" in compound_content
 
 
 def test_generate_pycharm_configs_idempotent(tmp_path):
