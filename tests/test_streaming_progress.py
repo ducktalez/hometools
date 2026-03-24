@@ -7,6 +7,7 @@ import threading
 
 from hometools.streaming.core.progress import (
     delete_progress,
+    get_recent_progress,
     load_all_progress,
     load_progress,
     save_progress,
@@ -126,3 +127,219 @@ class TestRobustness:
         # Save should still work (overwrite corrupted file)
         assert save_progress(tmp_path, "a.mp3", 10.0, 60.0)
         assert load_progress(tmp_path, "a.mp3") is not None
+
+
+# ---------------------------------------------------------------------------
+# get_recent_progress
+# ---------------------------------------------------------------------------
+
+
+class TestGetRecentProgress:
+    def test_empty_returns_empty_list(self, tmp_path):
+        assert get_recent_progress(tmp_path) == []
+
+    def test_returns_entries_newest_first(self, tmp_path):
+        import time
+
+        save_progress(tmp_path, "old.mp3", 10.0, 100.0)
+        time.sleep(0.01)
+        save_progress(tmp_path, "new.mp3", 20.0, 200.0)
+
+        recent = get_recent_progress(tmp_path)
+        assert len(recent) == 2
+        assert recent[0]["relative_path"] == "new.mp3"
+        assert recent[1]["relative_path"] == "old.mp3"
+
+    def test_limit_is_respected(self, tmp_path):
+        for i in range(10):
+            save_progress(tmp_path, f"track{i}.mp3", float(i), 100.0)
+        recent = get_recent_progress(tmp_path, limit=3)
+        assert len(recent) == 3
+
+    def test_entry_has_relative_path(self, tmp_path):
+        save_progress(tmp_path, "Artist/Song.mp3", 5.0, 180.0)
+        recent = get_recent_progress(tmp_path)
+        assert recent[0]["relative_path"] == "Artist/Song.mp3"
+        assert recent[0]["position_seconds"] == 5.0
+        assert recent[0]["duration"] == 180.0
+
+    def test_progress_pct_not_added_by_module(self, tmp_path):
+        """get_recent_progress returns raw entries; progress_pct is computed by the API layer."""
+        save_progress(tmp_path, "track.mp3", 50.0, 200.0)
+        recent = get_recent_progress(tmp_path)
+        # progress_pct is NOT a stored field — it's computed by the endpoint
+        assert "progress_pct" not in recent[0]
+
+
+# ---------------------------------------------------------------------------
+# /api/audio/recent and /api/video/recent endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_audio_recent_endpoint_exists():
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app())
+    resp = client.get("/api/audio/recent")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "items" in data
+    assert isinstance(data["items"], list)
+
+
+def test_audio_recent_default_empty(tmp_path):
+    """With no progress entries, /api/audio/recent returns an empty list."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app())
+    resp = client.get("/api/audio/recent?limit=5")
+    assert resp.status_code == 200
+    # No tracks played yet → empty (catalog items won't match ghost progress)
+    assert isinstance(resp.json()["items"], list)
+
+
+def test_audio_recent_limit_param():
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app())
+    # limit param accepted without error
+    assert client.get("/api/audio/recent?limit=1").status_code == 200
+    assert client.get("/api/audio/recent?limit=50").status_code == 200
+
+
+def test_video_recent_endpoint_exists():
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    client = TestClient(create_app())
+    resp = client.get("/api/video/recent")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "items" in data
+
+
+# ---------------------------------------------------------------------------
+# Recently played UI section in rendered HTML
+# ---------------------------------------------------------------------------
+
+
+def test_recent_section_in_audio_page():
+    from hometools.streaming.core.server_utils import render_media_page
+
+    page = render_media_page(
+        title="Test",
+        emoji="🎵",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+    )
+    assert 'id="recent-section"' in page
+    assert 'class="recent-scroll"' in page
+    assert "Zuletzt gespielt" in page
+
+
+def test_recent_section_starts_hidden():
+    from hometools.streaming.core.server_utils import render_media_page
+
+    page = render_media_page(
+        title="Test",
+        emoji="🎵",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+    )
+    assert 'id="recent-section" hidden' in page
+
+
+def test_recent_api_path_injected_in_js():
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    assert "RECENT_API_PATH = '/api/audio/recent'" in js
+
+
+def test_recent_api_path_video():
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/video/items", item_noun="video")
+    assert "RECENT_API_PATH = '/api/video/recent'" in js
+
+
+def test_audiobook_dirs_injected_in_js():
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    assert "AUDIOBOOK_DIRS = " in js
+    # Should be a JSON array
+    import re
+
+    m = re.search(r"AUDIOBOOK_DIRS = (\[.*?\]);", js)
+    assert m, "AUDIOBOOK_DIRS must be a JS array literal"
+    import json
+
+    dirs = json.loads(m.group(1))
+    assert isinstance(dirs, list)
+    assert len(dirs) > 0
+
+
+def test_load_recently_played_js_function():
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    assert "loadRecentlyPlayed" in js
+    assert "RECENT_API_PATH" in js
+    assert "recent-card" in js
+
+
+# ---------------------------------------------------------------------------
+# Audiobook config
+# ---------------------------------------------------------------------------
+
+
+def test_get_audiobook_dirs_returns_list():
+    from hometools.config import get_audiobook_dirs
+
+    dirs = get_audiobook_dirs()
+    assert isinstance(dirs, list)
+    assert len(dirs) > 0
+
+
+def test_is_audiobook_folder_matches():
+    from hometools.config import is_audiobook_folder
+
+    # ASCII test cases
+    assert is_audiobook_folder("Audiobooks")
+    assert is_audiobook_folder("Audiobook - Krimi")
+    assert is_audiobook_folder("Spoken Word Collection")
+    assert not is_audiobook_folder("Musik")
+    assert not is_audiobook_folder("Podcast")
+
+    # Umlaut cases using Unicode escapes (Windows-encoding-safe in source)
+    # H\u00f6rbuch = Hörbuch (u), H\u00f6rb\u00fccher = Hörbücher (ü — different prefix!)
+    assert is_audiobook_folder("H\u00f6rbuch - Stephen King")  # matches Hörbuch prefix
+    assert is_audiobook_folder("H\u00f6rb\u00fccher")  # matches Hörbücher prefix (ü≠u)
+    assert is_audiobook_folder("H\u00f6rspiel - Krimi")  # matches Hörspiel prefix
+    # Explicit dirs bypass env entirely
+    assert is_audiobook_folder("MyBooks", ["MyBooks", "Audio"])
+    assert not is_audiobook_folder("MyBooks", ["Audio"])
+
+
+def test_feature_parity_recent_endpoints():
+    """Both audio and video servers must expose /api/<media>/recent."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app as audio_app
+    from hometools.streaming.video.server import create_app as video_app
+
+    for app_factory, path in [(audio_app, "/api/audio/recent"), (video_app, "/api/video/recent")]:
+        client = TestClient(app_factory())
+        resp = client.get(path)
+        assert resp.status_code == 200, f"{path} returned {resp.status_code}"
+        assert "items" in resp.json()

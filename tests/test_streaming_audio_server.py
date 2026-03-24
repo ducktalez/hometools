@@ -309,3 +309,67 @@ def test_audio_progress_not_found(tmp_path):
     resp = client.get("/api/audio/progress", params={"path": "unknown.mp3"})
     assert resp.status_code == 200
     assert resp.json()["items"] == []
+
+
+# ---------------------------------------------------------------------------
+# metadata edit endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_metadata_edit_missing_path_returns_400(tmp_path):
+    """POST /api/audio/metadata/edit without path → 400."""
+    client = TestClient(create_app(tmp_path))
+    resp = client.post("/api/audio/metadata/edit", json={"title": "T"})
+    assert resp.status_code == 400
+
+
+def test_metadata_edit_nonexistent_file_returns_404(tmp_path):
+    """POST /api/audio/metadata/edit for a missing file → 404."""
+    client = TestClient(create_app(tmp_path))
+    resp = client.post("/api/audio/metadata/edit", json={"path": "ghost.mp3", "title": "T"})
+    assert resp.status_code == 404
+
+
+def test_metadata_edit_writes_tags(tmp_path):
+    """POST /api/audio/metadata/edit calls write_track_tags and returns ok=True."""
+    audio = tmp_path / "Artist - Song.mp3"
+    audio.write_bytes(b"ID3" + b"\x00" * 32)
+
+    from unittest.mock import patch
+
+    with (
+        patch("hometools.audio.metadata.write_track_tags", return_value=True) as mock_write,
+        patch("hometools.audio.metadata.audiofile_assume_artist_title", return_value=("Artist", "Song")),
+    ):
+        client = TestClient(create_app(tmp_path))
+        resp = client.post(
+            "/api/audio/metadata/edit",
+            json={"path": "Artist - Song.mp3", "title": "New Title", "artist": "New Artist"},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    mock_write.assert_called_once()
+
+
+def test_metadata_edit_render_includes_edit_button(tmp_path):
+    """The rendered audio page must contain the edit modal markup."""
+    from hometools.streaming.audio.server import render_audio_index_html
+
+    html = render_audio_index_html([])
+    assert "edit-modal-backdrop" in html
+    assert "edit-modal-title-input" in html
+    assert "METADATA_EDIT_ENABLED" in html
+
+
+def test_audio_recent_always_returns_empty(tmp_path):
+    """Audio recent endpoint always returns empty — no 'recently played' section for audio.
+    Audiobooks resume via loadAndSeekProgress on every playItem call instead.
+    """
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/api/audio/recent")
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []

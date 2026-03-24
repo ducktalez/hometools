@@ -224,3 +224,86 @@ def test_video_thumb_sprite_serves_image(tmp_path, monkeypatch):
     resp = client.get("/thumb", params={"path": "clip.mp4", "size": "sprite"})
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/jpeg"
+
+
+# ---------------------------------------------------------------------------
+# Recent endpoint filtering
+# ---------------------------------------------------------------------------
+
+
+def test_video_recent_returns_empty_when_no_progress(tmp_path):
+    """GET /api/video/recent returns empty items list when no progress saved."""
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/api/video/recent")
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+def test_video_recent_filters_by_age(tmp_path, monkeypatch):
+    """Items older than HOMETOOLS_RECENT_MAX_AGE_DAYS are excluded."""
+    import time
+
+    from hometools.streaming.core.models import MediaItem
+
+    old_ts = time.time() - 30 * 86400  # 30 days ago
+
+    fake_item = MediaItem(
+        relative_path="Series/S01E01.mp4",
+        title="Ep 1",
+        artist="Series",
+        stream_url="/video/stream?path=Series%2FS01E01.mp4",
+        media_type="video",
+    )
+    monkeypatch.setenv("HOMETOOLS_RECENT_MAX_AGE_DAYS", "14")
+
+    with (
+        patch(
+            "hometools.streaming.core.progress.get_recent_progress",
+            return_value=[{"relative_path": "Series/S01E01.mp4", "position_seconds": 600, "duration": 1200, "timestamp": old_ts}],
+        ),
+        patch(
+            "hometools.streaming.video.server._video_index_cache.get_cached",
+            return_value=[fake_item],
+        ),
+    ):
+        client = TestClient(create_app(tmp_path))
+        resp = client.get("/api/video/recent")
+
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+def test_video_recent_deduplicates_by_series(tmp_path, monkeypatch):
+    """Only the most recent episode per series is kept."""
+    import time
+
+    from hometools.streaming.core.models import MediaItem
+
+    now = time.time()
+    monkeypatch.setenv("HOMETOOLS_RECENT_MAX_AGE_DAYS", "30")
+    monkeypatch.setenv("HOMETOOLS_RECENT_VIDEO_LIMIT", "10")
+    monkeypatch.setenv("HOMETOOLS_RECENT_MAX_PER_SERIES", "1")
+
+    ep1 = MediaItem(relative_path="Avatar/S01E01.mp4", title="Ep1", artist="Avatar", stream_url="u1", media_type="video")
+    ep2 = MediaItem(relative_path="Avatar/S01E02.mp4", title="Ep2", artist="Avatar", stream_url="u2", media_type="video")
+
+    with (
+        patch(
+            "hometools.streaming.core.progress.get_recent_progress",
+            return_value=[
+                {"relative_path": "Avatar/S01E02.mp4", "position_seconds": 100, "duration": 1200, "timestamp": now - 60},
+                {"relative_path": "Avatar/S01E01.mp4", "position_seconds": 1200, "duration": 1200, "timestamp": now - 3600},
+            ],
+        ),
+        patch(
+            "hometools.streaming.video.server._video_index_cache.get_cached",
+            return_value=[ep1, ep2],
+        ),
+    ):
+        client = TestClient(create_app(tmp_path))
+        resp = client.get("/api/video/recent")
+
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["relative_path"] == "Avatar/S01E02.mp4"

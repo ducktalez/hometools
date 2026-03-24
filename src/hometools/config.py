@@ -154,6 +154,13 @@ def get_cache_dir() -> Path:
     never touched.  Set ``HOMETOOLS_CACHE_DIR`` to override.
 
     Default: ``.hometools-cache/`` in the repository root (next to ``src/``).
+
+    .. note:: **Audit logs** (``audit/audit.jsonl``) currently live inside
+        this cache directory for historical reasons.  This is intentionally
+        preserved by ``make clean`` (which deletes everything *except*
+        ``audit/``).  Long-term, the audit log should move to its own
+        directory (e.g. ``HOMETOOLS_AUDIT_DIR``) so it is clearly separated
+        from re-generatable cache data and is never accidentally deleted.
     """
     _repo_root = Path(__file__).resolve().parent.parent.parent
     return _get_path_from_env(
@@ -185,18 +192,75 @@ def get_player_bar_style() -> str:
 
 
 def get_video_pwa_display_mode() -> str:
-    """Return the video PWA display mode: ``'standalone'`` or ``'minimal-ui'``.
-
-    ``standalone`` — app-like experience with native controls blocked.
-                     Best for: Fullscreen button visible, clean interface.
-                     Drawback: Background playback & PiP blocked by iOS.
-    ``minimal-ui`` — minimal browser chrome, all APIs available.
-                     Best for: Background audio playback, PiP, fullscreen APIs.
-                     Drawback: "Add to Home Screen" creates web link, not PWA.
-
-    Set via environment variable ``HOMETOOLS_VIDEO_PWA_DISPLAY`` (default: "minimal-ui").
-    """
+    """Return the video PWA display mode: ``'standalone'`` or ``'minimal-ui'``."""
     raw = os.environ.get("HOMETOOLS_VIDEO_PWA_DISPLAY", "minimal-ui").strip().lower()
     if raw not in ("standalone", "minimal-ui"):
         return "minimal-ui"
     return raw
+
+
+# ---------------------------------------------------------------------------
+# Audiobook detection
+# ---------------------------------------------------------------------------
+
+
+def get_audiobook_dirs() -> list[str]:
+    """Return folder-name prefixes that identify audiobook directories.
+
+    Matching is case-insensitive prefix match on the folder name.
+    Configure via ``HOMETOOLS_AUDIOBOOK_DIRS`` as a comma-separated list.
+
+    Default prefixes: Hörbuch, Hörspiel, Audiobook, Spoken Word
+    (stored as Unicode escapes to avoid Windows source-encoding issues)
+    """
+    # \u00f6 = ö, \u00fc = ü, \u00e4 = ä — ASCII-safe literals for Windows compatibility
+    # "Hörbücher" (plural, ü≠u) must be listed separately from "Hörbuch"
+    default = "H\u00f6rbuch,H\u00f6rb\u00fccher,H\u00f6rspiel,Audiobook,Spoken Word"
+    raw = os.environ.get("HOMETOOLS_AUDIOBOOK_DIRS", default)
+    return [s.strip() for s in raw.split(",") if s.strip()]
+
+
+def is_audiobook_folder(folder_name: str, audiobook_dirs: list[str] | None = None) -> bool:
+    """Return *True* if *folder_name* matches any configured audiobook prefix."""
+    if audiobook_dirs is None:
+        audiobook_dirs = get_audiobook_dirs()
+    name_lower = folder_name.lower()
+    return any(name_lower.startswith(d.lower()) for d in audiobook_dirs)
+
+
+# ---------------------------------------------------------------------------
+# Recently played
+# ---------------------------------------------------------------------------
+
+
+def get_recent_items_limit() -> int:
+    """Return max number of recently played items to surface in the UI."""
+    return _get_int_from_env("HOMETOOLS_RECENT_LIMIT", 10)
+
+
+def get_recent_video_limit() -> int:
+    """Return max number of recently played video items shown on the start screen.
+
+    Default 3 — only the most recently seen episode per series is kept,
+    so this is an episode count, not a series count.
+    Set ``HOMETOOLS_RECENT_VIDEO_LIMIT`` to override.
+    """
+    return _get_int_from_env("HOMETOOLS_RECENT_VIDEO_LIMIT", 3)
+
+
+def get_recent_max_age_days() -> int:
+    """Return max age in days for recently played video items.
+
+    Items older than this threshold are excluded from the start-screen
+    suggestions.  Set ``HOMETOOLS_RECENT_MAX_AGE_DAYS`` to override.
+    """
+    return _get_int_from_env("HOMETOOLS_RECENT_MAX_AGE_DAYS", 14)
+
+
+def get_recent_max_per_series() -> int:
+    """Return max number of recently played episodes per series shown.
+
+    Default 1 — only the most-recently-seen episode of each series is kept.
+    Set ``HOMETOOLS_RECENT_MAX_PER_SERIES`` to override.
+    """
+    return _get_int_from_env("HOMETOOLS_RECENT_MAX_PER_SERIES", 1)

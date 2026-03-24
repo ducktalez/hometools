@@ -99,6 +99,17 @@ Das Shadow-Cache-Verzeichnis (Default: `.hometools-cache/` im Repo-Root, übersc
 
 Der vollständige Index wird nach einem erfolgreichen Rebuild atomar als JSON-Snapshot gespeichert (`_save_snapshot`). **Es gibt kein inkrementelles Speichern während des Builds** — wird der Server während der Indizierung beendet, geht der laufende Scan-Fortschritt verloren. Der **letzte erfolgreiche Snapshot bleibt erhalten** und wird beim nächsten Start als Fallback geladen, sodass der Server sofort funktionsfähig ist (ohne Scan-Wartezeit).
 
+### `make clean`
+
+`make clean` löscht alle **regenerierbaren** Artefakte unter `.hometools-cache/`:
+
+- Ordner: `audio/`, `video/`, `indexes/`, `issues/`, `logs/`, `progress/`, `shortcuts/`
+- Dateien: `video_metadata_cache.json`, `thumbnail_failures.json`
+
+**Ausgenommen:** `audit/` — das Audit-Log ist kein Cache, sondern ein dauerhaftes Änderungsprotokoll und darf nicht mit Cache-Inhalten gleichgesetzt werden.
+
+> ⚠️ **Technische Schuld:** `audit/audit.jsonl` liegt aus historischen Gründen unter `HOMETOOLS_CACHE_DIR`. Das ist irreführend, da der Cache-Ordner wegwerfbar ist. Langfristig sollte ein eigenes `HOMETOOLS_AUDIT_DIR` eingeführt werden, damit das Protokoll klar vom regenerierbaren Cache getrennt ist (→ Backlog: *Infrastruktur*). Bis dahin schont `make clean` `audit/` explizit, und `get_cache_dir()` dokumentiert dies per Docstring-Note.
+
 ### Thumbnails
 
 Zwei Größen pro Mediendatei:
@@ -351,7 +362,65 @@ setRating(stars)             ← POST → API → Toast + rebuild weighted shuff
 - Nach erfolgreichem Schreiben: `t.rating` im lokalen JS-State aktualisiert, Shuffle-Queue neu aufgebaut (falls `weighted`-Modus aktiv).
 - `set_popm_rating()` prüft nicht die Dateiendung — Caller (Endpoint) muss sicherstellen, dass nur MP3-Dateien übergeben werden (POPM ist ID3-spezifisch).
 
-## Shuffle-Modus (Audio-only)
+## Zuletzt gespielt / Continue Watching
+
+**Module:** `streaming/core/progress.py`, `streaming/audio/server.py`, `streaming/video/server.py`, `streaming/core/server_utils.py`, `config.py`
+
+### Übersicht
+
+Beim Öffnen der App auf der Startseite (Root-Ordneransicht) wird eine horizontale Scroll-Leiste „Zuletzt gespielt" eingeblendet, die die zuletzt abgespielten Titel/Videos zeigt — mit Fortschrittsbalken. Klick startet direkt an der gespeicherten Position.
+
+### Backend
+
+**`get_recent_progress(cache_dir, limit)`** in `progress.py`:
+- Liest alle Einträge aus `playback_progress.json`
+- Sortiert nach `timestamp` absteigend (neueste zuerst)
+- Gibt `[{relative_path, position_seconds, duration, timestamp, ...}]` zurück
+
+**`GET /api/<media>/recent?limit=10`** (Audio + Video):
+- Ruft `get_recent_progress()` auf
+- Mergt mit Katalog via `get_cached()` (non-blocking) — Einträge ohne Katalog-Match werden übersprungen
+- Berechnet `progress_pct = position_seconds / duration * 100`
+- Gibt `{items: [{...MediaItem-Felder, position_seconds, duration, progress_pct, timestamp}]}` zurück
+
+### Frontend
+
+**`RECENT_API_PATH`** — JS-Variable injiziert aus `api_path` (z.B. `'/api/audio/recent'`)
+
+**`loadRecentlyPlayed()`** — wird in `showFolderView()` nur auf der Root-Ebene (`isRoot && allItems.length > 0`) aufgerufen:
+- Fetcht `RECENT_API_PATH?limit=10`
+- Rendert Karten mit Thumbnail, Titel, Artist, Fortschrittsbalken
+- Klick → navigiert in den Ordner des Tracks, startet `playItem()`, seekt zur gespeicherten Position via `canplay`-Event
+
+**HTML:** `<div id="recent-section" hidden>` vor dem `folder-grid`, wird von JS sichtbar gemacht wenn Einträge vorhanden
+
+**Design-Regeln:**
+- Sektion startet `hidden` — erscheint erst wenn JS Daten geladen hat
+- Wird bei Sub-Ordner-Navigation ausgeblendet
+- Kein Blocking: `get_cached()` gibt leere Liste zurück wenn noch kein Snapshot, dann bleibt die Sektion leer/hidden
+
+## Hörbuch-Erkennung
+
+**Module:** `config.py` (`get_audiobook_dirs`, `is_audiobook_folder`), `streaming/core/server_utils.py`
+
+### Übersicht
+
+Ordner die als Hörbücher erkannt werden, erhalten in der Ordner-Grid-Ansicht eine blaue Einfärbung (`.audiobook-folder`).
+
+### Erkennung
+
+`is_audiobook_folder(folder_name, dirs)` — case-insensitiver Präfix-Match:
+- Default-Präfixe: `Hörbuch`, `Hörbücher` (ü≠u → separater Eintrag!), `Hörspiel`, `Audiobook`, `Spoken Word`
+- Override via `HOMETOOLS_AUDIOBOOK_DIRS` (kommagetrennt)
+- **Wichtig:** Umlauts im Quellcode als Unicode-Escapes (`\u00f6`, `\u00fc`) für Windows-Kompatibilität
+
+**`AUDIOBOOK_DIRS`** — JS-Array injiziert via `__import__("hometools.config"...)` bei `render_player_js()`-Aufruf, wird in `showFolderView()` per `AUDIOBOOK_DIRS.some(...)` geprüft.
+
+### CSS
+
+`.audiobook-folder .folder-name { color: #a0c4ff; }` — blaue Schriftfarbe als subtiler Hinweis
+
+
 **Module:** `streaming/core/server_utils.py` (JS + HTML + CSS)  
 **Aktiviert von:** `streaming/audio/server.py` (über `enable_shuffle=True` in `render_media_page`)
 
@@ -452,3 +521,192 @@ Der Header besteht aus vier Elementen:
 - `player.currentSrc !== ''` → Quelle geladen (auch wenn pausiert) → Player-Bar sichtbar ✓
 
 **Design-Regel:** Niemals `currentIndex` zur Bestimmung der Player-Sichtbarkeit verwenden — `currentIndex` ist playlist-lokal und wird bei Navigation (`showPlaylist()`) zurückgesetzt. `player.currentSrc` spiegelt den tatsächlichen Lade-Zustand des Media-Elements wider.
+
+## Metadaten-Bearbeitung (Inline-Edit-Modal, Audio-only)
+
+**Module:** `streaming/core/server_utils.py` (UI + JS), `streaming/audio/server.py` (Endpoint), `audio/metadata.py` (`write_track_tags`), `streaming/core/audit_log.py` (`log_tag_write`)
+
+### Überblick
+
+Nutzer können Titel, Interpret und Album direkt aus der Track-Liste heraus bearbeiten. Analog zu `enable_rating_write` ist das Feature hinter einem Feature-Flag (`enable_metadata_edit`) implementiert — aktiviert nur im Audio-Server.
+
+### Feature-Flag
+
+```python
+# render_media_page(enable_metadata_edit=True)   →  Audio
+# render_media_page()                             →  Video (kein Edit-Button)
+```
+
+`render_media_page()` und `render_player_js()` haben beide den neuen Parameter `enable_metadata_edit: bool = False`. Er steuert:
+1. `METADATA_EDIT_ENABLED = true` im generierten JS
+2. `METADATA_EDIT_PATH = '/api/<media>/metadata/edit'` (abgeleitet aus `api_path`)
+3. `IC_EDIT` — Bleistift-SVG-Icon als JS-Variable
+4. Einen Edit-Button (`.track-edit-btn`) pro Track in der Liste
+5. Das Modal-HTML im HTML-Template (`edit-modal-backdrop`)
+
+### UI-Fluss
+
+1. Klick auf Bleistift-Button → `openEditModal(idx)` → Modal öffnet sich, vorausgefüllt mit aktuellem Titel/Interpret aus `filteredItems[idx]`
+2. Album-Feld startet leer (nicht im `MediaItem`-Schema)
+3. Speichern → `submitEditModal()` → `POST /api/audio/metadata/edit`
+4. Bei Erfolg: lokaler JS-State (`filteredItems`, `allItems`) aktualisiert, Track-Liste neu gerendert, Player-Anzeige aktualisiert (wenn aktuell spielender Track)
+5. `closeEditModal()` bei Backdrop-Klick, Escape-Taste oder Cancel-Button
+6. Enter in Eingabefeld triggert `submitEditModal()`
+
+### CSS-Klassen
+
+- `.track-edit-btn` — Kreisförmiger Button neben `.track-pin-btn`, nur sichtbar wenn `METADATA_EDIT_ENABLED`
+- `.edit-modal-backdrop` — Fixed-Overlay, schließt bei Klick außerhalb
+- `.edit-modal` — Modal-Panel (max 480px Breite)
+- `.edit-field` — Label + Input-Zeile
+- `.edit-modal-actions` — Cancel + Save Buttons
+
+### API-Endpoint
+
+`POST /api/audio/metadata/edit` in `audio/server.py`:
+- Body: `{ "path": "<relative_path>", "title": "...", "artist": "...", "album": "..." }`
+- Fehlende / `null`-Felder werden übersprungen (kein Überschreiben mit leeren Werten)
+- Schreibt via `write_track_tags(path, title=..., artist=..., album=...)` aus `audio/metadata.py`
+- Loggt jede geänderte Eigenschaft als separaten `AuditEntry` via `log_tag_write()`
+- Gibt `{ "ok": bool, "entry_ids": ["uuid", ...] }` zurück
+
+### `write_track_tags()` — Format-Unterstützung
+
+- **MP3** — ID3v2: `TIT2`, `TPE1`, `TALB`
+- **M4A/MP4/AAC** — iTunes Atoms: `©nam`, `©ART`, `©alb`
+- **FLAC/OGG/Opus/WMA** — Vorbis Comments / ASF: `title`, `artist`, `album`
+- Alle anderen Formate → `False` (kein Crash)
+- `None`-Felder werden übersprungen (kein Löschen bestehender Tags)
+
+### Audit-Integration
+
+Jede geänderte Eigenschaft (`title`, `artist`, `album`) erzeugt einen eigenen `AuditEntry` mit:
+- `action: "tag_write"`
+- `undo_payload`: Body für `POST /api/audio/metadata/edit` mit altem Wert
+
+### Design-Regeln
+
+- Das Feature ist **Audio-only** — Video hat keine `write_track_tags`-Implementierung und kein `enable_metadata_edit`.
+- Album ist **nicht** in `MediaItem` — das Feld wird im Modal optional angeboten, startet leer.
+- Bei Erfolg: `_audio_index_cache.invalidate()` → nächste API-Abfrage liefert frische Daten.
+- **Kein Auto-Refresh der Track-Liste** — der lokale JS-State wird direkt aktualisiert (kein Round-Trip zum Server nötig).
+- Der Edit-Button ist nur in der Track-Liste sichtbar, nicht im Player-Bar.
+
+---
+
+## Thumbnail-Größen je Ansichtsmodus
+
+### Regel
+
+Kleine Thumbnails werden **ausschließlich in der Listenansicht** (viewMode `'list'`) verwendet. In allen anderen Ansichten (Galerieansicht `'grid'`, Dateinamen-Ansicht `'filenames'`) werden immer die großen Thumbnails (`thumbnail_lg_url`) bevorzugt – kleine Thumbnails (`thumbnail_url`) dienen dabei als Fallback.
+
+Gleiches gilt für den **Player-Bar-Thumb**: Er zeigt immer die große Version (`thumbnail_lg_url || thumbnail_url`), da er kein Listenkontext ist.
+
+### Umsetzung (`server_utils.py`)
+
+| Kontext | list | grid | filenames |
+|---|---|---|---|
+| Ordner-Kacheln im Folder-Grid | `thumbnail_url` | `thumbnail_lg_url` | `thumbnail_lg_url` |
+| Datei-Kacheln im Folder-Grid | `thumbnail_url` | `thumbnail_lg_url` | `thumbnail_lg_url` |
+| Track-Liste (innerhalb Ordner) | `thumbnail_url` | — | — |
+| Player-Bar-Thumb | `thumbnail_lg_url \|\| thumbnail_url` | ← immer | ← immer |
+
+Bedingung im JS: `viewMode !== 'list' ? (lg || sm) : sm`
+
+---
+
+## Zuletzt gespielt – Konfiguration und Server-Unterschiede
+
+### Verhalten je Server
+
+| Server | Zuletzt-gespielt-Sektion | Begründung |
+|---|---|---|
+| **Audio** | **Aus** (`enable_recent=False`) | Keine Empfehlungsliste; Hörbücher steigen via Progress-API automatisch am letzten Punkt ein |
+| **Video** | **An** (`enable_recent=True`, Standard) | Zeigt bis zu N zuletzt gesehene Folgen mit Fortschrittsbalken |
+
+### Konfiguration (`.env`)
+
+Alle Werte steuern den `/api/video/recent`-Endpunkt im Video-Server:
+
+| Variable | Default | Bedeutung |
+|---|---|---|
+| `HOMETOOLS_RECENT_VIDEO_LIMIT` | `3` | Max. angezeigte Folgen |
+| `HOMETOOLS_RECENT_MAX_AGE_DAYS` | `14` | Folgen älter als N Tage werden ausgeblendet |
+| `HOMETOOLS_RECENT_MAX_PER_SERIES` | `1` | Max. Folgen pro Serie (nur die neueste wird gezeigt) |
+
+### Technische Umsetzung
+
+- `render_player_js()` und `render_media_page()` erhalten neuen Parameter `enable_recent: bool = True`.
+- Wenn `False`: kein `<div id="recent-section">` im HTML-Output, kein `loadRecentlyPlayed()`-Aufruf im JS, kein `RECENT_API_PATH` benötigt.
+- `render_audio_index_html()` setzt explizit `enable_recent=False`.
+- Die Konfigurationsfunktionen `get_recent_video_limit()`, `get_recent_max_age_days()`, `get_recent_max_per_series()` leben in `config.py`.
+
+---
+
+## Ansichtsumschalter (view toggle) – drei Modi
+
+Der Header-Button `#view-toggle` schaltet zyklisch durch drei Modi:
+
+| Modus | CSS-Klassen auf `#folder-grid` | Thumbnail | Anzeigename |
+|---|---|---|---|
+| `'list'` | `list-mode` | Klein | Listenansicht |
+| `'grid'` | — | Groß | Galerieansicht / Kacheln |
+| `'filenames'` | `list-mode filenames-mode` | Groß | Original-Dateinamen |
+
+Im Modus `'filenames'` werden die rohen Dateinamen angezeigt (kein Display-Name/Override). Dieses Verhalten ersetzt jegliche separate „\[ \] Original"-Checkbox – der Toggle ist die einzige UI-Stelle für dieses Feature.
+
+Reihenfolge: `list → grid → filenames → list`
+
+Gespeichert in `localStorage` unter `ht-view-mode`.
+
+---
+
+## Schnellfilter-Chips (Quick-Filter)
+
+In der Filter-Bar des Track-View sind zwei Pill-Buttons ergänzt worden, die den Track-Filter um **Bewertungs-Filter** und **Favoriten-Filter** erweitern.
+
+### UI-Elemente
+
+| Element | ID | CSS-Klasse | Verhalten |
+|---|---|---|---|
+| Bewertungs-Chip | `#filter-rating` | `.filter-chip` / `.active` | Klick zyklisch: 0→1→2→3→4→5→0 (Minimum-Sterne) |
+| Favoriten-Chip | `#filter-fav` | `.filter-chip` / `.active` | Toggle: nur Favoriten (Shortcuts-API) anzeigen |
+
+### Designregeln
+- CSS-Klasse `.filter-chip` ist eigenständig (kein Erbe von `.ctrl-btn`).
+- Beide Filter werden mit `AND`-Logik kombiniert (Needle-Search + Rating + Favorites).
+- Zustand wird in `localStorage` gespeichert: `ht-filter-rating` (0–5) und `ht-filter-fav` (`'1'`/`''`).
+- `updateFilterChips()` synchronisiert Beschriftung + aktiven Zustand der Buttons.
+- Nach dem Laden von Favoriten via `loadFavorites()` wird bei aktivem Favoriten-Filter automatisch `applyFilter()` erneut aufgerufen.
+- Filter bleiben beim Wechsel zwischen Ordnern aktiv (intentional; der Nutzer hat sie bewusst gesetzt).
+- Icons: `IC_STAR_FILLED` / `IC_STAR_EMPTY` für den Bewertungs-Chip, `IC_PIN` für den Favoriten-Chip.
+
+---
+
+## Songtexte (Lyrics-Panel)
+
+Embedded Songtexte (ID3 USLT, M4A ©lyr, FLAC/OGG LYRICS/UNSYNCEDLYRICS) können im Player angezeigt werden.
+
+### Module
+- **Lese-Logik:** `get_lyrics(p: Path) -> str | None` in `audio/metadata.py` (vorhanden).
+- **Backend-Endpoint:** `GET /api/audio/lyrics?path=<relative_path>` → `{"path": str, "lyrics": str|null, "has_lyrics": bool}`.
+- **Frontend:** Bottom-Drawer `.lyrics-panel` mit glatter CSS-Transition (`translateY`); Inhalt lädt lazy beim ersten Öffnen.
+
+### SVG-Konstanten
+- `SVG_LYRICS` (Python) / `IC_LYRICS` (JS) — Seiten-Icon (file-text).
+
+### JS-Design
+- `LYRICS_ENABLED` JS-Variable steuert ob Lyrics-Button + Panel gerendert werden (`True` nur im Audio-Server).
+- `LYRICS_API_PATH` zeigt auf `/api/audio/lyrics`.
+- `_lyricsCache` (dict `relative_path → text`) verhindert wiederholte Netzwerk-Anfragen.
+- Beim Track-Wechsel (in `playTrack()`) wird das Panel automatisch aktualisiert wenn es offen ist.
+- Keine Lyrics → Benutzerfreundliche Meldung (kein Absturz, kein 404-Anzeige).
+- CSS-Klasse `.has-lyrics` am `#btn-lyrics` zeigt an, ob der aktuelle Titel Lyrics hat.
+
+### Designregeln
+- `enable_lyrics=False` (Default) → kein Button, kein Panel, kein JS-State. Video-Server bleibt unberührt.
+- Lyrics-Panel schließt sich beim Klick auf denselben Button (Toggle).
+- Close-Button `×` und der Lyrics-Button selbst schließen das Panel.
+- Fehler beim Fetch → Fehlermeldung im Panel, kein unbehandelter Promise-Rejection.
+
+

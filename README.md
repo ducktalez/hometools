@@ -10,6 +10,7 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
+- Check if audiobook from metadata is possible too 
 - Option zur Erweiterung/Anreicherung mit YouTube Downloads. 
 
 ---
