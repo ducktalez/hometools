@@ -72,6 +72,9 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         safe_mode=safe_mode,
         enable_shuffle=True,
         enable_rating_write=True,
+        enable_metadata_edit=True,
+        enable_recent=False,  # Audio: no "recently played" section; audiobooks resume via progress API
+        enable_lyrics=True,
     )
 
 
@@ -342,6 +345,18 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             "todos": summarize_todos(resolved_cache_dir),
         }
 
+    @app.get("/api/audio/lyrics")
+    def audio_lyrics(path: str) -> dict[str, object]:
+        """Return embedded lyrics for an audio file, or null if none found."""
+        from hometools.audio.metadata import get_lyrics
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        text = get_lyrics(file_path)
+        return {"path": path, "lyrics": text, "has_lyrics": text is not None}
+
     @app.get("/api/audio/metadata")
     def audio_metadata(path: str) -> dict[str, object]:
         """Re-read embedded metadata for a single audio track."""
@@ -412,6 +427,70 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             entry_id = entry.entry_id
         return {"ok": ok, "rating": stars, "raw": new_raw, "entry_id": entry_id}
 
+    @app.post("/api/audio/metadata/edit")
+    def audio_metadata_edit(payload: dict[str, object]) -> dict[str, object]:
+        """Write text tags (title / artist / album) to an audio file.
+
+        Body: ``{"path": "...", "title": "...", "artist": "...", "album": "..."}``
+        Missing / null fields are left unchanged.
+        Returns ``{"ok": bool, "entry_ids": [...]}`` with one audit entry per changed field.
+        """
+        from hometools.audio.metadata import audiofile_assume_artist_title, write_track_tags
+        from hometools.streaming.core.audit_log import log_tag_write
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        new_title = str(payload["title"]).strip() if payload.get("title") is not None else None
+        new_artist = str(payload["artist"]).strip() if payload.get("artist") is not None else None
+        new_album = str(payload["album"]).strip() if payload.get("album") is not None else None
+
+        # Read current values for audit log
+        try:
+            cur_artist, cur_title = audiofile_assume_artist_title(file_path)
+        except Exception:
+            cur_artist, cur_title = "", ""
+        cur_album = ""
+
+        ok = write_track_tags(file_path, title=new_title, artist=new_artist, album=new_album)
+
+        entry_ids: list[str] = []
+        if ok:
+            _audio_index_cache.invalidate()
+            for field, old_val, new_val in [
+                ("title", cur_title, new_title),
+                ("artist", cur_artist, new_artist),
+                ("album", cur_album, new_album),
+            ]:
+                if new_val is not None and new_val != old_val:
+                    entry = log_tag_write(
+                        resolved_cache_dir,
+                        server="audio",
+                        path=path,
+                        field=field,
+                        old_value=old_val,
+                        new_value=new_val,
+                    )
+                    entry_ids.append(entry.entry_id)
+
+        return {"ok": ok, "entry_ids": entry_ids}
+
+    @app.get("/api/audio/recent")
+    def audio_recent(limit: int = 10) -> dict[str, object]:
+        """No recently-played section for audio.
+
+        Audiobook resume is handled automatically via ``loadAndSeekProgress``
+        in the player JS (fires on every playItem call) — no dedicated
+        "recently played" UI is needed or shown.
+        """
+        return {"items": []}
+
     # --- Audit log endpoints ---
 
     @app.get("/api/audio/audit")
@@ -468,6 +547,24 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
                 _audio_index_cache.invalidate()
                 return {"ok": True, "action": action, "restored_rating": undo.get("rating")}
             raise HTTPException(status_code=500, detail="Failed to restore rating")
+
+        if action == "tag_write":
+            from hometools.audio.metadata import write_track_tags
+
+            path = str(undo.get("path") or "").strip()
+            field = str(undo.get("field") or "").strip()
+            value = str(undo.get("value") or "")
+            try:
+                file_path = resolve_audio_path(resolved_library_dir, path)
+            except (FileNotFoundError, ValueError) as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            kwargs = {field: value} if field in ("title", "artist", "album") else {}
+            ok = write_track_tags(file_path, **kwargs)
+            if ok:
+                mark_undone(resolved_cache_dir, entry_id)
+                _audio_index_cache.invalidate()
+                return {"ok": True, "action": action, "restored_field": field, "restored_value": value}
+            raise HTTPException(status_code=500, detail="Failed to restore tag")
 
         raise HTTPException(status_code=422, detail=f"Undo not supported for action '{action}'")
 

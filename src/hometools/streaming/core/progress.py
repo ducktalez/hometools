@@ -119,6 +119,18 @@ def load_all_progress(cache_dir: Path) -> dict[str, dict[str, Any]]:
             return {}
 
 
+def get_recent_progress(cache_dir: Path, limit: int = 20) -> list[dict[str, Any]]:
+    """Return the *limit* most recently played items, newest first.
+
+    Each entry is the stored progress dict plus a ``"relative_path"`` key.
+    Items without a ``"timestamp"`` field are sorted last.
+    """
+    all_data = load_all_progress(cache_dir)
+    entries = [{"relative_path": path, **entry} for path, entry in all_data.items() if isinstance(entry, dict)]
+    entries.sort(key=lambda e: e.get("timestamp", 0.0), reverse=True)
+    return entries[:limit]
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers (must be called with _lock held)
 # ---------------------------------------------------------------------------

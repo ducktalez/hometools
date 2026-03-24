@@ -3,7 +3,6 @@
 ## Current Sprint — Backlog High Items
 
 - **Management-Server & Scheduler** — Status-Dashboard, Auto-NAS-Sync, zyklische Aufgaben
-- **Metadata-Editing vom Handy** — Änderungen in Review-Queue, Schreiben erst nach Akzeptanz
 
 ## Backlog — High
 
@@ -17,9 +16,7 @@
 - Wiedergabelisten erstellen und verwalten
 - Crossfade für nahtlose Song-Übergänge
 - Swipe-Gesten für mobile Navigation
-- Filteroptionen für die Suche
 - Offline-Downloads-Liste (alle heruntergeladenen Dateien anzeigen)
-- Songtexte anzeigen (aus ID3-Tags)
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB)
 - Tags bei Musik nutzen
 
@@ -36,6 +33,7 @@
 - Optionales HTTPS
 - Geräteübergreifende Fortschritts-Synchronisation
 - iOS Background Video Playback → [plans/background_video_playback.md](plans/background_video_playback.md)
+- **Audit-Log aus Cache-Verzeichnis herauslösen** — `audit/audit.jsonl` liegt aktuell unter `HOMETOOLS_CACHE_DIR` (`.hometools-cache/audit/`). Das ist irreführend, da der Cache-Ordner wegwerfbar ist (z.B. `make clean`). Langfristig eigene Env-Var `HOMETOOLS_AUDIT_DIR` einführen und das Log dauerhaft vom regenerierbaren Cache trennen. Bis dahin: `make clean` schont `audit/` explizit.
 
 ## Backlog — Low / Experimental
 
@@ -50,6 +48,15 @@
 
 ## Done
 
+- **Schnellfilter-Chips (Track-Liste)** — Pill-Buttons „Bewertung" (zyklisch 1–5★ Minimum) und „Favoriten" (Toggle) in der Filter-Bar; AND-Logik mit Textsuche; `localStorage`-Persistenz; `updateFilterChips()` in `server_utils.py`; CSS-Klasse `.filter-chip` + `.active`.
+- **Songtexte anzeigen (Lyrics-Panel)** — Bottom-Drawer `.lyrics-panel` im Audio-Player; lazy Fetch via `GET /api/audio/lyrics?path=`; `_lyricsCache` verhindert Mehrfachfetches; auto-Update beim Track-Wechsel wenn Panel offen; `SVG_LYRICS` / `IC_LYRICS`; `enable_lyrics=True` nur im Audio-Server; `LYRICS_ENABLED` / `LYRICS_API_PATH` JS-Variablen.
+- **`make clean`** — löscht alle generierten Cache-Dateien (Thumbnails, Indexes, Progress, Issues, Logs, Shortcuts, `video_metadata_cache.json`, `thumbnail_failures.json`) unter `.hometools-cache/` und schont dabei `audit/` explizit. Python-basiert, Windows-kompatibel. Hinweis im `help`-Target und `get_cache_dir()`-Docstring.
+- **Thumbnail-Größen je Ansichtsmodus** — Kleine Thumbs nur in Listenansicht (`viewMode === 'list'`); Grid- und Filenames-Modus verwenden große Thumbnails (`thumbnail_lg_url`). Player-Bar zeigt immer große Version.
+- **Zuletzt gespielt — server-spezifisch** — Audio: `enable_recent=False` (kein UI-Abschnitt; Hörbücher steigen via Progress-API ein). Video: max. 3 Folgen, 14 Tage, 1 je Serie — konfigurierbar via `HOMETOOLS_RECENT_VIDEO_LIMIT`, `HOMETOOLS_RECENT_MAX_AGE_DAYS`, `HOMETOOLS_RECENT_MAX_PER_SERIES` (in `.env.example` dokumentiert).
+- **Ansichtsumschalter (3 Modi)** — list → grid → filenames zyklisch; `filenames`-Modus ersetzt separate „Original"-Checkbox; in `architecture.md` dokumentiert.
+- **Metadaten-Bearbeitung (Audio)** — `POST /api/audio/metadata/edit` Endpoint, `write_track_tags()` (MP3/M4A/FLAC/OGG), `enable_metadata_edit=True` in Audio-Server, Bleistift-Button (`.track-edit-btn`, `IC_EDIT`) pro Track in Liste, Edit-Modal (`.edit-modal-backdrop`, Titel/Interpret/Album), lokaler JS-State-Update ohne Server-Round-Trip, Audit-Integration via `log_tag_write()`, 7 neue Tests
+- **Zuletzt gespielt / Continue Watching** — `get_recent_progress()` in `progress.py`, `GET /api/<media>/recent` (Audio + Video), „Zuletzt gespielt"-Scroll-Sektion auf Startseite mit Fortschrittsbalken + direkter Seek-Wiederaufnahme, `RECENT_API_PATH` JS-Variable
+- **Hörbuch-Ordner-Erkennung** — `get_audiobook_dirs()` + `is_audiobook_folder()` in `config.py`, `HOMETOOLS_AUDIOBOOK_DIRS` Env-Var, `AUDIOBOOK_DIRS` JS-Array, blaue Einfärbung (`.audiobook-folder`) im Ordner-Grid
 - Audit-Log & Change-Log — `streaming/core/audit_log.py`, JSONL append-only, `GET/POST /api/<media>/audit`, `POST /api/<media>/audit/undo`, Control Panel `/audit`, Undo-Toast in App mit `entry_id`, Bewertungsverlauf pro Datei über `?path_filter=`
 - Songwertung-Schreiben (Audio-only) — `POST /api/audio/rating` Endpoint, `enable_rating_write=True` in Audio-Server, 5 klickbare Sterne im Player (`SVG_STAR_EMPTY`, `IC_STAR_FILLED`/`IC_STAR_EMPTY`), Hover-Preview, POPM-Write via `set_popm_rating()`, Index-Invalidierung, Weighted-Shuffle-Queue-Rebuild nach Rating-Änderung
 - Shuffle-Modus (Audio-Server) — `enable_shuffle=True` in `render_media_page()`, Shuffle-Button im Player-Bar (Classic + Waveform), Fisher-Yates + gewichteter Shuffle nach POPM-Rating, Long-Press für Weighted-Modus, localStorage-Persistenz, Offline-kompatibel (client-seitige Queue), implementiert in Core (`server_utils.py`)

@@ -276,3 +276,44 @@ def log_rating_write(
         entry.entry_id,
     )
     return entry
+
+
+def log_tag_write(
+    cache_dir: Path,
+    *,
+    server: str,
+    path: str,
+    field: str,
+    old_value: str,
+    new_value: str,
+) -> AuditEntry:
+    """Create, append, and return an audit entry for a text-tag write (title/artist/album).
+
+    The undo_payload contains a ``POST /api/<server>/metadata/edit`` body
+    that restores the previous value.
+    """
+    entry = new_entry(
+        action="tag_write",
+        server=server,
+        path=path,
+        field=field,
+        old_value=old_value,
+        new_value=new_value,
+        undo_payload={
+            "entry_id": "",
+            "path": path,
+            "field": field,
+            "value": old_value,
+        },
+    )
+    entry = AuditEntry(**{**asdict(entry), "undo_payload": {**entry.undo_payload, "entry_id": entry.entry_id}})
+    append_entry(cache_dir, entry)
+    logger.info(
+        "audit: %s %s %r → %r (entry %s)",
+        path,
+        field,
+        old_value,
+        new_value,
+        entry.entry_id,
+    )
+    return entry

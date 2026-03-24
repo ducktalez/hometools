@@ -536,6 +536,70 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
     # --- Audit log endpoints (read-only for video — no write ops yet) ---
 
+    @app.get("/api/video/recent")
+    def video_recent(limit: int | None = None) -> dict[str, object]:
+        """Return recently watched video episodes for the start-screen suggestions.
+
+        Filters applied (all configurable via env vars):
+        - ``HOMETOOLS_RECENT_VIDEO_LIMIT``  — max items to show (default 3)
+        - ``HOMETOOLS_RECENT_MAX_AGE_DAYS`` — max age in days (default 14)
+        - ``HOMETOOLS_RECENT_MAX_PER_SERIES`` — max episodes per series (default 1,
+          only the most-recently-seen episode per series is kept)
+        """
+        import dataclasses
+        import time
+
+        from hometools.config import get_recent_max_age_days, get_recent_max_per_series, get_recent_video_limit
+        from hometools.streaming.core.progress import get_recent_progress
+
+        effective_limit = get_recent_video_limit() if limit is None else max(1, min(int(limit), 50))
+        max_age_days = get_recent_max_age_days()
+        max_per_series = get_recent_max_per_series()
+        cutoff_ts = time.time() - max_age_days * 86400
+
+        # Fetch a generous pool from storage; we'll filter down
+        recent = get_recent_progress(resolved_cache_dir, limit=effective_limit * 10)
+
+        cached = _video_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
+        catalog_by_path: dict[str, object] = {item.relative_path: item for item in cached}
+
+        result = []
+        series_count: dict[str, int] = {}  # artist (series folder) → how many episodes kept
+
+        for entry in recent:
+            path = entry.get("relative_path", "")
+            item = catalog_by_path.get(path)
+            if item is None:
+                continue
+
+            # Age filter
+            ts = float(entry.get("timestamp", 0))
+            if ts < cutoff_ts:
+                continue
+
+            # Per-series cap (artist = top-level folder = series name for video)
+            series_key = item.artist or ""
+            if series_count.get(series_key, 0) >= max_per_series:
+                continue
+
+            pos = float(entry.get("position_seconds", 0))
+            dur = float(entry.get("duration", 0))
+            pct = round(pos / dur * 100) if dur > 0 else 0
+            d = dataclasses.asdict(item)
+            d.update(
+                position_seconds=pos,
+                duration=dur,
+                progress_pct=pct,
+                timestamp=ts,
+            )
+            result.append(d)
+            series_count[series_key] = series_count.get(series_key, 0) + 1
+
+            if len(result) >= effective_limit:
+                break
+
+        return {"items": result}
+
     @app.get("/api/video/audit")
     def video_audit_entries(
         limit: int = 200,

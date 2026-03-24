@@ -5,6 +5,9 @@ from pathlib import Path
 from hometools.config import (
     get_audio_library_dir,
     get_audio_nas_dir,
+    get_recent_max_age_days,
+    get_recent_max_per_series,
+    get_recent_video_limit,
     get_stream_bind,
     get_stream_index_cache_ttl,
     get_stream_port,
@@ -53,3 +56,30 @@ def test_stream_index_cache_ttl_from_env(monkeypatch):
 def test_stream_safe_mode_from_env(monkeypatch):
     monkeypatch.setenv("HOMETOOLS_STREAM_SAFE_MODE", "true")
     assert get_stream_safe_mode() is True
+
+
+def test_recent_video_limit_default():
+    assert get_recent_video_limit() == 3
+
+
+def test_recent_video_limit_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_RECENT_VIDEO_LIMIT", "5")
+    assert get_recent_video_limit() == 5
+
+
+def test_recent_max_age_days_default():
+    assert get_recent_max_age_days() == 14
+
+
+def test_recent_max_age_days_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_RECENT_MAX_AGE_DAYS", "7")
+    assert get_recent_max_age_days() == 7
+
+
+def test_recent_max_per_series_default():
+    assert get_recent_max_per_series() == 1
+
+
+def test_recent_max_per_series_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_RECENT_MAX_PER_SERIES", "2")
+    assert get_recent_max_per_series() == 2

@@ -60,6 +60,69 @@ def write_all_tags(p: Path, tags: dict) -> bool:
     return True
 
 
+def write_track_tags(p: Path, *, title: str | None = None, artist: str | None = None, album: str | None = None) -> bool:
+    """Write title/artist/album tags to an audio file.
+
+    Supports MP3 (ID3), M4A/MP4 (iTunes atoms), FLAC, OGG/Vorbis, WMA.
+    Skips fields that are ``None`` (not provided).
+    Never raises — returns False on failure.
+    """
+    if title is None and artist is None and album is None:
+        return True  # nothing to do
+
+    ext = p.suffix.lower()
+    try:
+        if ext == ".mp3":
+            from mutagen.id3 import ID3, TALB, TIT2, TPE1, ID3NoHeaderError
+
+            try:
+                tags = ID3(p)
+            except ID3NoHeaderError:
+                tags = ID3()
+            if title is not None:
+                tags["TIT2"] = TIT2(encoding=3, text=title)
+            if artist is not None:
+                tags["TPE1"] = TPE1(encoding=3, text=artist)
+            if album is not None:
+                tags["TALB"] = TALB(encoding=3, text=album)
+            tags.save(p)
+
+        elif ext in (".m4a", ".mp4", ".aac"):
+            audio = MP4(p)
+            if audio.tags is None:
+                audio.add_tags()
+            if title is not None:
+                audio.tags["\xa9nam"] = [title]
+            if artist is not None:
+                audio.tags["\xa9ART"] = [artist]
+            if album is not None:
+                audio.tags["\xa9alb"] = [album]
+            audio.save()
+
+        else:
+            # FLAC, OGG, Opus, WMA — generic Vorbis / ASF tags via mutagen.File
+            audio = File(p)
+            if audio is None:
+                logger.error("write_track_tags: could not open %s", p.name)
+                return False
+            if audio.tags is None:
+                audio.add_tags()
+            if title is not None:
+                audio.tags["title"] = [title]
+            if artist is not None:
+                audio.tags["artist"] = [artist]
+            if album is not None:
+                audio.tags["album"] = [album]
+            audio.save()
+
+        logger.info("write_track_tags: updated %s (title=%r, artist=%r, album=%r)", p.name, title, artist, album)
+        return True
+
+    except Exception as exc:
+        logger.error("write_track_tags: failed for %s: %s", p.name, exc)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # POPM (rating) helpers
 # ---------------------------------------------------------------------------
@@ -212,6 +275,48 @@ def read_embedded_metadata(p: Path) -> dict[str, str] | None:
 
     # 2) Fallback: ffprobe (for video formats mutagen cannot read)
     return _read_metadata_ffprobe(p)
+
+
+def get_lyrics(p: Path) -> str | None:
+    """Read embedded lyrics from an audio file.
+
+    Supports:
+    - MP3: ID3 USLT (Unsynchronized Lyrics) frames
+    - M4A/MP4: ``©lyr`` atom
+    - FLAC/OGG: ``LYRICS`` or ``UNSYNCEDLYRICS`` Vorbis comment
+
+    Returns the lyrics text or ``None`` if not found.
+    Never raises — returns ``None`` on any error.
+    """
+    ext = p.suffix.lower()
+    try:
+        if ext == ".mp3":
+            from mutagen.id3 import ID3
+
+            tags = ID3(p)
+            uslt_frames = tags.getall("USLT")
+            if uslt_frames:
+                return str(uslt_frames[0].text).strip() or None
+            return None
+        elif ext in (".m4a", ".mp4", ".aac"):
+            audio = MP4(p)
+            if audio.tags and "\xa9lyr" in audio.tags:
+                text = audio.tags["\xa9lyr"]
+                return str(text[0]).strip() if text else None
+            return None
+        else:
+            # FLAC, OGG, Opus — Vorbis comments
+            audio = File(p)
+            if audio is None or not audio.tags:
+                return None
+            for key in ("lyrics", "LYRICS", "unsyncedlyrics", "UNSYNCEDLYRICS"):
+                val = audio.tags.get(key)
+                if val:
+                    text = val[0] if isinstance(val, list) else str(val)
+                    return str(text).strip() or None
+    except Exception as exc:
+        logger.debug("get_lyrics %s: %s", p.name, exc)
+    return None
 
 
 def audiofile_assume_artist_title(p: Path, lut: dict | None = None) -> tuple[str, str]:

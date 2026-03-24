@@ -9,6 +9,7 @@ from hometools.audio.metadata import (
     _read_metadata_ffprobe,
     audiofile_assume_artist_title,
     read_embedded_metadata,
+    write_track_tags,
 )
 
 # ---------------------------------------------------------------------------
@@ -236,3 +237,30 @@ def test_assume_artist_title_lut_overrides_embedded(tmp_path):
 
     assert title == "LUT Title"
     assert artist == "LUT Artist"
+
+
+# ---------------------------------------------------------------------------
+# write_track_tags
+# ---------------------------------------------------------------------------
+
+
+def test_write_track_tags_returns_false_for_missing_file(tmp_path):
+    """Non-existent file → False (no exception)."""
+    result = write_track_tags(tmp_path / "missing.mp3", title="T", artist="A")
+    assert result is False
+
+
+def test_write_track_tags_returns_false_for_unknown_extension(tmp_path):
+    """Unsupported extension → False (no exception)."""
+    f = tmp_path / "track.xyz"
+    f.write_bytes(b"data")
+    result = write_track_tags(f, title="T")
+    assert result is False
+
+
+def test_write_track_tags_no_fields_is_noop(tmp_path):
+    """Calling with no fields is a no-op and returns True (nothing to do = success)."""
+    f = tmp_path / "track.mp3"
+    f.write_bytes(b"data")
+    result = write_track_tags(f)
+    assert result is True
