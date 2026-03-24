@@ -10,10 +10,18 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
+- Option zur Erweiterung/Anreicherung mit YouTube Downloads. 
+
+---
+
 Vollständiger Implementierungsplan mit Backlog: **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**
 
 **Aktuell:** Management-Server & Scheduler, Metadata-Editing
 **Nächste:** Phase 3 — Native iOS Apps
+
+- Für folgende Medien soll der letzte Abspielzeitpunkt gespeichert werden
+  - Serien: Die letzte Folge + Zeitstempel
+  - Hörbücher: Das letzte Kapitel + Zeitstempel. Hörbücher müssen markiert werden, befinden sich in passenden Ordnern befinden sich in passenden Ordnern (einstellbar) oder werden erkannt (Bei abspielzeit > 15min?)
 
 ## PyCharm Run-Konfigurationen
 

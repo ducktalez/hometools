@@ -30,7 +30,7 @@ Always run commands from the repo root. The virtualenv is `hometools-env/`.
 10. **Sync only on explicit CLI command.** Never auto-pull from NAS.
 11. **Logging, not print.** `logging.getLogger(__name__)` in library code.
 12. **ffmpeg/ffprobe** are optional runtime deps (thumbnail extraction, silence trimming). Always handle `FileNotFoundError` gracefully.
-13. **No Unicode/Emoji for UI controls.** All buttons use inline SVGs (defined as `SVG_*` constants in `server_utils.py` and `IC_*` JS variables). Never use Unicode chars like `▶ ◄ ► ⏸ ⊞ ↓` — iOS renders them as coloured emojis.
+13. **No Unicode/Emoji for UI controls.** All buttons use inline SVGs (defined as `SVG_*` constants in `server_utils.py` and `IC_*` JS variables). Never use Unicode chars like `▶ ◄ ► ⏸ ⊞ ↓` or HTML entities like `&#9733;` — iOS renders them as coloured emojis. Current SVG constants: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`.
 
 ## Validation Checklist
 
@@ -42,6 +42,11 @@ After any change, run in this order:
 
 ## Maintaining these docs
 
+**MANDATORY: Every code change must be documented. No exceptions.**
+
+- **When implementing a feature or fix**, immediately update `docs/architecture.md` with a new section describing the design, modules involved, and design rules.
 - **When moving a task to "Done" in `IMPLEMENTATION_PLAN.md`**, always add or update the corresponding section in `docs/architecture.md`. No Done-item without architecture entry.
-- **When you identify fundamental changes**, update `docs/architecture.md`.
+- **When you identify fundamental changes** (new modules, new fields on MediaItem, new endpoints, changed CSS conventions), update `docs/architecture.md`.
 - **When you identify an open task**, add it to `docs/IMPLEMENTATION_PLAN.md`.
+- **When adding new SVG constants** (`SVG_*` / `IC_*`), update the list in Architecture Rule 13 in this file AND in the SVG-Icons section of `docs/architecture.md`.
+- **After every session**, verify that `docs/IMPLEMENTATION_PLAN.md` Done-section and `docs/architecture.md` are in sync with the actual code.

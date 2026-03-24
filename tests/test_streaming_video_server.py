@@ -109,7 +109,7 @@ def test_video_home_safe_mode_omits_service_worker_registration(tmp_path):
 
     assert response.status_code == 200
     assert "serviceWorker.register('/sw.js')" not in response.text
-    assert 'id="offline-btn"' not in response.text
+    assert 'id="downloaded-pill"' in response.text
     assert "Safe Mode" in response.text
 
 

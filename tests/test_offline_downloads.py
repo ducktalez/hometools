@@ -229,7 +229,7 @@ class TestOfflineLibraryUI:
 
     def test_page_has_offline_library_controls(self):
         page = _page()
-        assert 'id="offline-btn"' in page
+        assert 'id="downloaded-pill"' in page
         assert 'id="offline-library"' in page
         assert 'id="offline-download-list"' in page
         assert 'id="offline-sort"' in page

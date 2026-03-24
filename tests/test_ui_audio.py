@@ -301,15 +301,15 @@ def test_audio_indexeddb_initialized(page, audio_server_url):
 
 
 def test_audio_offline_button_exists(page, audio_server_url):
-    """The offline library toggle button should be present."""
+    """The downloaded pill should be present."""
     page.goto(audio_server_url)
     page.wait_for_load_state("domcontentloaded")
 
-    assert page.locator("#offline-btn").count() == 1
+    assert page.locator("#downloaded-pill").count() == 1
 
 
 def test_audio_offline_panel_opens_on_click(page, audio_server_url):
-    """Clicking the offline button should open the offline library panel."""
+    """Clicking the downloaded pill should open the offline library panel."""
     page.goto(audio_server_url)
     page.wait_for_function(
         "document.querySelectorAll('.folder-card, .track-item').length > 0",
@@ -320,8 +320,8 @@ def test_audio_offline_panel_opens_on_click(page, audio_server_url):
     is_hidden = page.evaluate("document.getElementById('offline-library').hidden")
     assert is_hidden, "Offline panel should start hidden"
 
-    # Click the offline button
-    page.locator("#offline-btn").click()
+    # Click the downloaded pill
+    page.locator("#downloaded-pill").click()
     page.wait_for_timeout(300)
 
     is_hidden_after = page.evaluate("document.getElementById('offline-library').hidden")

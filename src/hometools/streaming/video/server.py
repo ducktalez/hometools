@@ -57,6 +57,7 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
 #player {
   width: 100%; max-height: 35vh; background: #000;
   border-top: 1px solid #333; flex-shrink: 0;
+  display: none;
 }
 """
 
@@ -532,6 +533,47 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
         shortcuts = remove_shortcut(resolved_cache_dir, "video", id)
         return {"items": shortcuts}
+
+    # --- Audit log endpoints (read-only for video — no write ops yet) ---
+
+    @app.get("/api/video/audit")
+    def video_audit_entries(
+        limit: int = 200,
+        path_filter: str = "",
+        action_filter: str = "",
+        include_undone: bool = True,
+    ) -> dict[str, object]:
+        """Return audit log entries visible to the video server (shared cache)."""
+        from hometools.streaming.core.audit_log import load_entries
+
+        entries = load_entries(
+            resolved_cache_dir,
+            limit=limit,
+            path_filter=path_filter,
+            action_filter=action_filter,
+            include_undone=include_undone,
+        )
+        return {"items": entries, "total": len(entries)}
+
+    @app.post("/api/video/audit/undo")
+    def video_audit_undo(payload: dict[str, object]) -> dict[str, object]:
+        """Undo not supported on the video server (no write operations yet)."""
+        raise HTTPException(status_code=422, detail="No undoable actions on the video server yet")
+
+    @app.get("/audit")
+    def video_audit_panel() -> HTMLResponse:
+        """Serve the dark-theme Audit / Control-Panel HTML page."""
+        from fastapi.responses import HTMLResponse
+
+        from hometools.streaming.core.server_utils import render_audit_panel_html
+
+        return HTMLResponse(
+            render_audit_panel_html(
+                server="hometools video",
+                media_type="video",
+                title="Audit-Log — hometools video",
+            )
+        )
 
     # --- PWA endpoints ---
     _VIDEO_THEME = "#bb86fc"

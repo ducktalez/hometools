@@ -70,6 +70,8 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         theme_color="#1db954",
         player_bar_style="classic" if safe_mode else get_player_bar_style(),
         safe_mode=safe_mode,
+        enable_shuffle=True,
+        enable_rating_write=True,
     )
 
 
@@ -363,6 +365,126 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             logger.warning("GET /api/audio/metadata — fallback for %s due to metadata read error", path, exc_info=True)
 
         return {"title": title, "artist": artist, "rating": stars}
+
+    @app.post("/api/audio/rating")
+    def audio_set_rating(payload: dict[str, object]) -> dict[str, object]:
+        """Write a star rating (0–5) as POPM tag to an MP3 file.
+
+        Returns the ``entry_id`` of the audit log entry so the client can
+        offer a one-click undo.
+        """
+        from hometools.audio.metadata import get_popm_rating, set_popm_rating
+        from hometools.streaming.core.audit_log import log_rating_write
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        try:
+            stars = float(payload.get("rating") or 0)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail="rating must be a number 0–5") from exc
+        if not 0 <= stars <= 5:
+            raise HTTPException(status_code=400, detail="rating must be between 0 and 5")
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        # Read current rating before overwriting (needed for undo)
+        old_raw = get_popm_rating(file_path)
+        old_stars = round(old_raw / 255 * 5, 1) if old_raw > 0 else 0.0
+        new_raw = round(stars / 5 * 255)
+
+        ok = set_popm_rating(file_path, new_raw)
+        entry_id = ""
+        if ok:
+            _audio_index_cache.invalidate()
+            entry = log_rating_write(
+                resolved_cache_dir,
+                server="audio",
+                path=path,
+                old_stars=old_stars,
+                new_stars=stars,
+                old_raw=old_raw,
+                new_raw=new_raw,
+            )
+            entry_id = entry.entry_id
+        return {"ok": ok, "rating": stars, "raw": new_raw, "entry_id": entry_id}
+
+    # --- Audit log endpoints ---
+
+    @app.get("/api/audio/audit")
+    def audio_audit_entries(
+        limit: int = 200,
+        path_filter: str = "",
+        action_filter: str = "",
+        include_undone: bool = True,
+    ) -> dict[str, object]:
+        """Return audit log entries for the audio server."""
+        from hometools.streaming.core.audit_log import load_entries
+
+        entries = load_entries(
+            resolved_cache_dir,
+            limit=limit,
+            path_filter=path_filter,
+            action_filter=action_filter,
+            include_undone=include_undone,
+        )
+        return {"items": entries, "total": len(entries)}
+
+    @app.post("/api/audio/audit/undo")
+    def audio_audit_undo(payload: dict[str, object]) -> dict[str, object]:
+        """Undo a single audit log entry by entry_id.
+
+        Re-applies the stored ``undo_payload`` (currently: rating writes).
+        """
+        from hometools.audio.metadata import set_popm_rating
+        from hometools.streaming.core.audit_log import get_entry, mark_undone
+
+        entry_id = str(payload.get("entry_id") or "").strip()
+        if not entry_id:
+            raise HTTPException(status_code=400, detail="entry_id is required")
+
+        entry = get_entry(resolved_cache_dir, entry_id)
+        if not entry:
+            raise HTTPException(status_code=404, detail="Audit entry not found")
+        if entry.get("undone"):
+            raise HTTPException(status_code=409, detail="Entry has already been undone")
+
+        undo = entry.get("undo_payload", {})
+        action = entry.get("action", "")
+
+        if action == "rating_write":
+            path = str(undo.get("path") or "").strip()
+            raw = int(undo.get("raw") or 0)
+            try:
+                file_path = resolve_audio_path(resolved_library_dir, path)
+            except (FileNotFoundError, ValueError) as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            ok = set_popm_rating(file_path, raw)
+            if ok:
+                mark_undone(resolved_cache_dir, entry_id)
+                _audio_index_cache.invalidate()
+                return {"ok": True, "action": action, "restored_rating": undo.get("rating")}
+            raise HTTPException(status_code=500, detail="Failed to restore rating")
+
+        raise HTTPException(status_code=422, detail=f"Undo not supported for action '{action}'")
+
+    @app.get("/audit")
+    def audio_audit_panel() -> HTMLResponse:
+        """Serve the dark-theme Audit / Control-Panel HTML page."""
+        from fastapi.responses import HTMLResponse
+
+        from hometools.streaming.core.server_utils import render_audit_panel_html
+
+        return HTMLResponse(
+            render_audit_panel_html(
+                server="hometools audio",
+                media_type="audio",
+                title="Audit-Log — hometools audio",
+            )
+        )
 
     @app.post("/api/audio/progress")
     def audio_save_progress(payload: dict[str, object]) -> dict[str, object]:
