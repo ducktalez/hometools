@@ -152,6 +152,90 @@ def test_load_entries_exclude_undone(tmp_cache):
 
 
 # ---------------------------------------------------------------------------
+# Migration from legacy cache location
+# ---------------------------------------------------------------------------
+
+
+def test_migrate_from_cache_copies_legacy_file(tmp_path):
+    """Migration must copy audit.jsonl from <cache>/audit/ to <audit_dir>/."""
+    from hometools.streaming.core.audit_log import _migrate_from_cache
+
+    cache_dir = tmp_path / "cache"
+    old_audit = cache_dir / "audit"
+    old_audit.mkdir(parents=True)
+    (old_audit / "audit.jsonl").write_text('{"entry_id":"old"}\n', encoding="utf-8")
+
+    audit_dir = tmp_path / "audit-new"
+    _migrate_from_cache(audit_dir, cache_dir)
+
+    new_file = audit_dir / "audit.jsonl"
+    assert new_file.exists()
+    assert '"old"' in new_file.read_text(encoding="utf-8")
+
+
+def test_migrate_from_cache_idempotent(tmp_path):
+    """Migration must not overwrite an existing audit log in the new location."""
+    from hometools.streaming.core.audit_log import _migrate_from_cache
+
+    cache_dir = tmp_path / "cache"
+    old_audit = cache_dir / "audit"
+    old_audit.mkdir(parents=True)
+    (old_audit / "audit.jsonl").write_text('{"entry_id":"old"}\n', encoding="utf-8")
+
+    audit_dir = tmp_path / "audit-new"
+    audit_dir.mkdir(parents=True)
+    (audit_dir / "audit.jsonl").write_text('{"entry_id":"new"}\n', encoding="utf-8")
+
+    _migrate_from_cache(audit_dir, cache_dir)
+
+    content = (audit_dir / "audit.jsonl").read_text(encoding="utf-8")
+    assert '"new"' in content
+    assert '"old"' not in content
+
+
+def test_migrate_from_cache_no_legacy(tmp_path):
+    """Migration must be a no-op when no legacy file exists."""
+    from hometools.streaming.core.audit_log import _migrate_from_cache
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    audit_dir = tmp_path / "audit-new"
+    _migrate_from_cache(audit_dir, cache_dir)
+    assert not (audit_dir / "audit.jsonl").exists()
+
+
+def test_migrate_from_cache_none_cache(tmp_path):
+    """Migration must handle cache_dir=None gracefully."""
+    from hometools.streaming.core.audit_log import _migrate_from_cache
+
+    audit_dir = tmp_path / "audit-new"
+    _migrate_from_cache(audit_dir, None)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# get_audit_dir config
+# ---------------------------------------------------------------------------
+
+
+def test_get_audit_dir_default():
+    """get_audit_dir must return .hometools-audit/ in the repo root by default."""
+    from hometools.config import get_audit_dir
+
+    audit_dir = get_audit_dir()
+    assert audit_dir.name == ".hometools-audit"
+    assert audit_dir.parent.exists()
+
+
+def test_get_audit_dir_env_override(monkeypatch, tmp_path):
+    """HOMETOOLS_AUDIT_DIR env var must override the default."""
+    from hometools.config import get_audit_dir
+
+    custom = tmp_path / "custom-audit"
+    monkeypatch.setenv("HOMETOOLS_AUDIT_DIR", str(custom))
+    assert get_audit_dir() == custom
+
+
+# ---------------------------------------------------------------------------
 # get_entry
 # ---------------------------------------------------------------------------
 

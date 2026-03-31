@@ -33,6 +33,7 @@ class MediaItem:
     episode: int = 0  # series episode number (0 = not a series episode)
     mtime: float = 0.0  # file modification time (Unix timestamp, 0.0 = unknown)
     thumbnail_lg_url: str = ""  # URL to large (480 px) shadow-cached thumbnail
+    genre: str = ""  # music genre tag (empty = unset; audio only)
 
     def to_dict(self) -> dict[str, str]:
         """Return a JSON-serializable representation."""

@@ -4,7 +4,10 @@ Every write operation (rating changes, tag edits, future renames) is logged as
 an immutable JSONL entry.  Each entry carries an ``undo_payload`` so that the
 inverse operation can be replayed later.
 
-Storage: ``<cache_dir>/audit/audit.jsonl``
+Storage: ``<audit_dir>/audit.jsonl``  (default: ``.hometools-audit/audit.jsonl``)
+
+The audit log is permanent data and intentionally lives **outside** the
+disposable shadow cache (``get_cache_dir()``).  See :func:`hometools.config.get_audit_dir`.
 
 Typical callers
 ---------------
@@ -31,8 +34,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _LOCK = threading.Lock()
-_AUDIT_SUBDIR = "audit"
 _AUDIT_FILE = "audit.jsonl"
+
+# Legacy sub-path used before the audit log was moved out of the cache dir.
+_LEGACY_CACHE_SUBDIR = "audit"
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -67,10 +72,38 @@ class AuditEntry:
 # ---------------------------------------------------------------------------
 
 
-def _audit_path(cache_dir: Path) -> Path:
-    d = cache_dir / _AUDIT_SUBDIR
-    d.mkdir(parents=True, exist_ok=True)
-    return d / _AUDIT_FILE
+def _audit_path(audit_dir: Path) -> Path:
+    """Return the JSONL audit log file path, creating the directory if needed."""
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    return audit_dir / _AUDIT_FILE
+
+
+def _migrate_from_cache(audit_dir: Path, cache_dir: Path | None) -> None:
+    """One-time migration: copy legacy ``<cache_dir>/audit/audit.jsonl`` to *audit_dir*.
+
+    Only copies when:
+    - *cache_dir* is given and the old file exists,
+    - the new destination does **not** already exist (idempotent).
+
+    Never raises — migration failure is logged and silently tolerated.
+    """
+    if cache_dir is None:
+        return
+    old_file = cache_dir / _LEGACY_CACHE_SUBDIR / _AUDIT_FILE
+    new_file = _audit_path(audit_dir)
+    if new_file.exists() or not old_file.exists():
+        return
+    try:
+        import shutil
+
+        shutil.copy2(old_file, new_file)
+        logger.info(
+            "audit_log: migrated %s → %s",
+            old_file,
+            new_file,
+        )
+    except Exception:
+        logger.exception("audit_log: failed to migrate legacy audit log")
 
 
 # ---------------------------------------------------------------------------
@@ -102,13 +135,13 @@ def new_entry(
     )
 
 
-def append_entry(cache_dir: Path, entry: AuditEntry) -> None:
+def append_entry(audit_dir: Path, entry: AuditEntry) -> None:
     """Atomically append *entry* to the JSONL audit log.
 
     Never raises — failures are logged but silently swallowed so they don't
     interrupt the caller's primary operation.
     """
-    audit_path = _audit_path(cache_dir)
+    audit_path = _audit_path(audit_dir)
     line = json.dumps(asdict(entry), ensure_ascii=False)
     with _LOCK:
         try:
@@ -124,7 +157,7 @@ def append_entry(cache_dir: Path, entry: AuditEntry) -> None:
 
 
 def load_entries(
-    cache_dir: Path,
+    audit_dir: Path,
     *,
     limit: int = 200,
     path_filter: str = "",
@@ -144,7 +177,7 @@ def load_entries(
     include_undone:
         When *False*, entries that have already been undone are excluded.
     """
-    audit_path = _audit_path(cache_dir)
+    audit_path = _audit_path(audit_dir)
     if not audit_path.exists():
         return []
     try:
@@ -175,9 +208,9 @@ def load_entries(
     return entries
 
 
-def get_entry(cache_dir: Path, entry_id: str) -> dict | None:
+def get_entry(audit_dir: Path, entry_id: str) -> dict | None:
     """Return a single entry by its UUID, or *None* if not found."""
-    audit_path = _audit_path(cache_dir)
+    audit_path = _audit_path(audit_dir)
     if not audit_path.exists():
         return None
     try:
@@ -198,13 +231,13 @@ def get_entry(cache_dir: Path, entry_id: str) -> dict | None:
     return None
 
 
-def mark_undone(cache_dir: Path, entry_id: str) -> bool:
+def mark_undone(audit_dir: Path, entry_id: str) -> bool:
     """Rewrite the JSONL log marking *entry_id* as undone.
 
     Returns *True* when the entry was found and updated, *False* otherwise.
     Uses an atomic tmp-rename write to avoid partial corruption.
     """
-    audit_path = _audit_path(cache_dir)
+    audit_path = _audit_path(audit_dir)
     if not audit_path.exists():
         return False
     undone_at = datetime.now(timezone.utc).isoformat()
@@ -241,7 +274,7 @@ def mark_undone(cache_dir: Path, entry_id: str) -> bool:
 
 
 def log_rating_write(
-    cache_dir: Path,
+    audit_dir: Path,
     *,
     server: str,
     path: str,
@@ -267,7 +300,7 @@ def log_rating_write(
     )
     # Patch undo_payload with the real entry_id (frozen dataclass → rebuild)
     entry = AuditEntry(**{**asdict(entry), "undo_payload": {**entry.undo_payload, "entry_id": entry.entry_id}})
-    append_entry(cache_dir, entry)
+    append_entry(audit_dir, entry)
     logger.info(
         "audit: %s rating %s → %s (entry %s)",
         path,
@@ -279,7 +312,7 @@ def log_rating_write(
 
 
 def log_tag_write(
-    cache_dir: Path,
+    audit_dir: Path,
     *,
     server: str,
     path: str,
@@ -307,7 +340,7 @@ def log_tag_write(
         },
     )
     entry = AuditEntry(**{**asdict(entry), "undo_payload": {**entry.undo_payload, "entry_id": entry.entry_id}})
-    append_entry(cache_dir, entry)
+    append_entry(audit_dir, entry)
     logger.info(
         "audit: %s %s %r → %r (entry %s)",
         path,

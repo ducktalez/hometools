@@ -264,3 +264,44 @@ def test_write_track_tags_no_fields_is_noop(tmp_path):
     f.write_bytes(b"data")
     result = write_track_tags(f)
     assert result is True
+
+
+# ---------------------------------------------------------------------------
+# get_genre
+# ---------------------------------------------------------------------------
+
+
+def test_get_genre_returns_empty_for_missing_file(tmp_path):
+    """get_genre must return empty string for non-existent file."""
+    from hometools.audio.metadata import get_genre
+
+    result = get_genre(tmp_path / "nope.mp3")
+    assert result == ""
+
+
+def test_get_genre_returns_empty_for_untagged(tmp_path):
+    """get_genre must return empty string for file without genre tag."""
+    from hometools.audio.metadata import get_genre
+
+    f = tmp_path / "track.mp3"
+    f.write_bytes(b"not a real audio file")
+    result = get_genre(f)
+    assert result == ""
+
+
+def test_get_genre_uses_find_tag():
+    """get_genre must search for genre-related tag keys."""
+    from unittest.mock import MagicMock, patch
+
+    from hometools.audio.metadata import get_genre
+
+    # Simulate an ID3 TCON frame (genre tag)
+    tcon_frame = MagicMock()
+    tcon_frame.text = ["Rock"]
+
+    fake_audio = MagicMock()
+    fake_audio.tags = {"TCON": tcon_frame}
+
+    with patch("hometools.audio.metadata.File", return_value=fake_audio):
+        result = get_genre(MagicMock())
+        assert result == "Rock"

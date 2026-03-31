@@ -277,6 +277,29 @@ def read_embedded_metadata(p: Path) -> dict[str, str] | None:
     return _read_metadata_ffprobe(p)
 
 
+def get_genre(p: Path) -> str:
+    """Read the genre tag from an audio file.
+
+    Supports MP3 (ID3 TCON), M4A/MP4 (©gen), FLAC/OGG (genre/GENRE).
+    Returns an empty string when no genre is found.
+    Never raises — returns ``""`` on any error.
+    """
+    try:
+        audio = File(p)
+        if audio is None or not audio.tags:
+            return ""
+        return _find_tag(
+            audio.tags,
+            "\xa9gen",  # MP4/M4A (©gen)
+            "genre",
+            "GENRE",  # Vorbis (FLAC/OGG)
+            "TCON",  # ID3 (MP3)
+        )
+    except Exception as exc:
+        logger.debug("get_genre %s: %s", p.name, exc)
+    return ""
+
+
 def get_lyrics(p: Path) -> str | None:
     """Read embedded lyrics from an audio file.
 

@@ -101,14 +101,12 @@ Der vollständige Index wird nach einem erfolgreichen Rebuild atomar als JSON-Sn
 
 ### `make clean`
 
-`make clean` löscht alle **regenerierbaren** Artefakte unter `.hometools-cache/`:
+`make clean` löscht **alle** Artefakte unter `.hometools-cache/`:
 
-- Ordner: `audio/`, `video/`, `indexes/`, `issues/`, `logs/`, `progress/`, `shortcuts/`
+- Ordner: `audio/`, `video/`, `indexes/`, `issues/`, `logs/`, `progress/`, `shortcuts/`, `channel/`
 - Dateien: `video_metadata_cache.json`, `thumbnail_failures.json`
 
-**Ausgenommen:** `audit/` — das Audit-Log ist kein Cache, sondern ein dauerhaftes Änderungsprotokoll und darf nicht mit Cache-Inhalten gleichgesetzt werden.
-
-> ⚠️ **Technische Schuld:** `audit/audit.jsonl` liegt aus historischen Gründen unter `HOMETOOLS_CACHE_DIR`. Das ist irreführend, da der Cache-Ordner wegwerfbar ist. Langfristig sollte ein eigenes `HOMETOOLS_AUDIT_DIR` eingeführt werden, damit das Protokoll klar vom regenerierbaren Cache getrennt ist (→ Backlog: *Infrastruktur*). Bis dahin schont `make clean` `audit/` explizit, und `get_cache_dir()` dokumentiert dies per Docstring-Note.
+Das Audit-Log liegt seit dem Refactoring in einem eigenen Verzeichnis (`.hometools-audit/`, konfigurierbar via `HOMETOOLS_AUDIT_DIR`) und wird von `make clean` **nicht berührt**.
 
 ### Thumbnails
 
@@ -253,8 +251,12 @@ Jede Dateisystem-Änderung (Rating-Schreiben, künftig: Tag-Edits, Umbenennen) w
 ### Storage
 
 ```
-<cache_dir>/audit/audit.jsonl    ← append-only JSONL, eine JSON-Zeile pro Eintrag
+<audit_dir>/audit.jsonl    ← append-only JSONL, eine JSON-Zeile pro Eintrag
 ```
+
+Default: `.hometools-audit/` im Repository-Root (neben `src/`). Konfigurierbar via `HOMETOOLS_AUDIT_DIR`.
+
+Das Audit-Log liegt **bewusst außerhalb** des Shadow-Cache (`.hometools-cache/`), da es permanente Daten enthält und `make clean` den gesamten Cache löscht. Beim ersten Server-Start wird automatisch migriert: Falls `<cache_dir>/audit/audit.jsonl` existiert und noch kein neues `<audit_dir>/audit.jsonl` vorhanden ist, wird die Datei kopiert (idempotent, nie überschreibend).
 
 Atomic writes via `threading.Lock()`. Undo-Operation schreibt mit `tmp → rename`-Strategie (atomic replace).
 
@@ -306,7 +308,7 @@ Nach erfolgreichem Rating-Write gibt der Endpoint `entry_id` zurück. Das JS zei
 - `old_value` wird **vor** dem Schreiben gelesen (via `get_popm_rating()` vor `set_popm_rating()`).
 - `undo_payload.entry_id` enthält die eigene UUID — beim Undo wird die ID aus dem Payload validiert.
 - Fehler beim Log-Schreiben unterbrechen **nie** den eigentlichen Write-Vorgang (silent fail + logging).
-- Beide Server lesen **denselben** JSONL (shared `cache_dir`) — Audio-Ratings sind im Video-Control-Panel sichtbar.
+- Beide Server lesen **denselben** JSONL (shared `audit_dir`) — Audio-Ratings sind im Video-Control-Panel sichtbar.
 - **⚠️ Escaping-Pitfall:** In Python-Triple-Quoted-Strings (`"""..."""`) werden `\'`-Escape-Sequenzen zu `'` verarbeitet. Niemals `onclick="..."` mit `\'`-Escaping in Python-Strings erzeugen — führt zu kaputtem JS (`''` statt `\'`) und einem Komplettausfall des `<script>`-Tags. Stattdessen **immer `createElement` + `addEventListener`** für DOM-Interaktionen aus Python-generierten Strings verwenden.
 
 ## Songwertung Schreiben (POPM-Write, Audio-only)
@@ -661,9 +663,39 @@ Gespeichert in `localStorage` unter `ht-view-mode`.
 
 ---
 
+## Genre-Tags (Audio)
+
+**Module:** `audio/metadata.py` (`get_genre`), `streaming/audio/catalog.py` (`build_audio_index`), `streaming/core/models.py` (`MediaItem.genre`), `streaming/core/server_utils.py` (Genre-Filter-Chip)
+
+### Übersicht
+
+Genre-Tags werden aus den eingebetteten Metadaten von Audio-Dateien gelesen und im `MediaItem.genre`-Feld gespeichert. In der UI ermöglicht ein Genre-Filter-Chip das Filtern der Track-Liste nach Genre.
+
+### Tag-Lesung
+
+`get_genre(p: Path) -> str` in `audio/metadata.py`:
+- MP3: ID3 `TCON` Frame
+- M4A/MP4: `©gen` Atom
+- FLAC/OGG: `genre` / `GENRE` Vorbis Comment
+- Fehlertolerant: gibt `""` zurück bei fehlenden Tags oder Lesefehlern
+
+### MediaItem-Feld
+
+`genre: str = ""` — am Ende der Felder in `MediaItem` (frozen dataclass). Video-Items haben immer `genre=""`.
+
+### Designregeln
+
+1. Genre-Lesung erfolgt im `build_audio_index()` — kein separater API-Call nötig.
+2. Genre wird im JSON-Payload von `/api/audio/items` mitgeliefert (Feld `genre` in jedem Item).
+3. Der Genre-Filter-Chip versteckt sich automatisch (`display: none`) wenn keine Items mit Genre-Tag in der aktuellen Playlist sind — z.B. im Video-Server.
+4. Genre-Filter verwendet exakte Gleichheit (`t.genre === filterGenre`), nicht Substring-Match.
+5. Zyklische Auswahl: Klick auf den Chip durchläuft alphabetisch sortierte Genres → zurück zu „alle".
+
+---
+
 ## Schnellfilter-Chips (Quick-Filter)
 
-In der Filter-Bar des Track-View sind zwei Pill-Buttons ergänzt worden, die den Track-Filter um **Bewertungs-Filter** und **Favoriten-Filter** erweitern.
+In der Filter-Bar des Track-View sind Pill-Buttons, die den Track-Filter um **Bewertungs-Filter**, **Favoriten-Filter** und **Genre-Filter** erweitern.
 
 ### UI-Elemente
 
@@ -671,15 +703,16 @@ In der Filter-Bar des Track-View sind zwei Pill-Buttons ergänzt worden, die den
 |---|---|---|---|
 | Bewertungs-Chip | `#filter-rating` | `.filter-chip` / `.active` | Klick zyklisch: 0→1→2→3→4→5→0 (Minimum-Sterne) |
 | Favoriten-Chip | `#filter-fav` | `.filter-chip` / `.active` | Toggle: nur Favoriten (Shortcuts-API) anzeigen |
+| Genre-Chip | `#filter-genre` | `.filter-chip` / `.active` | Klick zykliert durch verfügbare Genres → leer (alle). Versteckt wenn keine Items mit Genre-Tag vorhanden. |
 
 ### Designregeln
 - CSS-Klasse `.filter-chip` ist eigenständig (kein Erbe von `.ctrl-btn`).
-- Beide Filter werden mit `AND`-Logik kombiniert (Needle-Search + Rating + Favorites).
-- Zustand wird in `localStorage` gespeichert: `ht-filter-rating` (0–5) und `ht-filter-fav` (`'1'`/`''`).
-- `updateFilterChips()` synchronisiert Beschriftung + aktiven Zustand der Buttons.
+- Alle Filter werden mit `AND`-Logik kombiniert (Needle-Search + Rating + Favorites + Genre).
+- Zustand wird in `localStorage` gespeichert: `ht-filter-rating` (0–5), `ht-filter-fav` (`'1'`/`''`), `ht-filter-genre` (Genre-Name oder leer).
+- `updateFilterChips()` synchronisiert Beschriftung + aktiven Zustand aller Buttons. Der Genre-Chip wird nur angezeigt wenn `playlistItems` Genre-Tags enthalten.
 - Nach dem Laden von Favoriten via `loadFavorites()` wird bei aktivem Favoriten-Filter automatisch `applyFilter()` erneut aufgerufen.
 - Filter bleiben beim Wechsel zwischen Ordnern aktiv (intentional; der Nutzer hat sie bewusst gesetzt).
-- Icons: `IC_STAR_FILLED` / `IC_STAR_EMPTY` für den Bewertungs-Chip, `IC_PIN` für den Favoriten-Chip.
+- Icons: `IC_STAR_FILLED` / `IC_STAR_EMPTY` für den Bewertungs-Chip, `IC_PIN` für den Favoriten-Chip. Genre-Chip hat kein Icon (nur Text).
 
 ---
 

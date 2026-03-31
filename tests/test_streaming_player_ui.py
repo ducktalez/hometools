@@ -869,6 +869,74 @@ def test_svg_history_constant_defined():
 
 
 # ---------------------------------------------------------------------------
+# Genre filter chip tests
+# ---------------------------------------------------------------------------
+
+
+def test_genre_filter_chip_in_html():
+    """The genre filter chip button must be present in the rendered HTML."""
+    from hometools.streaming.core.server_utils import render_media_page
+
+    html = render_media_page(
+        title="Test",
+        emoji="\U0001f3b5",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+    )
+    assert 'id="filter-genre"' in html
+
+
+def test_genre_filter_js_variable():
+    """The JS must declare filterGenre variable and persist in localStorage."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "filterGenreBtn" in js
+    assert "filterGenre" in js
+    assert "ht-filter-genre" in js
+
+
+def test_genre_filter_apply_logic():
+    """applyFilter must filter by genre when filterGenre is set."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "t.genre === filterGenre" in js
+
+
+def test_genre_field_on_media_item():
+    """MediaItem must have a genre field."""
+    from hometools.streaming.core.models import MediaItem
+
+    item = MediaItem(
+        relative_path="a/b.mp3",
+        title="Test",
+        artist="Artist",
+        stream_url="/stream",
+        media_type="audio",
+        genre="Rock",
+    )
+    assert item.genre == "Rock"
+    d = item.to_dict()
+    assert d["genre"] == "Rock"
+
+
+def test_genre_field_defaults_empty():
+    """MediaItem.genre must default to empty string."""
+    from hometools.streaming.core.models import MediaItem
+
+    item = MediaItem(
+        relative_path="a/b.mp3",
+        title="Test",
+        artist="Artist",
+        stream_url="/stream",
+        media_type="audio",
+    )
+    assert item.genre == ""
+
+
+# ---------------------------------------------------------------------------
 # Swipe gesture tests
 # ---------------------------------------------------------------------------
 

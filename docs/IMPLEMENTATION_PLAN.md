@@ -6,15 +6,12 @@
 
 ## Backlog — High
 
-- **Phase 3: Native iOS Apps** — Hybrid WebView Wrapper für Video + Audio → [plans/native_app_plan.md](plans/native_app_plan.md)
-
 ## Backlog — Medium
 
 ### Streaming UI (Audio + Video)
 - Wiedergabelisten erstellen und verwalten
 - Crossfade für nahtlose Song-Übergänge
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB)
-- Tags bei Musik nutzen
 
 ### Video-spezifisch
 - Sprache/Untertitel/Auflösung taggen und auswählbar machen
@@ -29,7 +26,6 @@
 - Optionales HTTPS
 - Geräteübergreifende Fortschritts-Synchronisation
 - iOS Background Video Playback → [plans/background_video_playback.md](plans/background_video_playback.md)
-- **Audit-Log aus Cache-Verzeichnis herauslösen** — `audit/audit.jsonl` liegt aktuell unter `HOMETOOLS_CACHE_DIR` (`.hometools-cache/audit/`). Das ist irreführend, da der Cache-Ordner wegwerfbar ist (z.B. `make clean`). Langfristig eigene Env-Var `HOMETOOLS_AUDIT_DIR` einführen und das Log dauerhaft vom regenerierbaren Cache trennen. Bis dahin: `make clean` schont `audit/` explizit.
 
 ## Backlog — Low / Experimental
 
@@ -41,8 +37,14 @@
 - **Pro-Nutzer Ordnerstruktur** (N8N-Integration)
 - **Lennyface-Board**
 
+## Mobile Features (postponed)
+
+- **Phase 3: Native iOS Apps** — Hybrid WebView Wrapper für Video + Audio → [plans/native_app_plan.md](plans/native_app_plan.md)
+
 ## Done
 
+- **Genre-Tags bei Musik nutzen** (2026-03-31) — `get_genre()` in `audio/metadata.py` liest Genre-Tags (ID3 TCON, MP4 ©gen, Vorbis genre/GENRE). Neues `genre: str`-Feld auf `MediaItem`. `build_audio_index()` liest Genre beim Index-Build. Genre-Filter-Chip (`#filter-genre`) in der Filter-Bar zykliert durch verfügbare Genres (alphabetisch sortiert → alle). AND-Logik mit bestehenden Filtern. `localStorage`-Persistenz (`ht-filter-genre`). Chip versteckt sich automatisch wenn keine Genre-Tags vorhanden. 8 neue Tests (3 metadata + 5 UI). Grundlage für „Ähnliche Titel"-Feature.
+- **Audit-Log aus Cache-Verzeichnis herausgelöst** (2026-03-31) — `audit.jsonl` aus `.hometools-cache/audit/` nach `.hometools-audit/` (eigenes Verzeichnis) verschoben. Neue `get_audit_dir()` in `config.py` mit `HOMETOOLS_AUDIT_DIR` Env-Var. Alle `audit_log.py`-Funktionen akzeptieren jetzt `audit_dir` statt `cache_dir`. Automatische Migration: Server kopiert beim Start `<cache_dir>/audit/audit.jsonl` → `<audit_dir>/audit.jsonl` (einmalig, idempotent, nie überschreibend). `make clean` löscht jetzt den gesamten Cache ohne Audit-Ausnahme. `.env.example` und `.gitignore` aktualisiert. 6 neue Tests (4 Migration + 2 Config). Beide Server (Audio + Video) umgestellt.
 - **Swipe-Gesten für mobile Navigation** (2026-03-31) — Touch-Swipe-Handler (`touchstart`/`touchend`) für Zurück-Navigation auf Mobilgeräten. Swipe rechts = zurück (`goBack()`) in Ordner- und Playlist-Ansicht. Track-Wechsel ausschließlich über Buttons. Schwellenwerte: 60px min-dist, 80px max-vert, 400ms max-time. Ausnahmen: Range-Inputs, Canvas, Modals, Lyrics-Panel, Offline-Library. Passive Event-Listener. Kein Feature-Flag (universell). 4 Tests in `test_streaming_player_ui.py`.
 - **Offline-Downloads-Liste** (bereits implementiert) — `refreshOfflineLibrary()`, `renderOfflineDownloadList()` in `server_utils.py`, Offline-Modal mit Sortierung, IndexedDB-Integration.
 - **Channel-Server: Playlist-basiert (Rewrite)** (2026-03-31) — HLS-Livestream-Architektur (`server.py` + `mixer.py`) durch einfachen **Playlist-basierten Server** (`server_playlist.py`) ersetzt. Der neue Server baut eine Tagesplaylist aus dem YAML-Schedule (`fill_series` + geplante Slots → interleaved `MediaItem`-Liste) und nutzt den bestehenden Video-Player mit Auto-Next (`player.addEventListener('ended', nextIndex())`). Kein ffmpeg-Hintergrundprozess, keine HLS-Segmente, keine Race Conditions. Standard-UI via `render_media_page()`, gleiche Endpoints wie Audio/Video (`/api/channel/items`, `/api/channel/progress`, etc.). Alter HLS-Code bleibt als `server.py` erhalten, wird nicht mehr als Default verwendet. 13 neue Tests (`test_channel_playlist.py`).

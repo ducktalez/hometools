@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from hometools.config import (
+    get_audit_dir,
     get_cache_dir,
     get_player_bar_style,
     get_stream_index_cache_ttl,
@@ -92,7 +93,13 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
     resolved_library_dir = (library_dir or get_video_library_dir()).expanduser()
     resolved_cache_dir = get_cache_dir()
+    resolved_audit_dir = get_audit_dir()
     resolved_safe_mode = get_stream_safe_mode() if safe_mode is None else safe_mode
+
+    # One-time migration: copy legacy audit log from cache dir to dedicated audit dir
+    from hometools.streaming.core.audit_log import _migrate_from_cache
+
+    _migrate_from_cache(resolved_audit_dir, resolved_cache_dir)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -607,11 +614,11 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         action_filter: str = "",
         include_undone: bool = True,
     ) -> dict[str, object]:
-        """Return audit log entries visible to the video server (shared cache)."""
+        """Return audit log entries visible to the video server (shared audit dir)."""
         from hometools.streaming.core.audit_log import load_entries
 
         entries = load_entries(
-            resolved_cache_dir,
+            resolved_audit_dir,
             limit=limit,
             path_filter=path_filter,
             action_filter=action_filter,

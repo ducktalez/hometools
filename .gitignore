@@ -28,6 +28,7 @@ wa_data/
 tmp/
 .tmp_*/
 .hometools-cache/
+.hometools-audit/
 
 # OS
 Thumbs.db

@@ -155,17 +155,37 @@ def get_cache_dir() -> Path:
 
     Default: ``.hometools-cache/`` in the repository root (next to ``src/``).
 
-    .. note:: **Audit logs** (``audit/audit.jsonl``) currently live inside
-        this cache directory for historical reasons.  This is intentionally
-        preserved by ``make clean`` (which deletes everything *except*
-        ``audit/``).  Long-term, the audit log should move to its own
-        directory (e.g. ``HOMETOOLS_AUDIT_DIR``) so it is clearly separated
-        from re-generatable cache data and is never accidentally deleted.
+    This directory is fully disposable — ``make clean`` deletes everything
+    in it.  Permanent data (audit log) lives in :func:`get_audit_dir`.
     """
     _repo_root = Path(__file__).resolve().parent.parent.parent
     return _get_path_from_env(
         "HOMETOOLS_CACHE_DIR",
         _repo_root / ".hometools-cache",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Audit log directory
+# ---------------------------------------------------------------------------
+
+
+def get_audit_dir() -> Path:
+    """Return the directory for the append-only audit log (``audit.jsonl``).
+
+    The audit log is **not** re-generatable cache data — it records
+    permanent user actions (rating writes, tag edits, renames).
+    It therefore lives outside the shadow cache so ``make clean`` cannot
+    accidentally destroy it.
+
+    Set ``HOMETOOLS_AUDIT_DIR`` to override.
+
+    Default: ``.hometools-audit/`` in the repository root (next to ``src/``).
+    """
+    _repo_root = Path(__file__).resolve().parent.parent.parent
+    return _get_path_from_env(
+        "HOMETOOLS_AUDIT_DIR",
+        _repo_root / ".hometools-audit",
     )
 
 
