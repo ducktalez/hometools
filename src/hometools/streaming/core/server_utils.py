@@ -4000,6 +4000,57 @@ def render_player_js(
     _deepLinkId = null;
   }
 
+  /* ── Touch swipe gestures (mobile navigation) ── */
+  (function() {
+    var _swipeStartX = 0;
+    var _swipeStartY = 0;
+    var _swipeStartT = 0;
+    var _swipeActive = false;
+    var SWIPE_MIN_DIST = 60;   /* px minimum horizontal distance */
+    var SWIPE_MAX_VERT = 80;   /* px max vertical deviation */
+    var SWIPE_MAX_TIME = 400;  /* ms max duration */
+
+    function swipeTarget(el) {
+      /* Don't intercept swipes on range inputs (progress bar, volume) */
+      while (el) {
+        if (el.tagName === 'INPUT' && el.type === 'range') return null;
+        if (el.tagName === 'CANVAS') return null;
+        if (el.classList && el.classList.contains('edit-modal-backdrop')) return null;
+        if (el.classList && el.classList.contains('lyrics-panel')) return null;
+        if (el.classList && el.classList.contains('offline-library')) return null;
+        el = el.parentElement;
+      }
+      return true;
+    }
+
+    document.addEventListener('touchstart', function(e) {
+      if (!swipeTarget(e.target)) return;
+      if (e.touches.length !== 1) return;
+      _swipeStartX = e.touches[0].clientX;
+      _swipeStartY = e.touches[0].clientY;
+      _swipeStartT = Date.now();
+      _swipeActive = true;
+    }, { passive: true });
+
+    document.addEventListener('touchend', function(e) {
+      if (!_swipeActive) return;
+      _swipeActive = false;
+      if (e.changedTouches.length !== 1) return;
+      var dx = e.changedTouches[0].clientX - _swipeStartX;
+      var dy = e.changedTouches[0].clientY - _swipeStartY;
+      var dt = Date.now() - _swipeStartT;
+      if (dt > SWIPE_MAX_TIME) return;
+      if (Math.abs(dy) > SWIPE_MAX_VERT) return;
+      if (Math.abs(dx) < SWIPE_MIN_DIST) return;
+
+      /* Swipe right = go back (folder view or playlist view) */
+      if (dx > 0) {
+        if (inPlaylist) { goBack(); }
+        else if (currentPath) { goBack(); }
+      }
+    }, { passive: true });
+  }());
+
   loadInitialCatalog().then(function() {
     handleDeepLink();
     loadFavorites();
