@@ -40,3 +40,43 @@ When adding or changing a feature:
   Cache-busting is handled by MTime comparison in the background worker.
 - When changing API response shapes, the Service Worker and frontend JS
   must both be updated (they are generated strings in `server_utils.py`).
+
+## Channel streaming (Fernsehsender)
+
+The channel server produces a **continuous HLS livestream** via ffmpeg.
+It is fundamentally different from the on-demand audio/video servers.
+
+### Pre-transcode — no live transcoding into the stream
+
+**Streams must be prepared before being fed into the HLS pipeline.**
+All videos are pre-transcoded to a uniform MP4 format (H.264/AAC,
+1280×720, 25fps) in `.hometools-cache/channel/tmp/` *before* the
+concat-based ffmpeg process reads them.  Temporary files are deleted
+after playback.
+
+**Live transcoding from disk/NAS directly into the stream is
+prohibited.**  It leads to inconsistent timing, buffer underruns,
+and race conditions where hls.js requests segments that don't exist.
+
+### Concat demuxer — single ffmpeg process
+
+The mixer uses ffmpeg's **concat demuxer** (`-f concat`) to read
+a list of pre-transcoded files sequentially in a **single** process.
+This eliminates the gap problem that occurred with per-video processes.
+
+**Never start a separate ffmpeg process per video/filler** — process
+transitions create unavoidable gaps that cause 404 errors.  The old
+multi-process architecture and its workarounds (segment counter sync,
+manifest cleanup, `_sync_segment_counter_from_disk`,
+`_cleanup_stale_manifest`) have been removed.
+
+### Block-based architecture
+
+Each playback unit (a slot or filler period) is a *block*:
+
+1. Pre-transcode all videos for the block → uniform MP4 in `tmp/`.
+2. Write a concat list file (`concat.txt`).
+3. Start **one** ffmpeg process: `-f concat → -f hls`.
+4. Wait for process to finish (or interrupt on stop/slot change).
+5. Delete temporary files.
+

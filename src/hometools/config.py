@@ -272,6 +272,18 @@ def get_channel_hls_dir() -> Path:
     return get_cache_dir() / "channel" / "hls"
 
 
+def get_channel_tmp_dir() -> Path:
+    """Return the directory for pre-transcoded temporary video files.
+
+    Videos are converted to a uniform H.264/AAC MP4 format before being
+    fed into the concat-demuxer based HLS pipeline.  Temporary files are
+    deleted after playback.
+
+    Default: ``.hometools-cache/channel/tmp/`` in the repository root.
+    """
+    return get_cache_dir() / "channel" / "tmp"
+
+
 def get_channel_state_dir() -> Path:
     """Return the directory for persistent channel state (episode tracking).
 

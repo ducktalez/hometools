@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -58,7 +59,7 @@ def _render_channel_page(channel_name: str, hls_url: str) -> str:
       width: 100%; height: 100%; display: block;
       background: #000;
     }}
-    /* ── Live-TV controls (no seekbar) ── */
+    /* ── Live-TV controls (no seekbar, no pause) ── */
     .tv-controls {{
       position: absolute; bottom: 0; left: 0; right: 0;
       display: flex; align-items: center; gap: 0.6rem;
@@ -76,8 +77,10 @@ def _render_channel_page(channel_name: str, hls_url: str) -> str:
     .live-badge {{
       background: #f44336; color: #fff; font-size: 0.65rem; font-weight: 700;
       padding: 2px 7px; border-radius: 4px; letter-spacing: .04em;
-      text-transform: uppercase; flex-shrink: 0;
+      text-transform: uppercase; flex-shrink: 0; cursor: pointer;
+      user-select: none;
     }}
+    .live-badge.behind {{ background: #888; }}
     .tv-spacer {{ flex: 1; }}
     .tv-volume {{
       -webkit-appearance: none; appearance: none; width: 70px; height: 3px;
@@ -135,10 +138,7 @@ def _render_channel_page(channel_name: str, hls_url: str) -> str:
     <div class="player-wrap" id="player-wrap">
       <video id="player" autoplay playsinline muted></video>
       <div class="tv-controls">
-        <button class="tv-btn" id="btn-playpause" title="Play/Pause">
-          <svg viewBox="0 0 24 24"><path id="pp-icon" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-        </button>
-        <span class="live-badge" id="live-badge">LIVE</span>
+        <span class="live-badge" id="live-badge" title="Zum Live-Signal springen">LIVE</span>
         <span class="tv-spacer"></span>
         <button class="tv-btn" id="btn-mute" title="Ton">
           <svg viewBox="0 0 24 24"><path id="vol-icon" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8.3v7.4a4.47 4.47 0 0 0 2.5-3.7zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1A9 9 0 0 0 14 3.2z"/></svg>
@@ -176,21 +176,50 @@ def _render_channel_page(channel_name: str, hls_url: str) -> str:
     var errorEl = document.getElementById('error-msg');
     var statusBar = document.getElementById('status-bar');
     var wrap = document.getElementById('player-wrap');
-    var ppIcon = document.getElementById('pp-icon');
     var volIcon = document.getElementById('vol-icon');
     var volSlider = document.getElementById('vol-slider');
     var liveBadge = document.getElementById('live-badge');
     var _hideTimer = null;
+    var _hls = null;
+    var _errorCount = 0;
 
-    /* ── Play / Pause icon paths ── */
-    var IC_PAUSE = 'M6 19h4V5H6v14zm8-14v14h4V5h-4z';
-    var IC_PLAY  = 'M8 5v14l11-7z';
+    /* ── Server session — detect server restarts ── */
+    var _serverSession = hlsUrl.split('s=')[1] || '';
+    function checkSession() {{
+      fetch('/api/channel/session')
+        .then(function(r) {{ return r.ok ? r.json() : null; }})
+        .then(function(d) {{
+          if (d && d.session && d.session !== _serverSession) {{
+            /* Server was restarted — reload page to get fresh HLS URL */
+            location.reload();
+          }}
+        }})
+        .catch(function() {{}});
+    }}
+    setInterval(checkSession, 10000);
+
+    /* ── Icon paths ── */
     var IC_VOL   = 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8.3v7.4a4.47 4.47 0 0 0 2.5-3.7zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1A9 9 0 0 0 14 3.2z';
     var IC_MUTE  = 'M16.5 12A4.5 4.5 0 0 0 14 8.3v1.5l2.4 2.4c.1-.2.1-.4.1-.7zm2.5 0a7 7 0 0 1-.6 2.8l1.5 1.5A9 9 0 0 0 21 12a9 9 0 0 0-7-8.8v2.1a7 7 0 0 1 5 6.7zM4.3 3L3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.3c-.7.5-1.4.9-2.3 1.1v2.1a9 9 0 0 0 3.9-1.8l2 2L21 20.3 4.3 3zM12 4l-2.1 2.1L12 8.3V4z';
 
     function syncIcons() {{
-      ppIcon.setAttribute('d', player.paused ? IC_PLAY : IC_PAUSE);
       volIcon.setAttribute('d', player.muted || player.volume === 0 ? IC_MUTE : IC_VOL);
+    }}
+
+    /* ── Jump to live edge (resets hls.js internal fragment queue) ── */
+    function jumpToLive() {{
+      if (_hls) {{
+        /* startLoad(-1) tells hls.js to abandon all pending fragment loads
+           and restart loading from the live edge of the manifest. */
+        _hls.startLoad(-1);
+      }}
+      if (_hls && _hls.liveSyncPosition) {{
+        player.currentTime = _hls.liveSyncPosition;
+      }}
+      liveBadge.classList.remove('behind');
+      liveBadge.style.background = '#f44336';
+      player.play().catch(function(){{}});
+      _errorCount = 0;
     }}
 
     /* ── Controls visibility ── */
@@ -203,9 +232,9 @@ def _render_channel_page(channel_name: str, hls_url: str) -> str:
     wrap.addEventListener('touchstart', showControls, {{passive:true}});
 
     /* ── Buttons ── */
-    document.getElementById('btn-playpause').addEventListener('click', function(e) {{
+    liveBadge.addEventListener('click', function(e) {{
       e.stopPropagation();
-      if (player.paused) {{ player.play().catch(function(){{}}); }} else {{ player.pause(); }}
+      jumpToLive();
     }});
     document.getElementById('btn-mute').addEventListener('click', function(e) {{
       e.stopPropagation();
@@ -224,55 +253,117 @@ def _render_channel_page(channel_name: str, hls_url: str) -> str:
       else if (el.requestFullscreen) {{ el.requestFullscreen(); }}
       else if (el.webkitRequestFullscreen) {{ el.webkitRequestFullscreen(); }}
     }});
-    /* Click on video area to unmute (first interaction) or toggle play */
+    /* Click on video area to unmute (first interaction) */
     wrap.addEventListener('click', function() {{
       if (player.muted) {{
         player.muted = false;
         player.volume = parseFloat(volSlider.value) || 0.8;
         syncIcons();
-      }} else {{
-        if (player.paused) {{ player.play().catch(function(){{}}); }} else {{ player.pause(); }}
       }}
     }});
-    player.addEventListener('play', syncIcons);
-    player.addEventListener('pause', syncIcons);
     player.addEventListener('volumechange', syncIcons);
 
-    /* ── HLS setup ── */
+    /* ── Detect if player falls behind live edge ── */
+    function checkLiveEdge() {{
+      if (!_hls || !_hls.liveSyncPosition) return;
+      var behind = _hls.liveSyncPosition - player.currentTime;
+      if (behind > 15) {{
+        /* Too far behind — auto-jump to live */
+        jumpToLive();
+      }} else if (behind > 8) {{
+        liveBadge.classList.add('behind');
+      }} else {{
+        liveBadge.classList.remove('behind');
+      }}
+    }}
+    setInterval(checkLiveEdge, 2000);
+
+    /* ── HLS setup — strict live-only mode ── */
     function startHls() {{
+      if (_hls) {{
+        _hls.destroy();
+        _hls = null;
+      }}
+      _errorCount = 0;
       if (Hls.isSupported()) {{
         var hls = new Hls({{
+          /* Strict live-edge tracking */
           liveSyncDurationCount: 3,
-          liveMaxLatencyDurationCount: 6,
+          liveMaxLatencyDurationCount: 5,
           liveDurationInfinity: true,
           enableWorker: true,
           lowLatencyMode: false,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
+          /* Minimal buffering — stay near live edge */
+          maxBufferLength: 15,
+          maxMaxBufferLength: 30,
+          backBufferLength: 0,
           startFragPrefetch: true,
+          /* Minimal retries — skip broken segments fast.
+             With only 1 error retry, a 404 becomes fatal after 2 attempts.
+             The fatal handler then restarts the whole HLS instance. */
+          fragLoadPolicy: {{
+            default: {{
+              maxTimeToFirstByteMs: 8000,
+              maxLoadTimeMs: 15000,
+              timeoutRetry: {{ maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 2000 }},
+              errorRetry:   {{ maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 1000 }},
+            }},
+          }},
+          manifestLoadPolicy: {{
+            default: {{
+              maxTimeToFirstByteMs: 8000,
+              maxLoadTimeMs: 15000,
+              timeoutRetry: {{ maxNumRetry: 3, retryDelayMs: 500, maxRetryDelayMs: 2000 }},
+              errorRetry:   {{ maxNumRetry: 3, retryDelayMs: 500, maxRetryDelayMs: 2000 }},
+            }},
+          }},
         }});
+        _hls = hls;
         hls.loadSource(hlsUrl);
         hls.attachMedia(player);
         hls.on(Hls.Events.MANIFEST_PARSED, function() {{
           player.play().catch(function() {{}});
           statusBar.textContent = 'Live';
           liveBadge.style.display = '';
+          _errorCount = 0;
+        }});
+        hls.on(Hls.Events.FRAG_LOADED, function() {{
+          /* Successful fragment load — reset error counter */
+          _errorCount = 0;
+          liveBadge.classList.remove('behind');
+          liveBadge.style.background = '#f44336';
+          statusBar.textContent = 'Live';
+          errorEl.style.display = 'none';
         }});
         hls.on(Hls.Events.ERROR, function(ev, data) {{
-          if (data.fatal) {{
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {{
-              statusBar.textContent = 'Netzwerkfehler — versuche erneut...';
-              liveBadge.style.background = '#888';
-              setTimeout(function() {{
-                hls.startLoad();
-                liveBadge.style.background = '#f44336';
-              }}, 3000);
-            }} else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {{
-              hls.recoverMediaError();
-            }} else {{
-              errorEl.textContent = 'Stream-Fehler: ' + (data.details || 'unbekannt');
-              errorEl.style.display = 'block';
+          if (!data.fatal) {{
+            /* Non-fatal fragment error — use startLoad(-1) to reset the
+               internal fragment queue and jump to the live edge.
+               Simply setting player.currentTime does NOT clear the queue
+               and hls.js keeps retrying the same broken segment. */
+            if (data.details === 'fragLoadError' || data.details === 'fragLoadTimeOut') {{
+              _errorCount++;
+              if (_errorCount > 3) {{
+                /* Too many consecutive errors — full restart */
+                statusBar.textContent = 'Stream wird neu geladen...';
+                liveBadge.classList.add('behind');
+                setTimeout(function() {{ startHls(); }}, 2000);
+              }} else {{
+                jumpToLive();
+              }}
             }}
+            return;
+          }}
+          /* Fatal errors */
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {{
+            hls.recoverMediaError();
+          }} else {{
+            /* Network or other fatal error — full restart */
+            statusBar.textContent = 'Verbindung unterbrochen — starte neu...';
+            liveBadge.classList.add('behind');
+            setTimeout(function() {{
+              startHls();
+            }}, 3000);
           }}
         }});
       }} else if (player.canPlayType('application/vnd.apple.mpegurl')) {{
@@ -343,6 +434,7 @@ def create_app(
     *,
     schedule_file: Path | None = None,
     filler_dir: Path | None = None,
+    hls_dir: Path | None = None,
 ) -> Any:
     """Create the FastAPI application for the channel (TV) server."""
     from fastapi import FastAPI, HTTPException
@@ -351,7 +443,7 @@ def create_app(
     resolved_library_dir = (library_dir or get_video_library_dir()).expanduser()
     resolved_schedule = (schedule_file or get_channel_schedule_file()).expanduser()
     resolved_filler_dir = (filler_dir or get_channel_filler_dir()).expanduser()
-    resolved_hls_dir = get_channel_hls_dir()
+    resolved_hls_dir = (hls_dir or get_channel_hls_dir()).expanduser()
     resolved_state_dir = get_channel_state_dir()
     encoder = get_channel_encoder()
 
@@ -366,6 +458,12 @@ def create_app(
         pass
 
     mixer: ChannelMixer | None = None
+
+    # Unique session ID — changes on every server restart.
+    # Included in HLS URLs so stale browser tabs (from a previous server
+    # session) are forced to reload the page rather than requesting old
+    # segment numbers that no longer exist.
+    server_session = uuid.uuid4().hex[:12]
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -419,7 +517,21 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def channel_home() -> HTMLResponse:
-        return HTMLResponse(_render_channel_page(channel_name, "/stream/channel.m3u8"))
+        return HTMLResponse(
+            _render_channel_page(
+                channel_name,
+                f"/stream/channel.m3u8?s={server_session}",
+            )
+        )
+
+    @app.get("/api/channel/session")
+    def channel_session() -> dict[str, str]:
+        """Return the current server session ID.
+
+        The player polls this periodically.  If the session changes (server
+        was restarted), the player reloads the page to get a fresh HLS URL.
+        """
+        return {"session": server_session}
 
     @app.get("/api/channel/now")
     def channel_now() -> dict[str, Any]:
@@ -437,15 +549,49 @@ def create_app(
 
     @app.get("/stream/channel.m3u8")
     def hls_manifest():
-        """Serve the live HLS manifest."""
+        """Serve the live HLS manifest.
+
+        With the concat-demuxer architecture, a single ffmpeg process writes
+        the manifest — it is always internally consistent.  A lightweight
+        safety-net filter still removes references to segments that were
+        already cleaned up by ``cleanup_segments()``.
+        """
+        from fastapi.responses import Response
+
         manifest = resolved_hls_dir / "channel.m3u8"
         if not manifest.exists():
             raise HTTPException(status_code=503, detail="Stream not ready — mixer is starting up")
-        return FileResponse(
-            manifest,
-            media_type="application/vnd.apple.mpegurl",
-            headers={"Cache-Control": "no-cache, no-store"},
-        )
+
+        try:
+            existing = {p.name for p in resolved_hls_dir.glob("channel_*.ts")}
+            lines = manifest.read_text(encoding="utf-8").splitlines()
+            clean: list[str] = []
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                if line.startswith("#EXTINF") and i + 1 < len(lines):
+                    seg_line = lines[i + 1].strip()
+                    if seg_line.endswith(".ts") and seg_line not in existing:
+                        i += 2
+                        continue
+                if line.strip().endswith(".ts") and line.strip() not in existing:
+                    i += 1
+                    continue
+                clean.append(line)
+                i += 1
+
+            return Response(
+                content="\n".join(clean) + "\n",
+                media_type="application/vnd.apple.mpegurl",
+                headers={"Cache-Control": "no-cache, no-store"},
+            )
+        except Exception:
+            logger.debug("Manifest filtering failed, serving raw", exc_info=True)
+            return FileResponse(
+                manifest,
+                media_type="application/vnd.apple.mpegurl",
+                headers={"Cache-Control": "no-cache, no-store"},
+            )
 
     @app.get("/stream/{segment}")
     def hls_segment(segment: str):
