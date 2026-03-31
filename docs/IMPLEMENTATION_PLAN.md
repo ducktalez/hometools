@@ -1,8 +1,8 @@
 # Implementation Plan
 
-## Current Sprint — Backlog High Items
+## Current Sprint
 
-- **Management-Server & Scheduler** — Status-Dashboard, Auto-NAS-Sync, zyklische Aufgaben
+(frei)
 
 ## Backlog — High
 
@@ -11,12 +11,8 @@
 ## Backlog — Medium
 
 ### Streaming UI (Audio + Video)
-- Shuffle-Modus (+ gewichteter Shuffle nach Bewertung bei Long Touch) ← **in Arbeit: nur Audio, Core-implementiert** ✅ erledigt
-- Songwertung (1–5 Sterne) in UI + ID3-POPM-Tags speichern ✅ erledigt
 - Wiedergabelisten erstellen und verwalten
 - Crossfade für nahtlose Song-Übergänge
-- Swipe-Gesten für mobile Navigation
-- Offline-Downloads-Liste (alle heruntergeladenen Dateien anzeigen)
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB)
 - Tags bei Musik nutzen
 
@@ -47,6 +43,8 @@
 
 ## Done
 
+- **Swipe-Gesten für mobile Navigation** (2026-03-31) — Touch-Swipe-Handler (`touchstart`/`touchend`) für Zurück-Navigation auf Mobilgeräten. Swipe rechts = zurück (`goBack()`) in Ordner- und Playlist-Ansicht. Track-Wechsel ausschließlich über Buttons. Schwellenwerte: 60px min-dist, 80px max-vert, 400ms max-time. Ausnahmen: Range-Inputs, Canvas, Modals, Lyrics-Panel, Offline-Library. Passive Event-Listener. Kein Feature-Flag (universell). 4 Tests in `test_streaming_player_ui.py`.
+- **Offline-Downloads-Liste** (bereits implementiert) — `refreshOfflineLibrary()`, `renderOfflineDownloadList()` in `server_utils.py`, Offline-Modal mit Sortierung, IndexedDB-Integration.
 - **Channel-Server: Playlist-basiert (Rewrite)** (2026-03-31) — HLS-Livestream-Architektur (`server.py` + `mixer.py`) durch einfachen **Playlist-basierten Server** (`server_playlist.py`) ersetzt. Der neue Server baut eine Tagesplaylist aus dem YAML-Schedule (`fill_series` + geplante Slots → interleaved `MediaItem`-Liste) und nutzt den bestehenden Video-Player mit Auto-Next (`player.addEventListener('ended', nextIndex())`). Kein ffmpeg-Hintergrundprozess, keine HLS-Segmente, keine Race Conditions. Standard-UI via `render_media_page()`, gleiche Endpoints wie Audio/Video (`/api/channel/items`, `/api/channel/progress`, etc.). Alter HLS-Code bleibt als `server.py` erhalten, wird nicht mehr als Default verwendet. 13 neue Tests (`test_channel_playlist.py`).
 - **Channel-Mixer Rewrite: Concat Demuxer + Pre-Transcode** (2026-03-25) — Fundamentale Architekturänderung: Alte Multi-Prozess-Architektur (ein ffmpeg pro Video) durch **Concat Demuxer** ersetzt. Neues Modul `streaming/channel/transcode.py` mit `prepare_video()`, `prepare_testcard()`, `build_concat_file()`, `cleanup_prepared()`. Videos werden in `.hometools-cache/channel/tmp/` vorab auf H.264/AAC 1280×720 25fps konvertiert, dann über **einen** ffmpeg-Prozess (`-f concat -c copy → -f hls`) lückenlos gestreamt. Temporäre Dateien werden nach Wiedergabe gelöscht. Entfernte Workarounds: `_sync_segment_counter_from_disk()`, `_cleanup_stale_manifest()`, globale `_segment_counter`-Variable. Config: `get_channel_tmp_dir()`. 88 Tests (davon 15 neue für Transcode/Concat). **Veraltet — abgelöst durch Playlist-Server (2026-03-31).**
 - **Fernsehsender (Channel-Server)** — Dritter Server auf Port 8012 (`serve-channel`), kontinuierlicher HLS-Livestream via ffmpeg; YAML-Programmplan (`channel_schedule.yaml`) mit Tages-/Wochentag-Slots; pünktlicher Serienstart mit automatischer Seek-Berechnung bei Late-Join; Filler-Content (Clips/Musik) für Lücken; Episode-State-Tracking (sequential/random); `ChannelMixer` Background-Thread; Browser-UI mit hls.js + EPG + „Jetzt läuft"; `HOMETOOLS_CHANNEL_PORT`, `HOMETOOLS_CHANNEL_SCHEDULE`, `HOMETOOLS_CHANNEL_FILLER_DIR`, `HOMETOOLS_CHANNEL_ENCODER` Env-Vars; 36 Tests

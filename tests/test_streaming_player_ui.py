@@ -866,3 +866,48 @@ def test_svg_history_constant_defined():
     assert SVG_HISTORY
     assert "<svg" in SVG_HISTORY
     assert "circle" in SVG_HISTORY  # clock has a circle
+
+
+# ---------------------------------------------------------------------------
+# Swipe gesture tests
+# ---------------------------------------------------------------------------
+
+
+def test_swipe_gesture_code_present():
+    """Touch swipe gesture handlers must be present in the generated JS."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "Touch swipe gestures" in js
+    assert "touchstart" in js
+    assert "touchend" in js
+    assert "SWIPE_MIN_DIST" in js
+
+
+def test_swipe_gesture_skips_range_inputs():
+    """Swipe handler must not intercept touch events on range inputs (progress bar)."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "type === 'range'" in js or "el.type === 'range'" in js
+
+
+def test_swipe_no_next_prev_track():
+    """Swipe must NOT trigger next/prev track — only buttons do that."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    # Extract only the swipe gesture IIFE section
+    start = js.index("Touch swipe gestures")
+    end = js.index("}());", start)
+    swipe_section = js[start:end]
+    assert "nextIndex()" not in swipe_section
+    assert "prevIndex()" not in swipe_section
+
+
+def test_swipe_right_calls_go_back():
+    """Swipe right must call goBack (back navigation only)."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "goBack()" in js

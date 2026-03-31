@@ -846,3 +846,38 @@ Wenn kein geplanter Slot aktiv ist (z.B. nachts oder vormittags), spielt der Mix
 5. **Playlist-TTL 1 Stunde** — die Playlist wird im Hintergrund periodisch neu gebaut. Manueller Rebuild via `POST /api/channel/rebuild`.
 6. **Fill-Items werden zufällig interleaved** — Fill-Series-Episoden füllen die Lücken zwischen geplanten Slots.
 7. **Alle API-Responses nutzen `"items"`-Key** — konsistent mit Audio/Video-Servern.
+
+## Swipe-Gesten (mobile Navigation)
+
+Touch-Swipe-Handler für die Zurück-Navigation auf iPhone/iPad. Implementiert als IIFE am Ende von `render_player_js()` in `server_utils.py`.
+
+### Verhalten
+
+| Kontext | Swipe-Richtung | Aktion |
+|---|---|---|
+| **Playlist-Ansicht** | Swipe rechts | Zurück zur Ordner-Ansicht (`goBack()`) |
+| **Ordner-Ansicht** (nicht Root) | Swipe rechts | Zurück zum Elternordner (`goBack()`) |
+
+Track-Wechsel (nächster/vorheriger) erfolgt **ausschließlich über Buttons**, nicht per Swipe.
+
+### Schwellenwerte
+
+- `SWIPE_MIN_DIST = 60px` — minimale horizontale Distanz
+- `SWIPE_MAX_VERT = 80px` — maximale vertikale Abweichung (verhindert Diagonal-Fehlauslösung)
+- `SWIPE_MAX_TIME = 400ms` — maximale Touch-Dauer (schnelle Geste, kein Scrollen)
+
+### Ausnahmen (kein Swipe)
+
+Swipe wird **nicht** ausgelöst auf:
+- `<input type="range">` (Progress-Bar, Lautstärke)
+- `<canvas>` (Waveform)
+- `.edit-modal-backdrop` (Metadaten-Editor)
+- `.lyrics-panel` (Songtext-Drawer)
+- `.offline-library` (Offline-Downloads)
+
+### Designregeln
+
+1. **Kein Feature-Flag** — Swipe ist universell sinnvoll (Audio + Video + Channel).
+2. **Passive Event-Listener** — `{ passive: true }` auf `touchstart`/`touchend` für Scroll-Performance.
+3. **Rein clientseitig** — keine API-Änderung, kein Backend-Code.
+4. **Nur Zurück-Navigation** — Track-Wechsel erfolgt ausschließlich über Buttons, Swipe löst nur `goBack()` aus.
