@@ -400,11 +400,11 @@ def run_serve_all(args: argparse.Namespace) -> int:
 
 
 def run_serve_channel(args: argparse.Namespace) -> int:
-    """Start the channel (TV) live streaming server."""
+    """Start the channel (TV) streaming server (playlist mode)."""
     import uvicorn
 
     from hometools.config import get_channel_schedule_file
-    from hometools.streaming.channel.server import create_app
+    from hometools.streaming.channel.server_playlist import create_app
 
     setup_logging(log_file="auto", log_name="channel")
     host = args.host or get_stream_host()
@@ -412,7 +412,7 @@ def run_serve_channel(args: argparse.Namespace) -> int:
     library = args.library_dir or get_video_library_dir()
     schedule = args.schedule or get_channel_schedule_file()
 
-    _console_print(f"\n  📺  Channel server → http://{host}:{port}/")
+    _console_print(f"\n  \U0001f4fa  Channel server → http://{host}:{port}/")
     _console_print(f"      Schedule: {schedule}")
     _console_print(f"      Library:  {library}\n")
 

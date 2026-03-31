@@ -713,56 +713,67 @@ Embedded Songtexte (ID3 USLT, M4A ©lyr, FLAC/OGG LYRICS/UNSYNCEDLYRICS) können
 
 ## Fernsehsender (Channel-Server)
 
-**Module:** `streaming/channel/schedule.py`, `streaming/channel/mixer.py`, `streaming/channel/transcode.py`, `streaming/channel/filler.py`, `streaming/channel/server.py`, `config.py`, `cli.py`
+**Module:** `streaming/channel/server_playlist.py` (aktiv), `streaming/channel/schedule.py`, `config.py`, `cli.py`
 
 ### Überblick
 
-Ein dritter FastAPI-Server (neben Audio + Video), der einen **kontinuierlichen HLS-Livestream** erzeugt. Ein YAML-Programmplan (`channel_schedule.yaml`) definiert, welche Serie zu welcher Uhrzeit läuft. Zwischen den Sendungen wird automatisch Filler-Content (Clips, Musik) eingespielt. Der Stream wird live von ffmpeg gemischt — es ist ein echter Dauerstream, keine Abfolge einzelner Videos.
+Ein dritter FastAPI-Server (neben Audio + Video), der ein **TV-ähnliches Programm** aus dem YAML-Programmplan (`channel_schedule.yaml`) abspielt. Im Gegensatz zur alten HLS-Architektur verwendet der aktuelle Server den **bestehenden Video-Player** mit Auto-Next-Playlist — keine HLS-Segmente, kein ffmpeg-Hintergrundprozess, keine Race Conditions.
 
-### Architektur (Concat Demuxer + Pre-Transcode, 2026-03-25)
+### Architektur (Playlist-basiert, 2026-03-31)
 
 ```
-[schedule.yaml] → ScheduleSlot → resolve_schedule()
-                                       ↓
-                              ChannelMixer (Thread)
-                           ┌─────────┴──────────┐
-                    play_slot()            play_fill()/play_gap()
-                           ↓                     ↓
-                 prepare_video() [transcode.py]
-                           ↓
-                 concat.txt → ffmpeg -f concat -c copy → -f hls
-                           ↓
-                 channel.m3u8 + *.ts
-                           ↓
-              FastAPI /stream/channel.m3u8
-                           ↓
-              Browser <video> + hls.js
+[schedule.yaml] → parse_schedule_file()
+                        ↓
+              build_channel_playlist()
+         ┌──────────┴──────────────┐
+    fill_series (random)    scheduled slots (sequential/random)
+         └──────────┬──────────────┘
+                    ↓
+           list[MediaItem]  (interleaved: fill → slot → fill → ...)
+                    ↓
+          render_media_page() — same UI as video server
+                    ↓
+          player.addEventListener('ended', nextIndex()) — auto-advance
+                    ↓
+          /video/stream?path=... — direct file serve (with remux if needed)
 ```
 
-**Alte Architektur (entfernt):** Jedes Video/Filler bekam einen eigenen ffmpeg-Prozess.
-Prozesswechsel erzeugten unvermeidliche Lücken → 404 Errors. Workarounds (Segment-Counter-Sync,
-Manifest-Bereinigung, server-seitige Filterung) konnten das fundamentale Problem nicht lösen.
-
-**Neue Architektur:** Alle Videos werden **vorab transkodiert** (Pre-Transcode) in ein einheitliches
-Format und über einen **einzigen** ffmpeg-Prozess mit dem **Concat Demuxer** nahtlos gestreamt.
+**Alte Architektur (HLS, veraltet):** `server.py` + `mixer.py` + `transcode.py` — HLS-Livestream
+via concat demuxer. Hatte fundamentale Race Conditions (Segmente werden angefragt bevor ffmpeg
+sie schreibt oder nachdem Cleanup sie löscht). Code bleibt als `server.py` erhalten, wird aber
+nicht mehr als Default verwendet.
 
 ### Module
 
-#### `transcode.py` (NEU, 2026-03-25)
-- **`prepare_video(source, tmp_dir, encoder, seek, duration)`**: Konvertiert eine Videodatei zu
-  H.264/AAC MP4 (1280×720, 25fps) in `tmp_dir`. Unterstützt Seek-Offset und Duration-Limit für
-  Late-Join und pünktliches Ende. Gibt Pfad zur vorbereiteten Datei zurück, `None` bei Fehler.
-  Hash-basierte Dateinamen (SHA-256 aus Source+Seek+Duration) verhindern Duplikate.
-- **`prepare_testcard(duration, tmp_dir, channel_name, encoder)`**: Rendert SMPTE-Testbild mit
-  „Sendepause"-Overlay als temporäre MP4-Datei (nicht mehr live via `-re`).
-- **`build_concat_file(videos, output)`**: Schreibt eine ffconcat-Listendatei mit `file`-Einträgen.
-  Verwendet Forward-Slashes und escapt Single Quotes für Windows-Kompatibilität.
-- **`cleanup_prepared(*paths)`**: Löscht temporäre Pre-Transcode-Dateien nach Wiedergabe.
-- **`cleanup_tmp_dir(tmp_dir)`**: Räumt alle Dateien im Temp-Verzeichnis auf.
+#### `server_playlist.py` (NEU, 2026-03-31 — aktiver Default)
+- **`build_channel_playlist(schedule_data, library_dir, state_dir)`**: Baut die Tages-Playlist:
+  1. Scheduled Slots → `resolve_next_episode()` → `MediaItem`
+  2. Fill-Series → `list_episodes()` → shuffle → `MediaItem`
+  3. Interleaving: Fill-Chunks zwischen den Scheduled-Items verteilt
+- **`_media_item_from_path(video_path, library_dir)`**: Konvertiert einen Dateipfad in ein `MediaItem`
+- **`create_app(library_dir, schedule_file)`**: FastAPI-App mit Standard-Video-Player-UI
+- Playlist wird im Hintergrund-Thread gebaut, TTL 1 Stunde
+- Kein ffmpeg, kein HLS, keine Segmente
 
-**Design-Regel:** Streams müssen vorbereitet werden (Pre-Transcode) bevor sie in die HLS-Pipeline
-eingespeist werden. Live-Transkodierung von Disk/NAS in den Stream ist verboten — sie führt zu
-inkonsistentem Timing und Race Conditions.
+**Endpoints:**
+
+| Endpoint | Beschreibung |
+|---|---|
+| `GET /` | Standard-Video-Player-UI (via `render_media_page()`) |
+| `GET /health` | Status inkl. `playlist_size` |
+| `GET /api/channel/items` | Playlist als `items`-Array (wie Audio/Video) |
+| `GET /api/channel/now` | Erstes Playlist-Item (informativ) |
+| `GET /api/channel/epg` | Tagesprogramm aus Schedule (via `get_display_schedule()`) |
+| `GET /api/channel/schedule` | Roh-Schedule aus YAML |
+| `GET /api/channel/metadata` | Metadaten für einzelne Datei |
+| `GET /api/channel/status` | Server-Status |
+| `GET /api/channel/progress` | Fortschritt laden |
+| `POST /api/channel/progress` | Fortschritt speichern |
+| `POST /api/channel/rebuild` | Playlist manuell neu bauen |
+| `GET /video/stream?path=...` | Video-Stream (mit on-the-fly Remux bei Bedarf) |
+| `GET /thumb?path=...` | Thumbnails aus Shadow-Cache |
+| `GET /manifest.json` | PWA-Manifest |
+| `GET /sw.js` | Service Worker |
 
 #### `schedule.py`
 - **`ScheduleSlot`** (frozen dataclass): `start_time`, `series_folder`, `strategy` (sequential/random)
@@ -770,54 +781,16 @@ inkonsistentem Timing und Race Conditions.
 - **`parse_schedule_file(path)`**: YAML → dict (via PyYAML)
 - **`get_slots_for_date(data, dt)`**: Wochentagspezifische Slots, `daily` als Fallback
 - **`resolve_next_episode(library_dir, series, state_dir, strategy)`**: Nächste Episode bestimmen, State persistieren
-- **`resolve_schedule(data, library_dir, state_dir, now, lookahead_hours)`**: Löst nur Slots im Lookahead-Fenster auf — Cutoff wird **vor** `resolve_next_episode` geprüft, damit der Episode-Zähler nicht bei jedem Zyklus verbrannt wird.
-- **`get_display_schedule(data, now)`**: Gibt das Tagesprogramm für die EPG-Anzeige zurück, **ohne** Episode-State zu ändern.  Nutzt nur `get_slots_for_date` und liefert Seriename + Uhrzeit.
+- **`get_display_schedule(data, now)`**: Tagesprogramm für EPG-Anzeige, ohne Episode-State zu ändern
+- **`get_fill_series(data)`**: Fill-Series-Ordnernamen aus der Schedule-Konfiguration
 - **Episode-State**: `episode_state.json` in `.hometools-cache/channel/` — `{series: next_index}`
 
-#### `mixer.py`
-- **`ChannelMixer`**: Daemon-Thread, Endlosschleife mit schedule-resolve → block-basierter Wiedergabe
-- Konstruktor akzeptiert `channel_name` (default `"Haus-TV"`), `tmp_dir` (default `.hometools-cache/channel/tmp/`)
-- **EPG** wird aus `get_display_schedule` befüllt (zeigt das vollständige Tagesprogramm), **nicht** aus `resolved` (das nur Slots im Lookahead enthält)
-- **Boot-Testbild**: Beim Start von `_run_loop()` wird sofort ein kurzes Testbild (30 s) gestreamt,
-  um das HLS-Manifest zu etablieren.  Ohne dies erhält der Player minutenlange 503-Fehler, während
-  der Mixer den ersten echten Content vortranskodiert.  Das Testbild rendert in ~2–3 Sekunden
-  (synthetische ffmpeg-Quelle) und erzeugt das Manifest sofort.
-- **Block-basierte Wiedergabe**: Jeder Block (Slot/Filler/Testbild) wird vorab transkodiert, dann über **einen** ffmpeg-Prozess mit Concat Demuxer gestreamt
-- **`_stream_concat_block(prepared_files, label)`**: Einzige Stelle, die ffmpeg für Streaming startet. Baut `concat.txt`, startet `ffmpeg -f concat -c copy -f hls`. Periodisches Segment-Cleanup alle ~30s.
-- **`_play_boot_testcard()`**: Rendert 30 s Testbild als erste Aktion nach Mixer-Start
-- **`_play_slot_block(slot, seek_offset, max_duration)`**: Pre-Transcode + Stream für geplante Videos
-- **`_play_gap_block(duration)`**: Filler-Clips oder Testbild für Lücken zwischen Slots
-- **`_play_fill_block(fill_series)`**: Zufällige Episode aus `fill_series` als Dauerprogramm
-- **`_play_testcard_block(duration)`**: SMPTE-Testbild als Pre-gerenderte Datei
-- **`_seconds_until_next_slot`**: Berechnet die Filler-Dauer bis zum nächsten Slot (max 300s)
-- Thread-sichere State-Properties: `get_now_playing()`, `get_epg()`
-- Fallback bei fehlenden Filler-Dateien: **TV-Testbild** (SMPTE-Bars + „Sendepause"-Overlay)
+#### `server.py` (HLS-Version, veraltet)
+- Alter HLS-Livestream-Server mit `ChannelMixer` — wird nicht mehr als Default verwendet
+- Code bleibt erhalten für mögliche spätere Nutzung
 
-**Entfernte Workarounds:** `_sync_segment_counter_from_disk()`, `_cleanup_stale_manifest()`,
-`_next_segment_start()`, globale `_segment_counter`-Variable, `_write_discontinuity()`.
-Diese waren Symptombekämpfung für das Multi-Prozess-Problem und sind mit dem Concat Demuxer obsolet.
-
-#### `filler.py`
-- **`scan_filler_dir(dir)`**: Video- und Audio-Dateien im Filler-Verzeichnis
-- **`select_filler(files, gap_seconds)`**: Zufällige Auswahl für die Lücke
-- **`generate_testcard_filler_args(duration, channel_name)`**: SMPTE-Testbild mit „Sendepause"-Text, Kanalname und Uhrzeit via `smptebars` + `drawtext`-Filter.  Stille Audio-Spur via `anullsrc`.  **`-re` Flag** für Echtzeit-Kodierung (verhindert, dass ffmpeg synthetische Quellen schneller als Echtzeit kodiert und der Stream nach wenigen Sekunden abbricht).
-- **`generate_black_filler_args(duration)`**: Legacy-Fallback — schwarzes Bild + Stille via `lavfi` (deprecated, durch Testbild ersetzt).  Ebenfalls mit `-re`.
-
-#### `server.py`
-- **`create_app(library_dir, schedule_file, filler_dir)`** → FastAPI
-- **Lifespan**: startet/stoppt `ChannelMixer`, reicht `channel_name` durch
-- **Player-UI**: Live-TV-Modus — **kein Seeking/Spulen**, nur Play/Pause, Lautstärke, Vollbild.  Video startet muted (Autoplay-Policy), Klick auf Video unmuted.  Custom-Controls blenden nach 3 s aus.  LIVE-Badge zeigt Stream-Status.
-- **Endpoints**:
-
-| Endpoint | Beschreibung |
-|---|---|
-| `GET /` | HTML-Seite mit hls.js-Player + EPG (Live-TV-Controls, kein Seekbar) |
-| `GET /health` | Status inkl. `mixer_running` |
-| `GET /api/channel/now` | Aktuelles Programm (Titel, Serie, Filler-Flag) |
-| `GET /api/channel/epg` | Programmübersicht (items-Array) |
-| `GET /api/channel/schedule` | Roh-Schedule aus YAML |
-| `GET /stream/channel.m3u8` | HLS-Manifest (503 wenn Mixer noch startet) |
-| `GET /stream/{segment}.ts` | HLS-Segmente |
+#### `mixer.py`, `transcode.py`, `filler.py` (HLS-Infrastruktur, veraltet)
+- Gehören zur alten HLS-Architektur, werden vom Playlist-Server nicht verwendet
 
 ### Schedule-Format (YAML)
 
@@ -863,88 +836,13 @@ Wenn kein geplanter Slot aktiv ist (z.B. nachts oder vormittags), spielt der Mix
 |---|---|---|
 | `HOMETOOLS_CHANNEL_PORT` | `get_video_port() + 1` (8012) | Server-Port |
 | `HOMETOOLS_CHANNEL_SCHEDULE` | `channel_schedule.yaml` (Repo-Root) | Programmplan-Datei |
-| `HOMETOOLS_CHANNEL_FILLER_DIR` | `<video-library>/filler/` | Filler-Content-Verzeichnis |
-| `HOMETOOLS_CHANNEL_ENCODER` | `libx264` | ffmpeg Encoder (`h264_nvenc`, `h264_qsv`) |
-
-### HLS-Pipeline
-
-- Segment-Dauer: 6 Sekunden (`hls_time=6`)
-- Sliding Window: 5 Segmente (`hls_list_size=5`)
-- **Concat Demuxer:** Ein einziger ffmpeg-Prozess liest `concat.txt` mit vorab transkodierten Dateien
-  und gibt einen kontinuierlichen HLS-Stream aus. `-c copy` (keine Re-Kodierung im Streaming-Schritt).
-- **Kein `append_list`, kein `delete_segments`** — kein `-hls_flags` mehr nötig.
-- **Pre-Transcode:** Alle Videos auf 1280×720, 25fps, H.264/AAC normalisiert in `.hometools-cache/channel/tmp/`.
-  Temporäre Dateien werden nach Wiedergabe gelöscht.
-- `cleanup_segments()` läuft periodisch (~30s) und entfernt Segmente älter als 600 Sekunden.
-- Leichtgewichtige Manifest-Filterung als Sicherheitsnetz (entfernt Referenzen auf gelöschte Segmente).
-
-#### `create_app(hls_dir=...)` Parameter (2026-03-25)
-
-`create_app()` akzeptiert nun einen optionalen `hls_dir: Path | None`-Parameter.
-Standardmäßig wird `get_channel_hls_dir()` verwendet (Production-Verhalten unverändert).
-Tests übergeben `tmp_path / "hls"` um ein isoliertes Verzeichnis zu nutzen — verhindert,
-dass echte `.ts`-Dateien aus laufenden Server-Sitzungen die Tests beeinflussen.
-
-**Module:** `server.py` (`create_app`), `tests/test_channel.py` (`_create_test_app`,
-`_create_test_app_with_content`, `test_manifest_filters_missing_segments`)
-
-### Browser-UI
-
-Minimale dunkle HTML-Seite (kein `server_utils.py`-Integration — eigenständiges Template):
-- hls.js via CDN
-
-#### Live-Only Player (2026-03-25)
-
-Der Channel-Player ist bewusst **kein** On-Demand-Player:
-
-- **Kein Pause-Button** — Live-TV kann nicht pausiert werden
-- **Kein Seekbar** — es gibt nur den Live-Moment
-- **Click auf Video = Unmute** (nicht Play/Pause-Toggle)
-- **LIVE-Badge** ist klickbar → springt zur Live-Edge (`hls.startLoad(-1)` + `hls.liveSyncPosition`)
-- **Auto-Jump bei >15s Verzögerung** — `checkLiveEdge()` prüft alle 2 Sekunden ob der Player
-  mehr als 15s hinter der Live-Edge liegt und springt automatisch vor
-- **LIVE-Badge wird grau** wenn der Player 8-15s hinter Live ist (visueller Hinweis)
-
-**hls.js Konfiguration (strict live):**
-- `liveSyncDurationCount: 3` — maximal 3 Segmente hinter Live
-- `liveMaxLatencyDurationCount: 5` — absolute Obergrenze
-- `backBufferLength: 0` — kein Back-Buffer (verhindert, dass hls.js alte Segment-URLs cached)
-- `maxBufferLength: 15` — reduzierter Forward-Buffer
-- `fragLoadPolicy.errorRetry.maxNumRetry: 1` — bei 404 wird nur 1x retried, dann zur Live-Edge gesprungen
-- **Nicht-fatale Fragment-Fehler** → `hls.startLoad(-1)` resettet die interne Fragment-Queue
-  und startet von der Live-Edge (nicht nur `player.currentTime` setzen!)
-- **Error-Counter** (`_errorCount`): nach 3+ konsekutiven Fragment-Fehlern → voller Neustart
-  (destroy + recreate). `FRAG_LOADED` Events resetten den Counter.
-- **Fatale Fehler** → Stream wird nach 3s komplett neu aufgebaut (destroy + recreate)
-
-#### Server-Session-ID (2026-03-25)
-
-**Problem:** Wenn der Server neu startet, haben offene Browser-Tabs noch die alte hls.js-Instanz
-mit gecachten Segment-URLs aus der vorherigen Session. Diese Segmente existieren nicht mehr
-(Purge bei Start), aber hls.js fragt sie endlos an → 404-Spam, Player hängt.
-
-**Fix:** Jeder `create_app()`-Aufruf generiert eine `server_session` (UUID-hex, 12 Zeichen).
-- Die HLS-URL enthält `?s=<session>` als Query-Parameter
-- Der Player pollt `/api/channel/session` alle 10 Sekunden
-- Wenn die Session sich ändert (Server neugestartet) → `location.reload()` erzwingt frische Page
-
-**Module:** `server.py` (`server_session`, `/api/channel/session`, Page-JS)
-
-**Controls:** Mute-Button, Volume-Slider, Fullscreen-Button, LIVE-Badge.
-
-- „Jetzt läuft" mit Puls-Punkt
-- EPG-Liste (auto-refresh alle 30s)
 
 ### Designregeln
 
-1. **Kein Feature-Parity-Test** — der Channel-Server ist kein On-Demand-Browser sondern ein Livestream; fundamental anderes Paradigma als Audio/Video.
-2. **Kein Service Worker / PWA** — der Stream ist live, Offline-Caching ergibt keinen Sinn.
-3. **ffmpeg ist Pflicht** — ohne ffmpeg startet der Mixer nicht (graceful degradation: Health-Endpoint zeigt `mixer_running: false`).
-4. **Episode-State ist persistent** — Sequential-Modus merkt sich die letzte Episode über Server-Neustarts hinweg.
-5. **CPU-Last beachten** — Pre-Transkodierung ist ressourcenintensiv; `HOMETOOLS_CHANNEL_ENCODER` ermöglicht Hardware-Encoding.
-6. **HLS-Verzeichnis bei Start purgen** — verhindert Altlasten aus vorherigen Sitzungen.
-7. **Kein Pause im Live-TV** — der Player hat keinen Play/Pause-Button; bei Verzögerung wird automatisch zur Live-Edge gesprungen.
-8. **Concat Demuxer statt Multi-Prozess** — niemals einen separaten ffmpeg-Prozess pro Video starten. Alle Videos eines Blocks werden vorab transkodiert, dann über eine Concat-Liste von einem einzigen ffmpeg-Prozess gestreamt.
-9. **Streams müssen vorbereitet werden** — keine Live-Transkodierung von Disk/NAS in den Stream. Pre-Transcode in `.hometools-cache/channel/tmp/`, nach Wiedergabe löschen.
-10. **Boot-Testbild bei Startup** — der Mixer muss als allererstes ein kurzes Testbild (30 s) streamen, um das HLS-Manifest sofort zu etablieren. Ohne dies erhält der Player minutenlange 503-Fehler während der ersten Pre-Transkodierung.
-11. **`hls.startLoad(-1)` statt nur `currentTime`** — bei Fragment-Fehlern muss die interne Fragment-Queue von hls.js zurückgesetzt werden, nicht nur die Playback-Position.
+1. **Kein Feature-Parity-Test** — der Channel-Server ist ein TV-Programm, kein On-Demand-Browser. Fundamental anderes Paradigma als Audio/Video.
+2. **Playlist statt HLS** — der Server baut eine Playlist aus `MediaItem`-Objekten und nutzt den Standard-Video-Player mit Auto-Next. Kein ffmpeg-Hintergrundprozess, keine HLS-Segmente.
+3. **`render_media_page()` wiederverwenden** — die Channel-UI ist identisch mit der Video-UI (gleicher Player, gleiche Controls). Kein eigenständiges HTML-Template.
+4. **Episode-State ist persistent** — Sequential-Modus merkt sich die letzte Episode über Server-Neustarts hinweg (`episode_state.json`).
+5. **Playlist-TTL 1 Stunde** — die Playlist wird im Hintergrund periodisch neu gebaut. Manueller Rebuild via `POST /api/channel/rebuild`.
+6. **Fill-Items werden zufällig interleaved** — Fill-Series-Episoden füllen die Lücken zwischen geplanten Slots.
+7. **Alle API-Responses nutzen `"items"`-Key** — konsistent mit Audio/Video-Servern.
