@@ -1518,9 +1518,11 @@ def render_player_js(
   var sortField    = document.getElementById('sort-field');
   var filterRatingBtn = document.getElementById('filter-rating');
   var filterFavBtn    = document.getElementById('filter-fav');
+  var filterGenreBtn  = document.getElementById('filter-genre');
   /* Persisted quick-filter state */
   var filterRating = parseInt(localStorage.getItem('ht-filter-rating') || '0', 10) || 0;
   var filterFav    = localStorage.getItem('ht-filter-fav') === '1';
+  var filterGenre  = localStorage.getItem('ht-filter-genre') || '';
   var folderGrid   = document.getElementById('folder-grid');
   var trackView    = document.getElementById('track-view');
   var filterBar    = document.querySelector('.filter-bar');
@@ -2185,6 +2187,28 @@ def render_player_js(
         ? 'Favoriten-Filter aktiv — klicken zum Aufheben'
         : 'Nur Favoriten anzeigen';
     }
+    if (filterGenreBtn) {
+      /* Collect genres from current playlist items */
+      var genres = {};
+      (playlistItems || []).forEach(function(t) {
+        if (t.genre) genres[t.genre] = true;
+      });
+      var genreList = Object.keys(genres).sort();
+      if (genreList.length === 0) {
+        filterGenreBtn.style.display = 'none';
+      } else {
+        filterGenreBtn.style.display = '';
+        if (filterGenre) {
+          filterGenreBtn.textContent = filterGenre;
+          filterGenreBtn.classList.add('active');
+          filterGenreBtn.title = 'Genre: ' + filterGenre + ' — klicken zum Weiterschalten';
+        } else {
+          filterGenreBtn.textContent = 'Genre';
+          filterGenreBtn.classList.remove('active');
+          filterGenreBtn.title = 'Nach Genre filtern';
+        }
+      }
+    }
   }
 
   function applyFilter() {
@@ -2204,6 +2228,9 @@ def render_player_js(
     }
     if (filterFav) {
       items = items.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
+    }
+    if (filterGenre) {
+      items = items.filter(function(t) { return t.genre === filterGenre; });
     }
     items = items.slice().sort(function(a, b) {
       var sa = a.season || 0, sb = b.season || 0;
@@ -3937,6 +3964,22 @@ def render_player_js(
       applyFilter();
     });
   }
+  if (filterGenreBtn) {
+    filterGenreBtn.addEventListener('click', function() {
+      /* Collect genres from current playlist, cycle through them */
+      var genres = {};
+      (playlistItems || []).forEach(function(t) {
+        if (t.genre) genres[t.genre] = true;
+      });
+      var genreList = Object.keys(genres).sort();
+      if (!genreList.length) return;
+      var idx = filterGenre ? genreList.indexOf(filterGenre) : -1;
+      filterGenre = (idx + 1 < genreList.length) ? genreList[idx + 1] : '';
+      localStorage.setItem('ht-filter-genre', filterGenre);
+      updateFilterChips();
+      applyFilter();
+    });
+  }
   updateFilterChips();
 
   /* ── init ── */
@@ -4555,6 +4598,7 @@ def render_media_page(
     </select>
     <button class="filter-chip" id="filter-rating" title="Nach Bewertung filtern"></button>
     <button class="filter-chip" id="filter-fav" title="Nur Favoriten anzeigen"></button>
+    <button class="filter-chip" id="filter-genre" title="Nach Genre filtern"></button>
   </div>
 
   <!-- track list (visible inside a folder) -->

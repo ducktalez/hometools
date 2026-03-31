@@ -46,11 +46,11 @@ help:
 	@echo "  video-prewarm       - missing-only prewarm for video"
 	@echo "  audio-reindex       - full audio index rebuild (no thumbnails)"
 	@echo "  video-reindex       - full video index rebuild (no thumbnails)"
-	@echo "  clean               - delete all generated cache files EXCEPT audit logs"
+	@echo "  clean               - delete all generated cache files"
 	@echo "                        (thumbnails, indexes, progress, issues, logs, shortcuts,"
 	@echo "                         video_metadata_cache.json, thumbnail_failures.json)"
-	@echo "                        NOTE: audit/ is intentionally kept – it lives in cache"
-	@echo "                        for now but should ideally move to a dedicated location."
+	@echo "                        Audit log (.hometools-audit/) is a separate directory"
+	@echo "                        and is NOT affected by clean."
 
 lint:
 	$(RUFF) check src tests --fix
@@ -140,18 +140,15 @@ video-reindex:
 	$(PYTHON) -m hometools stream-prewarm --server video --mode full --scope index
 
 clean:
-	@echo "Deleting generated cache files (thumbnails, indexes, progress, issues, logs, shortcuts) — keeping audit/ ..."
+	@echo "Deleting generated cache files (thumbnails, indexes, progress, issues, logs, shortcuts) ..."
 	$(PYTHON) -c "\
 import shutil, pathlib; \
 cache = pathlib.Path('.hometools-cache'); \
-kept = []; \
 deleted = []; \
 [( \
-    kept.append(str(p)) if p.name == 'audit' \
-    else (deleted.append(str(p)), shutil.rmtree(p)) if p.is_dir() \
+    (deleted.append(str(p)), shutil.rmtree(p)) if p.is_dir() \
     else (deleted.append(str(p)), p.unlink()) \
 ) for p in sorted(cache.iterdir())] if cache.exists() else None; \
-print('  kept:   ', ', '.join(kept) if kept else '(nothing)'); \
 print('  deleted:', len(deleted), 'items') \
 "
 	@echo "Done. Run 'make audio-prewarm' or 'make video-prewarm' to rebuild."

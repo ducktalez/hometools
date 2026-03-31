@@ -16,7 +16,14 @@ from pathlib import Path
 from typing import Any
 
 from hometools.audio.sanitize import split_stem
-from hometools.config import get_audio_library_dir, get_cache_dir, get_player_bar_style, get_stream_index_cache_ttl, get_stream_safe_mode
+from hometools.config import (
+    get_audio_library_dir,
+    get_audit_dir,
+    get_cache_dir,
+    get_player_bar_style,
+    get_stream_index_cache_ttl,
+    get_stream_safe_mode,
+)
 from hometools.constants import AUDIO_SUFFIX
 from hometools.streaming.audio.catalog import (
     AudioTrack,
@@ -85,7 +92,13 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
 
     resolved_library_dir = (library_dir or get_audio_library_dir()).expanduser()
     resolved_cache_dir = get_cache_dir()
+    resolved_audit_dir = get_audit_dir()
     resolved_safe_mode = get_stream_safe_mode() if safe_mode is None else safe_mode
+
+    # One-time migration: copy legacy audit log from cache dir to dedicated audit dir
+    from hometools.streaming.core.audit_log import _migrate_from_cache
+
+    _migrate_from_cache(resolved_audit_dir, resolved_cache_dir)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -416,7 +429,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         if ok:
             _audio_index_cache.invalidate()
             entry = log_rating_write(
-                resolved_cache_dir,
+                resolved_audit_dir,
                 server="audio",
                 path=path,
                 old_stars=old_stars,
@@ -470,7 +483,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             ]:
                 if new_val is not None and new_val != old_val:
                     entry = log_tag_write(
-                        resolved_cache_dir,
+                        resolved_audit_dir,
                         server="audio",
                         path=path,
                         field=field,
@@ -504,7 +517,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         from hometools.streaming.core.audit_log import load_entries
 
         entries = load_entries(
-            resolved_cache_dir,
+            resolved_audit_dir,
             limit=limit,
             path_filter=path_filter,
             action_filter=action_filter,
@@ -525,7 +538,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         if not entry_id:
             raise HTTPException(status_code=400, detail="entry_id is required")
 
-        entry = get_entry(resolved_cache_dir, entry_id)
+        entry = get_entry(resolved_audit_dir, entry_id)
         if not entry:
             raise HTTPException(status_code=404, detail="Audit entry not found")
         if entry.get("undone"):
@@ -543,7 +556,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             ok = set_popm_rating(file_path, raw)
             if ok:
-                mark_undone(resolved_cache_dir, entry_id)
+                mark_undone(resolved_audit_dir, entry_id)
                 _audio_index_cache.invalidate()
                 return {"ok": True, "action": action, "restored_rating": undo.get("rating")}
             raise HTTPException(status_code=500, detail="Failed to restore rating")
@@ -561,7 +574,7 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             kwargs = {field: value} if field in ("title", "artist", "album") else {}
             ok = write_track_tags(file_path, **kwargs)
             if ok:
-                mark_undone(resolved_cache_dir, entry_id)
+                mark_undone(resolved_audit_dir, entry_id)
                 _audio_index_cache.invalidate()
                 return {"ok": True, "action": action, "restored_field": field, "restored_value": value}
             raise HTTPException(status_code=500, detail="Failed to restore tag")

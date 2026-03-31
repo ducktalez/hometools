@@ -20,7 +20,7 @@ import logging
 import time
 from pathlib import Path
 
-from hometools.audio.metadata import audiofile_assume_artist_title, get_popm_rating
+from hometools.audio.metadata import audiofile_assume_artist_title, get_genre, get_popm_rating
 from hometools.streaming.core.catalog import list_artists
 from hometools.streaming.core.catalog import query_items as query_tracks
 from hometools.streaming.core.catalog import sort_items as sort_tracks
@@ -89,6 +89,9 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         raw_rating = get_popm_rating(audio_file)
         stars = round(raw_rating / 255 * 5, 1) if raw_rating > 0 else 0.0
 
+        # Genre tag
+        genre = get_genre(audio_file)
+
         try:
             file_mtime = audio_file.stat().st_mtime
         except OSError:
@@ -105,6 +108,7 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 rating=stars,
                 mtime=file_mtime,
                 thumbnail_lg_url=thumbnail_lg_url,
+                genre=genre,
             )
         )
 
