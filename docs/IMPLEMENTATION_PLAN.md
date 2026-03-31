@@ -9,7 +9,7 @@
 ## Backlog — Medium
 
 ### Streaming UI (Audio + Video)
-- Wiedergabelisten erstellen und verwalten
+- Playlist-Reordering (Drag-Drop oder Pfeil-Buttons für Reihenfolge innerhalb einer Playlist)
 - Crossfade für nahtlose Song-Übergänge
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB)
 
@@ -43,6 +43,7 @@
 
 ## Done
 
+- **Wiedergabelisten (User Playlists)** (2026-04-01) — Neues Core-Modul `streaming/core/playlists.py` mit CRUD-Funktionen (`load_playlists`, `create_playlist`, `delete_playlist`, `rename_playlist`, `add_item`, `remove_item`). Storage unter `<cache_dir>/playlists/<server>.json` (Audio/Video getrennt). Thread-sicher via `threading.Lock`, atomare Schreibvorgänge. Max 50 Playlists, 500 Items/Playlist. API-Endpoints in beiden Servern: `GET/POST/DELETE /api/<media>/playlists`, `POST/DELETE /api/<media>/playlists/items`. Feature-Flag `enable_playlists=True` in `render_media_page()`. UI: Playlist-Pill im Header, Playlist-Library-Panel (Übersicht + Play/Delete), „Zur Playlist hinzufügen"-Modal mit Dropdown + Inline-Erstellen, `.track-playlist-btn` pro Track. `SVG_PLAYLIST`/`IC_PLAYLIST` Icon. Swipe-Exclusion für Playlist-Panels. 20 neue Unit-Tests (`test_playlists.py`), 5 Feature-Parity-Tests. Grundlage für Playlist-Reordering (Follow-Up).
 - **Genre-Tags bei Musik nutzen** (2026-03-31) — `get_genre()` in `audio/metadata.py` liest Genre-Tags (ID3 TCON, MP4 ©gen, Vorbis genre/GENRE). Neues `genre: str`-Feld auf `MediaItem`. `build_audio_index()` liest Genre beim Index-Build. Genre-Filter-Chip (`#filter-genre`) in der Filter-Bar zykliert durch verfügbare Genres (alphabetisch sortiert → alle). AND-Logik mit bestehenden Filtern. `localStorage`-Persistenz (`ht-filter-genre`). Chip versteckt sich automatisch wenn keine Genre-Tags vorhanden. 8 neue Tests (3 metadata + 5 UI). Grundlage für „Ähnliche Titel"-Feature.
 - **Audit-Log aus Cache-Verzeichnis herausgelöst** (2026-03-31) — `audit.jsonl` aus `.hometools-cache/audit/` nach `.hometools-audit/` (eigenes Verzeichnis) verschoben. Neue `get_audit_dir()` in `config.py` mit `HOMETOOLS_AUDIT_DIR` Env-Var. Alle `audit_log.py`-Funktionen akzeptieren jetzt `audit_dir` statt `cache_dir`. Automatische Migration: Server kopiert beim Start `<cache_dir>/audit/audit.jsonl` → `<audit_dir>/audit.jsonl` (einmalig, idempotent, nie überschreibend). `make clean` löscht jetzt den gesamten Cache ohne Audit-Ausnahme. `.env.example` und `.gitignore` aktualisiert. 6 neue Tests (4 Migration + 2 Config). Beide Server (Audio + Video) umgestellt.
 - **Swipe-Gesten für mobile Navigation** (2026-03-31) — Touch-Swipe-Handler (`touchstart`/`touchend`) für Zurück-Navigation auf Mobilgeräten. Swipe rechts = zurück (`goBack()`) in Ordner- und Playlist-Ansicht. Track-Wechsel ausschließlich über Buttons. Schwellenwerte: 60px min-dist, 80px max-vert, 400ms max-time. Ausnahmen: Range-Inputs, Canvas, Modals, Lyrics-Panel, Offline-Library. Passive Event-Listener. Kein Feature-Flag (universell). 4 Tests in `test_streaming_player_ui.py`.

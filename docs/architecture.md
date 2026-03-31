@@ -166,8 +166,8 @@ Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progr
 Alle Player-Buttons und UI-Controls verwenden **inline SVGs** statt Unicode-Zeichen. iOS rendert Unicode-Steuerzeichen (▶ ◄ ► ⏸ ⊞ ↓) als farbige Emojis, was das Layout zerstört.
 
 **Konvention:**
-- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR` in `server_utils.py`
-- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY` — über `innerHTML` gesetzt (nicht `textContent`)
+- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST` in `server_utils.py`
+- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST` — über `innerHTML` gesetzt (nicht `textContent`)
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
 - **Nie** Unicode-Zeichen oder HTML-Entities (`&#9733;`, `&#9654;` etc.) — iOS rendert sie als Emoji
 
@@ -232,8 +232,8 @@ Ordner, deren Name mit `#` beginnt, werden als Favoriten behandelt:
 Folder-Favorites sind **nicht** interaktiv toggle-bar aus dem Browser. Änderungen erfordern Umbenennen des Verzeichnisses auf dem NAS (via separatem `rename`-Workflow — Regel 9: „File renames must be proposed, never auto-applied").
 
 **CSS-Konvention für SVG-Icons:**
-- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`)
-- JS-Variablen: `IC_*` in der generierten JS-Seite (inkl. `IC_STAR`, `IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`)
+- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_PLAYLIST`)
+- JS-Variablen: `IC_*` in der generierten JS-Seite (inkl. `IC_STAR`, `IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_PLAYLIST`)
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
 - Kein Unicode/HTML-Entities (`&#9733;`, `&#9654;` etc.) — sie rendern auf iOS als farbige Emojis
 
@@ -914,3 +914,104 @@ Swipe wird **nicht** ausgelöst auf:
 2. **Passive Event-Listener** — `{ passive: true }` auf `touchstart`/`touchend` für Scroll-Performance.
 3. **Rein clientseitig** — keine API-Änderung, kein Backend-Code.
 4. **Nur Zurück-Navigation** — Track-Wechsel erfolgt ausschließlich über Buttons, Swipe löst nur `goBack()` aus.
+
+---
+
+## Wiedergabelisten (User Playlists)
+
+**Module:** `streaming/core/playlists.py`, `streaming/audio/server.py`, `streaming/video/server.py`, `streaming/core/server_utils.py`
+
+### Übersicht
+
+Benutzer können benannte Playlists erstellen und Medien-Items (Tracks / Videos) hinzufügen. Playlists sind server-spezifisch (Audio und Video getrennt) und werden im Shadow-Cache persistiert.
+
+### Storage
+
+```
+<cache_dir>/playlists/audio.json   ← Audio-Playlists
+<cache_dir>/playlists/video.json   ← Video-Playlists
+```
+
+Jede Datei enthält ein JSON-Array von Playlist-Objekten:
+
+```json
+[
+  {
+    "id": "a1b2c3d4e5f6",
+    "name": "Meine Playlist",
+    "created": "2026-04-01T00:00:00+00:00",
+    "items": ["artist/song.mp3", "artist/other.mp3"]
+  }
+]
+```
+
+Thread-sicher via `threading.Lock`. Atomare Schreibvorgänge (NamedTemporaryFile + replace). Alle Read-Modify-Write-Operationen halten den Lock für die gesamte Dauer — keine Race Conditions bei konkurrierenden Schreibzugriffen.
+
+### Limits
+
+- Max **50 Playlists** pro Server
+- Max **500 Items** pro Playlist
+- Duplikate innerhalb einer Playlist werden silently ignoriert
+
+### API-Endpoints (Audio + Video)
+
+| Endpoint | Methode | Beschreibung |
+|---|---|---|
+| `/api/<media>/playlists` | `GET` | Alle Playlists laden (`{items: [...]}`) |
+| `/api/<media>/playlists` | `POST` | Neue Playlist erstellen (`{name}` → `{playlist}`) |
+| `/api/<media>/playlists?id=` | `DELETE` | Playlist löschen (`{items: [...]}`) |
+| `/api/<media>/playlists/items` | `POST` | Item hinzufügen (`{playlist_id, relative_path}` → `{playlist}`) |
+| `/api/<media>/playlists/items?playlist_id=&path=` | `DELETE` | Item entfernen (`{playlist}`) |
+
+### Feature-Flag
+
+```python
+# render_media_page(enable_playlists=True)   →  Audio + Video
+# render_media_page()                         →  Default: False
+```
+
+`render_media_page()` und `render_player_js()` haben den Parameter `enable_playlists: bool = False`. Er steuert:
+1. `PLAYLISTS_ENABLED = true` im generierten JS
+2. `PLAYLISTS_API_PATH = '/api/<media>/playlists'`
+3. `IC_PLAYLIST` — Listen-SVG-Icon als JS-Variable
+4. Playlist-Button (`.track-playlist-btn`) pro Track in der Liste
+5. Playlist-Pill im Header (`#playlist-pill`)
+6. Playlist-Library-Panel (`#playlist-library`)
+7. „Zur Playlist hinzufügen"-Modal (`#playlist-modal-backdrop`)
+
+### UI-Elemente
+
+| Element | ID/Klasse | Funktion |
+|---|---|---|
+| **Playlist-Pill** | `#playlist-pill`, `.playlist-pill` | Header-Button, zeigt Anzahl, öffnet Library-Panel |
+| **Library-Panel** | `#playlist-library`, `.playlist-library` | Übersicht aller Playlists mit Play/Delete-Buttons |
+| **Add-Modal** | `#playlist-modal-backdrop`, `.playlist-modal-backdrop` | „Zur Playlist hinzufügen" mit Dropdown + Inline-Erstellen |
+| **Track-Button** | `.track-playlist-btn` | Pro Track, öffnet Add-Modal |
+
+### JS-Architektur
+
+```
+PLAYLISTS_ENABLED: bool           ← aus enable_playlists
+PLAYLISTS_API_PATH: str           ← '/api/<media>/playlists'
+IC_PLAYLIST: str                  ← SVG-Icon
+_userPlaylists: []                ← lokaler State (geladen via API)
+_playlistAddPath: ''              ← relative_path des aktuell hinzuzufügenden Items
+
+loadUserPlaylists()               ← GET → _userPlaylists
+openPlaylistLibrary()             ← Library-Panel anzeigen
+playUserPlaylist(plId)            ← Playlist-Items in allItems auflösen, playTrack(0)
+deleteUserPlaylist(plId)          ← DELETE → _userPlaylists aktualisieren
+openPlaylistModal(relativePath)   ← Add-Modal anzeigen
+addToPlaylist(plId, relativePath) ← POST /items → Toast
+createAndAddToPlaylist(name, rp)  ← POST (create) → addToPlaylist
+```
+
+### Designregeln
+
+1. **Shared Core** — Modul `playlists.py` und alle JS-Logik leben in `streaming/core/`. Feature-Flag steuert Aktivierung — identisch für Audio und Video.
+2. **Audio + Video getrennt** — Separate JSON-Dateien pro Server (konsistent mit Shortcuts-Architektur). Cross-Server-Playlists nicht möglich (relative_path kollidiert).
+3. **Kein Reordering im MVP** — Items werden in der Reihenfolge des Hinzufügens wiedergegeben. Drag-Drop / Pfeil-Buttons als Follow-Up.
+4. **Playlist-Wiedergabe nutzt `allItems`** — Items werden per `relative_path` aus dem Katalog aufgelöst. Items die nicht mehr im Katalog sind werden übersprungen.
+5. **Swipe-Ausnahme** — Playlist-Library und Add-Modal sind in der Swipe-Exclusion-Liste (kein versehentliches Navigieren).
+6. **Keine Duplikate** — Gleicher `relative_path` in einer Playlist wird silently ignoriert.
+7. **API-Response-Key `"items"`** — Konsistent mit allen anderen Endpoints (Architektur-Regel 3).

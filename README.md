@@ -13,6 +13,7 @@ A collection of Python tools for managing personal media libraries — music fil
 - TV-Idee: Stream der Wer wird Millionär Show aus dem Quiz Repository. Hier kann eine zufällige Person online teilnehmen. 
 - Check if audiobook from metadata is possible too 
 - Option zur Erweiterung/Anreicherung mit YouTube Downloads. 
+- Drei ??? Alben sind aufeinanderfolgende Titel . automatisch erkennen/automatisch mergen?
 
 ---
 
