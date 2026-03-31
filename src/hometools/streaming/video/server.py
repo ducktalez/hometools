@@ -83,6 +83,7 @@ def render_video_index_html(items, *, safe_mode: bool = False) -> str:
         theme_color="#bb86fc",
         player_bar_style="classic" if safe_mode else get_player_bar_style(),
         safe_mode=safe_mode,
+        enable_playlists=True,
     )
 
 
@@ -509,6 +510,58 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             return {"ok": True, **meta}
         except Exception:
             raise HTTPException(status_code=500, detail="Sprite metadata corrupted") from None
+
+    # --- Playlists API ---
+
+    @app.get("/api/video/playlists")
+    def video_playlists() -> dict[str, object]:
+        """Return all user playlists for the video server."""
+        from hometools.streaming.core.playlists import load_playlists
+
+        return {"items": load_playlists(resolved_cache_dir, "video")}
+
+    @app.post("/api/video/playlists")
+    def video_create_playlist(payload: dict[str, str]) -> dict[str, object]:
+        """Create a new empty playlist."""
+        from hometools.streaming.core.playlists import create_playlist
+
+        name = payload.get("name", "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+        pl = create_playlist(resolved_cache_dir, "video", name=name)
+        return {"playlist": pl}
+
+    @app.delete("/api/video/playlists")
+    def video_delete_playlist(id: str) -> dict[str, object]:
+        """Delete a playlist by id."""
+        from hometools.streaming.core.playlists import delete_playlist
+
+        remaining = delete_playlist(resolved_cache_dir, "video", id)
+        return {"items": remaining}
+
+    @app.post("/api/video/playlists/items")
+    def video_add_playlist_item(payload: dict[str, str]) -> dict[str, object]:
+        """Add a video to a playlist."""
+        from hometools.streaming.core.playlists import add_item
+
+        playlist_id = payload.get("playlist_id", "")
+        relative_path = payload.get("relative_path", "")
+        if not playlist_id or not relative_path:
+            raise HTTPException(status_code=400, detail="playlist_id and relative_path are required")
+        pl = add_item(resolved_cache_dir, "video", playlist_id, relative_path=relative_path)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        return {"playlist": pl}
+
+    @app.delete("/api/video/playlists/items")
+    def video_remove_playlist_item(playlist_id: str, path: str) -> dict[str, object]:
+        """Remove a video from a playlist."""
+        from hometools.streaming.core.playlists import remove_item
+
+        pl = remove_item(resolved_cache_dir, "video", playlist_id, relative_path=path)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        return {"playlist": pl}
 
     # --- Shortcuts API ---
 

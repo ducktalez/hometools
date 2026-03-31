@@ -82,6 +82,7 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         enable_metadata_edit=True,
         enable_recent=False,  # Audio: no "recently played" section; audiobooks resume via progress API
         enable_lyrics=True,
+        enable_playlists=True,
     )
 
 
@@ -646,6 +647,58 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
         if not thumb_path.exists():
             raise HTTPException(status_code=404, detail="Thumbnail not found")
         return FileResponse(thumb_path, media_type="image/jpeg")
+
+    # --- Playlists API ---
+
+    @app.get("/api/audio/playlists")
+    def audio_playlists() -> dict[str, object]:
+        """Return all user playlists for the audio server."""
+        from hometools.streaming.core.playlists import load_playlists
+
+        return {"items": load_playlists(resolved_cache_dir, "audio")}
+
+    @app.post("/api/audio/playlists")
+    def audio_create_playlist(payload: dict[str, str]) -> dict[str, object]:
+        """Create a new empty playlist."""
+        from hometools.streaming.core.playlists import create_playlist
+
+        name = payload.get("name", "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+        pl = create_playlist(resolved_cache_dir, "audio", name=name)
+        return {"playlist": pl}
+
+    @app.delete("/api/audio/playlists")
+    def audio_delete_playlist(id: str) -> dict[str, object]:
+        """Delete a playlist by id."""
+        from hometools.streaming.core.playlists import delete_playlist
+
+        remaining = delete_playlist(resolved_cache_dir, "audio", id)
+        return {"items": remaining}
+
+    @app.post("/api/audio/playlists/items")
+    def audio_add_playlist_item(payload: dict[str, str]) -> dict[str, object]:
+        """Add a track to a playlist."""
+        from hometools.streaming.core.playlists import add_item
+
+        playlist_id = payload.get("playlist_id", "")
+        relative_path = payload.get("relative_path", "")
+        if not playlist_id or not relative_path:
+            raise HTTPException(status_code=400, detail="playlist_id and relative_path are required")
+        pl = add_item(resolved_cache_dir, "audio", playlist_id, relative_path=relative_path)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        return {"playlist": pl}
+
+    @app.delete("/api/audio/playlists/items")
+    def audio_remove_playlist_item(playlist_id: str, path: str) -> dict[str, object]:
+        """Remove a track from a playlist."""
+        from hometools.streaming.core.playlists import remove_item
+
+        pl = remove_item(resolved_cache_dir, "audio", playlist_id, relative_path=path)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        return {"playlist": pl}
 
     # --- Shortcuts API ---
 

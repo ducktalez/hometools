@@ -313,3 +313,107 @@ class TestLargeThumbnailParity:
 
             r_v = video.get("/thumb", params={"path": "test.mp4", "size": "lg"})
             assert r_v.status_code == 200, "Video /thumb?size=lg should return 200"
+
+
+class TestPlaylistParity:
+    """Both servers must expose identical playlist endpoints."""
+
+    def test_both_servers_have_playlist_get_endpoint(self, tmp_path):
+        """Both servers must have GET /api/<media>/playlists."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        audio_resp = audio_client.get("/api/audio/playlists")
+        video_resp = video_client.get("/api/video/playlists")
+
+        assert audio_resp.status_code == 200
+        assert video_resp.status_code == 200
+        assert "items" in audio_resp.json()
+        assert "items" in video_resp.json()
+
+    def test_both_servers_have_playlist_create_endpoint(self, tmp_path):
+        """Both servers must have POST /api/<media>/playlists."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        audio_resp = audio_client.post("/api/audio/playlists", json={"name": "Test"})
+        video_resp = video_client.post("/api/video/playlists", json={"name": "Test"})
+
+        assert audio_resp.status_code == 200
+        assert video_resp.status_code == 200
+        assert "playlist" in audio_resp.json()
+        assert "playlist" in video_resp.json()
+
+    def test_both_servers_have_playlist_delete_endpoint(self, tmp_path):
+        """Both servers must have DELETE /api/<media>/playlists."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        # Create then delete
+        a_pl = audio_client.post("/api/audio/playlists", json={"name": "Del"}).json()["playlist"]
+        v_pl = video_client.post("/api/video/playlists", json={"name": "Del"}).json()["playlist"]
+
+        audio_resp = audio_client.delete("/api/audio/playlists", params={"id": a_pl["id"]})
+        video_resp = video_client.delete("/api/video/playlists", params={"id": v_pl["id"]})
+
+        assert audio_resp.status_code == 200
+        assert video_resp.status_code == 200
+
+    def test_both_servers_have_playlist_items_endpoints(self, tmp_path):
+        """Both servers must support adding/removing items."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        a_pl = audio_client.post("/api/audio/playlists", json={"name": "Items"}).json()["playlist"]
+        v_pl = video_client.post("/api/video/playlists", json={"name": "Items"}).json()["playlist"]
+
+        a_add = audio_client.post("/api/audio/playlists/items", json={"playlist_id": a_pl["id"], "relative_path": "test.mp3"})
+        v_add = video_client.post("/api/video/playlists/items", json={"playlist_id": v_pl["id"], "relative_path": "test.mp4"})
+
+        assert a_add.status_code == 200
+        assert v_add.status_code == 200
+
+        a_rm = audio_client.delete("/api/audio/playlists/items", params={"playlist_id": a_pl["id"], "path": "test.mp3"})
+        v_rm = video_client.delete("/api/video/playlists/items", params={"playlist_id": v_pl["id"], "path": "test.mp4"})
+
+        assert a_rm.status_code == 200
+        assert v_rm.status_code == 200
+
+    def test_both_home_pages_include_playlist_ui(self, tmp_path):
+        """Both UIs must have playlist elements when enabled."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        for label, html in [("audio", audio_html), ("video", video_html)]:
+            assert 'id="playlist-pill"' in html, f"{label} missing playlist-pill"
+            assert 'id="playlist-library"' in html, f"{label} missing playlist-library"
+            assert 'id="playlist-modal-backdrop"' in html, f"{label} missing playlist-modal"
+            assert "PLAYLISTS_ENABLED" in html, f"{label} missing PLAYLISTS_ENABLED JS var"
