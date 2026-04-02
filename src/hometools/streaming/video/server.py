@@ -518,12 +518,20 @@ def create_app(
 
     # --- Playlists API ---
 
+    @app.get("/api/video/playlists/version")
+    def video_playlists_version() -> dict[str, object]:
+        """Return the current playlist revision number (lightweight)."""
+        from hometools.streaming.core.playlists import get_revision
+
+        return {"revision": get_revision(resolved_cache_dir, "video")}
+
     @app.get("/api/video/playlists")
     def video_playlists() -> dict[str, object]:
         """Return all user playlists for the video server."""
-        from hometools.streaming.core.playlists import load_playlists
+        from hometools.streaming.core.playlists import load_playlists_with_revision
 
-        return {"items": load_playlists(resolved_cache_dir, "video")}
+        playlists, revision = load_playlists_with_revision(resolved_cache_dir, "video")
+        return {"items": playlists, "revision": revision}
 
     @app.post("/api/video/playlists")
     def video_create_playlist(payload: dict[str, str]) -> dict[str, object]:

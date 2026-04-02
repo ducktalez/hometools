@@ -1,5 +1,6 @@
 """Tests for user playlists (streaming/core/playlists.py)."""
 
+import json
 import threading
 
 from hometools.streaming.core.playlists import (
@@ -7,7 +8,9 @@ from hometools.streaming.core.playlists import (
     create_playlist,
     delete_playlist,
     get_playlist,
+    get_revision,
     load_playlists,
+    load_playlists_with_revision,
     move_item,
     remove_item,
     rename_playlist,
@@ -320,3 +323,280 @@ class TestPlaylistReorderToIndex:
         loaded = get_playlist(tmp_path, "audio", pl["id"])
         assert loaded is not None
         assert loaded["items"] == ["c.mp3", "a.mp3", "b.mp3"]
+
+
+class TestRevisionTracking:
+    """Tests for the revision counter introduced in Sprint 4."""
+
+    def test_initial_revision_is_zero(self, tmp_path):
+        """Empty storage has revision 0."""
+        assert get_revision(tmp_path, "audio") == 0
+
+    def test_create_increments_revision(self, tmp_path):
+        """Creating a playlist bumps revision by 1."""
+        create_playlist(tmp_path, "audio", name="A")
+        assert get_revision(tmp_path, "audio") == 1
+        create_playlist(tmp_path, "audio", name="B")
+        assert get_revision(tmp_path, "audio") == 2
+
+    def test_delete_increments_revision(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        rev_after_create = get_revision(tmp_path, "audio")
+        delete_playlist(tmp_path, "audio", pl["id"])
+        assert get_revision(tmp_path, "audio") == rev_after_create + 1
+
+    def test_rename_increments_revision(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        rev = get_revision(tmp_path, "audio")
+        rename_playlist(tmp_path, "audio", pl["id"], name="Y")
+        assert get_revision(tmp_path, "audio") == rev + 1
+
+    def test_add_item_increments_revision(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        rev = get_revision(tmp_path, "audio")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        assert get_revision(tmp_path, "audio") == rev + 1
+
+    def test_remove_item_increments_revision(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        rev = get_revision(tmp_path, "audio")
+        remove_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        assert get_revision(tmp_path, "audio") == rev + 1
+
+    def test_move_item_increments_revision(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        add_item(tmp_path, "audio", pl["id"], relative_path="b.mp3")
+        rev = get_revision(tmp_path, "audio")
+        move_item(tmp_path, "audio", pl["id"], relative_path="b.mp3", direction="up")
+        assert get_revision(tmp_path, "audio") == rev + 1
+
+    def test_reorder_item_increments_revision(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        add_item(tmp_path, "audio", pl["id"], relative_path="b.mp3")
+        rev = get_revision(tmp_path, "audio")
+        reorder_item(tmp_path, "audio", pl["id"], relative_path="b.mp3", to_index=0)
+        assert get_revision(tmp_path, "audio") == rev + 1
+
+    def test_load_playlists_with_revision(self, tmp_path):
+        """load_playlists_with_revision returns both playlists and revision."""
+        create_playlist(tmp_path, "audio", name="A")
+        create_playlist(tmp_path, "audio", name="B")
+        playlists, rev = load_playlists_with_revision(tmp_path, "audio")
+        assert len(playlists) == 2
+        assert rev == 2
+
+    def test_revision_per_server(self, tmp_path):
+        """Audio and video revisions are independent."""
+        create_playlist(tmp_path, "audio", name="A1")
+        create_playlist(tmp_path, "audio", name="A2")
+        create_playlist(tmp_path, "video", name="V1")
+        assert get_revision(tmp_path, "audio") == 2
+        assert get_revision(tmp_path, "video") == 1
+
+
+class TestUpdatedAt:
+    """Tests for the updated_at timestamp field."""
+
+    def test_create_has_updated_at(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        assert "updated_at" in pl
+        assert pl["updated_at"] == pl["created"]
+
+    def test_rename_updates_updated_at(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        old_ts = pl["updated_at"]
+        renamed = rename_playlist(tmp_path, "audio", pl["id"], name="Y")
+        assert renamed["updated_at"] >= old_ts
+
+    def test_add_item_updates_updated_at(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        old_ts = pl["updated_at"]
+        updated = add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        assert updated["updated_at"] >= old_ts
+
+    def test_remove_item_updates_updated_at(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        loaded = get_playlist(tmp_path, "audio", pl["id"])
+        old_ts = loaded["updated_at"]
+        updated = remove_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        assert updated["updated_at"] >= old_ts
+
+    def test_reorder_updates_updated_at(self, tmp_path):
+        pl = create_playlist(tmp_path, "audio", name="X")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        add_item(tmp_path, "audio", pl["id"], relative_path="b.mp3")
+        loaded = get_playlist(tmp_path, "audio", pl["id"])
+        old_ts = loaded["updated_at"]
+        updated = reorder_item(tmp_path, "audio", pl["id"], relative_path="b.mp3", to_index=0)
+        assert updated["updated_at"] >= old_ts
+
+
+class TestPlaylistChangelog:
+    """Tests for the changelog JSONL feature."""
+
+    def test_changelog_created_on_mutation(self, tmp_path):
+        from hometools.streaming.core.playlists import _changelog_path
+
+        create_playlist(tmp_path, "audio", name="Test")
+        path = _changelog_path(tmp_path, "audio")
+        assert path.exists()
+        lines = path.read_text(encoding="utf-8").strip().split("\n")
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["action"] == "create"
+        assert "timestamp" in entry
+
+    def test_changelog_grows_with_mutations(self, tmp_path):
+        from hometools.streaming.core.playlists import _changelog_path
+
+        pl = create_playlist(tmp_path, "audio", name="Test")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        remove_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        rename_playlist(tmp_path, "audio", pl["id"], name="New")
+        delete_playlist(tmp_path, "audio", pl["id"])
+
+        path = _changelog_path(tmp_path, "audio")
+        lines = path.read_text(encoding="utf-8").strip().split("\n")
+        assert len(lines) == 5
+        actions = [json.loads(line)["action"] for line in lines]
+        assert actions == ["create", "add_item", "remove_item", "rename", "delete"]
+
+    def test_changelog_servers_isolated(self, tmp_path):
+        from hometools.streaming.core.playlists import _changelog_path
+
+        create_playlist(tmp_path, "audio", name="A")
+        create_playlist(tmp_path, "video", name="V")
+
+        audio_path = _changelog_path(tmp_path, "audio")
+        video_path = _changelog_path(tmp_path, "video")
+        assert audio_path.exists()
+        assert video_path.exists()
+        assert audio_path != video_path
+
+
+class TestBackwardCompatibility:
+    """Tests for v1 → v2 storage format migration."""
+
+    def test_legacy_bare_array_is_read(self, tmp_path):
+        """v1 format (bare JSON array) is transparently read."""
+        from hometools.streaming.core.playlists import _playlists_path
+
+        path = _playlists_path(tmp_path, "audio")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        legacy = [{"id": "abc123", "name": "Old", "created": "2025-01-01T00:00:00Z", "items": ["x.mp3"]}]
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        loaded = load_playlists(tmp_path, "audio")
+        assert len(loaded) == 1
+        assert loaded[0]["name"] == "Old"
+
+    def test_legacy_revision_is_zero(self, tmp_path):
+        """v1 format has revision 0."""
+        from hometools.streaming.core.playlists import _playlists_path
+
+        path = _playlists_path(tmp_path, "audio")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        legacy = [{"id": "abc123", "name": "Old", "created": "2025-01-01T00:00:00Z", "items": []}]
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        assert get_revision(tmp_path, "audio") == 0
+
+    def test_legacy_migrates_on_write(self, tmp_path):
+        """First write after reading v1 data stores v2 envelope."""
+        from hometools.streaming.core.playlists import _playlists_path
+
+        path = _playlists_path(tmp_path, "audio")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        legacy = [{"id": "abc123", "name": "Old", "created": "2025-01-01T00:00:00Z", "items": []}]
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        # Trigger a write (add item bumps revision)
+        add_item(tmp_path, "audio", "abc123", relative_path="new.mp3")
+
+        # File should now be v2 envelope
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        assert isinstance(raw, dict)
+        assert "revision" in raw
+        assert "playlists" in raw
+        assert raw["revision"] == 1
+
+
+class TestVersionEndpoint:
+    """Integration tests for the /playlists/version API endpoint."""
+
+    def test_audio_version_initial(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        resp = client.get("/api/audio/playlists/version")
+        assert resp.status_code == 200
+        assert resp.json()["revision"] == 0
+
+    def test_audio_version_after_create(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        client.post("/api/audio/playlists", json={"name": "Test"})
+        resp = client.get("/api/audio/playlists/version")
+        assert resp.json()["revision"] == 1
+
+    def test_audio_playlists_includes_revision(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        client.post("/api/audio/playlists", json={"name": "Test"})
+        resp = client.get("/api/audio/playlists")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "revision" in data
+        assert data["revision"] == 1
+        assert len(data["items"]) == 1
+
+    def test_video_version_endpoint(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.video.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        resp = client.get("/api/video/playlists/version")
+        assert resp.status_code == 200
+        assert resp.json()["revision"] == 0
+
+    def test_video_playlists_includes_revision(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.video.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        client.post("/api/video/playlists", json={"name": "VPL"})
+        resp = client.get("/api/video/playlists")
+        data = resp.json()
+        assert "revision" in data
+        assert data["revision"] == 1
+
+    def test_revision_increments_across_mutations(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        # create → rev 1
+        resp = client.post("/api/audio/playlists", json={"name": "PL"})
+        pl_id = resp.json()["playlist"]["id"]
+        # add item → rev 2
+        client.post("/api/audio/playlists/items", json={"playlist_id": pl_id, "relative_path": "a.mp3"})
+        # delete → rev 3
+        client.delete(f"/api/audio/playlists?id={pl_id}")
+
+        v = client.get("/api/audio/playlists/version").json()
+        assert v["revision"] == 3
