@@ -501,3 +501,57 @@ class TestPlaylistParity:
                 or "playlist-new-card" in html
                 or "PLAYLISTS_API_PATH" in html
             ), f"{label} missing playlist pseudo-folder support"
+
+
+class TestPlaylistSyncParity:
+    """Both servers must expose playlist version/revision endpoints."""
+
+    def test_both_servers_have_playlists_version_endpoint(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        a_resp = audio_client.get("/api/audio/playlists/version")
+        v_resp = video_client.get("/api/video/playlists/version")
+
+        assert a_resp.status_code == 200
+        assert v_resp.status_code == 200
+        assert a_resp.json().keys() == v_resp.json().keys()
+        assert "revision" in a_resp.json()
+
+    def test_both_playlists_responses_include_revision(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        a_resp = audio_client.get("/api/audio/playlists")
+        v_resp = video_client.get("/api/video/playlists")
+
+        assert "revision" in a_resp.json()
+        assert "revision" in v_resp.json()
+
+    def test_both_home_pages_include_playlist_sync_js(self, tmp_path):
+        """Both UIs must expose the PLAYLISTS_VERSION_PATH JS variable."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        assert "PLAYLISTS_VERSION_PATH" in audio_html
+        assert "PLAYLISTS_VERSION_PATH" in video_html
+        assert "_startPlaylistSync" in audio_html
+        assert "_startPlaylistSync" in video_html

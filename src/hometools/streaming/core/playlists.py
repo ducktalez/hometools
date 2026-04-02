@@ -6,6 +6,15 @@ collisions.
 
 Storage file: ``<cache_dir>/playlists/<server>.json``
 
+Storage format (v2)::
+
+    {
+      "revision": 42,
+      "playlists": [ {id, name, created, updated_at, items}, ... ]
+    }
+
+Legacy format (v1, bare array) is transparently migrated on first write.
+
 Thread-safe: all reads/writes are protected by a module-level lock.
 Atomic writes via ``NamedTemporaryFile`` + ``replace``.
 Public functions never raise; they return sensible defaults on failure.
@@ -41,22 +50,43 @@ def _playlists_path(cache_dir: Path, server: str) -> Path:
     return cache_dir / _PLAYLISTS_DIR / f"{server}.json"
 
 
-def _read_raw(path: Path) -> list[dict[str, Any]]:
-    """Read playlists from disk (caller must hold _lock)."""
+def _changelog_path(cache_dir: Path, server: str) -> Path:
+    """Return the on-disk path for the changelog JSONL file."""
+    return cache_dir / _PLAYLISTS_DIR / f"changelog_{server}.jsonl"
+
+
+def _read_raw(path: Path) -> tuple[list[dict[str, Any]], int]:
+    """Read playlists + revision from disk (caller must hold _lock).
+
+    Returns ``(playlists, revision)``.  Transparently handles both v1
+    (bare array) and v2 (envelope with revision) formats.
+    """
     try:
         if not path.exists():
-            return []
+            return [], 0
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
+        # v2 envelope format
+        if isinstance(data, dict):
+            playlists = data.get("playlists", [])
+            revision = int(data.get("revision", 0))
+            return (playlists if isinstance(playlists, list) else []), revision
+        # v1 legacy: bare array
+        if isinstance(data, list):
+            return data, 0
+        return [], 0
     except Exception:
         logger.debug("Failed to read playlists from %s", path, exc_info=True)
-        return []
+        return [], 0
 
 
-def _write_raw(path: Path, playlists: list[dict[str, Any]]) -> None:
-    """Atomically write playlists to disk (caller must hold _lock)."""
+def _write_raw(path: Path, playlists: list[dict[str, Any]], revision: int) -> None:
+    """Atomically write playlists to disk in v2 envelope format (caller must hold _lock)."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        envelope: dict[str, Any] = {
+            "revision": revision,
+            "playlists": playlists,
+        }
         with NamedTemporaryFile(
             mode="w",
             suffix=".json",
@@ -64,11 +94,45 @@ def _write_raw(path: Path, playlists: list[dict[str, Any]]) -> None:
             delete=False,
             encoding="utf-8",
         ) as tmp:
-            json.dump(playlists, tmp, ensure_ascii=False, indent=2)
+            json.dump(envelope, tmp, ensure_ascii=False, indent=2)
             tmp_path_obj = Path(tmp.name)
         tmp_path_obj.replace(path)
     except Exception:
         logger.debug("Failed to write playlists to %s", path, exc_info=True)
+
+
+def _now_iso() -> str:
+    """Return the current UTC time as ISO-8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Changelog
+# ---------------------------------------------------------------------------
+
+
+def _append_changelog(
+    cache_dir: Path,
+    server: str,
+    *,
+    action: str,
+    playlist_id: str = "",
+    detail: str = "",
+) -> None:
+    """Append an entry to the playlist changelog JSONL (best-effort)."""
+    try:
+        path = _changelog_path(cache_dir, server)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": _now_iso(),
+            "action": action,
+            "playlist_id": playlist_id,
+            "detail": detail,
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        logger.debug("Failed to append changelog for %s/%s", server, action, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -79,13 +143,14 @@ def _write_raw(path: Path, playlists: list[dict[str, Any]]) -> None:
 def load_playlists(cache_dir: Path, server: str) -> list[dict[str, Any]]:
     """Load all saved playlists for *server* (``audio`` or ``video``).
 
-    Each playlist dict has keys ``id``, ``name``, ``created``, ``items``.
-    ``items`` is a list of relative-path strings.
+    Each playlist dict has keys ``id``, ``name``, ``created``, ``updated_at``,
+    ``items``.  ``items`` is a list of relative-path strings.
     Returns ``[]`` on any error.
     """
     path = _playlists_path(cache_dir, server)
     with _lock:
-        return _read_raw(path)
+        playlists, _rev = _read_raw(path)
+        return playlists
 
 
 def get_playlist(cache_dir: Path, server: str, playlist_id: str) -> dict[str, Any] | None:
@@ -95,6 +160,27 @@ def get_playlist(cache_dir: Path, server: str, playlist_id: str) -> dict[str, An
         if pl.get("id") == playlist_id:
             return pl
     return None
+
+
+def get_revision(cache_dir: Path, server: str) -> int:
+    """Return the current playlist revision number (0 if none saved yet).
+
+    Lightweight — reads the file but only extracts the revision counter.
+    """
+    path = _playlists_path(cache_dir, server)
+    with _lock:
+        _playlists, revision = _read_raw(path)
+        return revision
+
+
+def load_playlists_with_revision(cache_dir: Path, server: str) -> tuple[list[dict[str, Any]], int]:
+    """Load all playlists together with the current revision number.
+
+    Returns ``(playlists, revision)``.
+    """
+    path = _playlists_path(cache_dir, server)
+    with _lock:
+        return _read_raw(path)
 
 
 # ---------------------------------------------------------------------------
@@ -114,21 +200,25 @@ def create_playlist(
     ``_MAX_PLAYLISTS`` playlists, the oldest one is silently removed.
     """
     path = _playlists_path(cache_dir, server)
+    now = _now_iso()
 
     new_pl: dict[str, Any] = {
         "id": uuid.uuid4().hex[:12],
         "name": name.strip() or "Playlist",
-        "created": datetime.now(timezone.utc).isoformat(),
+        "created": now,
+        "updated_at": now,
         "items": [],
     }
 
     with _lock:
-        playlists = _read_raw(path)
+        playlists, revision = _read_raw(path)
         playlists.insert(0, new_pl)
         if len(playlists) > _MAX_PLAYLISTS:
             playlists = playlists[:_MAX_PLAYLISTS]
-        _write_raw(path, playlists)
+        revision += 1
+        _write_raw(path, playlists, revision)
 
+    _append_changelog(cache_dir, server, action="create", playlist_id=new_pl["id"], detail=name.strip())
     return new_pl
 
 
@@ -140,9 +230,11 @@ def delete_playlist(
     """Delete a playlist by *playlist_id* and return the updated list."""
     path = _playlists_path(cache_dir, server)
     with _lock:
-        playlists = _read_raw(path)
+        playlists, revision = _read_raw(path)
         playlists = [pl for pl in playlists if pl.get("id") != playlist_id]
-        _write_raw(path, playlists)
+        revision += 1
+        _write_raw(path, playlists, revision)
+        _append_changelog(cache_dir, server, action="delete", playlist_id=playlist_id)
         return playlists
 
 
@@ -156,15 +248,18 @@ def rename_playlist(
     """Rename a playlist.  Returns the updated playlist or ``None``."""
     path = _playlists_path(cache_dir, server)
     with _lock:
-        playlists = _read_raw(path)
+        playlists, revision = _read_raw(path)
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
                 pl["name"] = name.strip() or pl.get("name", "Playlist")
+                pl["updated_at"] = _now_iso()
                 target = pl
                 break
         if target is not None:
-            _write_raw(path, playlists)
+            revision += 1
+            _write_raw(path, playlists, revision)
+            _append_changelog(cache_dir, server, action="rename", playlist_id=playlist_id, detail=name.strip())
         return target
 
 
@@ -187,7 +282,7 @@ def add_item(
     """
     path = _playlists_path(cache_dir, server)
     with _lock:
-        playlists = _read_raw(path)
+        playlists, revision = _read_raw(path)
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
@@ -198,10 +293,13 @@ def add_item(
                         break
                     items.append(relative_path)
                     pl["items"] = items
+                pl["updated_at"] = _now_iso()
                 target = pl
                 break
         if target is not None:
-            _write_raw(path, playlists)
+            revision += 1
+            _write_raw(path, playlists, revision)
+            _append_changelog(cache_dir, server, action="add_item", playlist_id=playlist_id, detail=relative_path)
         return target
 
 
@@ -218,16 +316,19 @@ def remove_item(
     """
     path = _playlists_path(cache_dir, server)
     with _lock:
-        playlists = _read_raw(path)
+        playlists, revision = _read_raw(path)
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
                 items = pl.get("items", [])
                 pl["items"] = [p for p in items if p != relative_path]
+                pl["updated_at"] = _now_iso()
                 target = pl
                 break
         if target is not None:
-            _write_raw(path, playlists)
+            revision += 1
+            _write_raw(path, playlists, revision)
+            _append_changelog(cache_dir, server, action="remove_item", playlist_id=playlist_id, detail=relative_path)
         return target
 
 
@@ -249,7 +350,7 @@ def move_item(
         return None
     path = _playlists_path(cache_dir, server)
     with _lock:
-        playlists = _read_raw(path)
+        playlists, revision = _read_raw(path)
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
@@ -262,10 +363,13 @@ def move_item(
                 if 0 <= new_idx < len(items):
                     items[idx], items[new_idx] = items[new_idx], items[idx]
                     pl["items"] = items
+                pl["updated_at"] = _now_iso()
                 target = pl
                 break
         if target is not None:
-            _write_raw(path, playlists)
+            revision += 1
+            _write_raw(path, playlists, revision)
+            _append_changelog(cache_dir, server, action="move_item", playlist_id=playlist_id, detail=f"{relative_path} {direction}")
         return target
 
 
@@ -285,7 +389,7 @@ def reorder_item(
     """
     path = _playlists_path(cache_dir, server)
     with _lock:
-        playlists = _read_raw(path)
+        playlists, revision = _read_raw(path)
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
@@ -299,8 +403,11 @@ def reorder_item(
                     items.pop(old_idx)
                     items.insert(clamped, relative_path)
                     pl["items"] = items
+                pl["updated_at"] = _now_iso()
                 target = pl
                 break
         if target is not None:
-            _write_raw(path, playlists)
+            revision += 1
+            _write_raw(path, playlists, revision)
+            _append_changelog(cache_dir, server, action="reorder_item", playlist_id=playlist_id, detail=f"{relative_path} → {to_index}")
         return target

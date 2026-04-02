@@ -1088,6 +1088,27 @@ Neues Core-Modul `streaming/core/custom_order.py` persistiert benutzerdefinierte
 
 **Thread-Sicherheit:** Module-level Lock, atomare Schreibvorgänge via `NamedTemporaryFile` + `replace` (analog zu `playlists.py`).
 
+### Cross-Device Playlist Sync
+
+Polling-basierte Synchronisation, damit Playlist-Änderungen auf einem Gerät automatisch auf anderen Geräten sichtbar werden.
+
+**Storage-Format v2:** `{"revision": N, "playlists": [...]}` — Envelope mit globalem Revisions-Counter. Jede Mutation inkrementiert `revision` um 1. Legacy v1 (nacktes JSON-Array) wird transparent gelesen und beim ersten Schreiben in v2 konvertiert.
+
+**`updated_at`-Feld:** Jede Playlist hat ein `updated_at` ISO-Timestamp, das bei jeder Mutation (rename, add/remove/move/reorder item) aktualisiert wird. Ermöglicht zukünftige "Last write wins"-Konflikterkennung.
+
+**Changelog:** `<cache_dir>/playlists/changelog_<server>.jsonl` — Append-only JSONL mit je einer Zeile pro Mutation: `{timestamp, action, playlist_id, detail}`. Eigenes Log, kein Audit-Log. Primär für Debugging und zukünftige erweiterte Merge-Strategien.
+
+**API-Endpoints:**
+- `GET /api/<media>/playlists/version` — Nur `{"revision": N}` (leichtgewichtig, kein Full-Load)
+- `GET /api/<media>/playlists` — Enthält jetzt zusätzlich `"revision": N` im Response
+
+**JS-Polling-Mechanismus:**
+- `_playlistRevision` trackt die zuletzt bekannte Server-Revision
+- `_startPlaylistSync()` startet `setInterval` mit 30s-Intervall
+- `_pollPlaylistVersion()` ruft `GET .../playlists/version` auf — bei `revision > _playlistRevision` wird `loadUserPlaylists()` aufgerufen, `_playlistRevision` aktualisiert und die Root-View re-gerendert
+- **Visibility API:** Polling pausiert bei `document.hidden`, startet bei Tab-Rückkehr mit sofortigem Check
+- **JS-Variable:** `PLAYLISTS_VERSION_PATH` (abgeleitet aus `PLAYLISTS_API_PATH + '/version'`)
+
 ### Designregeln
 
 1. **Shared Core** — Modul `playlists.py` und alle JS-Logik leben in `streaming/core/`. Feature-Flag steuert Aktivierung — identisch für Audio und Video.

@@ -655,12 +655,20 @@ def create_app(
 
     # --- Playlists API ---
 
+    @app.get("/api/audio/playlists/version")
+    def audio_playlists_version() -> dict[str, object]:
+        """Return the current playlist revision number (lightweight)."""
+        from hometools.streaming.core.playlists import get_revision
+
+        return {"revision": get_revision(resolved_cache_dir, "audio")}
+
     @app.get("/api/audio/playlists")
     def audio_playlists() -> dict[str, object]:
         """Return all user playlists for the audio server."""
-        from hometools.streaming.core.playlists import load_playlists
+        from hometools.streaming.core.playlists import load_playlists_with_revision
 
-        return {"items": load_playlists(resolved_cache_dir, "audio")}
+        playlists, revision = load_playlists_with_revision(resolved_cache_dir, "audio")
+        return {"items": playlists, "revision": revision}
 
     @app.post("/api/audio/playlists")
     def audio_create_playlist(payload: dict[str, str]) -> dict[str, object]:

@@ -1586,6 +1586,9 @@ def render_player_js(
   var PLAYLISTS_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/playlists';
+  var PLAYLISTS_VERSION_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/playlists/version';
   var FOLDER_ORDER_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/folder-order';
@@ -4378,11 +4381,52 @@ def render_player_js(
     });
   }
 
+  var _playlistRevision = 0;
+  var _playlistSyncTimer = null;
+  var _PLAYLIST_SYNC_INTERVAL = 30000; /* 30 seconds */
+
   function loadUserPlaylists() {
     if (!PLAYLISTS_ENABLED) return Promise.resolve([]);
     return fetch(PLAYLISTS_API_PATH).then(function(r) { return r.json(); })
-      .then(function(d) { _userPlaylists = d.items || []; updatePlaylistPill(); return _userPlaylists; })
+      .then(function(d) {
+        _userPlaylists = d.items || [];
+        if (typeof d.revision === 'number') _playlistRevision = d.revision;
+        updatePlaylistPill();
+        return _userPlaylists;
+      })
       .catch(function() { return []; });
+  }
+
+  function _startPlaylistSync() {
+    if (!PLAYLISTS_ENABLED) return;
+    _stopPlaylistSync();
+    _playlistSyncTimer = setInterval(_pollPlaylistVersion, _PLAYLIST_SYNC_INTERVAL);
+    /* Pause when tab hidden, resume when visible */
+    document.addEventListener('visibilitychange', _onPlaylistVisibility);
+  }
+  function _stopPlaylistSync() {
+    if (_playlistSyncTimer) { clearInterval(_playlistSyncTimer); _playlistSyncTimer = null; }
+  }
+  function _onPlaylistVisibility() {
+    if (document.hidden) {
+      _stopPlaylistSync();
+    } else {
+      /* Resume polling and do an immediate check */
+      _stopPlaylistSync();
+      _pollPlaylistVersion();
+      _playlistSyncTimer = setInterval(_pollPlaylistVersion, _PLAYLIST_SYNC_INTERVAL);
+    }
+  }
+  function _pollPlaylistVersion() {
+    fetch(PLAYLISTS_VERSION_PATH).then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (typeof d.revision === 'number' && d.revision > _playlistRevision) {
+          loadUserPlaylists().then(function() {
+            /* If we're currently looking at the folder view, re-render to show updated playlist cards */
+            if (!inPlaylist && currentPath === '') showFolderView();
+          });
+        }
+      }).catch(function() { /* offline — ignore */ });
   }
 
   function updatePlaylistPill() { /* pill removed — no-op */ }
@@ -5016,6 +5060,7 @@ def render_player_js(
     loadUserPlaylists().then(function() {
       /* Re-render root folder view to show playlist pseudo-folder cards */
       if (!currentPath && !inPlaylist) showFolderView();
+      _startPlaylistSync();
     });
   });
 }());
