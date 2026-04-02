@@ -278,6 +278,25 @@ def get_playlist_sync_interval() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Rating threshold
+# ---------------------------------------------------------------------------
+
+
+def get_min_rating() -> int:
+    """Return the minimum star rating for tracks to be visible.
+
+    Tracks that **have been rated** but whose rating is **at or below**
+    this threshold are hidden from the UI.  Unrated tracks (``rating == 0``)
+    are always shown regardless of this setting.
+
+    Value range: 0–5.  Default ``0`` means no tracks are hidden.
+    Set ``HOMETOOLS_MIN_RATING`` to override (e.g. ``2`` hides 1★ and 2★ tracks).
+    """
+    val = _get_int_from_env("HOMETOOLS_MIN_RATING", 0)
+    return max(0, min(val, 5))
+
+
+# ---------------------------------------------------------------------------
 # Recently played
 # ---------------------------------------------------------------------------
 

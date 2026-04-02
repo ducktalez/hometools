@@ -64,6 +64,26 @@ def test_css_contains_thumb_preview():
     assert ".thumb-preview" in css
 
 
+def test_css_queue_panel_is_fixed_overlay_above_player_bar():
+    css = render_base_css()
+    assert ".queue-panel" in css
+    assert "position: fixed;" in css
+    assert "left: 0; right: 0;" in css
+    # transform: translateY(100%) hides it off-screen, .visible removes it
+    assert "transform: translateY(100%)" in css
+    assert ".queue-panel.visible" in css
+
+
+def test_queue_panel_bottom_set_dynamically_by_js():
+    """openQueuePanel must measure player-bar height and set bottom + max-height."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "function _syncQueueBottom()" in js
+    assert ".offsetHeight" in js
+    assert "style.bottom" in js
+    assert "style.maxHeight" in js
+    assert "_syncQueueBottom();" in js
+
+
 def test_css_contains_classic_range_styling():
     css = render_base_css()
     assert ".player-bar.classic input[type=range]" in css
@@ -657,6 +677,43 @@ def test_shuffle_queue_rebuild_in_render_tracks():
     assert "rebuildShuffleQueue" in js
 
 
+def test_queue_next_logic_is_centralized_in_play_next_item():
+    """All Next triggers must use the same queue-first helper."""
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    assert "function playNextItem()" in js
+    assert "btnNext.addEventListener('click', playNextItem);" in js
+    assert "navigator.mediaSession.setActionHandler('nexttrack', function() {" in js
+    assert "bgAudio.addEventListener('ended', function() {" in js
+    assert "playNextItem();" in js
+
+
+def test_queue_dom_refs_requery_detached_nodes():
+    """Queue DOM resolver must refresh detached references to avoid invisible panels."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "function _domNodeMissingOrDetached(el)" in js
+    assert "!el.isConnected" in js
+    assert "function openQueuePanel()" in js
+    assert "_ensureQueueDom();" in js
+
+
+def test_queue_panel_outside_player_bar():
+    """Queue panel must NOT be a child of .player-bar (stacking context trap)."""
+    for style in ("classic", "waveform"):
+        page = render_media_page(
+            title="Test",
+            emoji="🎵",
+            items_json="[]",
+            media_element_tag="audio",
+            api_path="/api/test",
+            item_noun="track",
+            player_bar_style=style,
+        )
+        # queue-panel must appear BEFORE the player-bar in the HTML
+        queue_pos = page.index('id="queue-panel"')
+        bar_pos = page.index('class="player-bar')
+        assert queue_pos < bar_pos, f"Queue panel must be outside (before) player-bar in {style} mode"
+
+
 # ---------------------------------------------------------------------------
 # Rating write — audio-only feature, star buttons in player
 # ---------------------------------------------------------------------------
@@ -1027,3 +1084,34 @@ def test_optimistic_rollback_toast_in_delete():
 
     js = render_player_js(api_path="/api/test", item_noun="track", enable_playlists=True)
     assert "r\\u00fcckg\\u00e4ngig" in js or "rückg" in js
+
+
+# ---------------------------------------------------------------------------
+# MIN_RATING_THRESHOLD injection
+# ---------------------------------------------------------------------------
+
+
+def test_min_rating_threshold_default_zero():
+    """Default MIN_RATING_THRESHOLD is 0 (show all)."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "MIN_RATING_THRESHOLD = 0" in js
+
+
+def test_min_rating_threshold_custom_injected():
+    """Custom min_rating is injected into the JS."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", min_rating=2)
+    assert "MIN_RATING_THRESHOLD = 2" in js
+
+
+def test_min_rating_filter_logic_in_apply_filter():
+    """applyFilter must contain the MIN_RATING_THRESHOLD filter logic."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
+    # Must contain the filter that hides rated-but-low tracks while keeping unrated
+    assert "MIN_RATING_THRESHOLD" in js
+    assert "r === 0 || r > MIN_RATING_THRESHOLD" in js
