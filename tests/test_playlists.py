@@ -8,8 +8,10 @@ from hometools.streaming.core.playlists import (
     delete_playlist,
     get_playlist,
     load_playlists,
+    move_item,
     remove_item,
     rename_playlist,
+    reorder_item,
 )
 
 
@@ -183,3 +185,138 @@ class TestPlaylistCorruption:
         (pl_dir / "audio.json").write_text('{"foo": "bar"}', encoding="utf-8")
         result = load_playlists(tmp_path, "audio")
         assert result == []
+
+
+class TestPlaylistReorder:
+    """Moving items up/down within a playlist."""
+
+    def _make_playlist(self, tmp_path, items):
+        """Helper: create a playlist with given items."""
+        pl = create_playlist(tmp_path, "audio", name="Reorder")
+        for rp in items:
+            add_item(tmp_path, "audio", pl["id"], relative_path=rp)
+        return pl
+
+    def test_move_item_down(self, tmp_path):
+        """Moving an item down swaps it with the next."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        updated = move_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", direction="down")
+        assert updated is not None
+        assert updated["items"] == ["b.mp3", "a.mp3", "c.mp3"]
+
+    def test_move_item_up(self, tmp_path):
+        """Moving an item up swaps it with the previous."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        updated = move_item(tmp_path, "audio", pl["id"], relative_path="c.mp3", direction="up")
+        assert updated is not None
+        assert updated["items"] == ["a.mp3", "c.mp3", "b.mp3"]
+
+    def test_move_first_item_up_noop(self, tmp_path):
+        """Moving the first item up keeps the list unchanged."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3"])
+        updated = move_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", direction="up")
+        assert updated is not None
+        assert updated["items"] == ["a.mp3", "b.mp3"]
+
+    def test_move_last_item_down_noop(self, tmp_path):
+        """Moving the last item down keeps the list unchanged."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3"])
+        updated = move_item(tmp_path, "audio", pl["id"], relative_path="b.mp3", direction="down")
+        assert updated is not None
+        assert updated["items"] == ["a.mp3", "b.mp3"]
+
+    def test_move_nonexistent_item(self, tmp_path):
+        """Moving a non-existent item returns None."""
+        pl = self._make_playlist(tmp_path, ["a.mp3"])
+        result = move_item(tmp_path, "audio", pl["id"], relative_path="nope.mp3", direction="up")
+        assert result is None
+
+    def test_move_in_nonexistent_playlist(self, tmp_path):
+        """Moving in a non-existent playlist returns None."""
+        result = move_item(tmp_path, "audio", "nope", relative_path="a.mp3", direction="up")
+        assert result is None
+
+    def test_invalid_direction(self, tmp_path):
+        """Invalid direction returns None."""
+        pl = self._make_playlist(tmp_path, ["a.mp3"])
+        result = move_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", direction="left")
+        assert result is None
+
+    def test_move_persists(self, tmp_path):
+        """Move is persisted to disk."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        move_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", direction="down")
+        loaded = get_playlist(tmp_path, "audio", pl["id"])
+        assert loaded is not None
+        assert loaded["items"] == ["b.mp3", "a.mp3", "c.mp3"]
+
+
+class TestPlaylistReorderToIndex:
+    """Reorder items to a specific index (drag-and-drop backend)."""
+
+    def _make_playlist(self, tmp_path, items):
+        pl = create_playlist(tmp_path, "audio", name="DnD")
+        for rp in items:
+            add_item(tmp_path, "audio", pl["id"], relative_path=rp)
+        return pl
+
+    def test_move_to_end(self, tmp_path):
+        """Move first item to the end."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        updated = reorder_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", to_index=2)
+        assert updated is not None
+        assert updated["items"] == ["b.mp3", "c.mp3", "a.mp3"]
+
+    def test_move_to_start(self, tmp_path):
+        """Move last item to the start."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        updated = reorder_item(tmp_path, "audio", pl["id"], relative_path="c.mp3", to_index=0)
+        assert updated is not None
+        assert updated["items"] == ["c.mp3", "a.mp3", "b.mp3"]
+
+    def test_move_to_middle(self, tmp_path):
+        """Move first item to the middle."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3", "d.mp3"])
+        updated = reorder_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", to_index=2)
+        assert updated is not None
+        assert updated["items"] == ["b.mp3", "c.mp3", "a.mp3", "d.mp3"]
+
+    def test_same_index_noop(self, tmp_path):
+        """Moving to the same index is a no-op."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        updated = reorder_item(tmp_path, "audio", pl["id"], relative_path="b.mp3", to_index=1)
+        assert updated is not None
+        assert updated["items"] == ["a.mp3", "b.mp3", "c.mp3"]
+
+    def test_index_clamped_high(self, tmp_path):
+        """Index beyond list length is clamped to last position."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        updated = reorder_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", to_index=99)
+        assert updated is not None
+        assert updated["items"] == ["b.mp3", "c.mp3", "a.mp3"]
+
+    def test_index_clamped_low(self, tmp_path):
+        """Negative index is clamped to 0."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        updated = reorder_item(tmp_path, "audio", pl["id"], relative_path="c.mp3", to_index=-5)
+        assert updated is not None
+        assert updated["items"] == ["c.mp3", "a.mp3", "b.mp3"]
+
+    def test_nonexistent_item(self, tmp_path):
+        """Moving a non-existent item returns None."""
+        pl = self._make_playlist(tmp_path, ["a.mp3"])
+        result = reorder_item(tmp_path, "audio", pl["id"], relative_path="nope.mp3", to_index=0)
+        assert result is None
+
+    def test_nonexistent_playlist(self, tmp_path):
+        """Moving in a non-existent playlist returns None."""
+        result = reorder_item(tmp_path, "audio", "nope", relative_path="a.mp3", to_index=0)
+        assert result is None
+
+    def test_reorder_persists(self, tmp_path):
+        """Reorder is persisted to disk."""
+        pl = self._make_playlist(tmp_path, ["a.mp3", "b.mp3", "c.mp3"])
+        reorder_item(tmp_path, "audio", pl["id"], relative_path="c.mp3", to_index=0)
+        loaded = get_playlist(tmp_path, "audio", pl["id"])
+        assert loaded is not None
+        assert loaded["items"] == ["c.mp3", "a.mp3", "b.mp3"]

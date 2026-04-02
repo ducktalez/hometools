@@ -894,6 +894,22 @@ body.modal-open { overflow: hidden; }
 }
 .track-playlist-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; pointer-events: none; }
 .track-playlist-btn:hover { color: var(--accent); border-color: var(--accent); }
+/* ── Playlist drag-and-drop reorder ── */
+.track-item.dragging { opacity: 0.25; }
+.track-item.drag-over-above { box-shadow: 0 -2px 0 0 var(--accent) inset; }
+.track-item.drag-over-below { box-shadow: 0 2px 0 0 var(--accent) inset; }
+.playlist-drag-ghost {
+  position: fixed; z-index: 200; pointer-events: none;
+  background: var(--surface2); border: 1px solid var(--accent);
+  border-radius: 8px; padding: 0.5rem 1rem; opacity: 0.92;
+  font-size: 0.88rem; color: var(--fg); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 280px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.playlist-drag-ghost img { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; }
+body.playlist-dragging { user-select: none; -webkit-user-select: none; }
+body.playlist-dragging .track-list { overflow: visible; }
 /* ── Playlist modal (add-to / create) ── */
 .playlist-modal-backdrop {
   position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.72);
@@ -2543,6 +2559,7 @@ def render_player_js(
           loadUserPlaylists().then(function() { openPlaylistModal(btn.dataset.relativePath); });
         });
       });
+      if (inPlaylist && _currentPlaylistId) initPlaylistDragDrop();
     }
     updateFavoriteButtons();
     updateAllDownloadButtons();
@@ -4187,6 +4204,7 @@ def render_player_js(
   /* ── User Playlists ── */
   var _userPlaylists = [];
   var _playlistAddPath = '';
+  var _currentPlaylistId = '';
 
   function loadUserPlaylists() {
     if (!PLAYLISTS_ENABLED) return Promise.resolve([]);
@@ -4271,6 +4289,7 @@ def render_player_js(
     });
     if (resolved.length === 0) { showToast('Keine Titel in dieser Playlist gefunden'); return; }
     closePlaylistLibrary();
+    _currentPlaylistId = plId;
     playlistItems = resolved;
     filteredItems = resolved;
     inPlaylist = true;
@@ -4355,6 +4374,238 @@ def render_player_js(
           addToPlaylist(d.playlist.id, relativePath);
         }
       }).catch(function() { showToast('Fehler beim Erstellen'); });
+  }
+
+  function movePlaylistItem(relativePath, direction) {
+    if (!_currentPlaylistId) return;
+    fetch(PLAYLISTS_API_PATH + '/items', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlist_id: _currentPlaylistId, relative_path: relativePath, direction: direction })
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.playlist) {
+          var idx = _userPlaylists.findIndex(function(p) { return p.id === _currentPlaylistId; });
+          if (idx >= 0) _userPlaylists[idx] = d.playlist;
+          _applyPlaylistUpdate(d.playlist);
+        }
+      }).catch(function() { showToast('Fehler beim Verschieben'); });
+  }
+
+  function reorderPlaylistItem(relativePath, toIndex) {
+    if (!_currentPlaylistId) return;
+    fetch(PLAYLISTS_API_PATH + '/items', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlist_id: _currentPlaylistId, relative_path: relativePath, to_index: toIndex })
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.playlist) {
+          var idx = _userPlaylists.findIndex(function(p) { return p.id === _currentPlaylistId; });
+          if (idx >= 0) _userPlaylists[idx] = d.playlist;
+          _applyPlaylistUpdate(d.playlist);
+        }
+      }).catch(function() { showToast('Fehler beim Verschieben'); });
+  }
+
+  function _applyPlaylistUpdate(pl) {
+    var resolved = [];
+    pl.items.forEach(function(rp) {
+      var match = allItems.find(function(it) { return it.relative_path === rp; });
+      if (match) resolved.push(match);
+    });
+    var playingPath = currentIndex >= 0 && filteredItems[currentIndex] ? filteredItems[currentIndex].relative_path : null;
+    playlistItems = resolved;
+    filteredItems = resolved;
+    if (playingPath) {
+      var newIdx = resolved.findIndex(function(it) { return it.relative_path === playingPath; });
+      if (newIdx >= 0) currentIndex = newIdx;
+    }
+    renderTracks(resolved, true);
+    updatePlaylistPill();
+  }
+
+  /* ── Drag-and-drop reorder for playlist view ── */
+  function initPlaylistDragDrop() {
+    var trackList = document.getElementById('track-list');
+    if (!trackList) return;
+    var items = trackList.querySelectorAll('.track-item:not(.missing-episode)');
+    if (items.length < 2) return;
+
+    var _dragItem = null;     /* the DOM element being dragged */
+    var _dragPath = '';        /* relative_path of dragged item */
+    var _dragFromIdx = -1;     /* original index in filteredItems */
+    var _ghost = null;         /* floating ghost element */
+    var _dropTarget = null;    /* current drop-target <li> */
+    var _dropAbove = true;     /* insert above or below target */
+    var _longPressTimer = null;
+    var _touchStartY = 0;
+    var _touchStartX = 0;
+    var _dragActive = false;
+    var LONG_PRESS_MS = 500;
+    var MOVE_THRESHOLD = 10;
+
+    function getTrackItem(el) {
+      while (el && el !== trackList) {
+        if (el.classList && el.classList.contains('track-item')) return el;
+        el = el.parentElement;
+      }
+      return null;
+    }
+
+    function createGhost(item, x, y) {
+      var g = document.createElement('div');
+      g.className = 'playlist-drag-ghost';
+      var img = item.querySelector('.track-thumb');
+      var title = item.querySelector('.track-title');
+      if (img && img.src) g.innerHTML = '<img src="' + img.src + '">';
+      g.innerHTML += '<span>' + (title ? title.textContent : '') + '</span>';
+      g.style.left = (x - 20) + 'px';
+      g.style.top = (y - 20) + 'px';
+      document.body.appendChild(g);
+      return g;
+    }
+
+    function moveGhost(x, y) {
+      if (!_ghost) return;
+      _ghost.style.left = (x - 20) + 'px';
+      _ghost.style.top = (y - 20) + 'px';
+    }
+
+    function clearDragClasses() {
+      trackList.querySelectorAll('.drag-over-above,.drag-over-below,.dragging').forEach(function(el) {
+        el.classList.remove('drag-over-above', 'drag-over-below', 'dragging');
+      });
+    }
+
+    function updateDropTarget(x, y) {
+      /* hide ghost briefly so elementFromPoint hits the list */
+      if (_ghost) _ghost.style.display = 'none';
+      var el = document.elementFromPoint(x, y);
+      if (_ghost) _ghost.style.display = '';
+      var target = el ? getTrackItem(el) : null;
+      if (!target || target === _dragItem) {
+        if (_dropTarget) {
+          _dropTarget.classList.remove('drag-over-above', 'drag-over-below');
+          _dropTarget = null;
+        }
+        return;
+      }
+      if (_dropTarget && _dropTarget !== target) {
+        _dropTarget.classList.remove('drag-over-above', 'drag-over-below');
+      }
+      _dropTarget = target;
+      var rect = target.getBoundingClientRect();
+      var mid = rect.top + rect.height / 2;
+      _dropAbove = y < mid;
+      target.classList.toggle('drag-over-above', _dropAbove);
+      target.classList.toggle('drag-over-below', !_dropAbove);
+    }
+
+    function startDrag(item, x, y) {
+      _dragActive = true;
+      _dragItem = item;
+      _dragPath = '';
+      /* find relative_path from filteredItems via data-index */
+      var idx = Number(item.dataset.index);
+      if (filteredItems[idx]) {
+        _dragPath = filteredItems[idx].relative_path;
+        _dragFromIdx = idx;
+      }
+      item.classList.add('dragging');
+      document.body.classList.add('playlist-dragging');
+      _ghost = createGhost(item, x, y);
+    }
+
+    function endDrag() {
+      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+      if (!_dragActive) return;
+      _dragActive = false;
+      if (_ghost) { _ghost.remove(); _ghost = null; }
+      document.body.classList.remove('playlist-dragging');
+
+      /* compute target index */
+      if (_dropTarget && _dragPath) {
+        var targetIdx = Number(_dropTarget.dataset.index);
+        var toIndex = _dropAbove ? targetIdx : targetIdx + 1;
+        /* adjust: if dragging from before the target, the removal shifts indices */
+        if (_dragFromIdx < toIndex) toIndex--;
+        if (toIndex !== _dragFromIdx && toIndex >= 0) {
+          reorderPlaylistItem(_dragPath, toIndex);
+        }
+      }
+      clearDragClasses();
+      _dragItem = null;
+      _dropTarget = null;
+    }
+
+    /* --- Mouse events (desktop) --- */
+    trackList.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      /* don't start drag on action buttons */
+      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn')) return;
+      var item = getTrackItem(e.target);
+      if (!item) return;
+      e.preventDefault();
+      startDrag(item, e.clientX, e.clientY);
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!_dragActive) return;
+      e.preventDefault();
+      moveGhost(e.clientX, e.clientY);
+      updateDropTarget(e.clientX, e.clientY);
+      /* auto-scroll */
+      var rect = trackList.getBoundingClientRect();
+      var scrollZone = 50;
+      if (e.clientY < rect.top + scrollZone) trackList.scrollTop -= 8;
+      if (e.clientY > rect.bottom - scrollZone) trackList.scrollTop += 8;
+    });
+    document.addEventListener('mouseup', function() { endDrag(); });
+
+    /* --- Touch events (mobile: long-press) --- */
+    trackList.addEventListener('touchstart', function(e) {
+      if (e.touches.length !== 1) return;
+      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn')) return;
+      var item = getTrackItem(e.target);
+      if (!item) return;
+      _touchStartX = e.touches[0].clientX;
+      _touchStartY = e.touches[0].clientY;
+      _longPressTimer = setTimeout(function() {
+        _longPressTimer = null;
+        startDrag(item, _touchStartX, _touchStartY);
+        /* haptic feedback if available */
+        if (navigator.vibrate) navigator.vibrate(30);
+      }, LONG_PRESS_MS);
+    }, { passive: true });
+
+    trackList.addEventListener('touchmove', function(e) {
+      if (_longPressTimer) {
+        /* cancel long-press if finger moved too far */
+        var dx = Math.abs(e.touches[0].clientX - _touchStartX);
+        var dy = Math.abs(e.touches[0].clientY - _touchStartY);
+        if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
+          clearTimeout(_longPressTimer);
+          _longPressTimer = null;
+        }
+      }
+      if (!_dragActive) return;
+      e.preventDefault();
+      var tx = e.touches[0].clientX;
+      var ty = e.touches[0].clientY;
+      moveGhost(tx, ty);
+      updateDropTarget(tx, ty);
+      /* auto-scroll */
+      var rect = trackList.getBoundingClientRect();
+      var scrollZone = 50;
+      if (ty < rect.top + scrollZone) trackList.scrollTop -= 6;
+      if (ty > rect.bottom - scrollZone) trackList.scrollTop += 6;
+    }, { passive: false });
+
+    trackList.addEventListener('touchend', function() { endDrag(); }, { passive: true });
+    trackList.addEventListener('touchcancel', function() {
+      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+      endDrag();
+    }, { passive: true });
   }
 
   /* ── playlist event wiring ── */

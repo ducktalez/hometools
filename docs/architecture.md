@@ -103,7 +103,7 @@ Der vollständige Index wird nach einem erfolgreichen Rebuild atomar als JSON-Sn
 
 `make clean` löscht **alle** Artefakte unter `.hometools-cache/`:
 
-- Ordner: `audio/`, `video/`, `indexes/`, `issues/`, `logs/`, `progress/`, `shortcuts/`, `channel/`
+- Ordner: `audio/`, `video/`, `indexes/`, `issues/`, `logs/`, `progress/`, `shortcuts/`, `playlists/`, `channel/`
 - Dateien: `video_metadata_cache.json`, `thumbnail_failures.json`
 
 Das Audit-Log liegt seit dem Refactoring in einem eigenen Verzeichnis (`.hometools-audit/`, konfigurierbar via `HOMETOOLS_AUDIT_DIR`) und wird von `make clean` **nicht berührt**.
@@ -962,6 +962,8 @@ Thread-sicher via `threading.Lock`. Atomare Schreibvorgänge (NamedTemporaryFile
 | `/api/<media>/playlists?id=` | `DELETE` | Playlist löschen (`{items: [...]}`) |
 | `/api/<media>/playlists/items` | `POST` | Item hinzufügen (`{playlist_id, relative_path}` → `{playlist}`) |
 | `/api/<media>/playlists/items?playlist_id=&path=` | `DELETE` | Item entfernen (`{playlist}`) |
+| `/api/<media>/playlists/items` | `PATCH` | Item verschieben (`{playlist_id, relative_path, direction}` → `{playlist}`) |
+| `/api/<media>/playlists/items` | `PUT` | Item auf Ziel-Index verschieben (`{playlist_id, relative_path, to_index}` → `{playlist}`) |
 
 ### Feature-Flag
 
@@ -987,6 +989,8 @@ Thread-sicher via `threading.Lock`. Atomare Schreibvorgänge (NamedTemporaryFile
 | **Library-Panel** | `#playlist-library`, `.playlist-library` | Übersicht aller Playlists mit Play/Delete-Buttons |
 | **Add-Modal** | `#playlist-modal-backdrop`, `.playlist-modal-backdrop` | „Zur Playlist hinzufügen" mit Dropdown + Inline-Erstellen |
 | **Track-Button** | `.track-playlist-btn` | Pro Track, öffnet Add-Modal |
+| **Drag Ghost** | `.playlist-drag-ghost` | Floating-Element beim Drag (Thumbnail + Titel), folgt Cursor/Finger |
+| **Drag Marker** | `.drag-over-above` / `.drag-over-below` | Farbige Insertion-Line via `box-shadow` auf dem Ziel-Track |
 
 ### JS-Architektur
 
@@ -996,22 +1000,48 @@ PLAYLISTS_API_PATH: str           ← '/api/<media>/playlists'
 IC_PLAYLIST: str                  ← SVG-Icon
 _userPlaylists: []                ← lokaler State (geladen via API)
 _playlistAddPath: ''              ← relative_path des aktuell hinzuzufügenden Items
+_currentPlaylistId: ''            ← ID der aktuell gespielten Playlist (für Reorder)
 
 loadUserPlaylists()               ← GET → _userPlaylists
 openPlaylistLibrary()             ← Library-Panel anzeigen
-playUserPlaylist(plId)            ← Playlist-Items in allItems auflösen, playTrack(0)
+playUserPlaylist(plId)            ← Playlist-Items in allItems auflösen, playTrack(0), setzt _currentPlaylistId
 deleteUserPlaylist(plId)          ← DELETE → _userPlaylists aktualisieren
 openPlaylistModal(relativePath)   ← Add-Modal anzeigen
 addToPlaylist(plId, relativePath) ← POST /items → Toast
 createAndAddToPlaylist(name, rp)  ← POST (create) → addToPlaylist
+movePlaylistItem(rp, direction)   ← PATCH /items → _applyPlaylistUpdate (Legacy, bleibt für Abwärtskompatibilität)
+reorderPlaylistItem(rp, toIndex)  ← PUT /items → _applyPlaylistUpdate (Drag-and-Drop)
+_applyPlaylistUpdate(pl)          ← re-resolve Items, currentIndex anpassen, renderTracks()
+initPlaylistDragDrop()            ← Bindet Mouse/Touch-Events auf track-list (nur in Playlist-Ansicht)
 ```
+
+### Drag-and-Drop
+
+Reordering wird per Drag-and-Drop durchgeführt — keine Pfeil-Buttons.
+
+| Plattform | Aktivierung | Verhalten |
+|---|---|---|
+| **Desktop** | Mousedown auf Track | Sofort Drag starten |
+| **Mobile** | Long-Touch (500 ms) | Haptic-Feedback (`navigator.vibrate`), dann Drag |
+
+**Ablauf:**
+1. Ghost-Element (`.playlist-drag-ghost`) klonen — zeigt Thumbnail + Titel, folgt Cursor/Finger
+2. Original-Track erhält `.dragging`-Klasse (opacity 0.25)
+3. Auf `mousemove`/`touchmove`: `elementFromPoint()` findet Ziel-Track, `.drag-over-above`/`.drag-over-below` je nach Position relativ zur Mitte des Ziels
+4. Auto-Scroll wenn Cursor/Finger im 50px-Randbereich des `track-list`
+5. Auf `mouseup`/`touchend`: Ziel-Index berechnen, `reorderPlaylistItem()` aufrufen (PUT)
+6. `currentIndex` wird per `relative_path`-Match nach Reorder neu berechnet
+
+**Touch-Abbruch:** Bei `touchmove > 10px` vor Ablauf der 500ms → Long-Press abgebrochen (normaler Scroll). `touchcancel` → Drag beenden.
 
 ### Designregeln
 
 1. **Shared Core** — Modul `playlists.py` und alle JS-Logik leben in `streaming/core/`. Feature-Flag steuert Aktivierung — identisch für Audio und Video.
 2. **Audio + Video getrennt** — Separate JSON-Dateien pro Server (konsistent mit Shortcuts-Architektur). Cross-Server-Playlists nicht möglich (relative_path kollidiert).
-3. **Kein Reordering im MVP** — Items werden in der Reihenfolge des Hinzufügens wiedergegeben. Drag-Drop / Pfeil-Buttons als Follow-Up.
+3. **Drag-and-Drop Reordering** — Desktop: sofortiger Drag auf mousedown. Mobile: Long-Touch 500ms. Ghost-Element + Insertion-Line als visuelles Feedback. Keine externen Libraries.
 4. **Playlist-Wiedergabe nutzt `allItems`** — Items werden per `relative_path` aus dem Katalog aufgelöst. Items die nicht mehr im Katalog sind werden übersprungen.
 5. **Swipe-Ausnahme** — Playlist-Library und Add-Modal sind in der Swipe-Exclusion-Liste (kein versehentliches Navigieren).
 6. **Keine Duplikate** — Gleicher `relative_path` in einer Playlist wird silently ignoriert.
 7. **API-Response-Key `"items"`** — Konsistent mit allen anderen Endpoints (Architektur-Regel 3).
+8. **`_currentPlaylistId` trackt die aktive Playlist** — Wird von `playUserPlaylist()` gesetzt, von `reorderPlaylistItem()` für den `PUT`-Call verwendet. Nach Reorder wird `currentIndex` per `relative_path`-Match neu berechnet.
+9. **PATCH-Endpoint bleibt erhalten** — `move_item()` (up/down Swap) als Legacy-API für Abwärtskompatibilität. UI verwendet ausschließlich `PUT` (`reorder_item()`).
