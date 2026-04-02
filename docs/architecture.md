@@ -649,17 +649,29 @@ Alle Werte steuern den `/api/video/recent`-Endpunkt im Video-Server:
 
 Der Header-Button `#view-toggle` schaltet zyklisch durch drei Modi:
 
-| Modus | CSS-Klassen auf `#folder-grid` | Thumbnail | Anzeigename |
-|---|---|---|---|
-| `'list'` | `list-mode` | Klein | Listenansicht |
-| `'grid'` | — | Groß | Galerieansicht / Kacheln |
-| `'filenames'` | `list-mode filenames-mode` | Groß | Original-Dateinamen |
+| Modus | CSS-Klassen auf `#folder-grid` | Thumbnail | Anzeigename | Tooltip |
+|---|---|---|---|---|
+| `'list'` | `list-mode` | Klein | Listenansicht | „Listenansicht — Klick für Kachelansicht" |
+| `'grid'` | — | Groß | Galerieansicht / Kacheln | „Kachelansicht — Klick für Dateinamen" |
+| `'filenames'` | `list-mode filenames-mode` | Groß | Original-Dateinamen | „Dateinamen — Klick für Listenansicht" |
 
 Im Modus `'filenames'` werden die rohen Dateinamen angezeigt (kein Display-Name/Override). Dieses Verhalten ersetzt jegliche separate „\[ \] Original"-Checkbox – der Toggle ist die einzige UI-Stelle für dieses Feature.
+
+**DnD-Reorder ist nur im `filenames`-Modus aktiv** (+ Playlist-Kontext). In `list` und `grid` ist Drag-and-Drop deaktiviert — Klick auf einen Track spielt ihn ab.
 
 Reihenfolge: `list → grid → filenames → list`
 
 Gespeichert in `localStorage` unter `ht-view-mode`.
+
+---
+
+## Sort-Option „Liste" (custom)
+
+Die Sort-Dropdown erhält eine neue Option `<option value="custom">Liste ⇅</option>`:
+
+- **In Playlist-Kontext** (`_currentPlaylistId` gesetzt): Behält die Server-Reihenfolge bei (kein Re-Sort). Ermöglicht DnD-Reorder.
+- **In Filesystem-Ordner** (kein Playlist-Kontext): Sortiert nach Rating absteigend, Titel als Tiebreaker.
+- **Zukünftig** (Backlog): custom_order-Persistierung pro Ordner für benutzerdefinierte Reihenfolge in Filesystem-Ordnern.
 
 ---
 
@@ -923,7 +935,7 @@ Swipe wird **nicht** ausgelöst auf:
 
 ### Übersicht
 
-Benutzer können benannte Playlists erstellen und Medien-Items (Tracks / Videos) hinzufügen. Playlists sind server-spezifisch (Audio und Video getrennt) und werden im Shadow-Cache persistiert.
+Benutzer können benannte Playlists erstellen und Medien-Items (Tracks / Videos) hinzufügen. Playlists sind server-spezifisch (Audio und Video getrennt) und werden im Shadow-Cache persistiert. Playlists erscheinen als **Pseudo-Ordner-Karten** auf der Root-Startseite, direkt nach der „Downloaded"-Karte.
 
 ### Storage
 
@@ -977,20 +989,26 @@ Thread-sicher via `threading.Lock`. Atomare Schreibvorgänge (NamedTemporaryFile
 2. `PLAYLISTS_API_PATH = '/api/<media>/playlists'`
 3. `IC_PLAYLIST` — Listen-SVG-Icon als JS-Variable
 4. Playlist-Button (`.track-playlist-btn`) pro Track in der Liste
-5. Playlist-Pill im Header (`#playlist-pill`)
-6. Playlist-Library-Panel (`#playlist-library`)
+5. Playlist-Pseudo-Ordner-Karten auf der Root-Startseite (`.playlist-folder-card`)
+6. „Neue Playlist…"-Karte (`.playlist-new-card`)
 7. „Zur Playlist hinzufügen"-Modal (`#playlist-modal-backdrop`)
 
-### UI-Elemente
+### UI-Elemente (Redesign 2026-04-02)
 
 | Element | ID/Klasse | Funktion |
 |---|---|---|
-| **Playlist-Pill** | `#playlist-pill`, `.playlist-pill` | Header-Button, zeigt Anzahl, öffnet Library-Panel |
-| **Library-Panel** | `#playlist-library`, `.playlist-library` | Übersicht aller Playlists mit Play/Delete-Buttons |
+| **Playlist-Ordner-Karte** | `.playlist-folder-card` | Pro Playlist eine Karte auf der Root-Startseite mit IC_PLAYLIST-Icon, Name, Item-Count, Play- und Delete-Button |
+| **Neue-Playlist-Karte** | `#playlist-new-card`, `.playlist-new-card` | Dashed-Border-Karte mit "+"-Icon, öffnet `prompt()` für Playlist-Name |
 | **Add-Modal** | `#playlist-modal-backdrop`, `.playlist-modal-backdrop` | „Zur Playlist hinzufügen" mit Dropdown + Inline-Erstellen |
 | **Track-Button** | `.track-playlist-btn` | Pro Track, öffnet Add-Modal |
 | **Drag Ghost** | `.playlist-drag-ghost` | Floating-Element beim Drag (Thumbnail + Titel), folgt Cursor/Finger |
 | **Drag Marker** | `.drag-over-above` / `.drag-over-below` | Farbige Insertion-Line via `box-shadow` auf dem Ziel-Track |
+
+**Entfernte Elemente (seit Redesign):**
+- `#playlist-pill` (Header-Button) — Zugang über Pseudo-Ordner statt Header
+- `#playlist-library` (Overlay-Panel) — nicht mehr nötig
+- `.playlist-lib-*` CSS-Klassen
+- `openPlaylistLibrary()`, `closePlaylistLibrary()`, `renderPlaylistLibrary()` JS
 
 ### JS-Architektur
 
@@ -1002,46 +1020,67 @@ _userPlaylists: []                ← lokaler State (geladen via API)
 _playlistAddPath: ''              ← relative_path des aktuell hinzuzufügenden Items
 _currentPlaylistId: ''            ← ID der aktuell gespielten Playlist (für Reorder)
 
-loadUserPlaylists()               ← GET → _userPlaylists
-openPlaylistLibrary()             ← Library-Panel anzeigen
+loadUserPlaylists()               ← GET → _userPlaylists, danach Root-View re-rendern
 playUserPlaylist(plId)            ← Playlist-Items in allItems auflösen, playTrack(0), setzt _currentPlaylistId
-deleteUserPlaylist(plId)          ← DELETE → _userPlaylists aktualisieren
+deleteUserPlaylist(plId)          ← DELETE → _userPlaylists aktualisieren, Folder-View re-rendern
 openPlaylistModal(relativePath)   ← Add-Modal anzeigen
 addToPlaylist(plId, relativePath) ← POST /items → Toast
 createAndAddToPlaylist(name, rp)  ← POST (create) → addToPlaylist
 movePlaylistItem(rp, direction)   ← PATCH /items → _applyPlaylistUpdate (Legacy, bleibt für Abwärtskompatibilität)
 reorderPlaylistItem(rp, toIndex)  ← PUT /items → _applyPlaylistUpdate (Drag-and-Drop)
 _applyPlaylistUpdate(pl)          ← re-resolve Items, currentIndex anpassen, renderTracks()
-initPlaylistDragDrop()            ← Bindet Mouse/Touch-Events auf track-list (nur in Playlist-Ansicht)
+initPlaylistDragDrop()            ← Bindet Mouse/Touch-Events auf track-list (nur in Playlist-Ansicht + filenames/list-Modus)
 ```
 
 ### Drag-and-Drop
 
 Reordering wird per Drag-and-Drop durchgeführt — keine Pfeil-Buttons.
 
+**DnD ist nur aktiv wenn:**
+1. `inPlaylist && _currentPlaylistId` (Playlist-Kontext)
+2. `viewMode === 'filenames'` oder `viewMode === 'list'` (Dateinamen- oder Listenansicht)
+
+In `grid`-Modus ist DnD **deaktiviert**. Klick auf einen Track spielt ihn ab.
+
 | Plattform | Aktivierung | Verhalten |
 |---|---|---|
-| **Desktop** | Mousedown auf Track | Sofort Drag starten |
+| **Desktop** | Mousedown + Mausbewegung > 10px | Drag startet erst nach Schwellenwert, nicht sofort bei Klick |
 | **Mobile** | Long-Touch (500 ms) | Haptic-Feedback (`navigator.vibrate`), dann Drag |
 
-**Ablauf:**
-1. Ghost-Element (`.playlist-drag-ghost`) klonen — zeigt Thumbnail + Titel, folgt Cursor/Finger
-2. Original-Track erhält `.dragging`-Klasse (opacity 0.25)
-3. Auf `mousemove`/`touchmove`: `elementFromPoint()` findet Ziel-Track, `.drag-over-above`/`.drag-over-below` je nach Position relativ zur Mitte des Ziels
-4. Auto-Scroll wenn Cursor/Finger im 50px-Randbereich des `track-list`
-5. Auf `mouseup`/`touchend`: Ziel-Index berechnen, `reorderPlaylistItem()` aufrufen (PUT)
-6. `currentIndex` wird per `relative_path`-Match nach Reorder neu berechnet
+**Visuelles Verhalten:** Das gezogene Item wird ausgegraut (`opacity: 0.25`, `pointer-events: none`) und bleibt an seiner Position sichtbar. Ghost-Element folgt dem Cursor. No-Op-Unterdrückung: Wenn die berechnete Zielposition identisch mit der Ausgangsposition wäre (= direkt neben dem gezogenen Item, Richtung Originalplatz), wird die Insertion-Line unterdrückt — das verhindert visuelles Springen der Linie.
 
-**Touch-Abbruch:** Bei `touchmove > 10px` vor Ablauf der 500ms → Long-Press abgebrochen (normaler Scroll). `touchcancel` → Drag beenden.
+**Drop-Target-Berechnung (`updateDropTarget`):**
+
+1. `elementFromPoint(x, y)` → nächstes `.track-item` finden
+2. Kein Item gefunden, aber Cursor in Track-List-Bounds → letztes sichtbares Item mit `_dropAbove = false` (Fallback „ans Ende")
+3. `target === _dragItem` → Indicator löschen, return (nichts markieren)
+4. Cursor-Y < Mitte des Items → `above = true` (Einfügung VOR diesem Item)
+5. Cursor-Y ≥ Mitte → `above = false` (Einfügung NACH diesem Item)
+6. **Normalisierung:** „below N" wird zu „above N+1" umgerechnet (nächstes sichtbares Sibling, überspringe `missing-episode` und `_dragItem`). Nur wenn N das letzte sichtbare Item ist, bleibt `above = false`. → Es gibt pro logischer Position nur EINE Linie.
+7. **No-Op-Unterdrückung:** Effektiven `toIndex` berechnen (same as `endDrag`-Logik). Wenn `toIndex === _dragFromIdx` → Indicator löschen, return.
+8. `drag-over-above` bzw. `drag-over-below` auf das Ziel-Item setzen.
+
+**CSS Insertion-Line:** `box-shadow: 0 3px 0 0 var(--accent) inset` für `.drag-over-above` (Linie am oberen Rand) und `0 -3px inset` für `.drag-over-below` (Linie am unteren Rand). `drag-over-below` wird durch die Normalisierung nur noch für die allerletzte Position verwendet (nach dem letzten Item).
+
+### Sort-Option „Liste" (custom)
+
+Neue Sort-Option `<option value="custom">Liste ⇅</option>` im Sort-Dropdown. **Ist der Default** (erste Option im Dropdown):
+
+- **In Playlist-Kontext:** Behält die Server-Reihenfolge bei (kein Re-Sort). DnD-Reorder verändert die Reihenfolge.
+- **In Filesystem-Ordner:** Sortiert nach Rating absteigend, Titel als Tiebreaker.
+- **Zukünftig:** custom_order-Persistierung pro Ordner (→ Backlog)
 
 ### Designregeln
 
 1. **Shared Core** — Modul `playlists.py` und alle JS-Logik leben in `streaming/core/`. Feature-Flag steuert Aktivierung — identisch für Audio und Video.
 2. **Audio + Video getrennt** — Separate JSON-Dateien pro Server (konsistent mit Shortcuts-Architektur). Cross-Server-Playlists nicht möglich (relative_path kollidiert).
-3. **Drag-and-Drop Reordering** — Desktop: sofortiger Drag auf mousedown. Mobile: Long-Touch 500ms. Ghost-Element + Insertion-Line als visuelles Feedback. Keine externen Libraries.
-4. **Playlist-Wiedergabe nutzt `allItems`** — Items werden per `relative_path` aus dem Katalog aufgelöst. Items die nicht mehr im Katalog sind werden übersprungen.
-5. **Swipe-Ausnahme** — Playlist-Library und Add-Modal sind in der Swipe-Exclusion-Liste (kein versehentliches Navigieren).
+3. **Pseudo-Ordner statt Panel** — Playlists erscheinen als Karten auf der Root-Startseite. Kein separates Library-Panel, kein Header-Pill.
+4. **Drag-and-Drop in filenames- und list-Modus** — DnD in grid deaktiviert. Desktop: Drag startet erst nach 10px Mausbewegung (Threshold verhindert Flash bei einfachem Klick). Mobile: Long-Touch 500ms. Gezogenes Item wird ausgegraut (`opacity: 0.25`). Ghost-Element + Insertion-Line (3px `box-shadow inset`) als visuelles Feedback. No-Op-Unterdrückung für Positionen neben dem Drag-Source. Fallback für „unterhalb aller Items" → letztes Item als Drop-Target. Keine externen Libraries.
+5. **Playlist-Wiedergabe nutzt `allItems`** — Items werden per `relative_path` aus dem Katalog aufgelöst. Items die nicht mehr im Katalog sind werden übersprungen.
 6. **Keine Duplikate** — Gleicher `relative_path` in einer Playlist wird silently ignoriert.
 7. **API-Response-Key `"items"`** — Konsistent mit allen anderen Endpoints (Architektur-Regel 3).
 8. **`_currentPlaylistId` trackt die aktive Playlist** — Wird von `playUserPlaylist()` gesetzt, von `reorderPlaylistItem()` für den `PUT`-Call verwendet. Nach Reorder wird `currentIndex` per `relative_path`-Match neu berechnet.
 9. **PATCH-Endpoint bleibt erhalten** — `move_item()` (up/down Swap) als Legacy-API für Abwärtskompatibilität. UI verwendet ausschließlich `PUT` (`reorder_item()`).
+10. **Playlist-Management auf Root-Ebene** — Erstellen via „Neue Playlist…"-Karte, Löschen via X-Button auf der Playlist-Karte (mit `confirm()`-Dialog). Rename ist via bestehende API möglich (kein UI dafür). **TODO:** Nach der Entwicklungsphase soll Löschen durch Archivierung ersetzt werden (Nachfrage-Dialog statt `confirm()`).
+11. **Automatische Favoriten-Playlist** — Virtuelle Playlist-Karte „Favoriten" (`__favorites__`) wird auf der Root-Startseite vor den User-Playlists angezeigt, wenn mindestens ein Favorit existiert. Kein separater Playlist-Eintrag auf dem Server — wird client-seitig aus `_savedFavorites` und `allItems` erzeugt. Klick öffnet Browse-Ansicht (`showUserPlaylistView`), Play-Button spielt ab (`playUserPlaylist`).
+12. **Click-Distance-Guard** — Globaler `wasDrag(e)`-Check (6px Threshold) auf allen Klick-Handlern für Ordner-Karten, Datei-Karten, Playlist-Karten und Track-Items. Verhindert versehentliches Abspielen/Navigieren wenn der Nutzer die Maus nach dem Klick wegzieht.11. **Test-Isolation** — `create_app()` akzeptiert einen optionalen `cache_dir`-Parameter. Tests müssen `cache_dir=tmp_path` übergeben, um Ghost-Playlists im echten `.hometools-cache/` zu vermeiden.

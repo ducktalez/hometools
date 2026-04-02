@@ -213,6 +213,22 @@ class TestAPIResponseParity:
         for html in (audio_html, video_html):
             assert 'value="recent"' in html
 
+    def test_both_home_pages_include_custom_sort_option(self, tmp_path):
+        """Both UIs must have the 'custom' (Liste) sort option in the dropdown."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        for html in (audio_html, video_html):
+            assert 'value="custom"' in html
+
     def test_catalog_api_response_structure_video(self, tmp_path):
         """Video API must return consistent structure."""
         from fastapi.testclient import TestClient
@@ -325,8 +341,8 @@ class TestPlaylistParity:
         from hometools.streaming.audio.server import create_app as create_audio_app
         from hometools.streaming.video.server import create_app as create_video_app
 
-        audio_client = TestClient(create_audio_app(tmp_path))
-        video_client = TestClient(create_video_app(tmp_path))
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
 
         audio_resp = audio_client.get("/api/audio/playlists")
         video_resp = video_client.get("/api/video/playlists")
@@ -343,8 +359,8 @@ class TestPlaylistParity:
         from hometools.streaming.audio.server import create_app as create_audio_app
         from hometools.streaming.video.server import create_app as create_video_app
 
-        audio_client = TestClient(create_audio_app(tmp_path))
-        video_client = TestClient(create_video_app(tmp_path))
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
 
         audio_resp = audio_client.post("/api/audio/playlists", json={"name": "Test"})
         video_resp = video_client.post("/api/video/playlists", json={"name": "Test"})
@@ -361,8 +377,8 @@ class TestPlaylistParity:
         from hometools.streaming.audio.server import create_app as create_audio_app
         from hometools.streaming.video.server import create_app as create_video_app
 
-        audio_client = TestClient(create_audio_app(tmp_path))
-        video_client = TestClient(create_video_app(tmp_path))
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
 
         # Create then delete
         a_pl = audio_client.post("/api/audio/playlists", json={"name": "Del"}).json()["playlist"]
@@ -381,8 +397,8 @@ class TestPlaylistParity:
         from hometools.streaming.audio.server import create_app as create_audio_app
         from hometools.streaming.video.server import create_app as create_video_app
 
-        audio_client = TestClient(create_audio_app(tmp_path))
-        video_client = TestClient(create_video_app(tmp_path))
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
 
         a_pl = audio_client.post("/api/audio/playlists", json={"name": "Items"}).json()["playlist"]
         v_pl = video_client.post("/api/video/playlists", json={"name": "Items"}).json()["playlist"]
@@ -406,8 +422,8 @@ class TestPlaylistParity:
         from hometools.streaming.audio.server import create_app as create_audio_app
         from hometools.streaming.video.server import create_app as create_video_app
 
-        audio_client = TestClient(create_audio_app(tmp_path))
-        video_client = TestClient(create_video_app(tmp_path))
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
 
         a_pl = audio_client.post("/api/audio/playlists", json={"name": "Move"}).json()["playlist"]
         v_pl = video_client.post("/api/video/playlists", json={"name": "Move"}).json()["playlist"]
@@ -437,8 +453,8 @@ class TestPlaylistParity:
         from hometools.streaming.audio.server import create_app as create_audio_app
         from hometools.streaming.video.server import create_app as create_video_app
 
-        audio_client = TestClient(create_audio_app(tmp_path))
-        video_client = TestClient(create_video_app(tmp_path))
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
 
         a_pl = audio_client.post("/api/audio/playlists", json={"name": "DnD"}).json()["playlist"]
         v_pl = video_client.post("/api/video/playlists", json={"name": "DnD"}).json()["playlist"]
@@ -469,14 +485,19 @@ class TestPlaylistParity:
         from hometools.streaming.audio.server import create_app as create_audio_app
         from hometools.streaming.video.server import create_app as create_video_app
 
-        audio_client = TestClient(create_audio_app(tmp_path))
-        video_client = TestClient(create_video_app(tmp_path))
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
 
         audio_html = audio_client.get("/").text
         video_html = video_client.get("/").text
 
         for label, html in [("audio", audio_html), ("video", video_html)]:
-            assert 'id="playlist-pill"' in html, f"{label} missing playlist-pill"
-            assert 'id="playlist-library"' in html, f"{label} missing playlist-library"
+            # Pill and library panel removed — playlists as pseudo-folders
             assert 'id="playlist-modal-backdrop"' in html, f"{label} missing playlist-modal"
             assert "PLAYLISTS_ENABLED" in html, f"{label} missing PLAYLISTS_ENABLED JS var"
+            assert (
+                "playlist-folder-card" in html
+                or "playlist_folder_card" in html
+                or "playlist-new-card" in html
+                or "PLAYLISTS_API_PATH" in html
+            ), f"{label} missing playlist pseudo-folder support"

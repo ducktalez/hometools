@@ -87,13 +87,18 @@ def render_video_index_html(items, *, safe_mode: bool = False) -> str:
     )
 
 
-def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None) -> Any:
+def create_app(
+    library_dir: Path | None = None,
+    *,
+    safe_mode: bool | None = None,
+    cache_dir: Path | None = None,
+) -> Any:
     """Create the FastAPI application for local video streaming."""
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import FileResponse, HTMLResponse
 
     resolved_library_dir = (library_dir or get_video_library_dir()).expanduser()
-    resolved_cache_dir = get_cache_dir()
+    resolved_cache_dir = cache_dir or get_cache_dir()
     resolved_audit_dir = get_audit_dir()
     resolved_safe_mode = get_stream_safe_mode() if safe_mode is None else safe_mode
 

@@ -895,9 +895,9 @@ body.modal-open { overflow: hidden; }
 .track-playlist-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; pointer-events: none; }
 .track-playlist-btn:hover { color: var(--accent); border-color: var(--accent); }
 /* ── Playlist drag-and-drop reorder ── */
-.track-item.dragging { opacity: 0.25; }
-.track-item.drag-over-above { box-shadow: 0 -2px 0 0 var(--accent) inset; }
-.track-item.drag-over-below { box-shadow: 0 2px 0 0 var(--accent) inset; }
+.track-item.dragging { opacity: 0.25; pointer-events: none; }
+.track-item.drag-over-above { box-shadow: 0 3px 0 0 var(--accent) inset; }
+.track-item.drag-over-below { box-shadow: 0 -3px 0 0 var(--accent) inset; }
 .playlist-drag-ghost {
   position: fixed; z-index: 200; pointer-events: none;
   background: var(--surface2); border: 1px solid var(--accent);
@@ -957,67 +957,25 @@ body.playlist-dragging .track-list { overflow: visible; }
   border-radius: 6px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.8rem;
 }
 .playlist-modal-close button:hover { border-color: var(--text); color: var(--text); }
-/* ── Playlist library panel (manage playlists) ── */
-.playlist-library {
-  position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.62);
-  display: flex; align-items: flex-end; justify-content: center; padding: 1rem;
+/* ── Playlist library panel (removed — playlists as pseudo-folders) ── */
+/* ── Playlist pseudo-folder cards ── */
+.playlist-folder-card { position: relative; }
+.playlist-folder-icon {
+  width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  background: var(--surface2); border-radius: 8px; color: var(--sub);
 }
-.playlist-library[hidden] { display: none; }
-.playlist-lib-panel {
-  width: min(760px, 100%); max-height: min(82vh, 900px);
-  display: flex; flex-direction: column; overflow: hidden;
-  background: var(--surface); border: 1px solid #333; border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(0,0,0,0.45);
-}
-.playlist-lib-head {
-  display: flex; align-items: flex-start; gap: 0.75rem;
-  padding: 1rem 1rem 0.75rem; border-bottom: 1px solid #262626;
-}
-.playlist-lib-title { font-size: 1rem; font-weight: 700; flex: 1; }
-.playlist-lib-close {
-  background: none; border: 1px solid #555; color: var(--sub);
-  border-radius: 6px; padding: 0.3rem 0.6rem; cursor: pointer; font-size: 0.8rem;
-}
-.playlist-lib-close:hover { border-color: var(--text); color: var(--text); }
-.playlist-lib-list {
-  list-style: none; margin: 0; padding: 0; overflow: auto; border-top: 1px solid #202020;
-}
-.playlist-lib-item {
-  display: flex; align-items: center; gap: 0.75rem;
-  padding: 0.8rem 1rem; border-bottom: 1px solid #202020; cursor: pointer;
-}
-.playlist-lib-item:hover { background: var(--surface2); }
-.playlist-lib-item-icon { flex-shrink: 0; color: var(--sub); }
-.playlist-lib-item-icon svg { width: 20px; height: 20px; }
-.playlist-lib-item-meta { flex: 1 1 0; min-width: 0; }
-.playlist-lib-item-name {
-  font-size: 0.9rem; font-weight: 600; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-}
-.playlist-lib-item-info { font-size: 0.75rem; color: var(--sub); margin-top: 2px; }
-.playlist-lib-item-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
-.playlist-lib-play, .playlist-lib-del {
-  background: none; border: 1px solid #555; color: var(--sub);
-  border-radius: 50%; width: 30px; height: 30px; cursor: pointer;
+.playlist-folder-icon svg { width: 36px; height: 36px; }
+.playlist-new-card { opacity: 0.65; border: 2px dashed #444; }
+.playlist-new-card:hover { opacity: 1; border-color: var(--accent); }
+.playlist-folder-del {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  background: rgba(0,0,0,0.55); border: 1px solid #555; color: var(--sub);
+  border-radius: 50%; width: 24px; height: 24px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: color 0.12s, border-color 0.12s;
+  opacity: 0.6; transition: opacity 0.15s, color 0.12s, border-color 0.12s;
 }
-.playlist-lib-play:hover, .playlist-lib-del:hover { color: var(--accent); border-color: var(--accent); }
-.playlist-lib-play svg, .playlist-lib-del svg { width: 14px; height: 14px; }
-.playlist-lib-del:hover { color: #ff5555; border-color: #ff5555; }
-.playlist-lib-empty {
-  padding: 2rem 1rem; text-align: center; color: var(--sub); font-size: 0.9rem;
-}
-.playlist-pill {
-  display: inline-flex; align-items: center; gap: 0.3rem;
-  background: var(--surface2); color: var(--sub);
-  border: 1px solid #333; border-radius: 999px;
-  padding: 0.35rem 0.75rem; font-size: 0.78rem; cursor: pointer;
-  margin-left: 0.4rem; transition: color 0.12s, border-color 0.12s;
-  -webkit-tap-highlight-color: transparent;
-}
-.playlist-pill svg { width: 14px; height: 14px; }
-.playlist-pill:hover { color: var(--accent); border-color: var(--accent); }
+.playlist-folder-card:hover .playlist-folder-del { opacity: 1; }
+.playlist-folder-del:hover { color: #ff5555; border-color: #ff5555; opacity: 1; }
 .track-thumb {
   width: 40px; height: 40px; border-radius: 4px; object-fit: cover;
   flex-shrink: 0; background: var(--surface2);
@@ -1729,6 +1687,19 @@ def render_player_js(
     _toastTimer = setTimeout(function() { _toastEl.classList.remove('visible'); }, durationMs || 4000);
   }
 
+  /* ── click-distance guard: suppress clicks when the mouse moved ── */
+  var _mdX = 0, _mdY = 0;
+  var CLICK_MOVE_THRESHOLD = 6; /* pixels */
+  document.addEventListener('mousedown', function(e) { _mdX = e.clientX; _mdY = e.clientY; }, true);
+  document.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) { _mdX = e.touches[0].clientX; _mdY = e.touches[0].clientY; }
+  }, { passive: true, capture: true });
+  function wasDrag(e) {
+    var dx = Math.abs(e.clientX - _mdX);
+    var dy = Math.abs(e.clientY - _mdY);
+    return dx > CLICK_MOVE_THRESHOLD || dy > CLICK_MOVE_THRESHOLD;
+  }
+
   /* ── playback progress persistence ── */
   var _progressTimer = 0;
   var _progressRelPath = '';
@@ -2111,18 +2082,18 @@ def render_player_js(
       folderGrid.classList.add('list-mode');
       folderGrid.classList.remove('filenames-mode');
       viewToggle.innerHTML = IC_GRID;
-      viewToggle.title = 'Zur Kachelansicht wechseln';
+      viewToggle.title = 'Listenansicht \u2014 Klick f\u00fcr Kachelansicht';
     } else if (viewMode === 'grid') {
       folderGrid.classList.remove('list-mode');
       folderGrid.classList.remove('filenames-mode');
       viewToggle.innerHTML = IC_FILENAMES;
-      viewToggle.title = 'Dateinamen anzeigen';
+      viewToggle.title = 'Kachelansicht \u2014 Klick f\u00fcr Dateinamen';
     } else {
       /* 'filenames' */
       folderGrid.classList.add('list-mode');
       folderGrid.classList.add('filenames-mode');
       viewToggle.innerHTML = IC_LIST;
-      viewToggle.title = 'Zur Listenansicht wechseln';
+      viewToggle.title = 'Dateinamen \u2014 Klick f\u00fcr Listenansicht';
     }
   }
 
@@ -2182,6 +2153,45 @@ def render_player_js(
       '</div>';
     }
 
+    /* Auto-Favorites playlist card — only on root when favorites exist */
+    if (isRoot && PLAYLISTS_ENABLED) {
+      var _favCount = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; }).length;
+      if (_favCount > 0) {
+        html += '<div class="folder-card playlist-folder-card" data-playlist-id="__favorites__">' +
+          '<div class="folder-thumb playlist-folder-icon">' + IC_STAR + '</div>' +
+          '<div class="folder-name">Favoriten</div>' +
+          '<div class="folder-count">' + _favCount + ' Titel</div>' +
+          '<button class="folder-play-btn playlist-folder-play" title="Abspielen">' + IC_FOLDER_PLAY + '</button>' +
+        '</div>';
+      }
+    }
+
+    /* Playlist pseudo-folder cards — only on root, only when playlists enabled */
+    var _playlistCardsRendered = false;
+    if (isRoot && PLAYLISTS_ENABLED) {
+      _playlistCardsRendered = true;
+      _userPlaylists.forEach(function(pl) {
+        var cnt = (pl.items || []).length;
+        html += '<div class="folder-card playlist-folder-card" data-playlist-id="' + escHtml(pl.id) + '">' +
+          '<div class="folder-thumb playlist-folder-icon">' + IC_PLAYLIST + '</div>' +
+          '<div class="folder-name">' + escHtml(pl.name) + '</div>' +
+          '<div class="folder-count">' + cnt + ' Titel</div>' +
+          '<button class="folder-play-btn playlist-folder-play" title="Abspielen">' + IC_FOLDER_PLAY + '</button>' +
+          '<button class="playlist-folder-del" title="L\u00f6schen">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>' +
+        '</div>';
+      });
+      /* "+ Neue Playlist" card */
+      html += '<div class="folder-card playlist-new-card" id="playlist-new-card">' +
+        '<div class="folder-thumb playlist-folder-icon">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+        '</div>' +
+        '<div class="folder-name">Neue Playlist\u2026</div>' +
+        '<div class="folder-count"></div>' +
+      '</div>';
+    }
+
     c.folders.forEach(function(f) {
       var noun = f.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
       var thumbSrc = viewMode !== 'list'
@@ -2221,6 +2231,46 @@ def render_player_js(
       updateOfflineFolderCount();
     }
 
+    /* Playlist pseudo-folder card click handlers */
+    if (_playlistCardsRendered) {
+      folderGrid.querySelectorAll('.playlist-folder-card').forEach(function(card) {
+        var playBtn = card.querySelector('.playlist-folder-play');
+        var delBtn = card.querySelector('.playlist-folder-del');
+        card.addEventListener('click', function(e) {
+          if (wasDrag(e)) return;
+          if (e.target.closest('.playlist-folder-play') || e.target.closest('.playlist-folder-del')) return;
+          showUserPlaylistView(card.dataset.playlistId);
+        });
+        if (playBtn) playBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (wasDrag(e)) return;
+          playUserPlaylist(card.dataset.playlistId);
+        });
+        if (delBtn) delBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (wasDrag(e)) return;
+          deleteUserPlaylist(card.dataset.playlistId);
+        });
+      });
+      var newCard = document.getElementById('playlist-new-card');
+      if (newCard) newCard.addEventListener('click', function() {
+        var name = prompt('Playlist-Name:');
+        if (!name || !name.trim()) return;
+        fetch(PLAYLISTS_API_PATH, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim() })
+        }).then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.playlist) {
+              _userPlaylists.unshift(d.playlist);
+              showFolderView();
+              showToast('Playlist "' + d.playlist.name + '" erstellt');
+            }
+          }).catch(function() { showToast('Fehler beim Erstellen'); });
+      });
+    }
+
     /* Recently played — only on root, only when catalog is loaded, only when enabled */
     if (RECENT_ENABLED && isRoot && allItems.length > 0) {
       loadRecentlyPlayed();
@@ -2229,20 +2279,23 @@ def render_player_js(
       if (rs) rs.hidden = true;
     }
 
-    folderGrid.querySelectorAll('.folder-card:not(.file-card):not(.offline-folder-card)').forEach(function(card) {
+    folderGrid.querySelectorAll('.folder-card:not(.file-card):not(.offline-folder-card):not(.playlist-folder-card):not(.playlist-new-card)').forEach(function(card) {
       var pb = card.querySelector('.folder-play-btn');
       card.addEventListener('click', function(e) {
+        if (wasDrag(e)) return;
         if (e.target !== pb) navigateInto(card.dataset.folder);
       });
       pb.addEventListener('click', function(e) {
         e.stopPropagation();
+        if (wasDrag(e)) return;
         playAllIn(card.dataset.folder);
       });
     });
 
     var looseFiles = c.files;
     folderGrid.querySelectorAll('.file-card').forEach(function(card) {
-      card.addEventListener('click', function() {
+      card.addEventListener('click', function(e) {
+        if (wasDrag(e)) return;
         forceBackgroundRefresh(); /* get freshest data while index builds */
         showPlaylist(looseFiles, true, Number(card.dataset.fileIdx));
       });
@@ -2382,6 +2435,14 @@ def render_player_js(
     items = items.slice().sort(function(a, b) {
       var sa = a.season || 0, sb = b.season || 0;
       var ea = a.episode || 0, eb = b.episode || 0;
+      if (sortBy === 'custom') {
+        /* In playlist context: preserve playlist order (no sort).
+           In filesystem context: sort by rating desc, title asc as tiebreaker. */
+        if (_currentPlaylistId) return 0;
+        var ra = a.rating || 0, rb = b.rating || 0;
+        if (ra !== rb) return rb - ra;
+        return a.title.localeCompare(b.title);
+      }
       if (sortBy === 'recent') {
         /* newest first by mtime, title as tiebreaker */
         var ma = a.mtime || 0, mb = b.mtime || 0;
@@ -2511,7 +2572,7 @@ def render_player_js(
         '</li>';
     }).join('');
     document.querySelectorAll('.track-item:not(.missing-episode)').forEach(function(el) {
-      el.addEventListener('click', function() { playTrack(Number(el.dataset.index)); });
+      el.addEventListener('click', function(e) { if (!wasDrag(e)) playTrack(Number(el.dataset.index)); });
     });
     document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
@@ -2559,7 +2620,7 @@ def render_player_js(
           loadUserPlaylists().then(function() { openPlaylistModal(btn.dataset.relativePath); });
         });
       });
-      if (inPlaylist && _currentPlaylistId) initPlaylistDragDrop();
+      if (inPlaylist && _currentPlaylistId && (viewMode === 'filenames' || viewMode === 'list')) initPlaylistDragDrop();
     }
     updateFavoriteButtons();
     updateAllDownloadButtons();
@@ -4213,98 +4274,105 @@ def render_player_js(
       .catch(function() { return []; });
   }
 
-  function updatePlaylistPill() {
-    var pill = document.getElementById('playlist-pill');
-    if (!pill) return;
-    pill.innerHTML = IC_PLAYLIST + ' Playlists (' + _userPlaylists.length + ')';
-  }
+  function updatePlaylistPill() { /* pill removed — no-op */ }
 
-  /* ── playlist library panel ── */
-  function openPlaylistLibrary() {
-    var lib = document.getElementById('playlist-library');
-    if (!lib) return;
-    lib.hidden = false;
-    document.body.classList.add('modal-open');
-    renderPlaylistLibrary();
-  }
+  /* ── playlist library panel (removed — playlists as pseudo-folders) ── */
+  function openPlaylistLibrary() { /* removed */ }
+  function closePlaylistLibrary() { /* removed */ }
+  function renderPlaylistLibrary() { /* removed */ }
 
-  function closePlaylistLibrary() {
-    var lib = document.getElementById('playlist-library');
-    if (lib) lib.hidden = true;
-    document.body.classList.remove('modal-open');
-  }
-
-  function renderPlaylistLibrary() {
-    var listEl = document.getElementById('playlist-lib-list');
-    var emptyEl = document.getElementById('playlist-lib-empty');
-    if (!listEl) return;
-    if (_userPlaylists.length === 0) {
-      listEl.innerHTML = '';
-      if (emptyEl) emptyEl.hidden = false;
-      return;
-    }
-    if (emptyEl) emptyEl.hidden = true;
-    listEl.innerHTML = _userPlaylists.map(function(pl) {
-      var cnt = (pl.items || []).length;
-      return '<li class="playlist-lib-item" data-id="' + escHtml(pl.id) + '">' +
-        '<div class="playlist-lib-item-icon">' + IC_PLAYLIST + '</div>' +
-        '<div class="playlist-lib-item-meta">' +
-          '<div class="playlist-lib-item-name">' + escHtml(pl.name) + '</div>' +
-          '<div class="playlist-lib-item-info">' + cnt + ' Titel</div>' +
-        '</div>' +
-        '<div class="playlist-lib-item-actions">' +
-          '<button class="playlist-lib-play" data-id="' + escHtml(pl.id) + '" title="Abspielen">' + IC_PLAY + '</button>' +
-          '<button class="playlist-lib-del" data-id="' + escHtml(pl.id) + '" title="L\\u00f6schen">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
-          '</button>' +
-        '</div></li>';
-    }).join('');
-    listEl.querySelectorAll('.playlist-lib-item').forEach(function(el) {
-      el.addEventListener('click', function(e) {
-        if (e.target.closest('.playlist-lib-play') || e.target.closest('.playlist-lib-del')) return;
-        playUserPlaylist(el.dataset.id);
-      });
-    });
-    listEl.querySelectorAll('.playlist-lib-play').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        playUserPlaylist(btn.dataset.id);
-      });
-    });
-    listEl.querySelectorAll('.playlist-lib-del').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        deleteUserPlaylist(btn.dataset.id);
-      });
-    });
-  }
-
-  function playUserPlaylist(plId) {
+  function _resolvePlaylistItems(plId) {
     var pl = _userPlaylists.find(function(p) { return p.id === plId; });
-    if (!pl || !pl.items || pl.items.length === 0) return;
+    if (!pl || !pl.items || pl.items.length === 0) return null;
     var resolved = [];
     pl.items.forEach(function(rp) {
       var match = allItems.find(function(it) { return it.relative_path === rp; });
       if (match) resolved.push(match);
     });
-    if (resolved.length === 0) { showToast('Keine Titel in dieser Playlist gefunden'); return; }
-    closePlaylistLibrary();
+    if (resolved.length === 0) return null;
+    return { pl: pl, resolved: resolved };
+  }
+
+  function showUserPlaylistView(plId) {
+    /* Show playlist content without auto-playing (browse mode) */
+    if (plId === '__favorites__') {
+      var favItems = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
+      if (favItems.length === 0) { showToast('Keine Favoriten vorhanden'); return; }
+      _currentPlaylistId = '';
+      playlistItems = favItems;
+      inPlaylist = true;
+      currentPath = '';
+      var hdr = document.getElementById('header-title');
+      if (hdr) hdr.textContent = 'Favoriten';
+      backBtn.style.display = 'inline-block';
+      folderGrid.classList.add('view-hidden');
+      trackView.classList.remove('view-hidden');
+      filterBar.classList.remove('view-hidden');
+      playerBar.classList.remove('view-hidden');
+      searchInput.value = '';
+      renderBreadcrumb();
+      applyFilter();
+      return;
+    }
+    var data = _resolvePlaylistItems(plId);
+    if (!data) { showToast('Keine Titel in dieser Playlist gefunden'); return; }
     _currentPlaylistId = plId;
-    playlistItems = resolved;
-    filteredItems = resolved;
+    playlistItems = data.resolved;
     inPlaylist = true;
     currentPath = '';
     var hdr = document.getElementById('header-title');
-    if (hdr) hdr.textContent = pl.name;
-    renderTracks(resolved, true);
+    if (hdr) hdr.textContent = data.pl.name;
+    backBtn.style.display = 'inline-block';
+    folderGrid.classList.add('view-hidden');
+    trackView.classList.remove('view-hidden');
+    filterBar.classList.remove('view-hidden');
+    playerBar.classList.remove('view-hidden');
+    searchInput.value = '';
+    renderBreadcrumb();
+    applyFilter();
+  }
+
+  function playUserPlaylist(plId) {
+    if (plId === '__favorites__') {
+      var favItems = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
+      if (favItems.length === 0) { showToast('Keine Favoriten vorhanden'); return; }
+      _currentPlaylistId = '';
+      playlistItems = favItems;
+      filteredItems = favItems;
+      inPlaylist = true;
+      currentPath = '';
+      var hdr = document.getElementById('header-title');
+      if (hdr) hdr.textContent = 'Favoriten';
+      renderTracks(favItems, true);
+      playTrack(0);
+      return;
+    }
+    var data = _resolvePlaylistItems(plId);
+    if (!data) { showToast('Keine Titel in dieser Playlist gefunden'); return; }
+    _currentPlaylistId = plId;
+    playlistItems = data.resolved;
+    filteredItems = data.resolved;
+    inPlaylist = true;
+    currentPath = '';
+    var hdr = document.getElementById('header-title');
+    if (hdr) hdr.textContent = data.pl.name;
+    renderTracks(data.resolved, true);
     playTrack(0);
   }
 
   function deleteUserPlaylist(plId) {
+    /* TODO: Nach Entwicklungsphase → Nachfrage + Archivierung statt L\u00f6schung */
+    var pl = _userPlaylists.find(function(p) { return p.id === plId; });
+    var name = pl ? pl.name : 'Playlist';
+    if (!confirm('Playlist "' + name + '" wirklich l\u00f6schen?')) return;
     fetch(PLAYLISTS_API_PATH + '?id=' + encodeURIComponent(plId), { method: 'DELETE' })
       .then(function(r) { return r.json(); })
-      .then(function(d) { _userPlaylists = d.items || []; updatePlaylistPill(); renderPlaylistLibrary(); })
-      .catch(function() {});
+      .then(function(d) {
+        _userPlaylists = d.items || [];
+        showToast('Playlist gel\u00f6scht');
+        if (!currentPath && !inPlaylist) showFolderView();
+      })
+      .catch(function() { showToast('Fehler beim L\u00f6schen'); });
   }
 
   /* ── add-to-playlist modal ── */
@@ -4478,28 +4546,96 @@ def render_player_js(
       });
     }
 
+    function clearDropIndicator() {
+      if (_dropTarget) {
+        _dropTarget.classList.remove('drag-over-above', 'drag-over-below');
+        _dropTarget = null;
+      }
+    }
+
     function updateDropTarget(x, y) {
       /* hide ghost briefly so elementFromPoint hits the list */
       if (_ghost) _ghost.style.display = 'none';
       var el = document.elementFromPoint(x, y);
       if (_ghost) _ghost.style.display = '';
       var target = el ? getTrackItem(el) : null;
-      if (!target || target === _dragItem) {
-        if (_dropTarget) {
-          _dropTarget.classList.remove('drag-over-above', 'drag-over-below');
-          _dropTarget = null;
+
+      if (!target) {
+        /* pointer-events:none on .dragging makes elementFromPoint skip it.
+           Check if the cursor is actually over the dragged item's area. */
+        if (_dragItem) {
+          var dragRect = _dragItem.getBoundingClientRect();
+          if (dragRect.height > 0 &&
+              x >= dragRect.left && x <= dragRect.right &&
+              y >= dragRect.top && y <= dragRect.bottom) {
+            clearDropIndicator();
+            return;
+          }
         }
+        /* Cursor inside the track-list area but below all items
+           → target the last visible item with _dropAbove = false */
+        var tlRect = trackList.getBoundingClientRect();
+        if (x >= tlRect.left && x <= tlRect.right &&
+            y >= tlRect.top && y <= tlRect.bottom) {
+          var visibleItems = trackList.querySelectorAll(
+            '.track-item:not(.missing-episode):not(.dragging)');
+          if (visibleItems.length > 0) {
+            var lastItem = visibleItems[visibleItems.length - 1];
+            if (_dropTarget !== lastItem) clearDropIndicator();
+            _dropTarget = lastItem;
+            _dropAbove = false;
+            lastItem.classList.remove('drag-over-above');
+            lastItem.classList.add('drag-over-below');
+            return;
+          }
+        }
+        clearDropIndicator();
         return;
       }
-      if (_dropTarget && _dropTarget !== target) {
-        _dropTarget.classList.remove('drag-over-above', 'drag-over-below');
-      }
-      _dropTarget = target;
+
+      /* Hovering over the dragged item itself → clear indicator */
+      if (target === _dragItem) { clearDropIndicator(); return; }
+
+      /* Determine above/below based on cursor position relative to
+         the vertical midpoint of the hovered item. */
       var rect = target.getBoundingClientRect();
       var mid = rect.top + rect.height / 2;
-      _dropAbove = y < mid;
-      target.classList.toggle('drag-over-above', _dropAbove);
-      target.classList.toggle('drag-over-below', !_dropAbove);
+      var above = y < mid;
+
+      /* ── Normalization ──
+         "below target" and "above next-sibling" represent the SAME
+         insertion slot.  To avoid two separate lines we normalize
+         "below N" → "above N+1" (skip missing-episode and drag-item).
+         Only when N is the LAST visible item we keep "below N". */
+      if (!above) {
+        var nextSib = target.nextElementSibling;
+        while (nextSib && (!nextSib.classList.contains('track-item') ||
+               nextSib.classList.contains('missing-episode') ||
+               nextSib === _dragItem)) {
+          nextSib = nextSib.nextElementSibling;
+        }
+        if (nextSib && nextSib.classList.contains('track-item')) {
+          target = nextSib;
+          above = true;
+        }
+        /* else: target is the last visible item → keep above = false */
+      }
+
+      _dropAbove = above;
+
+      /* ── No-op suppression ──
+         Compute the effective toIndex.  If it equals _dragFromIdx the
+         move would be a no-op → hide the indicator. */
+      var candidateIdx = Number(target.dataset.index);
+      var candidateTo = above ? candidateIdx : candidateIdx + 1;
+      if (_dragFromIdx < candidateTo) candidateTo--;
+      if (candidateTo === _dragFromIdx) { clearDropIndicator(); return; }
+
+      /* Show indicator on the resolved target */
+      if (_dropTarget !== target) clearDropIndicator();
+      _dropTarget = target;
+      target.classList.toggle('drag-over-above', above);
+      target.classList.toggle('drag-over-below', !above);
     }
 
     function startDrag(item, x, y) {
@@ -4540,16 +4676,27 @@ def render_player_js(
     }
 
     /* --- Mouse events (desktop) --- */
+    var _pendingDrag = null;  /* { item, x, y } — set on mousedown, cleared on drag-start or mouseup */
     trackList.addEventListener('mousedown', function(e) {
       if (e.button !== 0) return;
       /* don't start drag on action buttons */
       if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn')) return;
       var item = getTrackItem(e.target);
       if (!item) return;
-      e.preventDefault();
-      startDrag(item, e.clientX, e.clientY);
+      _pendingDrag = { item: item, x: e.clientX, y: e.clientY };
     });
     document.addEventListener('mousemove', function(e) {
+      /* Check if pending mousedown should become an active drag */
+      if (_pendingDrag && !_dragActive) {
+        var pdx = Math.abs(e.clientX - _pendingDrag.x);
+        var pdy = Math.abs(e.clientY - _pendingDrag.y);
+        if (pdx > MOVE_THRESHOLD || pdy > MOVE_THRESHOLD) {
+          startDrag(_pendingDrag.item, e.clientX, e.clientY);
+          _pendingDrag = null;
+        } else {
+          return;
+        }
+      }
       if (!_dragActive) return;
       e.preventDefault();
       moveGhost(e.clientX, e.clientY);
@@ -4560,7 +4707,7 @@ def render_player_js(
       if (e.clientY < rect.top + scrollZone) trackList.scrollTop -= 8;
       if (e.clientY > rect.bottom - scrollZone) trackList.scrollTop += 8;
     });
-    document.addEventListener('mouseup', function() { endDrag(); });
+    document.addEventListener('mouseup', function() { _pendingDrag = null; endDrag(); });
 
     /* --- Touch events (mobile: long-press) --- */
     trackList.addEventListener('touchstart', function(e) {
@@ -4611,12 +4758,6 @@ def render_player_js(
   /* ── playlist event wiring ── */
   (function() {
     if (!PLAYLISTS_ENABLED) return;
-    var pill = document.getElementById('playlist-pill');
-    if (pill) pill.addEventListener('click', function() { loadUserPlaylists().then(openPlaylistLibrary); });
-    var libClose = document.getElementById('playlist-lib-close');
-    if (libClose) libClose.addEventListener('click', closePlaylistLibrary);
-    var libPanel = document.getElementById('playlist-library');
-    if (libPanel) libPanel.addEventListener('click', function(e) { if (e.target === libPanel) closePlaylistLibrary(); });
     var modalClose = document.getElementById('playlist-modal-close-btn');
     if (modalClose) modalClose.addEventListener('click', closePlaylistModal);
     var modalBackdrop = document.getElementById('playlist-modal-backdrop');
@@ -4636,8 +4777,8 @@ def render_player_js(
     }
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
-        if (!document.getElementById('playlist-modal-backdrop').hidden) closePlaylistModal();
-        if (!document.getElementById('playlist-library').hidden) closePlaylistLibrary();
+        var mb = document.getElementById('playlist-modal-backdrop');
+        if (mb && !mb.hidden) closePlaylistModal();
       }
     });
   }());
@@ -4660,7 +4801,6 @@ def render_player_js(
         if (el.classList && el.classList.contains('edit-modal-backdrop')) return null;
         if (el.classList && el.classList.contains('lyrics-panel')) return null;
         if (el.classList && el.classList.contains('offline-library')) return null;
-        if (el.classList && el.classList.contains('playlist-library')) return null;
         if (el.classList && el.classList.contains('playlist-modal-backdrop')) return null;
         el = el.parentElement;
       }
@@ -4698,7 +4838,10 @@ def render_player_js(
   loadInitialCatalog().then(function() {
     handleDeepLink();
     loadFavorites();
-    loadUserPlaylists();
+    loadUserPlaylists().then(function() {
+      /* Re-render root folder view to show playlist pseudo-folder cards */
+      if (!currentPath && !inPlaylist) showFolderView();
+    });
   });
 }());
 """
@@ -5070,27 +5213,9 @@ def render_media_page(
   </div>"""
     )
 
-    playlist_pill_html = (
-        f'<span class="playlist-pill" id="playlist-pill" title="Playlists anzeigen">{SVG_PLAYLIST} Playlists</span>'
-        if enable_playlists and not safe_mode
-        else ""
-    )
+    playlist_pill_html = ""  # Pill entfernt — Playlists als Pseudo-Ordner unter Downloaded
 
-    playlist_library_html = (
-        ""
-        if not enable_playlists or safe_mode
-        else """
-  <div class="playlist-library" id="playlist-library" hidden>
-    <div class="playlist-lib-panel">
-      <div class="playlist-lib-head">
-        <div class="playlist-lib-title">Playlists</div>
-        <button class="playlist-lib-close" id="playlist-lib-close">Schlie\u00dfen</button>
-      </div>
-      <ul class="playlist-lib-list" id="playlist-lib-list"></ul>
-      <div class="playlist-lib-empty" id="playlist-lib-empty">Noch keine Playlists erstellt.</div>
-    </div>
-  </div>"""
-    )
+    playlist_library_html = ""  # Library-Panel entfernt — Playlists als Pseudo-Ordner
 
     playlist_modal_html = (
         ""
@@ -5235,6 +5360,7 @@ def render_media_page(
   <div class="filter-bar view-hidden">
     <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
     <select id="sort-field">
+      <option value="custom">Liste &#x21C5;</option>
       <option value="title">Title &#x21C5;</option>
       <option value="artist">Artist &#x21C5;</option>
       <option value="path">Path &#x21C5;</option>
