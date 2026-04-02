@@ -1067,8 +1067,27 @@ In `grid`-Modus ist DnD **deaktiviert**. Klick auf einen Track spielt ihn ab.
 Neue Sort-Option `<option value="custom">Liste ⇅</option>` im Sort-Dropdown. **Ist der Default** (erste Option im Dropdown):
 
 - **In Playlist-Kontext:** Behält die Server-Reihenfolge bei (kein Re-Sort). DnD-Reorder verändert die Reihenfolge.
-- **In Filesystem-Ordner:** Sortiert nach Rating absteigend, Titel als Tiebreaker.
-- **Zukünftig:** custom_order-Persistierung pro Ordner (→ Backlog)
+- **In Filesystem-Ordner:** Sortiert nach benutzerdefinierter Reihenfolge (server-seitig gespeichert, localStorage als Offline-Fallback).
+
+### Server-seitige Ordner-Reihenfolge (Custom Order)
+
+Neues Core-Modul `streaming/core/custom_order.py` persistiert benutzerdefinierte Item-Reihenfolgen pro Ordner (und für Favoriten) auf dem Server. Damit überlebt die Sortierung Browser-Clear und funktioniert geräteübergreifend.
+
+**Storage:** `<cache_dir>/custom_order/<server>/<md5_hash>.json` — MD5-Hash des normalisierten Ordner-Pfads als Dateiname. Für Favoriten wird `__favorites__` als Pfad verwendet.
+
+**API-Endpoints (identisch in Audio + Video):**
+- `GET /api/<media>/folder-order?path=<folder>` — Reihenfolge laden
+- `PUT /api/<media>/folder-order` (`{folder_path, items: [...]}`) — Reihenfolge speichern
+- `DELETE /api/<media>/folder-order?path=<folder>` — Reihenfolge löschen
+
+**Dual-Source-Strategie (JS):**
+- **Speichern:** `_saveFolderOrder()` / `_saveFavoritesOrder()` schreiben sowohl in `localStorage` (sofort) als auch per `PUT` an den Server (fire-and-forget).
+- **Laden:** Synchron aus `localStorage` für sofortige Anzeige. Parallel `_loadFolderOrderAsync()` / `_loadFavoritesOrderAsync()` fetcht vom Server. Wenn der Server eine andere Reihenfolge hat, wird `localStorage` aktualisiert und die Ansicht re-sortiert.
+- **Offline-Fallback:** Bei Server-Fehler wird ausschließlich auf `localStorage` zurückgegriffen.
+
+**JS-Variable:** `FOLDER_ORDER_API_PATH` (abgeleitet aus `api_path`).
+
+**Thread-Sicherheit:** Module-level Lock, atomare Schreibvorgänge via `NamedTemporaryFile` + `replace` (analog zu `playlists.py`).
 
 ### Designregeln
 
