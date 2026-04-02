@@ -64,7 +64,7 @@ def resolve_audio_path(library_dir: Path, encoded_relative_path: str) -> Path:
 
 def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False) -> str:
     """Render the audio player UI — dark theme, folder grid, player."""
-    from hometools.config import get_playlist_sync_interval
+    from hometools.config import get_min_rating, get_playlist_sync_interval
 
     items_json = _json.dumps([t.to_dict() for t in tracks], ensure_ascii=False)
 
@@ -86,6 +86,7 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         enable_lyrics=True,
         enable_playlists=True,
         playlist_sync_interval_ms=get_playlist_sync_interval() * 1000,
+        min_rating=get_min_rating(),
     )
 
 

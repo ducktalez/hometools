@@ -166,8 +166,8 @@ Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progr
 Alle Player-Buttons und UI-Controls verwenden **inline SVGs** statt Unicode-Zeichen. iOS rendert Unicode-Steuerzeichen (▶ ◄ ► ⏸ ⊞ ↓) als farbige Emojis, was das Layout zerstört.
 
 **Konvention:**
-- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST` in `server_utils.py`
-- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST` — über `innerHTML` gesetzt (nicht `textContent`)
+- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST`, `SVG_QUEUE` in `server_utils.py`
+- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST`, `IC_QUEUE`, `IC_REMOVE` — über `innerHTML` gesetzt (nicht `textContent`)
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
 - **Nie** Unicode-Zeichen oder HTML-Entities (`&#9733;`, `&#9654;` etc.) — iOS rendert sie als Emoji
 
@@ -214,6 +214,24 @@ Jeder Track in der Liste hat einen Pin-Button (`track-pin-btn`, `IC_PIN` SVG). K
 **Design-Regeln:**
 - Schreiben von Ratings aus dem Browser ist nicht implementiert (kein Write-Endpoint).
 - `get_popm_rating()` prüft vor dem ID3-Lesen die Dateiendung; gibt bei M4A/FLAC `0` zurück um den `can't sync to MPEG frame`-Fehler zu vermeiden.
+
+### Rating-Schwellenwert (Min-Rating)
+
+Konfigurierbar über `HOMETOOLS_MIN_RATING` (Env-Var, Default `0`, Bereich 0–5).
+
+Bewertete Tracks mit Rating **≤ Schwellenwert** werden aus der Track-Liste ausgeblendet. Unbewertete Tracks (`rating == 0`) sind immer sichtbar — sie gelten als „nicht bewertet", nicht als „schlecht bewertet".
+
+**Implementierung:** Die Funktion `get_min_rating()` in `config.py` liest den Wert. Er wird als `min_rating` Parameter durch `render_media_page()` → `render_player_js()` durchgereicht und als JS-Variable `MIN_RATING_THRESHOLD` injiziert. Die Filterung erfolgt in `applyFilter()` (JS) **vor** allen anderen Quick-Filtern:
+```js
+if (MIN_RATING_THRESHOLD > 0) {
+  items = items.filter(function(t) {
+    var r = t.rating || 0;
+    return r === 0 || r > MIN_RATING_THRESHOLD;
+  });
+}
+```
+
+**Beispiel:** `HOMETOOLS_MIN_RATING=2` blendet alle 1★ und 2★ Tracks aus, zeigt aber unbewertete und 3★+ Tracks.
 
 ## Server-Logging
 
@@ -1074,7 +1092,7 @@ Neues Core-Modul `streaming/core/custom_order.py` persistiert benutzerdefinierte
 
 **Storage:** `<cache_dir>/custom_order/<server>/<md5_hash>.json` — MD5-Hash des normalisierten Ordner-Pfads als Dateiname. Für Favoriten wird `__favorites__` als Pfad verwendet.
 
-**API-Endpoints (identisch in Audio + Video):**
+**API-Endpoints:**
 - `GET /api/<media>/folder-order?path=<folder>` — Reihenfolge laden
 - `PUT /api/<media>/folder-order` (`{folder_path, items: [...]}`) — Reihenfolge speichern
 - `DELETE /api/<media>/folder-order?path=<folder>` — Reihenfolge löschen
@@ -1093,8 +1111,6 @@ Neues Core-Modul `streaming/core/custom_order.py` persistiert benutzerdefinierte
 Polling-basierte Synchronisation, damit Playlist-Änderungen auf einem Gerät automatisch auf anderen Geräten sichtbar werden.
 
 **Storage-Format v2:** `{"revision": N, "playlists": [...]}` — Envelope mit globalem Revisions-Counter. Jede Mutation inkrementiert `revision` um 1. Legacy v1 (nacktes JSON-Array) wird transparent gelesen und beim ersten Schreiben in v2 konvertiert.
-
-**`updated_at`-Feld:** Jede Playlist hat ein `updated_at` ISO-Timestamp, das bei jeder Mutation (rename, add/remove/move/reorder item) aktualisiert wird. Ermöglicht zukünftige "Last write wins"-Konflikterkennung.
 
 **Changelog:** `<cache_dir>/playlists/changelog_<server>.jsonl` — Append-only JSONL mit je einer Zeile pro Mutation: `{timestamp, action, playlist_id, detail}`. Eigenes Log, kein Audit-Log. Primär für Debugging und zukünftige erweiterte Merge-Strategien.
 
@@ -1147,4 +1163,55 @@ Konfigurierbar über `HOMETOOLS_PLAYLIST_INSERT_POSITION`:
 9. **PATCH-Endpoint bleibt erhalten** — `move_item()` (up/down Swap) als Legacy-API für Abwärtskompatibilität. UI verwendet ausschließlich `PUT` (`reorder_item()`).
 10. **Playlist-Management auf Root-Ebene** — Erstellen via „Neue Playlist…"-Karte, Löschen via X-Button auf der Playlist-Karte (mit `confirm()`-Dialog). Rename ist via bestehende API möglich (kein UI dafür). **TODO:** Nach der Entwicklungsphase soll Löschen durch Archivierung ersetzt werden (Nachfrage-Dialog statt `confirm()`).
 11. **Automatische Favoriten-Playlist** — Virtuelle Playlist-Karte „Favoriten" (`__favorites__`) wird auf der Root-Startseite vor den User-Playlists angezeigt, wenn mindestens ein Favorit existiert. Kein separater Playlist-Eintrag auf dem Server — wird client-seitig aus `_savedFavorites` und `allItems` erzeugt. Klick öffnet Browse-Ansicht (`showUserPlaylistView`), Play-Button spielt ab (`playUserPlaylist`). **DnD-Reorder:** `_currentPlaylistId = '__favorites__'` aktiviert DnD. Reihenfolge wird server-seitig persistiert (`PUT /api/<media>/folder-order` mit `folder_path: '__favorites__'`) und zusätzlich in `localStorage` (`ht-favorites-order`) als Offline-Fallback gespeichert. `_loadFavoritesOrderAsync()` fetcht vom Server und aktualisiert bei Abweichung. `_sortFavoritesByOrder()` wendet die gespeicherte Reihenfolge an; neue Favoriten ohne gespeicherte Position landen am Ende. `reorderPlaylistItem()` erkennt `__favorites__` und führt die Verschiebung client-seitig + server-seitig durch.
-12. **Click-Distance-Guard** — Globaler `wasDrag(e)`-Check (6px Threshold) auf allen Klick-Handlern für Ordner-Karten, Datei-Karten, Playlist-Karten und Track-Items. Verhindert versehentliches Abspielen/Navigieren wenn der Nutzer die Maus nach dem Klick wegzieht.11. **Test-Isolation** — `create_app()` akzeptiert einen optionalen `cache_dir`-Parameter. Tests müssen `cache_dir=tmp_path` übergeben, um Ghost-Playlists im echten `.hometools-cache/` zu vermeiden.
+12. **Click-Distance-Guard** — Globaler `wasDrag(e)`-Check (6px Threshold) auf allen Klick-Handlern für Ordner-Karten, Datei-Karten, Playlist-Karten und Track-Items. Verhindert versehentliches Abspielen/Navigieren wenn der Nutzer die Maus nach dem Klick wegzieht.
+13. **Test-Isolation** — `create_app()` akzeptiert einen optionalen `cache_dir`-Parameter. Tests müssen `cache_dir=tmp_path` übergeben, um Ghost-Playlists im echten `.hometools-cache/` zu vermeiden.
+
+## Warteschlange (Queue)
+
+**Modul:** `streaming/core/server_utils.py` (CSS + JS + HTML), rein client-seitig.
+
+Spotify-ähnliche Warteschlange: Der Benutzer kann Titel zur Warteschlange hinzufügen. Die Warteschlange hat Vorrang vor Shuffle und sequenziellem Modus bei der Wahl des nächsten Titels.
+
+### UI-Elemente
+
+- **Queue-Button** im Player-Bar (`#btn-queue`, `.ctrl-btn.queue-btn`): Öffnet/schließt das Queue-Panel. Badge (`#queue-badge`, `.queue-badge`) zeigt die Anzahl der Queue-Items an (ausgeblendet wenn leer via `:empty`).
+- **Queue-Panel** (`#queue-panel`, `.queue-panel`): Popup **oberhalb** der Player-Bar als viewport-fixes Overlay **auf Body-Ebene** (nicht innerhalb der `.player-bar`, da diese einen eigenen Stacking-Kontext erzeugt). Positionierung: `position: fixed; left: 0; right: 0` mit **dynamischem** `bottom` und `max-height` — `_syncQueueBottom()` misst die tatsächliche `.player-bar.offsetHeight` und die `header.offsetHeight`, setzt `bottom` auf die Player-Bar-Höhe und `max-height` auf den verfügbaren Platz zwischen Header und Player-Bar (minus 8px Abstand). Damit funktioniert die Positionierung sowohl im Classic-Modus (80px) als auch im Waveform-Modus (~140px). Das Panel wächst bei vielen Items nach oben bis knapp unter den Header und wird intern scrollbar (`.queue-body { overflow-y: auto; flex: 1 1 0; min-height: 0 }`). Bei wenig Inhalt schrumpft es auf die Content-Höhe. Animiert mit `opacity` + `translateY(100%)` → `translateY(0)` (gleitet von unten hoch). Abgerundete Ecken oben (`border-radius: 12px 12px 0 0`), Schatten nach oben. **Wichtig:** Das HTML des Panels liegt neben `lyrics_panel_html` und `playlist_modal_html` auf Dokument-Ebene — analog zum Lyrics-Panel. Platzierung innerhalb der `.player-bar` führt dazu, dass das Panel wegen `z-index: 100 + position: relative` (Stacking-Kontext) unsichtbar bleibt.
+- **Queue-Item** (`.queue-item`): Thumbnail, Titel, Interpret, Entfernen-Button (X-Icon). Klick auf Item spielt es ab und entfernt es aus der Queue.
+- **Track-Queue-Button** (`.track-queue-btn`) pro Track in der Track-Liste: Fügt Track zur Queue hinzu oder entfernt ihn (Toggle). `.in-queue`-Klasse für visuelles Feedback.
+
+### State-Variablen
+
+- `_userQueue` — Array von Item-Objekten (Kopien, nicht Referenzen).
+- `_queueOpen` — Boolean, ob das Panel offen ist.
+- `_queueDndCleanup` — Cleanup-Funktion für Queue-DnD (Listener-Lifecycle, Regel 14).
+
+### Playback-Integration
+
+- Zentrale Next-Entscheidung über **`playNextItem()`**: zuerst `dequeueNext()`, danach `nextIndex()` (Shuffle/Sequential).
+- **Alle Next-Trigger verwenden denselben Flow**: `player ended`, `bgAudio ended`, `#btn-next` und `MediaSession nexttrack`.
+- **Prioritätsreihenfolge:** Queue > Shuffle > Sequential.
+- `dequeueNext()` entfernt das erste Item aus `_userQueue` und spielt es via `playItem()` ab.
+
+### DOM-Robustheit Queue-Panel
+
+- `_ensureQueueDom()` validiert Queue-DOM-Referenzen nicht nur auf `null`, sondern auch auf `!isConnected` (detached Nodes).
+- `openQueuePanel()`, `closeQueuePanel()` und `toggleQueuePanel()` rufen `_ensureQueueDom()` vor Zugriff auf DOM-Knoten auf.
+- Ziel: Warteschlangen-Panel bleibt sichtbar/funktionsfähig, auch wenn die UI neu aufgebaut wurde und frühere Element-Referenzen stale sind.
+
+### Drag-and-Drop
+
+Queue-Items sind per Drag-and-Drop umsortierbar. Implementierung folgt dem `initPlaylistDragDrop()`-Pattern (Regel 14):
+- `initQueueDragDrop()` / `destroyQueueDragDrop()` / `_queueDndCleanup`
+- Touch: Long-Press 400ms, Mouse: 8px Threshold
+- Ghost-Element (`.playlist-drag-ghost` wiederverwendet)
+- Rein client-seitig (kein API-Call, nur `_userQueue` Array umsortieren)
+- Cleanup bei `closeQueuePanel()` und am Anfang von `initQueueDragDrop()`
+
+### Designregeln
+
+1. **Shared Core** — Queue lebt vollständig in `server_utils.py`, funktioniert identisch für Audio und Video. Kein Feature-Flag nötig.
+2. **Rein client-seitig** — Kein Backend-Endpoint, keine Persistenz. Queue geht beim Seiten-Reload verloren (konsistent mit Spotify-Verhalten).
+3. **Duplikate verhindert** — Prüfung per `relative_path`. Bereits in der Queue → Toast-Hinweis.
+4. **SVG-Icons:** `SVG_QUEUE` (Python), `IC_QUEUE` (JS) für den Queue-Button, `IC_REMOVE` (JS) für den Entfernen-Button (X-Icon).
+5. **Swipe-Exclusion** — Queue-Panel ist von Swipe-Gesten ausgenommen (wie Lyrics-Panel, Offline-Library).
+6. **Lyrics-Panel-Exklusivität** — Öffnen der Queue schließt das Lyrics-Panel und umgekehrt.

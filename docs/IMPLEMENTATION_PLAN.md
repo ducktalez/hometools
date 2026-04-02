@@ -14,7 +14,7 @@
 
 ### Streaming UI (Audio + Video)
 - Crossfade für nahtlose Song-Übergänge
-- „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB)
+- „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB) (zurückstellen)
 
 ### Video-spezifisch
 - Sprache/Untertitel/Auflösung taggen und auswählbar machen
@@ -45,6 +45,10 @@
 - **Phase 3: Native iOS Apps** — Hybrid WebView Wrapper für Video + Audio → [plans/native_app_plan.md](plans/native_app_plan.md)
 
 ## Done
+
+- **Warteschlange (Queue)** (2026-04-02) — Spotify-ähnliche Warteschlange: Queue-Button im Player-Bar (`#btn-queue`, `SVG_QUEUE`) mit Badge für Anzahl der Items. Queue-Panel als Bottom-Drawer (`.queue-panel`) mit Leeren-Button, Schließen-Button und Drag-and-Drop-Reorder. Track-Queue-Button (`.track-queue-btn`) pro Track in der Track-Liste — Toggle zum Hinzufügen/Entfernen. Playback-Integration: `dequeueNext()` hat Vorrang vor Shuffle und sequenziellem Modus bei `player ended` und `bgAudio ended`. Rein client-seitig (kein Backend-Endpoint, keine Persistenz). Neue JS-Variablen: `IC_QUEUE`, `IC_REMOVE`, `_userQueue`, `_queueOpen`, `_queueDndCleanup`. Listener-Lifecycle: `initQueueDragDrop()` / `destroyQueueDragDrop()` nach Regel 14. Swipe-Exclusion für Queue-Panel. Duplikat-Prüfung per `relative_path`. CSS: `.queue-panel`, `.queue-item`, `.queue-badge`, `.track-queue-btn`, `.queue-active`. 3 neue Feature-Parity-Tests (`TestQueueParity`). Funktioniert identisch für Audio und Video.
+
+- **Rating-Schwellenwert (Min-Rating)** (2026-04-02) — Neue Konfigurationsoption `HOMETOOLS_MIN_RATING` (Env-Var, Default `0`, Bereich 0–5). Bewertete Tracks mit Rating ≤ Schwellenwert werden aus der Track-Liste ausgeblendet; unbewertete Tracks bleiben immer sichtbar. `get_min_rating()` in `config.py`, als `min_rating` Parameter durch `render_media_page()` → `render_player_js()` durchgereicht, JS-Variable `MIN_RATING_THRESHOLD`. Filterung in `applyFilter()` vor allen Quick-Filtern. Beide Server (Audio + Video) lesen aus Config. `.env.example` aktualisiert. 8 neue Tests: Config (4), JS-Injection (3), Feature-Parity (1).
 
 - **Playlist-Redesign Sprint 5: Erweiterte Sync-Strategien + Insert-Position** (2026-04-02) — Drei Verbesserungen am Playlist-System: 1) **Optimistic UI** — Alle JS-Mutationsfunktionen (`deleteUserPlaylist`, `addToPlaylist`, `reorderPlaylistItem`, `movePlaylistItem`) wenden Änderungen sofort lokal an und revertieren per `_snapshotPlaylists()` / `_restorePlaylists()` bei Server-Fehler. Toast „Fehler … rückgängig" bei Rollback. 2) **Changelog-Retention** — `_rotate_changelog()` trimmt JSONL auf max 1000 Zeilen (`_MAX_CHANGELOG_LINES`). Wird nach jedem `_append_changelog()` aufgerufen. Atomare Schreibvorgänge. 3) **Konfigurierbares Polling-Intervall** — `HOMETOOLS_PLAYLIST_SYNC_INTERVAL` Env-Var (Default 30s, Minimum 5s). Wird als `playlist_sync_interval_ms` durch `render_player_js()` → `render_media_page()` injiziert statt hardcodiert. 4) **Insert-Position Quick Win** — `HOMETOOLS_PLAYLIST_INSERT_POSITION` Env-Var (`top`/`bottom`, Default `bottom`). `add_item()` akzeptiert neuen `insert_position` Parameter. Beide Server lesen aus Config. Diskussionspunkt aufgelöst. Neue Config-Funktionen: `get_playlist_insert_position()`, `get_playlist_sync_interval()`. `.env.example` aktualisiert. 17 neue Tests: Insert-Position (4), Changelog-Rotation (3), Config (6), Sync-Interval-Injection (2), Optimistic-UI (2). 4 neue Feature-Parity-Tests.
 

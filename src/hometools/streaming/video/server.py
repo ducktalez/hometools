@@ -70,7 +70,7 @@ def resolve_video_path(library_dir: Path, encoded_relative_path: str) -> Path:
 
 def render_video_index_html(items, *, safe_mode: bool = False) -> str:
     """Render the video player UI — dark theme, folder grid, inline video element."""
-    from hometools.config import get_playlist_sync_interval
+    from hometools.config import get_min_rating, get_playlist_sync_interval
 
     items_json = _json.dumps([i.to_dict() for i in items], ensure_ascii=False)
 
@@ -87,6 +87,7 @@ def render_video_index_html(items, *, safe_mode: bool = False) -> str:
         safe_mode=safe_mode,
         enable_playlists=True,
         playlist_sync_interval_ms=get_playlist_sync_interval() * 1000,
+        min_rating=get_min_rating(),
     )
 
 

@@ -615,3 +615,65 @@ class TestPlaylistSyncParity:
         # Both should have newest at top
         assert a_items[0] == "y.mp3"
         assert v_items[0] == "y.mp4"
+
+    def test_both_home_pages_include_min_rating_threshold(self, tmp_path):
+        """Both UIs must expose the MIN_RATING_THRESHOLD JS variable."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        assert "MIN_RATING_THRESHOLD" in audio_html
+        assert "MIN_RATING_THRESHOLD" in video_html
+
+
+class TestQueueParity:
+    """Queue (Warteschlange) must be present in both audio and video UIs."""
+
+    def test_both_home_pages_include_queue_button(self, tmp_path):
+        """Both UIs must have the queue button in the player bar."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        assert 'id="btn-queue"' in audio_html
+        assert 'id="btn-queue"' in video_html
+
+    def test_both_home_pages_include_queue_panel(self, tmp_path):
+        """Both UIs must have the queue panel HTML."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        assert 'id="queue-panel"' in audio_html
+        assert 'id="queue-panel"' in video_html
+
+    def test_both_home_pages_include_queue_js(self, tmp_path):
+        """Both UIs must have IC_QUEUE JS variable and queue functions."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "IC_QUEUE" in html
+            assert "_userQueue" in html
+            assert "addToQueue" in html
+            assert "dequeueNext" in html

@@ -5,6 +5,7 @@ from pathlib import Path
 from hometools.config import (
     get_audio_library_dir,
     get_audio_nas_dir,
+    get_min_rating,
     get_playlist_insert_position,
     get_playlist_sync_interval,
     get_recent_max_age_days,
@@ -119,3 +120,28 @@ def test_playlist_sync_interval_minimum_clamped(monkeypatch):
     """Values below 5 are clamped to 5 to prevent server flooding."""
     monkeypatch.setenv("HOMETOOLS_PLAYLIST_SYNC_INTERVAL", "1")
     assert get_playlist_sync_interval() == 5
+
+
+# ---------------------------------------------------------------------------
+# Rating threshold
+# ---------------------------------------------------------------------------
+
+
+def test_min_rating_default(monkeypatch):
+    monkeypatch.delenv("HOMETOOLS_MIN_RATING", raising=False)
+    assert get_min_rating() == 0
+
+
+def test_min_rating_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_MIN_RATING", "2")
+    assert get_min_rating() == 2
+
+
+def test_min_rating_clamped_to_max_5(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_MIN_RATING", "10")
+    assert get_min_rating() == 5
+
+
+def test_min_rating_clamped_to_min_0(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_MIN_RATING", "-3")
+    assert get_min_rating() == 0
