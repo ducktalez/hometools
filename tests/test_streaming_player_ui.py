@@ -979,3 +979,51 @@ def test_swipe_right_calls_go_back():
 
     js = render_player_js(api_path="/api/test", item_noun="track")
     assert "goBack()" in js
+
+
+# ---------------------------------------------------------------------------
+# Playlist sync interval injection
+# ---------------------------------------------------------------------------
+
+
+def test_sync_interval_default_injected():
+    """Default sync interval (30000ms) is injected into the JS."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_playlists=True)
+    assert "_PLAYLIST_SYNC_INTERVAL = 30000" in js
+
+
+def test_sync_interval_custom_injected():
+    """Custom sync interval is injected into the JS."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(
+        api_path="/api/test",
+        item_noun="track",
+        enable_playlists=True,
+        playlist_sync_interval_ms=60000,
+    )
+    assert "_PLAYLIST_SYNC_INTERVAL = 60000" in js
+
+
+# ---------------------------------------------------------------------------
+# Optimistic UI helpers
+# ---------------------------------------------------------------------------
+
+
+def test_optimistic_snapshot_helpers_in_js():
+    """Optimistic UI helpers _snapshotPlaylists / _restorePlaylists must be present."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_playlists=True)
+    assert "_snapshotPlaylists" in js
+    assert "_restorePlaylists" in js
+
+
+def test_optimistic_rollback_toast_in_delete():
+    """deleteUserPlaylist must show a rollback toast on error."""
+    from hometools.streaming.core.server_utils import render_player_js
+
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_playlists=True)
+    assert "r\\u00fcckg\\u00e4ngig" in js or "rückg" in js

@@ -249,6 +249,35 @@ def is_audiobook_folder(folder_name: str, audiobook_dirs: list[str] | None = Non
 
 
 # ---------------------------------------------------------------------------
+# Playlist behaviour
+# ---------------------------------------------------------------------------
+
+
+def get_playlist_insert_position() -> str:
+    """Return where new items are inserted into a playlist: ``'bottom'`` or ``'top'``.
+
+    ``bottom`` (default, consistent with Spotify) — appends new items at the end.
+    ``top`` — inserts new items at index 0.
+    Set ``HOMETOOLS_PLAYLIST_INSERT_POSITION`` to override.
+    """
+    raw = os.environ.get("HOMETOOLS_PLAYLIST_INSERT_POSITION", "bottom").strip().lower()
+    if raw not in ("top", "bottom"):
+        return "bottom"
+    return raw
+
+
+def get_playlist_sync_interval() -> int:
+    """Return the playlist sync polling interval in seconds.
+
+    Clients poll ``GET /api/<media>/playlists/version`` at this interval
+    to detect cross-device changes.  Minimum 5 seconds to prevent flooding.
+    Set ``HOMETOOLS_PLAYLIST_SYNC_INTERVAL`` to override.  Default: 30.
+    """
+    val = _get_int_from_env("HOMETOOLS_PLAYLIST_SYNC_INTERVAL", 30)
+    return max(5, val)
+
+
+# ---------------------------------------------------------------------------
 # Recently played
 # ---------------------------------------------------------------------------
 

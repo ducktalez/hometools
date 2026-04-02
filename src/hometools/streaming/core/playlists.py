@@ -111,6 +111,9 @@ def _now_iso() -> str:
 # ---------------------------------------------------------------------------
 
 
+_MAX_CHANGELOG_LINES = 1000
+
+
 def _append_changelog(
     cache_dir: Path,
     server: str,
@@ -119,7 +122,11 @@ def _append_changelog(
     playlist_id: str = "",
     detail: str = "",
 ) -> None:
-    """Append an entry to the playlist changelog JSONL (best-effort)."""
+    """Append an entry to the playlist changelog JSONL (best-effort).
+
+    After appending, rotates the changelog if it exceeds
+    ``_MAX_CHANGELOG_LINES`` entries (keeping the most recent ones).
+    """
     try:
         path = _changelog_path(cache_dir, server)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,8 +138,36 @@ def _append_changelog(
         }
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        _rotate_changelog(path)
     except Exception:
         logger.debug("Failed to append changelog for %s/%s", server, action, exc_info=True)
+
+
+def _rotate_changelog(path: Path, max_lines: int = _MAX_CHANGELOG_LINES) -> None:
+    """Trim the changelog JSONL to the last *max_lines* entries (best-effort).
+
+    Reads the file, keeps the tail, and atomically rewrites.  Only runs
+    when the file exceeds *max_lines* — otherwise it's a no-op.
+    """
+    try:
+        if not path.exists():
+            return
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if len(lines) <= max_lines:
+            return
+        trimmed = lines[-max_lines:]
+        with NamedTemporaryFile(
+            mode="w",
+            suffix=".jsonl",
+            dir=path.parent,
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            tmp.write("\n".join(trimmed) + "\n")
+            tmp_path_obj = Path(tmp.name)
+        tmp_path_obj.replace(path)
+    except Exception:
+        logger.debug("Failed to rotate changelog %s", path, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -274,8 +309,13 @@ def add_item(
     playlist_id: str,
     *,
     relative_path: str,
+    insert_position: str = "bottom",
 ) -> dict[str, Any] | None:
     """Add *relative_path* to the playlist.  Returns the updated playlist.
+
+    *insert_position* controls where the new item is placed:
+    ``"bottom"`` (default) — appended at the end.
+    ``"top"`` — inserted at index 0.
 
     Duplicates within the same playlist are silently ignored.
     Returns ``None`` if the playlist does not exist.
@@ -291,7 +331,10 @@ def add_item(
                     if len(items) >= _MAX_ITEMS_PER_PLAYLIST:
                         target = pl
                         break
-                    items.append(relative_path)
+                    if insert_position == "top":
+                        items.insert(0, relative_path)
+                    else:
+                        items.append(relative_path)
                     pl["items"] = items
                 pl["updated_at"] = _now_iso()
                 target = pl

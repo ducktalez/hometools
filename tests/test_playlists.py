@@ -600,3 +600,97 @@ class TestVersionEndpoint:
 
         v = client.get("/api/audio/playlists/version").json()
         assert v["revision"] == 3
+
+
+class TestInsertPosition:
+    """Tests for the HOMETOOLS_PLAYLIST_INSERT_POSITION config."""
+
+    def test_add_item_bottom_default(self, tmp_path):
+        """Default insert position is bottom (append)."""
+        pl = create_playlist(tmp_path, "audio", name="PL")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3")
+        add_item(tmp_path, "audio", pl["id"], relative_path="b.mp3")
+        loaded = get_playlist(tmp_path, "audio", pl["id"])
+        assert loaded["items"] == ["a.mp3", "b.mp3"]
+
+    def test_add_item_top(self, tmp_path):
+        """insert_position='top' inserts at index 0."""
+        pl = create_playlist(tmp_path, "audio", name="PL")
+        add_item(tmp_path, "audio", pl["id"], relative_path="a.mp3", insert_position="top")
+        add_item(tmp_path, "audio", pl["id"], relative_path="b.mp3", insert_position="top")
+        loaded = get_playlist(tmp_path, "audio", pl["id"])
+        assert loaded["items"] == ["b.mp3", "a.mp3"]
+
+    def test_add_item_top_via_api_audio(self, tmp_path, monkeypatch):
+        """Audio server respects HOMETOOLS_PLAYLIST_INSERT_POSITION=top."""
+        monkeypatch.setenv("HOMETOOLS_PLAYLIST_INSERT_POSITION", "top")
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        resp = client.post("/api/audio/playlists", json={"name": "T"})
+        pl_id = resp.json()["playlist"]["id"]
+        client.post("/api/audio/playlists/items", json={"playlist_id": pl_id, "relative_path": "a.mp3"})
+        client.post("/api/audio/playlists/items", json={"playlist_id": pl_id, "relative_path": "b.mp3"})
+        resp = client.get("/api/audio/playlists")
+        pl = next(p for p in resp.json()["items"] if p["id"] == pl_id)
+        assert pl["items"] == ["b.mp3", "a.mp3"]
+
+    def test_add_item_top_via_api_video(self, tmp_path, monkeypatch):
+        """Video server respects HOMETOOLS_PLAYLIST_INSERT_POSITION=top."""
+        monkeypatch.setenv("HOMETOOLS_PLAYLIST_INSERT_POSITION", "top")
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.video.server import create_app
+
+        client = TestClient(create_app(tmp_path, cache_dir=tmp_path))
+        resp = client.post("/api/video/playlists", json={"name": "V"})
+        pl_id = resp.json()["playlist"]["id"]
+        client.post("/api/video/playlists/items", json={"playlist_id": pl_id, "relative_path": "a.mp4"})
+        client.post("/api/video/playlists/items", json={"playlist_id": pl_id, "relative_path": "b.mp4"})
+        resp = client.get("/api/video/playlists")
+        pl = next(p for p in resp.json()["items"] if p["id"] == pl_id)
+        assert pl["items"] == ["b.mp4", "a.mp4"]
+
+
+class TestChangelogRotation:
+    """Tests for changelog JSONL rotation."""
+
+    def test_rotation_not_triggered_below_max(self, tmp_path):
+        """Changelog is not rotated when below max lines."""
+        from hometools.streaming.core.playlists import _changelog_path
+
+        pl = create_playlist(tmp_path, "audio", name="T")
+        for i in range(5):
+            add_item(tmp_path, "audio", pl["id"], relative_path=f"t{i}.mp3")
+        path = _changelog_path(tmp_path, "audio")
+        lines = path.read_text(encoding="utf-8").strip().split("\n")
+        # 1 create + 5 add_item = 6
+        assert len(lines) == 6
+
+    def test_rotation_trims_to_max_lines(self, tmp_path):
+        """Changelog is trimmed to _MAX_CHANGELOG_LINES when exceeded."""
+        from hometools.streaming.core.playlists import _MAX_CHANGELOG_LINES, _changelog_path, _rotate_changelog
+
+        path = _changelog_path(tmp_path, "audio")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Write more than max
+        excess = _MAX_CHANGELOG_LINES + 50
+        with open(path, "w", encoding="utf-8") as f:
+            for i in range(excess):
+                f.write(json.dumps({"i": i}) + "\n")
+        _rotate_changelog(path)
+        lines = path.read_text(encoding="utf-8").strip().split("\n")
+        assert len(lines) == _MAX_CHANGELOG_LINES
+        # Last entry should be the most recent
+        last = json.loads(lines[-1])
+        assert last["i"] == excess - 1
+
+    def test_rotation_noop_on_empty(self, tmp_path):
+        """Rotation is a no-op on non-existent file."""
+        from hometools.streaming.core.playlists import _changelog_path, _rotate_changelog
+
+        path = _changelog_path(tmp_path, "audio")
+        _rotate_changelog(path)  # should not raise
+        assert not path.exists()
