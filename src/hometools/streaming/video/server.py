@@ -598,6 +598,35 @@ def create_app(
             raise HTTPException(status_code=404, detail="Playlist or item not found")
         return {"playlist": pl}
 
+    # --- Custom Order API (server-side folder/favorites reorder) ---
+
+    @app.get("/api/video/folder-order")
+    def video_get_folder_order(path: str = "") -> dict[str, object]:
+        """Return the custom item order for a folder (or __favorites__)."""
+        from hometools.streaming.core.custom_order import load_order
+
+        return {"items": load_order(resolved_cache_dir, "video", path)}
+
+    @app.put("/api/video/folder-order")
+    def video_save_folder_order(payload: dict[str, object]) -> dict[str, object]:
+        """Persist the custom item order for a folder (or __favorites__)."""
+        from hometools.streaming.core.custom_order import save_order
+
+        folder_path = str(payload.get("folder_path", ""))
+        items = payload.get("items", [])
+        if not isinstance(items, list):
+            raise HTTPException(status_code=400, detail="items must be a list")
+        saved = save_order(resolved_cache_dir, "video", folder_path, [str(i) for i in items])
+        return {"items": saved}
+
+    @app.delete("/api/video/folder-order")
+    def video_delete_folder_order(path: str = "") -> dict[str, object]:
+        """Delete the custom order for a folder."""
+        from hometools.streaming.core.custom_order import delete_order
+
+        ok = delete_order(resolved_cache_dir, "video", path)
+        return {"deleted": ok}
+
     # --- Shortcuts API ---
 
     @app.get("/api/video/shortcuts")

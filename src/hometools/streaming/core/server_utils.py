@@ -1586,6 +1586,9 @@ def render_player_js(
   var PLAYLISTS_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/playlists';
+  var FOLDER_ORDER_API_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/folder-order';
   var IC_PLAYLIST = '"""
         + SVG_PLAYLIST.replace("'", "\\'")
         + """';
@@ -2346,6 +2349,16 @@ def render_player_js(
       var firstIdx = shuffleMode && shuffleQueue.length ? shuffleQueue[0] : (startIdx || 0);
       playTrack(firstIdx);
     }
+    /* Pre-warm: fetch server-side order and re-sort if different */
+    var _showPlaylistPath = currentPath;
+    _loadFolderOrderAsync(currentPath, function(serverOrder) {
+      if (!serverOrder.length) return;
+      if (_currentPlaylistId !== '__folder__') return;
+      var localOrder = _loadFolderOrder(_showPlaylistPath);
+      if (JSON.stringify(localOrder) === JSON.stringify(serverOrder)) return;
+      playlistItems = _sortByFolderOrder(_showPlaylistPath, items);
+      applyFilter();
+    });
   }
 
   /* ── back ── */
@@ -4271,7 +4284,7 @@ def render_player_js(
   var _playlistAddPath = '';
   var _currentPlaylistId = '';
 
-  /* ── Favorites custom order (client-side, localStorage) ── */
+  /* ── Favorites custom order (server-side + localStorage fallback) ── */
   function _loadFavoritesOrder() {
     try {
       var raw = localStorage.getItem('ht-favorites-order');
@@ -4281,6 +4294,26 @@ def render_player_js(
   function _saveFavoritesOrder(paths) {
     try { localStorage.setItem('ht-favorites-order', JSON.stringify(paths)); }
     catch (e) { /* quota exceeded — ignore */ }
+    /* persist to server (fire-and-forget) */
+    fetch(FOLDER_ORDER_API_PATH, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_path: '__favorites__', items: paths })
+    }).catch(function() {});
+  }
+  function _loadFavoritesOrderAsync(cb) {
+    fetch(FOLDER_ORDER_API_PATH + '?path=__favorites__')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var items = d.items || [];
+        if (items.length) {
+          try { localStorage.setItem('ht-favorites-order', JSON.stringify(items)); }
+          catch (e) {}
+          cb(items);
+        } else {
+          cb(_loadFavoritesOrder());
+        }
+      }).catch(function() { cb(_loadFavoritesOrder()); });
   }
   function _sortFavoritesByOrder(favItems) {
     var order = _loadFavoritesOrder();
@@ -4296,7 +4329,7 @@ def render_player_js(
     });
   }
 
-  /* ── Folder custom order (client-side, localStorage) ── */
+  /* ── Folder custom order (server-side + localStorage fallback) ── */
   function _folderOrderKey(folderPath) {
     return 'ht-folder-order-' + (folderPath || '__root__');
   }
@@ -4309,6 +4342,27 @@ def render_player_js(
   function _saveFolderOrder(folderPath, paths) {
     try { localStorage.setItem(_folderOrderKey(folderPath), JSON.stringify(paths)); }
     catch (e) { /* quota exceeded — ignore */ }
+    /* persist to server (fire-and-forget) */
+    fetch(FOLDER_ORDER_API_PATH, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_path: folderPath || '__root__', items: paths })
+    }).catch(function() {});
+  }
+  function _loadFolderOrderAsync(folderPath, cb) {
+    var key = folderPath || '__root__';
+    fetch(FOLDER_ORDER_API_PATH + '?path=' + encodeURIComponent(key))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var items = d.items || [];
+        if (items.length) {
+          try { localStorage.setItem(_folderOrderKey(folderPath), JSON.stringify(items)); }
+          catch (e) {}
+          cb(items);
+        } else {
+          cb(_loadFolderOrder(folderPath));
+        }
+      }).catch(function() { cb(_loadFolderOrder(folderPath)); });
   }
   function _sortByFolderOrder(folderPath, items) {
     var order = _loadFolderOrder(folderPath);
@@ -4369,6 +4423,15 @@ def render_player_js(
       searchInput.value = '';
       renderBreadcrumb();
       applyFilter();
+      /* Pre-warm: fetch server-side favorites order and re-sort if different */
+      _loadFavoritesOrderAsync(function(serverOrder) {
+        if (!serverOrder.length) return;
+        if (_currentPlaylistId !== '__favorites__') return;
+        var localOrder = _loadFavoritesOrder();
+        if (JSON.stringify(localOrder) === JSON.stringify(serverOrder)) return;
+        playlistItems = _sortFavoritesByOrder(favItems);
+        applyFilter();
+      });
       return;
     }
     var data = _resolvePlaylistItems(plId);
