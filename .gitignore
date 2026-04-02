@@ -29,6 +29,7 @@ tmp/
 .tmp_*/
 .hometools-cache/
 .hometools-audit/
+test_*.txt
 
 # OS
 Thumbs.db
