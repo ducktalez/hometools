@@ -14,6 +14,7 @@ A collection of Python tools for managing personal media libraries — music fil
 - Check if audiobook from metadata is possible too 
 - Option zur Erweiterung/Anreicherung mit YouTube Downloads. 
 - Drei ??? Alben sind aufeinanderfolgende Titel . automatisch erkennen/automatisch mergen?
+- Tests haben immer eine Auswirkung auf den Serverzustand. Kann man tests iwie besser mocken? 
 
 ---
 
