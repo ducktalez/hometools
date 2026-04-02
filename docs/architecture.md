@@ -1104,10 +1104,35 @@ Polling-basierte Synchronisation, damit Playlist-Änderungen auf einem Gerät au
 
 **JS-Polling-Mechanismus:**
 - `_playlistRevision` trackt die zuletzt bekannte Server-Revision
-- `_startPlaylistSync()` startet `setInterval` mit 30s-Intervall
+- `_startPlaylistSync()` startet `setInterval` mit konfigurierbarem Intervall
+- `_PLAYLIST_SYNC_INTERVAL` wird aus `HOMETOOLS_PLAYLIST_SYNC_INTERVAL` (Env-Var, Default 30s, Minimum 5s) berechnet und als `playlist_sync_interval_ms` durch `render_player_js()` → `render_media_page()` injiziert
 - `_pollPlaylistVersion()` ruft `GET .../playlists/version` auf — bei `revision > _playlistRevision` wird `loadUserPlaylists()` aufgerufen, `_playlistRevision` aktualisiert und die Root-View re-gerendert
 - **Visibility API:** Polling pausiert bei `document.hidden`, startet bei Tab-Rückkehr mit sofortigem Check
 - **JS-Variable:** `PLAYLISTS_VERSION_PATH` (abgeleitet aus `PLAYLISTS_API_PATH + '/version'`)
+
+### Optimistic UI (Playlist-Mutationen)
+
+Alle JS-Playlist-Mutationsfunktionen (`deleteUserPlaylist`, `addToPlaylist`, `reorderPlaylistItem`, `movePlaylistItem`) verwenden das Optimistic-UI-Pattern:
+
+1. **Snapshot:** `_snapshotPlaylists()` klont `_userPlaylists` per `JSON.parse(JSON.stringify(...))`
+2. **Lokale Mutation:** State wird sofort lokal mutiert und UI re-gerendert (instant feedback)
+3. **Server-Request:** `fetch()` an Server
+4. **Erfolg:** Server-Response überschreibt lokalen State (autoritativ)
+5. **Fehler:** `_restorePlaylists(snap)` setzt auf Snapshot zurück, UI wird erneut re-gerendert, Toast „Fehler … rückgängig" erscheint
+
+**Wichtig:** Favorites- und Folder-Reorder (`__favorites__`, `__folder__`) sind rein client-seitig und benötigen kein Optimistic-UI-Pattern — sie werden bereits sofort lokal angewendet und per fire-and-forget an den Server geschickt.
+
+### Playlist Insert-Position
+
+Konfigurierbar über `HOMETOOLS_PLAYLIST_INSERT_POSITION`:
+- `bottom` (Default, konsistent mit Spotify) — neue Items am Ende
+- `top` — neue Items an Index 0 (neueste zuerst)
+
+`add_item()` in `playlists.py` akzeptiert `insert_position` Parameter. Beide Server lesen den Wert aus `config.py` und übergeben ihn. Die Diskussion aus dem Backlog ist damit aufgelöst.
+
+### Changelog-Retention
+
+`_rotate_changelog()` in `playlists.py` trimmt die JSONL-Datei auf `_MAX_CHANGELOG_LINES` (1000) Zeilen, wenn die Grenze überschritten wird. Wird nach jedem `_append_changelog()` aufgerufen. Atomare Schreibvorgänge. Älteste Einträge werden entfernt, neueste behalten. `make clean` löscht die Changelog-Dateien zusammen mit dem gesamten Cache.
 
 ### Designregeln
 

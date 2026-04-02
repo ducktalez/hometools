@@ -70,6 +70,8 @@ def resolve_video_path(library_dir: Path, encoded_relative_path: str) -> Path:
 
 def render_video_index_html(items, *, safe_mode: bool = False) -> str:
     """Render the video player UI — dark theme, folder grid, inline video element."""
+    from hometools.config import get_playlist_sync_interval
+
     items_json = _json.dumps([i.to_dict() for i in items], ensure_ascii=False)
 
     return render_media_page(
@@ -84,6 +86,7 @@ def render_video_index_html(items, *, safe_mode: bool = False) -> str:
         player_bar_style="classic" if safe_mode else get_player_bar_style(),
         safe_mode=safe_mode,
         enable_playlists=True,
+        playlist_sync_interval_ms=get_playlist_sync_interval() * 1000,
     )
 
 
@@ -555,13 +558,20 @@ def create_app(
     @app.post("/api/video/playlists/items")
     def video_add_playlist_item(payload: dict[str, str]) -> dict[str, object]:
         """Add a video to a playlist."""
+        from hometools.config import get_playlist_insert_position
         from hometools.streaming.core.playlists import add_item
 
         playlist_id = payload.get("playlist_id", "")
         relative_path = payload.get("relative_path", "")
         if not playlist_id or not relative_path:
             raise HTTPException(status_code=400, detail="playlist_id and relative_path are required")
-        pl = add_item(resolved_cache_dir, "video", playlist_id, relative_path=relative_path)
+        pl = add_item(
+            resolved_cache_dir,
+            "video",
+            playlist_id,
+            relative_path=relative_path,
+            insert_position=get_playlist_insert_position(),
+        )
         if pl is None:
             raise HTTPException(status_code=404, detail="Playlist not found")
         return {"playlist": pl}

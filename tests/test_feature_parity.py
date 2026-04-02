@@ -555,3 +555,63 @@ class TestPlaylistSyncParity:
         assert "PLAYLISTS_VERSION_PATH" in video_html
         assert "_startPlaylistSync" in audio_html
         assert "_startPlaylistSync" in video_html
+
+    def test_both_home_pages_include_sync_interval_var(self, tmp_path):
+        """Both UIs must expose the _PLAYLIST_SYNC_INTERVAL JS variable."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        assert "_PLAYLIST_SYNC_INTERVAL" in audio_html
+        assert "_PLAYLIST_SYNC_INTERVAL" in video_html
+
+    def test_both_home_pages_include_optimistic_helpers(self, tmp_path):
+        """Both UIs must expose _snapshotPlaylists / _restorePlaylists."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        audio_html = audio_client.get("/").text
+        video_html = video_client.get("/").text
+
+        assert "_snapshotPlaylists" in audio_html
+        assert "_snapshotPlaylists" in video_html
+        assert "_restorePlaylists" in audio_html
+        assert "_restorePlaylists" in video_html
+
+    def test_both_servers_insert_position_parity(self, tmp_path, monkeypatch):
+        """Both servers respect HOMETOOLS_PLAYLIST_INSERT_POSITION consistently."""
+        monkeypatch.setenv("HOMETOOLS_PLAYLIST_INSERT_POSITION", "top")
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        ac = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        vc = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        a_pl = ac.post("/api/audio/playlists", json={"name": "A"}).json()["playlist"]["id"]
+        ac.post("/api/audio/playlists/items", json={"playlist_id": a_pl, "relative_path": "x.mp3"})
+        ac.post("/api/audio/playlists/items", json={"playlist_id": a_pl, "relative_path": "y.mp3"})
+
+        v_pl = vc.post("/api/video/playlists", json={"name": "V"}).json()["playlist"]["id"]
+        vc.post("/api/video/playlists/items", json={"playlist_id": v_pl, "relative_path": "x.mp4"})
+        vc.post("/api/video/playlists/items", json={"playlist_id": v_pl, "relative_path": "y.mp4"})
+
+        a_items = next(p for p in ac.get("/api/audio/playlists").json()["items"] if p["id"] == a_pl)["items"]
+        v_items = next(p for p in vc.get("/api/video/playlists").json()["items"] if p["id"] == v_pl)["items"]
+
+        # Both should have newest at top
+        assert a_items[0] == "y.mp3"
+        assert v_items[0] == "y.mp4"

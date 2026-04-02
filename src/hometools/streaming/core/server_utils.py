@@ -1342,6 +1342,7 @@ def render_player_js(
     enable_recent: bool = True,
     enable_lyrics: bool = False,
     enable_playlists: bool = False,
+    playlist_sync_interval_ms: int = 30000,
 ) -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
@@ -4383,7 +4384,9 @@ def render_player_js(
 
   var _playlistRevision = 0;
   var _playlistSyncTimer = null;
-  var _PLAYLIST_SYNC_INTERVAL = 30000; /* 30 seconds */
+  var _PLAYLIST_SYNC_INTERVAL = """
+        + str(playlist_sync_interval_ms)
+        + """; /* ms */
 
   function loadUserPlaylists() {
     if (!PLAYLISTS_ENABLED) return Promise.resolve([]);
@@ -4430,6 +4433,15 @@ def render_player_js(
   }
 
   function updatePlaylistPill() { /* pill removed — no-op */ }
+
+  /* ── optimistic UI helpers ── */
+  function _snapshotPlaylists() {
+    return JSON.parse(JSON.stringify(_userPlaylists));
+  }
+  function _restorePlaylists(snap) {
+    _userPlaylists = snap;
+    updatePlaylistPill();
+  }
 
   /* ── playlist library panel (removed — playlists as pseudo-folders) ── */
   function openPlaylistLibrary() { /* removed */ }
@@ -4530,14 +4542,23 @@ def render_player_js(
     var pl = _userPlaylists.find(function(p) { return p.id === plId; });
     var name = pl ? pl.name : 'Playlist';
     if (!confirm('Playlist "' + name + '" wirklich l\u00f6schen?')) return;
+    /* Optimistic: remove locally first */
+    var snap = _snapshotPlaylists();
+    _userPlaylists = _userPlaylists.filter(function(p) { return p.id !== plId; });
+    if (!currentPath && !inPlaylist) showFolderView();
     fetch(PLAYLISTS_API_PATH + '?id=' + encodeURIComponent(plId), { method: 'DELETE' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         _userPlaylists = d.items || [];
+        if (typeof d.revision === 'number') _playlistRevision = d.revision;
         showToast('Playlist gel\u00f6scht');
         if (!currentPath && !inPlaylist) showFolderView();
       })
-      .catch(function() { showToast('Fehler beim L\u00f6schen'); });
+      .catch(function() {
+        _restorePlaylists(snap);
+        showToast('Fehler beim L\u00f6schen \u2014 r\u00fcckg\u00e4ngig');
+        if (!currentPath && !inPlaylist) showFolderView();
+      });
   }
 
   /* ── add-to-playlist modal ── */
@@ -4578,6 +4599,16 @@ def render_player_js(
   }
 
   function addToPlaylist(plId, relativePath) {
+    /* Optimistic: add item locally first */
+    var snap = _snapshotPlaylists();
+    var localPl = _userPlaylists.find(function(p) { return p.id === plId; });
+    if (localPl && (localPl.items || []).indexOf(relativePath) < 0) {
+      localPl.items = (localPl.items || []).slice();
+      localPl.items.push(relativePath);
+    }
+    updatePlaylistPill();
+    closePlaylistModal();
+    showToast('Zur Playlist hinzugef\\u00fcgt');
     fetch(PLAYLISTS_API_PATH + '/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4589,9 +4620,10 @@ def render_player_js(
           if (idx >= 0) _userPlaylists[idx] = d.playlist;
         }
         updatePlaylistPill();
-        closePlaylistModal();
-        showToast('Zur Playlist hinzugef\\u00fcgt');
-      }).catch(function() { showToast('Fehler beim Hinzuf\\u00fcgen'); });
+      }).catch(function() {
+        _restorePlaylists(snap);
+        showToast('Fehler beim Hinzuf\\u00fcgen \\u2014 r\\u00fcckg\\u00e4ngig');
+      });
   }
 
   function createAndAddToPlaylist(name, relativePath) {
@@ -4611,18 +4643,38 @@ def render_player_js(
 
   function movePlaylistItem(relativePath, direction) {
     if (!_currentPlaylistId) return;
+    /* Optimistic: swap locally first */
+    var snap = _snapshotPlaylists();
+    var localPl = _userPlaylists.find(function(p) { return p.id === _currentPlaylistId; });
+    if (localPl) {
+      var litems = (localPl.items || []).slice();
+      var li = litems.indexOf(relativePath);
+      if (li >= 0) {
+        var ni = direction === 'up' ? li - 1 : li + 1;
+        if (ni >= 0 && ni < litems.length) {
+          var tmp = litems[li]; litems[li] = litems[ni]; litems[ni] = tmp;
+          localPl.items = litems;
+          _applyPlaylistUpdate(localPl);
+        }
+      }
+    }
+    var savedPlId = _currentPlaylistId;
     fetch(PLAYLISTS_API_PATH + '/items', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlist_id: _currentPlaylistId, relative_path: relativePath, direction: direction })
+      body: JSON.stringify({ playlist_id: savedPlId, relative_path: relativePath, direction: direction })
     }).then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.playlist) {
-          var idx = _userPlaylists.findIndex(function(p) { return p.id === _currentPlaylistId; });
+          var idx = _userPlaylists.findIndex(function(p) { return p.id === savedPlId; });
           if (idx >= 0) _userPlaylists[idx] = d.playlist;
-          _applyPlaylistUpdate(d.playlist);
+          if (_currentPlaylistId === savedPlId) _applyPlaylistUpdate(d.playlist);
         }
-      }).catch(function() { showToast('Fehler beim Verschieben'); });
+      }).catch(function() {
+        _restorePlaylists(snap);
+        if (_currentPlaylistId === savedPlId && localPl) _applyPlaylistUpdate(snap.find(function(p) { return p.id === savedPlId; }) || localPl);
+        showToast('Fehler beim Verschieben \u2014 r\u00fcckg\u00e4ngig');
+      });
   }
 
   function reorderPlaylistItem(relativePath, toIndex) {
@@ -4677,18 +4729,37 @@ def render_player_js(
       return;
     }
 
+    /* Server-backed playlist: optimistic local reorder first */
+    var snap = _snapshotPlaylists();
+    var localPl = _userPlaylists.find(function(p) { return p.id === _currentPlaylistId; });
+    if (localPl) {
+      var litems = (localPl.items || []).slice();
+      var lOld = litems.indexOf(relativePath);
+      if (lOld >= 0) {
+        litems.splice(lOld, 1);
+        var lClamped = Math.max(0, Math.min(toIndex, litems.length));
+        litems.splice(lClamped, 0, relativePath);
+        localPl.items = litems;
+        _applyPlaylistUpdate(localPl);
+      }
+    }
+    var savedPlId = _currentPlaylistId;
     fetch(PLAYLISTS_API_PATH + '/items', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlist_id: _currentPlaylistId, relative_path: relativePath, to_index: toIndex })
+      body: JSON.stringify({ playlist_id: savedPlId, relative_path: relativePath, to_index: toIndex })
     }).then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.playlist) {
-          var idx = _userPlaylists.findIndex(function(p) { return p.id === _currentPlaylistId; });
+          var idx = _userPlaylists.findIndex(function(p) { return p.id === savedPlId; });
           if (idx >= 0) _userPlaylists[idx] = d.playlist;
-          _applyPlaylistUpdate(d.playlist);
+          if (_currentPlaylistId === savedPlId) _applyPlaylistUpdate(d.playlist);
         }
-      }).catch(function() { showToast('Fehler beim Verschieben'); });
+      }).catch(function() {
+        _restorePlaylists(snap);
+        if (_currentPlaylistId === savedPlId && localPl) _applyPlaylistUpdate(snap.find(function(p) { return p.id === savedPlId; }) || localPl);
+        showToast('Fehler beim Verschieben \u2014 r\u00fcckg\u00e4ngig');
+      });
   }
 
   function _applyPlaylistUpdate(pl) {
@@ -5321,6 +5392,7 @@ def render_media_page(
     enable_recent: bool = True,
     enable_lyrics: bool = False,
     enable_playlists: bool = False,
+    playlist_sync_interval_ms: int = 30000,
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -5352,6 +5424,7 @@ def render_media_page(
         enable_recent=enable_recent,
         enable_lyrics=enable_lyrics,
         enable_playlists=enable_playlists,
+        playlist_sync_interval_ms=playlist_sync_interval_ms,
     )
     is_video = media_element_tag == "video"
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)

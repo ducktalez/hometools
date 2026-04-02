@@ -5,6 +5,8 @@ from pathlib import Path
 from hometools.config import (
     get_audio_library_dir,
     get_audio_nas_dir,
+    get_playlist_insert_position,
+    get_playlist_sync_interval,
     get_recent_max_age_days,
     get_recent_max_per_series,
     get_recent_video_limit,
@@ -83,3 +85,37 @@ def test_recent_max_per_series_default():
 def test_recent_max_per_series_from_env(monkeypatch):
     monkeypatch.setenv("HOMETOOLS_RECENT_MAX_PER_SERIES", "2")
     assert get_recent_max_per_series() == 2
+
+
+# ---------------------------------------------------------------------------
+# Playlist behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_playlist_insert_position_default():
+    assert get_playlist_insert_position() == "bottom"
+
+
+def test_playlist_insert_position_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_PLAYLIST_INSERT_POSITION", "top")
+    assert get_playlist_insert_position() == "top"
+
+
+def test_playlist_insert_position_invalid_falls_back(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_PLAYLIST_INSERT_POSITION", "middle")
+    assert get_playlist_insert_position() == "bottom"
+
+
+def test_playlist_sync_interval_default():
+    assert get_playlist_sync_interval() == 30
+
+
+def test_playlist_sync_interval_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_PLAYLIST_SYNC_INTERVAL", "60")
+    assert get_playlist_sync_interval() == 60
+
+
+def test_playlist_sync_interval_minimum_clamped(monkeypatch):
+    """Values below 5 are clamped to 5 to prevent server flooding."""
+    monkeypatch.setenv("HOMETOOLS_PLAYLIST_SYNC_INTERVAL", "1")
+    assert get_playlist_sync_interval() == 5
