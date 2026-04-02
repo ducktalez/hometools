@@ -700,6 +700,36 @@ def create_app(library_dir: Path | None = None, *, safe_mode: bool | None = None
             raise HTTPException(status_code=404, detail="Playlist not found")
         return {"playlist": pl}
 
+    @app.patch("/api/audio/playlists/items")
+    def audio_move_playlist_item(payload: dict[str, str]) -> dict[str, object]:
+        """Move a track up or down within a playlist."""
+        from hometools.streaming.core.playlists import move_item
+
+        playlist_id = payload.get("playlist_id", "")
+        relative_path = payload.get("relative_path", "")
+        direction = payload.get("direction", "")
+        if not playlist_id or not relative_path or direction not in ("up", "down"):
+            raise HTTPException(status_code=400, detail="playlist_id, relative_path, and direction (up/down) are required")
+        pl = move_item(resolved_cache_dir, "audio", playlist_id, relative_path=relative_path, direction=direction)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist or item not found")
+        return {"playlist": pl}
+
+    @app.put("/api/audio/playlists/items")
+    def audio_reorder_playlist_item(payload: dict[str, object]) -> dict[str, object]:
+        """Move a track to a specific index within a playlist."""
+        from hometools.streaming.core.playlists import reorder_item
+
+        playlist_id = str(payload.get("playlist_id", ""))
+        relative_path = str(payload.get("relative_path", ""))
+        to_index = payload.get("to_index")
+        if not playlist_id or not relative_path or to_index is None:
+            raise HTTPException(status_code=400, detail="playlist_id, relative_path, and to_index are required")
+        pl = reorder_item(resolved_cache_dir, "audio", playlist_id, relative_path=relative_path, to_index=int(to_index))
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist or item not found")
+        return {"playlist": pl}
+
     # --- Shortcuts API ---
 
     @app.get("/api/audio/shortcuts")

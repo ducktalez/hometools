@@ -229,3 +229,78 @@ def remove_item(
         if target is not None:
             _write_raw(path, playlists)
         return target
+
+
+def move_item(
+    cache_dir: Path,
+    server: str,
+    playlist_id: str,
+    *,
+    relative_path: str,
+    direction: str,
+) -> dict[str, Any] | None:
+    """Move *relative_path* up or down within the playlist.
+
+    *direction* must be ``"up"`` (towards index 0) or ``"down"``.
+    If the item is already at the boundary, the list stays unchanged.
+    Returns the updated playlist, or ``None`` if playlist/item not found.
+    """
+    if direction not in ("up", "down"):
+        return None
+    path = _playlists_path(cache_dir, server)
+    with _lock:
+        playlists = _read_raw(path)
+        target = None
+        for pl in playlists:
+            if pl.get("id") == playlist_id:
+                items = pl.get("items", [])
+                try:
+                    idx = items.index(relative_path)
+                except ValueError:
+                    return None
+                new_idx = idx - 1 if direction == "up" else idx + 1
+                if 0 <= new_idx < len(items):
+                    items[idx], items[new_idx] = items[new_idx], items[idx]
+                    pl["items"] = items
+                target = pl
+                break
+        if target is not None:
+            _write_raw(path, playlists)
+        return target
+
+
+def reorder_item(
+    cache_dir: Path,
+    server: str,
+    playlist_id: str,
+    *,
+    relative_path: str,
+    to_index: int,
+) -> dict[str, Any] | None:
+    """Move *relative_path* to position *to_index* within the playlist.
+
+    *to_index* is clamped to ``[0, len(items)-1]``.  If the item is
+    already at *to_index* the list stays unchanged (no-op write).
+    Returns the updated playlist, or ``None`` if playlist/item not found.
+    """
+    path = _playlists_path(cache_dir, server)
+    with _lock:
+        playlists = _read_raw(path)
+        target = None
+        for pl in playlists:
+            if pl.get("id") == playlist_id:
+                items = pl.get("items", [])
+                try:
+                    old_idx = items.index(relative_path)
+                except ValueError:
+                    return None
+                clamped = max(0, min(to_index, len(items) - 1))
+                if old_idx != clamped:
+                    items.pop(old_idx)
+                    items.insert(clamped, relative_path)
+                    pl["items"] = items
+                target = pl
+                break
+        if target is not None:
+            _write_raw(path, playlists)
+        return target

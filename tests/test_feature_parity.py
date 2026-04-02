@@ -399,6 +399,69 @@ class TestPlaylistParity:
         assert a_rm.status_code == 200
         assert v_rm.status_code == 200
 
+    def test_both_servers_have_playlist_move_endpoint(self, tmp_path):
+        """Both servers must support PATCH /api/<media>/playlists/items for reordering."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        a_pl = audio_client.post("/api/audio/playlists", json={"name": "Move"}).json()["playlist"]
+        v_pl = video_client.post("/api/video/playlists", json={"name": "Move"}).json()["playlist"]
+
+        # Add two items so move has something to swap
+        audio_client.post("/api/audio/playlists/items", json={"playlist_id": a_pl["id"], "relative_path": "a.mp3"})
+        audio_client.post("/api/audio/playlists/items", json={"playlist_id": a_pl["id"], "relative_path": "b.mp3"})
+        video_client.post("/api/video/playlists/items", json={"playlist_id": v_pl["id"], "relative_path": "a.mp4"})
+        video_client.post("/api/video/playlists/items", json={"playlist_id": v_pl["id"], "relative_path": "b.mp4"})
+
+        a_move = audio_client.patch(
+            "/api/audio/playlists/items", json={"playlist_id": a_pl["id"], "relative_path": "a.mp3", "direction": "down"}
+        )
+        v_move = video_client.patch(
+            "/api/video/playlists/items", json={"playlist_id": v_pl["id"], "relative_path": "a.mp4", "direction": "down"}
+        )
+
+        assert a_move.status_code == 200
+        assert v_move.status_code == 200
+        assert a_move.json()["playlist"]["items"] == ["b.mp3", "a.mp3"]
+        assert v_move.json()["playlist"]["items"] == ["b.mp4", "a.mp4"]
+
+    def test_both_servers_have_playlist_reorder_endpoint(self, tmp_path):
+        """Both servers must support PUT /api/<media>/playlists/items for drag-and-drop reordering."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path))
+        video_client = TestClient(create_video_app(tmp_path))
+
+        a_pl = audio_client.post("/api/audio/playlists", json={"name": "DnD"}).json()["playlist"]
+        v_pl = video_client.post("/api/video/playlists", json={"name": "DnD"}).json()["playlist"]
+
+        for rp in ["a.mp3", "b.mp3", "c.mp3"]:
+            audio_client.post("/api/audio/playlists/items", json={"playlist_id": a_pl["id"], "relative_path": rp})
+        for rp in ["a.mp4", "b.mp4", "c.mp4"]:
+            video_client.post("/api/video/playlists/items", json={"playlist_id": v_pl["id"], "relative_path": rp})
+
+        a_reorder = audio_client.put(
+            "/api/audio/playlists/items",
+            json={"playlist_id": a_pl["id"], "relative_path": "a.mp3", "to_index": 2},
+        )
+        v_reorder = video_client.put(
+            "/api/video/playlists/items",
+            json={"playlist_id": v_pl["id"], "relative_path": "a.mp4", "to_index": 2},
+        )
+
+        assert a_reorder.status_code == 200
+        assert v_reorder.status_code == 200
+        assert a_reorder.json()["playlist"]["items"] == ["b.mp3", "c.mp3", "a.mp3"]
+        assert v_reorder.json()["playlist"]["items"] == ["b.mp4", "c.mp4", "a.mp4"]
+
     def test_both_home_pages_include_playlist_ui(self, tmp_path):
         """Both UIs must have playlist elements when enabled."""
         from fastapi.testclient import TestClient
