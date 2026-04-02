@@ -2100,7 +2100,9 @@ def render_player_js(
   /* ── folder view ── */
 
   function showFolderView() {
+    destroyPlaylistDragDrop();
     inPlaylist = false;
+    _currentPlaylistId = '';
     var c = contentsAt(currentPath);
     var isRoot = !currentPath;
     var showOrigNames = (viewMode === 'filenames');
@@ -2319,8 +2321,10 @@ def render_player_js(
 
   /* ── playlist view ── */
   function showPlaylist(items, autoplay, startIdx) {
+    destroyPlaylistDragDrop();
     inPlaylist = true;
-    playlistItems = items;
+    _currentPlaylistId = '__folder__';
+    playlistItems = _sortByFolderOrder(currentPath, items);
 
     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
     backBtn.style.display = currentPath ? 'inline-block' : 'none';
@@ -4267,6 +4271,59 @@ def render_player_js(
   var _playlistAddPath = '';
   var _currentPlaylistId = '';
 
+  /* ── Favorites custom order (client-side, localStorage) ── */
+  function _loadFavoritesOrder() {
+    try {
+      var raw = localStorage.getItem('ht-favorites-order');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function _saveFavoritesOrder(paths) {
+    try { localStorage.setItem('ht-favorites-order', JSON.stringify(paths)); }
+    catch (e) { /* quota exceeded — ignore */ }
+  }
+  function _sortFavoritesByOrder(favItems) {
+    var order = _loadFavoritesOrder();
+    if (!order.length) return favItems;
+    var orderMap = {};
+    order.forEach(function(rp, i) { orderMap[rp] = i; });
+    return favItems.slice().sort(function(a, b) {
+      var ia = orderMap[a.relative_path], ib = orderMap[b.relative_path];
+      if (ia === undefined && ib === undefined) return 0;
+      if (ia === undefined) return 1;
+      if (ib === undefined) return -1;
+      return ia - ib;
+    });
+  }
+
+  /* ── Folder custom order (client-side, localStorage) ── */
+  function _folderOrderKey(folderPath) {
+    return 'ht-folder-order-' + (folderPath || '__root__');
+  }
+  function _loadFolderOrder(folderPath) {
+    try {
+      var raw = localStorage.getItem(_folderOrderKey(folderPath));
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function _saveFolderOrder(folderPath, paths) {
+    try { localStorage.setItem(_folderOrderKey(folderPath), JSON.stringify(paths)); }
+    catch (e) { /* quota exceeded — ignore */ }
+  }
+  function _sortByFolderOrder(folderPath, items) {
+    var order = _loadFolderOrder(folderPath);
+    if (!order.length) return items;
+    var orderMap = {};
+    order.forEach(function(rp, i) { orderMap[rp] = i; });
+    return items.slice().sort(function(a, b) {
+      var ia = orderMap[a.relative_path], ib = orderMap[b.relative_path];
+      if (ia === undefined && ib === undefined) return 0;
+      if (ia === undefined) return 1;
+      if (ib === undefined) return -1;
+      return ia - ib;
+    });
+  }
+
   function loadUserPlaylists() {
     if (!PLAYLISTS_ENABLED) return Promise.resolve([]);
     return fetch(PLAYLISTS_API_PATH).then(function(r) { return r.json(); })
@@ -4298,8 +4355,8 @@ def render_player_js(
     if (plId === '__favorites__') {
       var favItems = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
       if (favItems.length === 0) { showToast('Keine Favoriten vorhanden'); return; }
-      _currentPlaylistId = '';
-      playlistItems = favItems;
+      _currentPlaylistId = '__favorites__';
+      playlistItems = _sortFavoritesByOrder(favItems);
       inPlaylist = true;
       currentPath = '';
       var hdr = document.getElementById('header-title');
@@ -4336,9 +4393,10 @@ def render_player_js(
     if (plId === '__favorites__') {
       var favItems = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
       if (favItems.length === 0) { showToast('Keine Favoriten vorhanden'); return; }
-      _currentPlaylistId = '';
-      playlistItems = favItems;
-      filteredItems = favItems;
+      _currentPlaylistId = '__favorites__';
+      var sorted = _sortFavoritesByOrder(favItems);
+      playlistItems = sorted;
+      filteredItems = sorted;
       inPlaylist = true;
       currentPath = '';
       var hdr = document.getElementById('header-title');
@@ -4462,6 +4520,56 @@ def render_player_js(
 
   function reorderPlaylistItem(relativePath, toIndex) {
     if (!_currentPlaylistId) return;
+
+    /* Favorites: client-side reorder via localStorage */
+    if (_currentPlaylistId === '__favorites__') {
+      var paths = playlistItems.map(function(it) { return it.relative_path; });
+      var oldIdx = paths.indexOf(relativePath);
+      if (oldIdx < 0) return;
+      paths.splice(oldIdx, 1);
+      var clamped = Math.max(0, Math.min(toIndex, paths.length));
+      paths.splice(clamped, 0, relativePath);
+      _saveFavoritesOrder(paths);
+      /* rebuild playlistItems in new order */
+      var itemMap = {};
+      playlistItems.forEach(function(it) { itemMap[it.relative_path] = it; });
+      var reordered = paths.map(function(rp) { return itemMap[rp]; }).filter(Boolean);
+      var playingPath = currentIndex >= 0 && filteredItems[currentIndex]
+        ? filteredItems[currentIndex].relative_path : null;
+      playlistItems = reordered;
+      filteredItems = reordered;
+      if (playingPath) {
+        var newIdx = reordered.findIndex(function(it) { return it.relative_path === playingPath; });
+        if (newIdx >= 0) currentIndex = newIdx;
+      }
+      renderTracks(reordered, true);
+      return;
+    }
+
+    /* Folder: client-side reorder via localStorage */
+    if (_currentPlaylistId === '__folder__') {
+      var fpaths = playlistItems.map(function(it) { return it.relative_path; });
+      var fOldIdx = fpaths.indexOf(relativePath);
+      if (fOldIdx < 0) return;
+      fpaths.splice(fOldIdx, 1);
+      var fClamped = Math.max(0, Math.min(toIndex, fpaths.length));
+      fpaths.splice(fClamped, 0, relativePath);
+      _saveFolderOrder(currentPath, fpaths);
+      var fItemMap = {};
+      playlistItems.forEach(function(it) { fItemMap[it.relative_path] = it; });
+      var fReordered = fpaths.map(function(rp) { return fItemMap[rp]; }).filter(Boolean);
+      var fPlayingPath = currentIndex >= 0 && filteredItems[currentIndex]
+        ? filteredItems[currentIndex].relative_path : null;
+      playlistItems = fReordered;
+      filteredItems = fReordered;
+      if (fPlayingPath) {
+        var fNewIdx = fReordered.findIndex(function(it) { return it.relative_path === fPlayingPath; });
+        if (fNewIdx >= 0) currentIndex = fNewIdx;
+      }
+      renderTracks(fReordered, true);
+      return;
+    }
+
     fetch(PLAYLISTS_API_PATH + '/items', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -4494,22 +4602,31 @@ def render_player_js(
   }
 
   /* ── Drag-and-drop reorder for playlist view ── */
+  var _dndCleanup = null;
+
+  function destroyPlaylistDragDrop() {
+    if (_dndCleanup) { _dndCleanup(); _dndCleanup = null; }
+  }
+
   function initPlaylistDragDrop() {
+    destroyPlaylistDragDrop();
+
     var trackList = document.getElementById('track-list');
     if (!trackList) return;
     var items = trackList.querySelectorAll('.track-item:not(.missing-episode)');
     if (items.length < 2) return;
 
-    var _dragItem = null;     /* the DOM element being dragged */
-    var _dragPath = '';        /* relative_path of dragged item */
-    var _dragFromIdx = -1;     /* original index in filteredItems */
-    var _ghost = null;         /* floating ghost element */
-    var _dropTarget = null;    /* current drop-target <li> */
-    var _dropAbove = true;     /* insert above or below target */
+    var _dragItem = null;
+    var _dragPath = '';
+    var _dragFromIdx = -1;
+    var _ghost = null;
+    var _dropTarget = null;
+    var _dropAbove = true;
     var _longPressTimer = null;
     var _touchStartY = 0;
     var _touchStartX = 0;
     var _dragActive = false;
+    var _pendingDrag = null;
     var LONG_PRESS_MS = 500;
     var MOVE_THRESHOLD = 10;
 
@@ -4554,15 +4671,12 @@ def render_player_js(
     }
 
     function updateDropTarget(x, y) {
-      /* hide ghost briefly so elementFromPoint hits the list */
       if (_ghost) _ghost.style.display = 'none';
       var el = document.elementFromPoint(x, y);
       if (_ghost) _ghost.style.display = '';
       var target = el ? getTrackItem(el) : null;
 
       if (!target) {
-        /* pointer-events:none on .dragging makes elementFromPoint skip it.
-           Check if the cursor is actually over the dragged item's area. */
         if (_dragItem) {
           var dragRect = _dragItem.getBoundingClientRect();
           if (dragRect.height > 0 &&
@@ -4572,8 +4686,6 @@ def render_player_js(
             return;
           }
         }
-        /* Cursor inside the track-list area but below all items
-           → target the last visible item with _dropAbove = false */
         var tlRect = trackList.getBoundingClientRect();
         if (x >= tlRect.left && x <= tlRect.right &&
             y >= tlRect.top && y <= tlRect.bottom) {
@@ -4593,20 +4705,12 @@ def render_player_js(
         return;
       }
 
-      /* Hovering over the dragged item itself → clear indicator */
       if (target === _dragItem) { clearDropIndicator(); return; }
 
-      /* Determine above/below based on cursor position relative to
-         the vertical midpoint of the hovered item. */
       var rect = target.getBoundingClientRect();
       var mid = rect.top + rect.height / 2;
       var above = y < mid;
 
-      /* ── Normalization ──
-         "below target" and "above next-sibling" represent the SAME
-         insertion slot.  To avoid two separate lines we normalize
-         "below N" → "above N+1" (skip missing-episode and drag-item).
-         Only when N is the LAST visible item we keep "below N". */
       if (!above) {
         var nextSib = target.nextElementSibling;
         while (nextSib && (!nextSib.classList.contains('track-item') ||
@@ -4618,20 +4722,15 @@ def render_player_js(
           target = nextSib;
           above = true;
         }
-        /* else: target is the last visible item → keep above = false */
       }
 
       _dropAbove = above;
 
-      /* ── No-op suppression ──
-         Compute the effective toIndex.  If it equals _dragFromIdx the
-         move would be a no-op → hide the indicator. */
       var candidateIdx = Number(target.dataset.index);
       var candidateTo = above ? candidateIdx : candidateIdx + 1;
       if (_dragFromIdx < candidateTo) candidateTo--;
       if (candidateTo === _dragFromIdx) { clearDropIndicator(); return; }
 
-      /* Show indicator on the resolved target */
       if (_dropTarget !== target) clearDropIndicator();
       _dropTarget = target;
       target.classList.toggle('drag-over-above', above);
@@ -4642,7 +4741,6 @@ def render_player_js(
       _dragActive = true;
       _dragItem = item;
       _dragPath = '';
-      /* find relative_path from filteredItems via data-index */
       var idx = Number(item.dataset.index);
       if (filteredItems[idx]) {
         _dragPath = filteredItems[idx].relative_path;
@@ -4660,11 +4758,9 @@ def render_player_js(
       if (_ghost) { _ghost.remove(); _ghost = null; }
       document.body.classList.remove('playlist-dragging');
 
-      /* compute target index */
       if (_dropTarget && _dragPath) {
         var targetIdx = Number(_dropTarget.dataset.index);
         var toIndex = _dropAbove ? targetIdx : targetIdx + 1;
-        /* adjust: if dragging from before the target, the removal shifts indices */
         if (_dragFromIdx < toIndex) toIndex--;
         if (toIndex !== _dragFromIdx && toIndex >= 0) {
           reorderPlaylistItem(_dragPath, toIndex);
@@ -4675,18 +4771,15 @@ def render_player_js(
       _dropTarget = null;
     }
 
-    /* --- Mouse events (desktop) --- */
-    var _pendingDrag = null;  /* { item, x, y } — set on mousedown, cleared on drag-start or mouseup */
-    trackList.addEventListener('mousedown', function(e) {
+    /* --- Named handlers for proper cleanup --- */
+    function onMouseDown(e) {
       if (e.button !== 0) return;
-      /* don't start drag on action buttons */
       if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn')) return;
       var item = getTrackItem(e.target);
       if (!item) return;
       _pendingDrag = { item: item, x: e.clientX, y: e.clientY };
-    });
-    document.addEventListener('mousemove', function(e) {
-      /* Check if pending mousedown should become an active drag */
+    }
+    function onMouseMove(e) {
       if (_pendingDrag && !_dragActive) {
         var pdx = Math.abs(e.clientX - _pendingDrag.x);
         var pdy = Math.abs(e.clientY - _pendingDrag.y);
@@ -4701,16 +4794,14 @@ def render_player_js(
       e.preventDefault();
       moveGhost(e.clientX, e.clientY);
       updateDropTarget(e.clientX, e.clientY);
-      /* auto-scroll */
       var rect = trackList.getBoundingClientRect();
       var scrollZone = 50;
       if (e.clientY < rect.top + scrollZone) trackList.scrollTop -= 8;
       if (e.clientY > rect.bottom - scrollZone) trackList.scrollTop += 8;
-    });
-    document.addEventListener('mouseup', function() { _pendingDrag = null; endDrag(); });
+    }
+    function onMouseUp() { _pendingDrag = null; endDrag(); }
 
-    /* --- Touch events (mobile: long-press) --- */
-    trackList.addEventListener('touchstart', function(e) {
+    function onTouchStart(e) {
       if (e.touches.length !== 1) return;
       if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn')) return;
       var item = getTrackItem(e.target);
@@ -4720,14 +4811,11 @@ def render_player_js(
       _longPressTimer = setTimeout(function() {
         _longPressTimer = null;
         startDrag(item, _touchStartX, _touchStartY);
-        /* haptic feedback if available */
         if (navigator.vibrate) navigator.vibrate(30);
       }, LONG_PRESS_MS);
-    }, { passive: true });
-
-    trackList.addEventListener('touchmove', function(e) {
+    }
+    function onTouchMove(e) {
       if (_longPressTimer) {
-        /* cancel long-press if finger moved too far */
         var dx = Math.abs(e.touches[0].clientX - _touchStartX);
         var dy = Math.abs(e.touches[0].clientY - _touchStartY);
         if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
@@ -4741,18 +4829,42 @@ def render_player_js(
       var ty = e.touches[0].clientY;
       moveGhost(tx, ty);
       updateDropTarget(tx, ty);
-      /* auto-scroll */
       var rect = trackList.getBoundingClientRect();
       var scrollZone = 50;
       if (ty < rect.top + scrollZone) trackList.scrollTop -= 6;
       if (ty > rect.bottom - scrollZone) trackList.scrollTop += 6;
-    }, { passive: false });
-
-    trackList.addEventListener('touchend', function() { endDrag(); }, { passive: true });
-    trackList.addEventListener('touchcancel', function() {
+    }
+    function onTouchEnd() { endDrag(); }
+    function onTouchCancel() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
       endDrag();
-    }, { passive: true });
+    }
+
+    /* --- Attach listeners --- */
+    trackList.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    trackList.addEventListener('touchstart', onTouchStart, { passive: true });
+    trackList.addEventListener('touchmove', onTouchMove, { passive: false });
+    trackList.addEventListener('touchend', onTouchEnd, { passive: true });
+    trackList.addEventListener('touchcancel', onTouchCancel, { passive: true });
+
+    /* --- Cleanup function --- */
+    _dndCleanup = function() {
+      trackList.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      trackList.removeEventListener('touchstart', onTouchStart);
+      trackList.removeEventListener('touchmove', onTouchMove);
+      trackList.removeEventListener('touchend', onTouchEnd);
+      trackList.removeEventListener('touchcancel', onTouchCancel);
+      if (_dragActive) {
+        _dragActive = false;
+        if (_ghost) { _ghost.remove(); _ghost = null; }
+        document.body.classList.remove('playlist-dragging');
+      }
+      clearDragClasses();
+    };
   }
 
   /* ── playlist event wiring ── */
