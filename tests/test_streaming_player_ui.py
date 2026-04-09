@@ -74,13 +74,43 @@ def test_css_queue_panel_is_fixed_overlay_above_player_bar():
     assert ".queue-panel.visible" in css
 
 
+def test_css_queue_drag_handle_present():
+    """Queue panel must include a drag-handle for user-resizable height."""
+    css = render_base_css()
+    assert ".queue-drag-handle" in css
+    assert "cursor: grab" in css
+    assert ".queue-drag-handle-bar" in css
+
+
+def test_queue_drag_handle_html_present():
+    """Queue panel HTML must contain the drag-handle element."""
+    page = render_media_page(
+        title="Test",
+        emoji="🎵",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+        item_noun="track",
+    )
+    assert 'id="queue-drag-handle"' in page
+    assert "queue-drag-handle-bar" in page
+
+
+def test_queue_resize_js_persists_height():
+    """JS must contain localStorage persistence for queue height."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "hometools_queue_height" in js
+    assert "localStorage.setItem" in js
+    assert "localStorage.getItem" in js
+
+
 def test_queue_panel_bottom_set_dynamically_by_js():
-    """openQueuePanel must measure player-bar height and set bottom + max-height."""
+    """openQueuePanel must measure player-bar height and set bottom + height."""
     js = render_player_js(api_path="/api/test", item_noun="track")
     assert "function _syncQueueBottom()" in js
     assert ".offsetHeight" in js
     assert "style.bottom" in js
-    assert "style.maxHeight" in js
+    assert "style.height" in js
     assert "_syncQueueBottom();" in js
 
 
