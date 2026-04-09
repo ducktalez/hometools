@@ -1334,13 +1334,25 @@ body.playlist-dragging .track-list { overflow: visible; }
   background: var(--surface); border-top: 1px solid #333;
   border-radius: 12px 12px 0 0;
   z-index: 500; display: flex; flex-direction: column;
-  /* max-height set dynamically by _syncQueueBottom() — fills from player to header */
-  max-height: 60vh;
+  overflow: hidden;
+  /* height set dynamically by _syncQueueBottom() — user-resizable via drag handle */
+  height: 70vh;
   box-shadow: 0 -8px 32px rgba(0,0,0,0.55);
   transform: translateY(100%); opacity: 0; pointer-events: none;
   transition: transform 0.25s cubic-bezier(.4,0,.2,1), opacity 0.25s cubic-bezier(.4,0,.2,1);
 }
 .queue-panel.visible { transform: translateY(0); opacity: 1; pointer-events: auto; }
+.queue-panel.dragging { transition: none; }
+.queue-drag-handle {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  padding: 6px 0 2px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.queue-drag-handle:active { cursor: grabbing; }
+.queue-drag-handle-bar {
+  width: 36px; height: 4px; border-radius: 2px; background: #555;
+  transition: background 0.15s;
+}
+.queue-drag-handle:hover .queue-drag-handle-bar { background: var(--accent); }
 .queue-panel-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0.6rem 1rem 0.4rem; border-bottom: 1px solid #2a2a2a; flex-shrink: 0;
@@ -1946,6 +1958,15 @@ def render_player_js(
   var _queueClose = document.getElementById('queue-close-btn');
   var _queueBadge = document.getElementById('queue-badge');
   var _queueClearBtn = document.getElementById('queue-clear-btn');
+  var _queueDragHandle = document.getElementById('queue-drag-handle');
+  var _queueUserHeight = null; /* user-chosen height in px, null = auto */
+  var _QUEUE_HEIGHT_KEY = 'hometools_queue_height';
+  var _QUEUE_MIN_H = 220; /* head ~57px + at least 3 items à 53px */
+  /* Restore saved height preference (enforce minimum) */
+  try {
+    var _sh = localStorage.getItem(_QUEUE_HEIGHT_KEY);
+    if (_sh) { var _sv = parseInt(_sh, 10); _queueUserHeight = (_sv >= _QUEUE_MIN_H) ? _sv : null; }
+  } catch(e) {}
 
   /** Re-query queue DOM refs — called before every render to guard against
    *  stale references (e.g. if the player-bar was not yet visible at init). */
@@ -1960,6 +1981,7 @@ def render_player_js(
     if (_domNodeMissingOrDetached(_queueClearBtn)) _queueClearBtn = document.getElementById('queue-clear-btn');
     if (_domNodeMissingOrDetached(_queueBtn)) _queueBtn = document.getElementById('btn-queue');
     if (_domNodeMissingOrDetached(_queueClose)) _queueClose = document.getElementById('queue-close-btn');
+    if (_domNodeMissingOrDetached(_queueDragHandle)) _queueDragHandle = document.getElementById('queue-drag-handle');
   }
 
   function addToQueue(item) {
@@ -2091,13 +2113,77 @@ def render_player_js(
     var bar = document.querySelector('.player-bar');
     var barH = bar ? bar.offsetHeight : 80;
     _queuePanel.style.bottom = barH + 'px';
-    /* max-height: from just below header to just above player bar */
+    /* Compute available space: header top → player bar top */
     var hdr = document.querySelector('header');
     var hdrH = hdr ? hdr.offsetHeight : 56;
     var available = window.innerHeight - hdrH - barH - 8; /* 8px breathing room */
-    if (available < 120) available = 120;
-    _queuePanel.style.maxHeight = available + 'px';
+    if (available < _QUEUE_MIN_H) available = _QUEUE_MIN_H;
+    /* Apply user-chosen height if set, otherwise use full available space */
+    var h = _queueUserHeight ? Math.min(_queueUserHeight, available) : available;
+    if (h < _QUEUE_MIN_H) h = _QUEUE_MIN_H;
+    _queuePanel.style.height = h + 'px';
   }
+
+  /* ── Queue drag-to-resize ── */
+  (function _initQueueResize() {
+    if (!_queueDragHandle || !_queuePanel) return;
+    var _dragging = false;
+    var _startY = 0;
+    var _startH = 0;
+
+    function _getAvailable() {
+      var bar = document.querySelector('.player-bar');
+      var barH = bar ? bar.offsetHeight : 80;
+      var hdr = document.querySelector('header');
+      var hdrH = hdr ? hdr.offsetHeight : 56;
+      return window.innerHeight - hdrH - barH - 8;
+    }
+
+    function onPointerDown(e) {
+      if (!_queueOpen) return;
+      e.preventDefault();
+      _dragging = true;
+      _startY = e.touches ? e.touches[0].clientY : e.clientY;
+      _startH = _queuePanel.offsetHeight;
+      _queuePanel.classList.add('dragging');
+      document.addEventListener('mousemove', onPointerMove, {passive: false});
+      document.addEventListener('touchmove', onPointerMove, {passive: false});
+      document.addEventListener('mouseup', onPointerUp);
+      document.addEventListener('touchend', onPointerUp);
+    }
+
+    function onPointerMove(e) {
+      if (!_dragging) return;
+      e.preventDefault();
+      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      var delta = _startY - clientY; /* positive = dragging up = taller */
+      var available = _getAvailable();
+      if (available < _QUEUE_MIN_H) available = _QUEUE_MIN_H;
+      var newH = Math.max(_QUEUE_MIN_H, Math.min(_startH + delta, available));
+      _queuePanel.style.height = newH + 'px';
+    }
+
+    function onPointerUp(e) {
+      if (!_dragging) return;
+      _dragging = false;
+      _queuePanel.classList.remove('dragging');
+      /* Persist the chosen height (enforce minimum) */
+      var finalH = _queuePanel.offsetHeight;
+      if (finalH >= _QUEUE_MIN_H) {
+        _queueUserHeight = finalH;
+        try { localStorage.setItem(_QUEUE_HEIGHT_KEY, String(finalH)); } catch(ex) {}
+      }
+      document.removeEventListener('mousemove', onPointerMove);
+      document.removeEventListener('touchmove', onPointerMove);
+      document.removeEventListener('mouseup', onPointerUp);
+      document.removeEventListener('touchend', onPointerUp);
+    }
+
+    _queueDragHandle.addEventListener('mousedown', onPointerDown);
+    _queueDragHandle.addEventListener('touchstart', onPointerDown, {passive: false});
+  })();
+  /* Recalc on window resize */
+  window.addEventListener('resize', function() { if (_queueOpen) _syncQueueBottom(); });
 
   function openQueuePanel() {
     _ensureQueueDom();
@@ -6068,6 +6154,7 @@ def render_media_page(
     )
 
     queue_panel_html = """  <div class="queue-panel" id="queue-panel">
+    <div class="queue-drag-handle" id="queue-drag-handle"><div class="queue-drag-handle-bar"></div></div>
     <div class="queue-panel-head">
       <span class="queue-panel-title">Warteschlange</span>
       <div style="display:flex;align-items:center;gap:0.5rem">
