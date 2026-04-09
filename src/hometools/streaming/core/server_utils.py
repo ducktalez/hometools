@@ -1335,8 +1335,8 @@ body.playlist-dragging .track-list { overflow: visible; }
   border-radius: 12px 12px 0 0;
   z-index: 500; display: flex; flex-direction: column;
   overflow: hidden;
-  /* height set dynamically by _syncQueueBottom() — user-resizable via drag handle */
-  height: 70vh;
+  /* max-height set dynamically by _syncQueueBottom() — user-resizable via drag handle */
+  max-height: 70vh;
   box-shadow: 0 -8px 32px rgba(0,0,0,0.55);
   transform: translateY(100%); opacity: 0; pointer-events: none;
   transition: transform 0.25s cubic-bezier(.4,0,.2,1), opacity 0.25s cubic-bezier(.4,0,.2,1);
@@ -1365,7 +1365,7 @@ body.playlist-dragging .track-list { overflow: visible; }
 }
 .queue-close-btn:hover { color: var(--accent); }
 .queue-body {
-  overflow-y: auto; padding: 0; flex: 1 1 0; min-height: 0; -webkit-overflow-scrolling: touch;
+  overflow-y: auto; padding: 0; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch;
 }
 .queue-list { list-style: none; margin: 0; padding: 0; }
 .queue-item {
@@ -2121,7 +2121,7 @@ def render_player_js(
     /* Apply user-chosen height if set, otherwise use full available space */
     var h = _queueUserHeight ? Math.min(_queueUserHeight, available) : available;
     if (h < _QUEUE_MIN_H) h = _QUEUE_MIN_H;
-    _queuePanel.style.height = h + 'px';
+    _queuePanel.style.maxHeight = h + 'px';
   }
 
   /* ── Queue drag-to-resize ── */
@@ -2160,7 +2160,7 @@ def render_player_js(
       var available = _getAvailable();
       if (available < _QUEUE_MIN_H) available = _QUEUE_MIN_H;
       var newH = Math.max(_QUEUE_MIN_H, Math.min(_startH + delta, available));
-      _queuePanel.style.height = newH + 'px';
+      _queuePanel.style.maxHeight = newH + 'px';
     }
 
     function onPointerUp(e) {

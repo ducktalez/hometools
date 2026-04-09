@@ -105,12 +105,12 @@ def test_queue_resize_js_persists_height():
 
 
 def test_queue_panel_bottom_set_dynamically_by_js():
-    """openQueuePanel must measure player-bar height and set bottom + height."""
+    """openQueuePanel must measure player-bar height and set bottom + max-height."""
     js = render_player_js(api_path="/api/test", item_noun="track")
     assert "function _syncQueueBottom()" in js
     assert ".offsetHeight" in js
     assert "style.bottom" in js
-    assert "style.height" in js
+    assert "style.maxHeight" in js
     assert "_syncQueueBottom();" in js
 
 
