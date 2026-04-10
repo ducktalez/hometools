@@ -370,7 +370,7 @@ def create_app(
         Body: ``{"paths": ["Funsongs/song1.mp3", ...]}``
         Returns: ``{"ok": true, "ratings": {"Funsongs/song1.mp3": 5.0, ...}, "changed": 3}``
         """
-        from hometools.audio.metadata import get_popm_rating, popm_raw_to_stars
+        from hometools.audio.metadata import get_rating_stars
 
         paths = payload.get("paths", [])
         if not isinstance(paths, list) or not paths:
@@ -383,8 +383,7 @@ def create_app(
                 continue
             try:
                 file_path = resolve_audio_path(resolved_library_dir, path_str)
-                raw = get_popm_rating(file_path)
-                stars = popm_raw_to_stars(raw)
+                stars = get_rating_stars(file_path)
                 ratings[path_str] = stars
             except Exception:
                 continue  # skip unresolvable / unreadable paths
@@ -506,7 +505,7 @@ def create_app(
     @app.get("/api/audio/metadata")
     def audio_metadata(path: str) -> dict[str, object]:
         """Re-read embedded metadata for a single audio track."""
-        from hometools.audio.metadata import audiofile_assume_artist_title, get_popm_rating, popm_raw_to_stars
+        from hometools.audio.metadata import audiofile_assume_artist_title, get_rating_stars
 
         try:
             file_path = resolve_audio_path(resolved_library_dir, path)
@@ -520,8 +519,7 @@ def create_app(
 
         try:
             artist, title = audiofile_assume_artist_title(file_path)
-            raw_rating = get_popm_rating(file_path)
-            stars = popm_raw_to_stars(raw_rating)
+            stars = get_rating_stars(file_path)
         except Exception:
             logger.warning("GET /api/audio/metadata — fallback for %s due to metadata read error", path, exc_info=True)
 
@@ -529,12 +527,13 @@ def create_app(
 
     @app.post("/api/audio/rating")
     def audio_set_rating(payload: dict[str, object]) -> dict[str, object]:
-        """Write a star rating (0–5) as POPM tag to an MP3 file.
+        """Write a star rating (0–5) to an audio file.
 
+        Supports MP3 (POPM), M4A (iTunes freeform atom), FLAC/OGG (Vorbis).
         Returns the ``entry_id`` of the audit log entry so the client can
         offer a one-click undo.
         """
-        from hometools.audio.metadata import get_popm_rating, popm_raw_to_stars, set_popm_rating, stars_to_popm_raw
+        from hometools.audio.metadata import get_rating_stars, set_rating_stars, stars_to_popm_raw
         from hometools.streaming.core.audit_log import log_rating_write
 
         path = str(payload.get("path") or "").strip()
@@ -553,13 +552,16 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         # Read current rating before overwriting (needed for undo)
-        old_raw = get_popm_rating(file_path)
-        old_stars = popm_raw_to_stars(old_raw)
-        new_raw = stars_to_popm_raw(stars)
+        old_stars = get_rating_stars(file_path)
+        new_raw = stars_to_popm_raw(stars)  # for audit log / response compatibility
 
-        ok = set_popm_rating(file_path, new_raw)
+        ok = set_rating_stars(file_path, stars)
         entry_id = ""
         if ok:
+            # Immediately update the in-memory cache so subsequent API
+            # requests return the correct rating even before the background
+            # rebuild reads it back from disk.
+            _audio_index_cache.patch_items({path: {"rating": stars}})
             _audio_index_cache.invalidate()
             entry = log_rating_write(
                 resolved_audit_dir,
@@ -567,7 +569,7 @@ def create_app(
                 path=path,
                 old_stars=old_stars,
                 new_stars=stars,
-                old_raw=old_raw,
+                old_raw=0,
                 new_raw=new_raw,
             )
             entry_id = entry.entry_id

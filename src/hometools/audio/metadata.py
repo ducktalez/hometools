@@ -203,6 +203,179 @@ def set_popm_rating(p: Path, rating: int, email: str = "default", playcount: int
 
 
 # ---------------------------------------------------------------------------
+# M4A / FLAC / OGG rating atoms
+# ---------------------------------------------------------------------------
+
+_M4A_RATING_ATOM = "----:com.apple.iTunes:RATING"
+
+# Canonical write values for the 0-100 percentage scale used by
+# Mp3tag, MediaMonkey, foobar2000 and other MP4-aware taggers.
+_STARS_TO_M4A: dict[int, int] = {0: 0, 1: 20, 2: 40, 3: 60, 4: 80, 5: 100}
+
+
+def _m4a_rating_to_stars(raw_value: int) -> float:
+    """Convert an M4A freeform rating value to 0–5 stars.
+
+    Values ≤ 5 are treated as a direct star count (some tools store 1–5).
+    Values > 5 are treated as a 0–100 percentage scale (20 per star).
+    """
+    if raw_value <= 0:
+        return 0.0
+    if raw_value <= 5:
+        return float(raw_value)
+    return min(5.0, round(raw_value / 20))
+
+
+def _read_m4a_rating(p: Path) -> float:
+    """Read star rating from an M4A/MP4 file (0.0–5.0).
+
+    Handles both UTF-8 text values (e.g. ``b"80"``) written by Mp3tag /
+    MediaMonkey / our own writer and raw binary values (e.g. ``\\x50``)
+    that some other tools produce.
+    """
+    try:
+        audio = MP4(p)
+        if audio.tags is None:
+            return 0.0
+        # Try freeform rating atom (----:com.apple.iTunes:RATING)
+        val = audio.tags.get(_M4A_RATING_ATOM)
+        if val:
+            raw_bytes = bytes(val[0])
+            # 1) Try UTF-8 text parsing first (most common: b"80", b"60" …)
+            try:
+                raw = int(raw_bytes.decode("utf-8", errors="ignore").strip())
+            except (ValueError, UnicodeDecodeError):
+                # 2) Fallback: interpret as a binary integer
+                if len(raw_bytes) == 1:
+                    raw = raw_bytes[0]  # single byte → ordinal value
+                elif raw_bytes:
+                    raw = int.from_bytes(raw_bytes, byteorder="big")
+                else:
+                    raw = 0
+            return _m4a_rating_to_stars(raw)
+    except Exception as exc:
+        logger.debug("_read_m4a_rating %s: %s", p.name, exc)
+    return 0.0
+
+
+def _write_m4a_rating(p: Path, stars: float) -> bool:
+    """Write star rating to an M4A/MP4 file as a freeform iTunes atom."""
+    from mutagen.mp4 import MP4FreeForm
+
+    rounded = max(0, min(5, round(stars)))
+    value = _STARS_TO_M4A.get(rounded, 0)
+    try:
+        audio = MP4(p)
+        if audio.tags is None:
+            audio.add_tags()
+        audio.tags[_M4A_RATING_ATOM] = [
+            MP4FreeForm(str(value).encode("utf-8"), dataformat=1)  # 1 = UTF-8
+        ]
+        audio.save()
+        logger.info("%s: M4A rating set to %d (stars=%s)", p.name, value, stars)
+        return True
+    except Exception as exc:
+        logger.error("Error writing M4A rating to %s: %s", p.name, exc)
+        return False
+
+
+def _read_vorbis_rating(p: Path) -> float:
+    """Read star rating from a FLAC/OGG file via Vorbis comments (0.0–5.0)."""
+    try:
+        audio = File(p)
+        if audio is None or not audio.tags:
+            return 0.0
+        tags = audio.tags
+
+        # 1. FMPS_RATING — 0.0–1.0 float (Free Music Player Specifications)
+        for key in ("FMPS_RATING", "fmps_rating"):
+            val = tags.get(key)
+            if val:
+                fval = float(val[0] if isinstance(val, list) else val)
+                return min(5.0, round(fval * 5))
+
+        # 2. RATING — direct integer 1–5 (foobar2000, others)
+        for key in ("RATING", "rating"):
+            val = tags.get(key)
+            if val:
+                ival = float(val[0] if isinstance(val, list) else val)
+                if ival <= 5:
+                    return float(max(0, round(ival)))
+                # 0–100 percentage scale
+                return min(5.0, round(ival / 20))
+    except Exception as exc:
+        logger.debug("_read_vorbis_rating %s: %s", p.name, exc)
+    return 0.0
+
+
+def _write_vorbis_rating(p: Path, stars: float) -> bool:
+    """Write star rating to a FLAC/OGG file as Vorbis comments."""
+    rounded = max(0, min(5, round(stars)))
+    fmps_value = str(rounded / 5)  # 0.0–1.0
+    try:
+        audio = File(p)
+        if audio is None:
+            logger.error("_write_vorbis_rating: could not open %s", p.name)
+            return False
+        if audio.tags is None:
+            audio.add_tags()
+        audio.tags["FMPS_RATING"] = [fmps_value]
+        audio.tags["RATING"] = [str(rounded)]
+        audio.save()
+        logger.info("%s: Vorbis rating set to %s (FMPS=%s)", p.name, rounded, fmps_value)
+        return True
+    except Exception as exc:
+        logger.error("Error writing Vorbis rating to %s: %s", p.name, exc)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Format-aware rating access (unified)
+# ---------------------------------------------------------------------------
+
+
+def get_rating_stars(p: Path) -> float:
+    """Read star rating (0.0–5.0) from any supported audio format.
+
+    Supported formats:
+    - **MP3**: ID3 POPM frame (WMP standard step mapping via ``popm_raw_to_stars``)
+    - **M4A/MP4**: ``----:com.apple.iTunes:RATING`` freeform atom (0–100 scale)
+    - **FLAC/OGG**: ``FMPS_RATING`` (0.0–1.0) or ``RATING`` (1–5) Vorbis comment
+
+    Returns ``0.0`` (unrated) for unsupported formats or on any error.
+    """
+    ext = p.suffix.lower()
+    if ext == ".mp3":
+        return popm_raw_to_stars(get_popm_rating(p))
+    if ext in (".m4a", ".mp4", ".aac"):
+        return _read_m4a_rating(p)
+    if ext in (".flac", ".ogg", ".opus"):
+        return _read_vorbis_rating(p)
+    return 0.0
+
+
+def set_rating_stars(p: Path, stars: float) -> bool:
+    """Write star rating (0.0–5.0) to any supported audio format.
+
+    Supported formats:
+    - **MP3**: ID3 POPM frame (WMP canonical values via ``stars_to_popm_raw``)
+    - **M4A/MP4**: ``----:com.apple.iTunes:RATING`` freeform atom (0–100 scale)
+    - **FLAC/OGG**: ``FMPS_RATING`` + ``RATING`` Vorbis comments
+
+    Returns ``False`` for unsupported formats or on any error.
+    """
+    ext = p.suffix.lower()
+    if ext == ".mp3":
+        return set_popm_rating(p, stars_to_popm_raw(stars))
+    if ext in (".m4a", ".mp4", ".aac"):
+        return _write_m4a_rating(p, stars)
+    if ext in (".flac", ".ogg", ".opus"):
+        return _write_vorbis_rating(p, stars)
+    logger.warning("set_rating_stars: unsupported format %s for %s", ext, p.name)
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Format-aware tag access
 # ---------------------------------------------------------------------------
 

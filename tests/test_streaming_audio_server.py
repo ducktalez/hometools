@@ -70,7 +70,7 @@ def test_audio_metadata_endpoint_returns_embedded_values_and_rating(tmp_path):
 
     with (
         patch("hometools.audio.metadata.audiofile_assume_artist_title", return_value=("Meta Artist", "Meta Title")),
-        patch("hometools.audio.metadata.get_popm_rating", return_value=255),
+        patch("hometools.audio.metadata.get_rating_stars", return_value=5.0),
     ):
         response = client.get("/api/audio/metadata", params={"path": "Artist - Song.mp3"})
 
@@ -381,15 +381,14 @@ def test_audio_recent_always_returns_empty(tmp_path):
 
 
 def test_refresh_ratings_endpoint_returns_updated_ratings(tmp_path):
-    """POST /api/audio/refresh-ratings re-reads POPM from files."""
+    """POST /api/audio/refresh-ratings re-reads ratings from files."""
     audio = tmp_path / "Artist - Song.mp3"
     audio.write_bytes(b"ID3" + b"\x00" * 32)
 
     from unittest.mock import patch
 
     with (
-        patch("hometools.audio.metadata.get_popm_rating", return_value=128),
-        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=3.0),
+        patch("hometools.audio.metadata.get_rating_stars", return_value=3.0),
     ):
         client = TestClient(create_app(tmp_path))
         resp = client.post(
@@ -432,8 +431,7 @@ def test_refresh_ratings_patches_index_cache(tmp_path):
     from unittest.mock import patch
 
     with (
-        patch("hometools.audio.metadata.get_popm_rating", return_value=255),
-        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=5.0),
+        patch("hometools.audio.metadata.get_rating_stars", return_value=5.0),
     ):
         client = TestClient(create_app(tmp_path))
         resp = client.post(
@@ -483,8 +481,7 @@ def test_refresh_ratings_returns_last_refresh_timestamp(tmp_path):
     audio.write_bytes(b"ID3" + b"\x00" * 32)
 
     with (
-        patch("hometools.audio.metadata.get_popm_rating", return_value=128),
-        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=3.0),
+        patch("hometools.audio.metadata.get_rating_stars", return_value=3.0),
     ):
         client = TestClient(create_app(tmp_path))
         resp = client.post(
@@ -506,8 +503,7 @@ def test_refresh_log_endpoint_returns_persisted_data(tmp_path):
     audio.write_bytes(b"ID3" + b"\x00" * 32)
 
     with (
-        patch("hometools.audio.metadata.get_popm_rating", return_value=255),
-        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=5.0),
+        patch("hometools.audio.metadata.get_rating_stars", return_value=5.0),
     ):
         client = TestClient(create_app(tmp_path))
         # First refresh to create the log entry
