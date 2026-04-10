@@ -8,7 +8,9 @@ from hometools.audio.metadata import (
     _first_text,
     _read_metadata_ffprobe,
     audiofile_assume_artist_title,
+    popm_raw_to_stars,
     read_embedded_metadata,
+    stars_to_popm_raw,
     write_track_tags,
 )
 
@@ -305,3 +307,93 @@ def test_get_genre_uses_find_tag():
     with patch("hometools.audio.metadata.File", return_value=fake_audio):
         result = get_genre(MagicMock())
         assert result == "Rock"
+
+
+# ---------------------------------------------------------------------------
+# POPM ↔ Stars conversion (WMP standard mapping)
+# ---------------------------------------------------------------------------
+
+
+class TestPopmRawToStars:
+    """popm_raw_to_stars uses the Windows Media Player step mapping."""
+
+    def test_unrated(self):
+        assert popm_raw_to_stars(0) == 0.0
+
+    def test_one_star_canonical(self):
+        assert popm_raw_to_stars(1) == 1.0
+
+    def test_one_star_upper_bound(self):
+        assert popm_raw_to_stars(31) == 1.0
+
+    def test_two_star_lower_bound(self):
+        assert popm_raw_to_stars(32) == 2.0
+
+    def test_two_star_canonical(self):
+        assert popm_raw_to_stars(64) == 2.0
+
+    def test_two_star_upper_bound(self):
+        assert popm_raw_to_stars(95) == 2.0
+
+    def test_three_star_lower_bound(self):
+        assert popm_raw_to_stars(96) == 3.0
+
+    def test_three_star_canonical(self):
+        assert popm_raw_to_stars(128) == 3.0
+
+    def test_three_star_value_102(self):
+        """raw=102 must be 3★ (WMP range 96–159), not 2★ as linear mapping yields."""
+        assert popm_raw_to_stars(102) == 3.0
+
+    def test_four_star_lower_bound(self):
+        assert popm_raw_to_stars(160) == 4.0
+
+    def test_four_star_canonical(self):
+        assert popm_raw_to_stars(196) == 4.0
+
+    def test_five_star_lower_bound(self):
+        assert popm_raw_to_stars(224) == 5.0
+
+    def test_five_star_canonical(self):
+        assert popm_raw_to_stars(255) == 5.0
+
+
+class TestStarsToPopmRaw:
+    """stars_to_popm_raw writes canonical WMP raw values."""
+
+    def test_zero_unrated(self):
+        assert stars_to_popm_raw(0) == 0
+
+    def test_one_star(self):
+        assert stars_to_popm_raw(1) == 1
+
+    def test_two_stars(self):
+        assert stars_to_popm_raw(2) == 64
+
+    def test_three_stars(self):
+        assert stars_to_popm_raw(3) == 128
+
+    def test_four_stars(self):
+        assert stars_to_popm_raw(4) == 196
+
+    def test_five_stars(self):
+        assert stars_to_popm_raw(5) == 255
+
+    def test_clamped_above_5(self):
+        assert stars_to_popm_raw(7) == 255
+
+    def test_clamped_below_0(self):
+        assert stars_to_popm_raw(-1) == 0
+
+    def test_float_rounds(self):
+        """2.6 rounds to 3 → raw=128."""
+        assert stars_to_popm_raw(2.6) == 128
+
+
+class TestPopmRoundtrip:
+    """Writing then reading stars must produce the same value."""
+
+    def test_roundtrip_all_stars(self):
+        for stars in range(6):
+            raw = stars_to_popm_raw(stars)
+            assert popm_raw_to_stars(raw) == float(stars)

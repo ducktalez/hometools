@@ -284,3 +284,82 @@ def test_media_item_has_thumbnail_lg_url_field():
     )
     assert item2.thumbnail_lg_url == "/thumb?path=a.mp4&size=lg"
     assert "thumbnail_lg_url" in item2.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# IndexCache.patch_items
+# ---------------------------------------------------------------------------
+
+
+class TestIndexCachePatchItems:
+    """Tests for the lazy per-item patch method on IndexCache."""
+
+    def _make_cache(self, items):
+        from hometools.streaming.core.index_cache import IndexCache
+
+        cache = IndexCache(lambda lib, *, cache_dir=None: items, ttl=9999, label="test")
+        cache._items = list(items)
+        cache._built_at = __import__("time").monotonic()
+        cache._library_dir = __import__("pathlib").Path("/fake")
+        cache._cache_dir = None
+        return cache
+
+    def test_patch_updates_rating(self):
+        items = [
+            MediaItem("a.mp3", "A", "X", "/s", "audio", rating=2.0),
+            MediaItem("b.mp3", "B", "X", "/s", "audio", rating=0.0),
+        ]
+        cache = self._make_cache(items)
+        changed = cache.patch_items({"a.mp3": {"rating": 5.0}})
+        assert changed == 1
+        assert cache._items[0].rating == 5.0
+        assert cache._items[1].rating == 0.0  # unchanged
+
+    def test_patch_no_change_returns_zero(self):
+        items = [MediaItem("a.mp3", "A", "X", "/s", "audio", rating=3.0)]
+        cache = self._make_cache(items)
+        changed = cache.patch_items({"a.mp3": {"rating": 3.0}})
+        assert changed == 0
+
+    def test_patch_unknown_path_ignored(self):
+        items = [MediaItem("a.mp3", "A", "X", "/s", "audio", rating=1.0)]
+        cache = self._make_cache(items)
+        changed = cache.patch_items({"nonexistent.mp3": {"rating": 5.0}})
+        assert changed == 0
+        assert cache._items[0].rating == 1.0
+
+    def test_patch_empty_updates(self):
+        items = [MediaItem("a.mp3", "A", "X", "/s", "audio")]
+        cache = self._make_cache(items)
+        assert cache.patch_items({}) == 0
+
+    def test_patch_empty_cache(self):
+        from hometools.streaming.core.index_cache import IndexCache
+
+        cache = IndexCache(lambda lib, *, cache_dir=None: [], ttl=9999, label="test")
+        assert cache.patch_items({"a.mp3": {"rating": 5.0}}) == 0
+
+    def test_patch_multiple_items(self):
+        items = [
+            MediaItem("a.mp3", "A", "X", "/s", "audio", rating=1.0),
+            MediaItem("b.mp3", "B", "X", "/s", "audio", rating=2.0),
+            MediaItem("c.mp3", "C", "X", "/s", "audio", rating=3.0),
+        ]
+        cache = self._make_cache(items)
+        changed = cache.patch_items(
+            {
+                "a.mp3": {"rating": 5.0},
+                "c.mp3": {"rating": 4.0},
+            }
+        )
+        assert changed == 2
+        assert cache._items[0].rating == 5.0
+        assert cache._items[1].rating == 2.0  # unchanged
+        assert cache._items[2].rating == 4.0
+
+    def test_patch_invalid_field_skipped(self):
+        """Invalid field names are skipped gracefully (no crash)."""
+        items = [MediaItem("a.mp3", "A", "X", "/s", "audio", rating=1.0)]
+        cache = self._make_cache(items)
+        changed = cache.patch_items({"a.mp3": {"nonexistent_field": 42}})
+        assert changed == 0  # replace() fails, item kept as-is

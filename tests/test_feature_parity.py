@@ -677,3 +677,92 @@ class TestQueueParity:
             assert "_userQueue" in html
             assert "addToQueue" in html
             assert "dequeueNext" in html
+
+
+class TestRefreshParity:
+    """Refresh endpoint and button must be present in both servers."""
+
+    def test_both_servers_have_refresh_endpoint(self, tmp_path):
+        """POST /api/{audio,video}/refresh must exist in both servers."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
+
+        r1 = audio_client.post("/api/audio/refresh")
+        r2 = video_client.post("/api/video/refresh")
+
+        assert r1.status_code == 200
+        assert r1.json()["ok"] is True
+        assert r2.status_code == 200
+        assert r2.json()["ok"] is True
+
+    def test_both_home_pages_include_refresh_button(self, tmp_path):
+        """Both UIs must have the refresh button in the header."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        assert 'id="refresh-btn"' in audio_html
+        assert 'id="refresh-btn"' in video_html
+
+    def test_both_home_pages_include_refresh_js(self, tmp_path):
+        """Both UIs must have the refreshCatalog JS function."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "refreshCatalog" in html
+            assert "IC_REFRESH" in html
+
+
+class TestLazyRatingRefreshParity:
+    """Lazy per-folder rating refresh is audio-only (POPM) but the JS
+    infrastructure (refreshFolderRatings) is shared in server_utils.py
+    and must exist in both UIs (guarded by RATING_WRITE_ENABLED)."""
+
+    def test_audio_has_refresh_ratings_endpoint(self, tmp_path):
+        """POST /api/audio/refresh-ratings must exist."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+
+        client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
+        resp = client.post("/api/audio/refresh-ratings", json={"paths": ["x.mp3"]})
+        # 200 OK (path not found → silently skipped, empty ratings)
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_both_uis_include_refreshFolderRatings_js(self, tmp_path):
+        """Both UIs must include the refreshFolderRatings JS function."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "refreshFolderRatings" in html
+
+    def test_lazy_refresh_called_in_showPlaylist(self, tmp_path):
+        """showPlaylist must call refreshFolderRatings for lazy rating updates."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+
+        html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        assert "refreshFolderRatings(items)" in html

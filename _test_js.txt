@@ -1,0 +1,12 @@
+308: '    if (!item || !item.relative_path) return;'
+316: "      title: item.title || '',"
+317: "      artist: item.artist || '',"
+318: "      stream_url: item.stream_url || '',"
+328: "    showToast('â€ž' + escHtml(item.title || 'Titel') + 'â€œ zur Warteschlange hinzugefÃ¼gt');"
+
+Total occurrences of double-pipe: 215
+Total occurrences of single pipe: 432
+307:   function addToQueue(item) {
+1522:           if (idx >= 0 && idx < filteredItems.length) addToQueue(filteredItems[idx]);
+TOAST 328:     showToast('„' + escHtml(item.title || 'Titel') + '“ zur Warteschlange hinzugefügt');
+TOAST 3493:     showToast('Zur Playlist hinzugef\u00fcgt');

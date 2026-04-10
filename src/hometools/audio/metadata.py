@@ -127,6 +127,43 @@ def write_track_tags(p: Path, *, title: str | None = None, artist: str | None = 
 # POPM (rating) helpers
 # ---------------------------------------------------------------------------
 
+# Windows Media Player / foobar2000 / MusicBee / Mp3tag standard mapping.
+# Using this instead of a linear scale ensures interoperability with all
+# major tagging tools and Windows Explorer.
+_POPM_TO_STARS: list[tuple[int, float]] = [
+    # (upper_bound_exclusive, stars)
+    (1, 0.0),  # 0         = unrated
+    (32, 1.0),  # 1  – 31   = 1★
+    (96, 2.0),  # 32 – 95   = 2★
+    (160, 3.0),  # 96 – 159  = 3★
+    (224, 4.0),  # 160 – 223 = 4★
+]
+# 224–255 = 5★ (handled as fallback)
+
+_STARS_TO_POPM: dict[int, int] = {0: 0, 1: 1, 2: 64, 3: 128, 4: 196, 5: 255}
+
+
+def popm_raw_to_stars(raw: int) -> float:
+    """Convert a raw POPM value (0–255) to a 0–5 star rating.
+
+    Uses the Windows Media Player standard step mapping so ratings are
+    compatible with foobar2000, MusicBee, Mp3tag, and Windows Explorer.
+    """
+    for upper, stars in _POPM_TO_STARS:
+        if raw < upper:
+            return stars
+    return 5.0
+
+
+def stars_to_popm_raw(stars: float) -> int:
+    """Convert a 0–5 star rating to a raw POPM value (0–255).
+
+    Uses the Windows Media Player standard canonical values:
+    0→0, 1→1, 2→64, 3→128, 4→196, 5→255.
+    """
+    rounded = max(0, min(5, round(stars)))
+    return _STARS_TO_POPM.get(rounded, 0)
+
 
 def get_popm_rating(p: Path) -> int:
     """Return the raw POPM rating (0–255) of an audio file.

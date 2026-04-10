@@ -373,3 +373,169 @@ def test_audio_recent_always_returns_empty(tmp_path):
     resp = client.get("/api/audio/recent")
     assert resp.status_code == 200
     assert resp.json()["items"] == []
+
+
+# ---------------------------------------------------------------------------
+# Lazy per-item rating refresh endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_refresh_ratings_endpoint_returns_updated_ratings(tmp_path):
+    """POST /api/audio/refresh-ratings re-reads POPM from files."""
+    audio = tmp_path / "Artist - Song.mp3"
+    audio.write_bytes(b"ID3" + b"\x00" * 32)
+
+    from unittest.mock import patch
+
+    with (
+        patch("hometools.audio.metadata.get_popm_rating", return_value=128),
+        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=3.0),
+    ):
+        client = TestClient(create_app(tmp_path))
+        resp = client.post(
+            "/api/audio/refresh-ratings",
+            json={"paths": ["Artist - Song.mp3"]},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["ratings"]["Artist - Song.mp3"] == 3.0
+
+
+def test_refresh_ratings_requires_paths(tmp_path):
+    """POST /api/audio/refresh-ratings rejects empty paths."""
+    client = TestClient(create_app(tmp_path))
+    resp = client.post("/api/audio/refresh-ratings", json={"paths": []})
+    assert resp.status_code == 400
+
+
+def test_refresh_ratings_skips_unresolvable(tmp_path):
+    """Unresolvable paths are silently skipped, not errors."""
+    client = TestClient(create_app(tmp_path))
+    resp = client.post(
+        "/api/audio/refresh-ratings",
+        json={"paths": ["nonexistent/file.mp3"]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["ratings"] == {}
+    assert data["changed"] == 0
+
+
+def test_refresh_ratings_patches_index_cache(tmp_path):
+    """The endpoint must patch the in-memory index cache with new ratings."""
+    audio = tmp_path / "Song.mp3"
+    audio.write_bytes(b"ID3" + b"\x00" * 32)
+
+    from unittest.mock import patch
+
+    with (
+        patch("hometools.audio.metadata.get_popm_rating", return_value=255),
+        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=5.0),
+    ):
+        client = TestClient(create_app(tmp_path))
+        resp = client.post(
+            "/api/audio/refresh-ratings",
+            json={"paths": ["Song.mp3"]},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["ratings"]["Song.mp3"] == 5.0
+
+
+# ---------------------------------------------------------------------------
+# Debug filter mode
+# ---------------------------------------------------------------------------
+
+
+def test_debug_filter_js_variable_injected(tmp_path, monkeypatch):
+    """When HOMETOOLS_DEBUG_FILTER=true, the rendered page contains DEBUG_FILTER = true."""
+    monkeypatch.setenv("HOMETOOLS_DEBUG_FILTER", "true")
+    html = render_audio_index_html([])
+    assert "DEBUG_FILTER = true" in html
+
+
+def test_debug_filter_default_is_false(tmp_path, monkeypatch):
+    """By default, DEBUG_FILTER should be false."""
+    monkeypatch.delenv("HOMETOOLS_DEBUG_FILTER", raising=False)
+    html = render_audio_index_html([])
+    assert "DEBUG_FILTER = false" in html
+
+
+def test_debug_filter_css_present(tmp_path, monkeypatch):
+    """Debug-filtered CSS class must be present in the rendered page."""
+    monkeypatch.setenv("HOMETOOLS_DEBUG_FILTER", "true")
+    html = render_audio_index_html([])
+    assert ".debug-filtered" in html
+    assert ".debug-reason" in html
+
+
+# ---------------------------------------------------------------------------
+# Refresh log
+# ---------------------------------------------------------------------------
+
+
+def test_refresh_ratings_returns_last_refresh_timestamp(tmp_path):
+    """POST /api/audio/refresh-ratings includes last_refresh in response."""
+    audio = tmp_path / "Song.mp3"
+    audio.write_bytes(b"ID3" + b"\x00" * 32)
+
+    with (
+        patch("hometools.audio.metadata.get_popm_rating", return_value=128),
+        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=3.0),
+    ):
+        client = TestClient(create_app(tmp_path))
+        resp = client.post(
+            "/api/audio/refresh-ratings",
+            json={"paths": ["Song.mp3"]},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "last_refresh" in data
+    assert data["last_refresh"]  # non-empty timestamp
+    assert "folder" in data
+
+
+def test_refresh_log_endpoint_returns_persisted_data(tmp_path):
+    """GET /api/audio/refresh-log returns data written by refresh-ratings."""
+    audio = tmp_path / "Funsongs" / "Song.mp3"
+    audio.parent.mkdir()
+    audio.write_bytes(b"ID3" + b"\x00" * 32)
+
+    with (
+        patch("hometools.audio.metadata.get_popm_rating", return_value=255),
+        patch("hometools.audio.metadata.popm_raw_to_stars", return_value=5.0),
+    ):
+        client = TestClient(create_app(tmp_path))
+        # First refresh to create the log entry
+        client.post(
+            "/api/audio/refresh-ratings",
+            json={"paths": ["Funsongs/Song.mp3"]},
+        )
+        # Now read the log
+        resp = client.get("/api/audio/refresh-log")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "Funsongs" in data
+    assert "last_refresh" in data["Funsongs"]
+    assert data["Funsongs"]["total"] == 1
+
+
+def test_refresh_log_endpoint_returns_empty_when_no_log(tmp_path):
+    """GET /api/audio/refresh-log returns {} when no log exists."""
+    cache_dir = tmp_path / "clean-cache"
+    cache_dir.mkdir()
+    client = TestClient(create_app(tmp_path, cache_dir=cache_dir))
+    resp = client.get("/api/audio/refresh-log")
+    assert resp.status_code == 200
+    assert resp.json() == {}
+
+
+def test_refresh_info_element_present_in_html(tmp_path):
+    """The HTML must contain the refresh-info span element."""
+    html = render_audio_index_html([])
+    assert 'id="refresh-info"' in html

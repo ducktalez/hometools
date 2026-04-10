@@ -69,8 +69,8 @@ def test_css_queue_panel_is_fixed_overlay_above_player_bar():
     assert ".queue-panel" in css
     assert "position: fixed;" in css
     assert "left: 0; right: 0;" in css
-    # transform: translateY(100%) hides it off-screen, .visible removes it
-    assert "transform: translateY(100%)" in css
+    # clip-path hides it, .visible reveals it
+    assert "clip-path: inset(100% 0 0 0)" in css
     assert ".queue-panel.visible" in css
 
 
@@ -703,7 +703,8 @@ def test_shuffle_queue_rebuild_in_render_tracks():
 
     js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
     # rebuildShuffleQueue must be called inside renderTracks
-    assert "filteredItems = tracks" in js
+    # filteredItems is set to realTracks (debug-mode aware) instead of plain tracks
+    assert "filteredItems = realTracks" in js
     assert "rebuildShuffleQueue" in js
 
 
@@ -836,6 +837,59 @@ def test_rating_css_has_active_and_hover_states():
     css = render_base_css()
     assert ".player-rating-star.active" in css
     assert ".player-rating-star.hover" in css
+
+
+# ---------------------------------------------------------------------------
+# Edit-modal rating stars
+# ---------------------------------------------------------------------------
+
+
+def test_edit_modal_rating_css_present():
+    """CSS must include styles for rating stars inside the edit modal."""
+    css = render_base_css()
+    assert ".edit-modal-rating" in css
+    assert ".edit-modal-rating-star" in css
+    assert ".edit-modal-rating-star.active" in css
+
+
+def test_edit_modal_rating_html_present():
+    """Edit modal HTML must contain the rating container when metadata edit is enabled."""
+    page = render_media_page(
+        title="T",
+        emoji="E",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_metadata_edit=True,
+    )
+    assert 'id="edit-modal-rating"' in page
+    assert 'id="edit-modal-rating-field"' in page
+
+
+def test_edit_modal_rating_js_render_function():
+    """JS must contain renderEditModalRating function."""
+    js = render_player_js(
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_metadata_edit=True,
+        enable_rating_write=True,
+    )
+    assert "renderEditModalRating" in js
+    assert "_editModalRating" in js
+
+
+def test_edit_modal_rating_submit_sends_rating():
+    """submitEditModal must include rating API call when rating changes."""
+    js = render_player_js(
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_metadata_edit=True,
+        enable_rating_write=True,
+    )
+    assert "RATING_API_PATH" in js
+    assert "ratingChanged" in js
+    assert "Promise.all" in js
 
 
 def test_audio_server_has_rating_endpoint():
@@ -1144,4 +1198,66 @@ def test_min_rating_filter_logic_in_apply_filter():
     js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
     # Must contain the filter that hides rated-but-low tracks while keeping unrated
     assert "MIN_RATING_THRESHOLD" in js
-    assert "r === 0 || r > MIN_RATING_THRESHOLD" in js
+    assert "r === 0 || r >= MIN_RATING_THRESHOLD" in js
+
+
+# ---------------------------------------------------------------------------
+# Crossfade
+# ---------------------------------------------------------------------------
+
+
+def test_crossfade_duration_default_zero():
+    """CROSSFADE_DURATION must default to 0 (disabled)."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "CROSSFADE_DURATION = 0" in js
+
+
+def test_crossfade_duration_custom_injected():
+    """Custom crossfade_duration is injected into the JS."""
+    js = render_player_js(api_path="/api/test", item_noun="track", crossfade_duration=5)
+    assert "CROSSFADE_DURATION = 5" in js
+
+
+def test_crossfade_js_has_xfade_functions():
+    """Crossfade JS must contain the core functions."""
+    js = render_player_js(api_path="/api/test", item_noun="track", crossfade_duration=3)
+    assert "_startCrossfade" in js
+    assert "_finishCrossfade" in js
+    assert "_xfadeCleanup" in js
+    assert "_xfadeAudio" in js
+
+
+def test_crossfade_trigger_in_timeupdate():
+    """timeupdate handler must check CROSSFADE_DURATION and trigger crossfade."""
+    js = render_player_js(api_path="/api/test", item_noun="track", crossfade_duration=4)
+    assert "CROSSFADE_DURATION > 0" in js
+    assert "_startCrossfade()" in js
+
+
+def test_crossfade_config_function():
+    """get_crossfade_duration must return 0 by default."""
+    from hometools.config import get_crossfade_duration
+
+    # Should return 0 by default (unless env var is set)
+    val = get_crossfade_duration()
+    assert isinstance(val, int)
+    assert 0 <= val <= 12
+
+
+def test_crossfade_config_clamped(monkeypatch):
+    """get_crossfade_duration must clamp to 0-12 range."""
+    from hometools.config import get_crossfade_duration
+
+    monkeypatch.setenv("HOMETOOLS_CROSSFADE_DURATION", "99")
+    assert get_crossfade_duration() == 12
+
+    monkeypatch.setenv("HOMETOOLS_CROSSFADE_DURATION", "-5")
+    assert get_crossfade_duration() == 0
+
+
+def test_audio_server_passes_crossfade_duration():
+    """Audio server HTML must include CROSSFADE_DURATION."""
+    from hometools.streaming.audio.server import render_audio_index_html
+
+    html = render_audio_index_html([])
+    assert "CROSSFADE_DURATION" in html
