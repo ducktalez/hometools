@@ -214,7 +214,17 @@ Jeder Track in der Liste hat einen Pin-Button (`track-pin-btn`, `IC_PIN` SVG). K
 
 `MediaItem` trägt ein `rating`-Feld (Float `0.0–5.0`, Default `0.0`).
 
-**Audio:** `get_popm_rating(path)` liest den rohen ID3-POPM-Tag (Popularimeter, 0–255). Die Konvertierung in Sterne erfolgt über `popm_raw_to_stars()` mit dem **Windows Media Player Standard-Mapping** (nicht linear!):
+### Format-bewusstes Rating-System
+
+Ratings werden format-abhängig gelesen und geschrieben. Die zentralen Funktionen sind `get_rating_stars(path)` und `set_rating_stars(path, stars)` in `audio/metadata.py` — sie dispatchen automatisch auf den richtigen Format-Reader/-Writer.
+
+| Format | Tag-Typ | Lesen | Schreiben | Wertebereich |
+|--------|---------|-------|-----------|--------------|
+| **MP3** | ID3 POPM (Popularimeter) | `get_popm_rating()` → `popm_raw_to_stars()` | `set_popm_rating()` | 0–255 (WMP-Mapping) |
+| **M4A/MP4** | `----:com.apple.iTunes:RATING` Freeform-Atom | `_read_m4a_rating()` | `_write_m4a_rating()` | 0–100 (20 pro Stern) |
+| **FLAC/OGG/Opus** | Vorbis `FMPS_RATING` + `RATING` | `_read_vorbis_rating()` | `_write_vorbis_rating()` | FMPS: 0.0–1.0, RATING: 0–5 |
+
+#### MP3 POPM-Mapping (Windows Media Player Standard)
 
 | Raw-Bereich | Sterne | Kanonischer Wert |
 |-------------|--------|-----------------|
@@ -225,18 +235,38 @@ Jeder Track in der Liste hat einen Pin-Button (`track-pin-btn`, `IC_PIN` SVG). K
 | 160–223     | 4★     | 196 |
 | 224–255     | 5★     | 255 |
 
-Umgekehrt schreibt `stars_to_popm_raw()` die kanonischen WMP-Werte. Dadurch sind Bewertungen mit foobar2000, MusicBee, Mp3tag und Windows Explorer kompatibel.
+#### M4A/MP4 Prozent-Skala
 
-Nur MP3/ID3-Dateien werden ausgelesen — M4A/FLAC und andere Formate geben `0.0` zurück ohne Exception. Der `/api/audio/metadata`-Endpoint gibt das Rating ebenfalls zurück.
+| Wert | Sterne | Kanonischer Schreibwert |
+|------|--------|------------------------|
+| 0    | 0 (unbewertet) | 0 |
+| 20   | 1★     | 20 |
+| 40   | 2★     | 40 |
+| 60   | 3★     | 60 |
+| 80   | 4★     | 80 |
+| 100  | 5★     | 100 |
+
+Werte ≤ 5 werden als direkte Sternzahl interpretiert (Kompatibilität mit Tools die 1–5 statt 0–100 schreiben).
+
+**Binary-Fallback:** `_read_m4a_rating` versucht zuerst UTF-8-Text-Parsing (z.B. `b"80"` → 80). Bei Fehlschlag wird der Wert als binärer Integer interpretiert (ein Byte: Ordinalwert; mehrere Bytes: Big-Endian). Damit werden auch Ratings gelesen, die von Tools mit IMPLICIT-Datenformat (statt UTF-8) geschrieben wurden.
+
+#### FLAC/OGG Vorbis-Comments
+
+- **`FMPS_RATING`** (Free Music Player Specifications): Float 0.0–1.0 (0.2 pro Stern). Wird bevorzugt gelesen.
+- **`RATING`**: Integer 1–5. Fallback wenn kein FMPS_RATING vorhanden.
+- Beim **Schreiben** werden beide Tags gesetzt (maximale Kompatibilität).
 
 **Video:** Kein Rating-Lesen; Defaultwert `0.0`.
 
 **UI:** Eine 3px hohe Verlaufsleiste (orange–gelb) erscheint am unteren Rand des Thumbnail-Bilds — sowohl in Track-Listen als auch in Folder-Grid-Karten. Die Breite entspricht `rating / 5 * 100 %`. Unbewertet = keine Leiste. CSS-Klasse `.rating-bar`.
 
 **Design-Regeln:**
-- `popm_raw_to_stars()` und `stars_to_popm_raw()` in `audio/metadata.py` sind die einzigen Stellen für POPM↔Sterne-Konvertierung. Niemals manuell `raw/255*5` oder `stars/5*255` rechnen.
-- `get_popm_rating()` prüft vor dem ID3-Lesen die Dateiendung; gibt bei M4A/FLAC `0` zurück um den `can't sync to MPEG frame`-Fehler zu vermeiden.
-- **Snapshot-Versionierung:** `_SNAPSHOT_VERSION` in `index_cache.py` muss gebumpt werden, wenn sich das Datenformat ändert (z.B. Rating-Mapping). Alte Snapshots werden beim Laden verworfen, erzwingen frischen Rebuild vom Dateisystem. Aktuell: v2 (WMP-Mapping).
+- `get_rating_stars()` und `set_rating_stars()` in `audio/metadata.py` sind die einzigen öffentlichen Funktionen für format-bewusstes Rating-Lesen/-Schreiben.
+- `popm_raw_to_stars()` und `stars_to_popm_raw()` bleiben als MP3-spezifische Helfer erhalten (werden intern von `get_rating_stars`/`set_rating_stars` für MP3 aufgerufen).
+- `get_popm_rating()` prüft vor dem ID3-Lesen die Dateiendung; gibt bei Nicht-MP3 `0` zurück um den `can't sync to MPEG frame`-Fehler zu vermeiden.
+- **Snapshot-Versionierung:** `_SNAPSHOT_VERSION` in `index_cache.py` muss gebumpt werden, wenn sich das Datenformat ändert (z.B. Rating-Mapping). Alte Snapshots werden beim Laden verworfen, erzwingen frischen Rebuild vom Dateisystem. Aktuell: v4 (M4A-Rating-Read-Fix + Race-Condition-Fix).
+- **Cache-Patch nach Rating-Write:** `audio_set_rating` ruft `patch_items()` auf, bevor `invalidate()` den Cache als stale markiert. So liefert die API sofort das korrekte Rating, auch wenn der Background-Rebuild noch nicht fertig ist.
+- **`refreshCatalog()` pollt bei laufendem Build:** Die JS-Funktion prüft `data.refreshing` und ruft `scheduleBackgroundRefresh()` auf, statt veraltete Daten als final darzustellen.
 
 ### Rating-Schwellenwert (Min-Rating)
 
@@ -258,12 +288,12 @@ if (MIN_RATING_THRESHOLD > 0) {
 
 ### Lazy Per-Folder Rating Refresh
 
-Beim Öffnen eines Ordners (Leaf-Folder → `showPlaylist`) werden die POPM-Ratings der angezeigten Tracks on-demand vom Dateisystem neu gelesen — **ohne** den gesamten Katalog neu zu bauen. Das löst das Problem, dass ein Full-Rebuild von 5 000+ Songs mehrere Sekunden dauert und alte Ratings bis dahin sichtbar bleiben.
+Beim Öffnen eines Ordners (Leaf-Folder → `showPlaylist`) werden die Ratings der angezeigten Tracks on-demand vom Dateisystem neu gelesen — **ohne** den gesamten Katalog neu zu bauen. Das löst das Problem, dass ein Full-Rebuild von 5 000+ Songs mehrere Sekunden dauert und alte Ratings bis dahin sichtbar bleiben.
 
 **Ablauf:**
 1. `showPlaylist(items, ...)` rendert sofort mit den gecachten Daten (kein Delay).
 2. JS `refreshFolderRatings(items)` feuert einen asynchronen `POST /api/audio/refresh-ratings` mit den `relative_path`-Werten der Folder-Items.
-3. Der Server liest nur die übergebenen Dateien (typisch 10–50) via `get_popm_rating()` + `popm_raw_to_stars()`.
+3. Der Server liest nur die übergebenen Dateien (typisch 10–50) via `get_rating_stars()` (format-bewusst: MP3/M4A/FLAC/OGG).
 4. `IndexCache.patch_items()` ersetzt die Ratings im In-Memory-Cache (frozen MediaItem → `dataclasses.replace()`).
 5. Der Server antwortet mit `{"ok": true, "ratings": {...}, "changed": N}`.
 6. JS patcht `allItems` und `playlistItems`, ruft `applyFilter()` auf → UI re-rendert nur wenn sich etwas geändert hat.
@@ -431,7 +461,7 @@ Nach erfolgreichem Rating-Write gibt der Endpoint `entry_id` zurück. Das JS zei
 
 ## Songwertung Schreiben (POPM-Write, Audio-only)
 
-**Module:** `streaming/audio/server.py` (Endpoint), `audio/metadata.py` (`set_popm_rating`), `streaming/core/server_utils.py` (UI + JS)
+**Module:** `streaming/audio/server.py` (Endpoint), `audio/metadata.py` (`set_rating_stars`), `streaming/core/server_utils.py` (UI + JS)
 
 ### Überblick
 
@@ -461,8 +491,10 @@ Ein `<div id="player-rating" hidden>` befindet sich in der `.player-info`-Sektio
 
 `POST /api/audio/rating` in `audio/server.py`:
 - Body: `{ "path": "<relative_path>", "rating": 0–5 }`
-- Konvertiert `stars → POPM raw` via `stars_to_popm_raw()` (WMP-Standard: 0→0, 1→1, 2→64, 3→128, 4→196, 5→255)
-- Schreibt via `set_popm_rating(path, raw)` aus `audio/metadata.py`
+- Dispatcht format-bewusst via `set_rating_stars(path, stars)`:
+  - MP3 → `set_popm_rating()` (WMP-Standard: 0→0, 1→1, 2→64, 3→128, 4→196, 5→255)
+  - M4A/MP4 → `_write_m4a_rating()` (Freeform-Atom, 0–100 Skala)
+  - FLAC/OGG → `_write_vorbis_rating()` (FMPS_RATING + RATING)
 - Invalidiert `_audio_index_cache` nach erfolgreichem Schreiben
 - Gibt `{ "ok": bool, "rating": float, "raw": int }` zurück
 
@@ -480,7 +512,7 @@ setRating(stars)             ← POST → API → Toast + rebuild weighted shuff
 - Der `#player-rating`-Container ist **immer** im HTML (auch ohne `enable_rating_write`), aber `pointerEvents: none` wenn nicht schreibbar — konsistentes Layout.
 - Die Rating-Sterne sind **keine** Read-Only-Anzeige des gespeicherten Ratings — nur der Balken (`.rating-bar`) übernimmt diese Rolle in der Liste.
 - Nach erfolgreichem Schreiben: `t.rating` im lokalen JS-State aktualisiert, Shuffle-Queue neu aufgebaut (falls `weighted`-Modus aktiv).
-- `set_popm_rating()` prüft nicht die Dateiendung — Caller (Endpoint) muss sicherstellen, dass nur MP3-Dateien übergeben werden (POPM ist ID3-spezifisch).
+- `set_rating_stars()` dispatcht automatisch auf das richtige Format (MP3/M4A/FLAC/OGG). Der Endpoint muss keine Dateiendung prüfen.
 
 ## Zuletzt gespielt / Continue Watching
 
@@ -1289,7 +1321,7 @@ Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick
 
 - **Button:** `#refresh-btn` im `<header>`, SVG-Icon `SVG_REFRESH` / `IC_REFRESH`
 - **CSS:** `.refresh-btn` (gleicher Style wie `.view-toggle`), `.refresh-btn.spinning svg` rotiert via `@keyframes spin`
-- **JS:** `refreshCatalog()` → `POST` an `/api/<media>/refresh` → `fetch(API_PATH)` → `allItems` aktualisieren → aktuelle Ansicht neu rendern. Toast-Feedback: „Katalog aktualisiert — N Titel"
+- **JS:** `refreshCatalog()` → `POST` an `/api/<media>/refresh-ratings` mit den Pfaden der **aktuell angezeigten** Items → patcht `allItems` + `playlistItems` → aktuelle Ansicht neu rendern. Toast-Feedback: „N Titel aktualisiert (M Ratings geändert)". Kein voller Index-Rebuild — nur Ratings der sichtbaren Titel werden vom Dateisystem neu gelesen.
 
 ### Designregeln
 
@@ -1297,6 +1329,7 @@ Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick
 2. **POST statt GET** — Refresh ist eine Zustandsänderung (Cache-Invalidierung), daher POST
 3. **Debounce via Spinning** — Während des Refresh dreht das Icon; kein Doppelklick nötig
 4. **Ansichts-bewahrend** — Nach dem Refresh wird die aktuelle Ansicht (Folder oder Playlist) beibehalten
+5. **Gezielter Refresh** — `refreshCatalog()` nutzt den `refresh-ratings`-Endpoint und sendet nur die Pfade der aktuell angezeigten Items (Playlist-View: `playlistItems`, Folder-View: `itemsUnder(currentPath)`). Kein voller Index-Rebuild, damit der 5 000-Titel-Katalog nicht unnötig gescannt wird. Bei leerem Root-View wird eine Toast-Meldung angezeigt.
 
 ## Globale Suche (Root-View)
 
@@ -1308,7 +1341,7 @@ Bibliotheksweite Echtzeit-Suche über alle Tracks direkt auf der Startseite. Rei
 
 - **Suchfeld:** `<input id="global-search-input">` im `#folder-filter-bar`, sichtbar nur auf der Root-Ansicht wenn der Katalog geladen ist.
 - **Ergebnisse:** Werden als Track-Liste in `#track-list` gerendert (gleiche Darstellung wie Ordner-Playlists), mit zusätzlicher Ordner-Pfad-Anzeige (`.search-result-folder`) unter dem Artist-Namen.
-- **Navigation:** Klick auf ein Ergebnis navigiert in den Ordner des Tracks und startet die Wiedergabe.
+- **Navigation:** Klick auf ein Ergebnis startet die Wiedergabe direkt in der Suchliste — die Suche bleibt offen. Die Suchergebnisse werden zur aktiven Playlist (Next/Prev navigiert innerhalb der Ergebnisse).
 - **Zurück:** Escape, Leeren des Suchfelds oder Back-Button → zurück zur normalen Ordner-Ansicht.
 
 ### JS-Funktionen
@@ -1318,7 +1351,7 @@ Bibliotheksweite Echtzeit-Suche über alle Tracks direkt auf der Startseite. Rei
 | `initGlobalSearch()` | Erstellt Suchfeld im `#folder-filter-bar`, registriert `input`- und `keydown`-Events |
 | `globalSearch(needle)` | Filtert `allItems` nach Titel/Artist/Path, respektiert `MIN_RATING_THRESHOLD`, rendert Ergebnisse |
 | `renderSearchResults(results)` | Rendert Track-Liste mit Ordner-Kontext, registriert Click-Handler |
-| `navigateToSearchResult(item)` | Navigiert in den Ordner des Items, sammelt Geschwister-Items, startet Playback |
+| `navigateToSearchResult(item, idx)` | Spielt den gewählten Track direkt in der Suchliste ab (Suche bleibt offen) |
 | `exitGlobalSearch()` | Setzt Such-State zurück, zeigt normale Ordner-Ansicht |
 
 ### State
@@ -1330,8 +1363,8 @@ Bibliotheksweite Echtzeit-Suche über alle Tracks direkt auf der Startseite. Rei
 
 1. `showFolderView()` ruft `initGlobalSearch()` auf wenn Root + Katalog geladen
 2. User tippt → `input`-Event → 200ms Debounce → `globalSearch(needle)`
-3. `globalSearch` filtert `allItems`, blendet Folder-Grid aus, zeigt Track-View mit Ergebnissen
-4. Klick auf Ergebnis → `navigateToSearchResult()` → `showPlaylist()` + `playItem()`
+3. `globalSearch` filtert `allItems`, blendet Folder-Grid aus, setzt Ergebnisse als `playlistItems`/`filteredItems`, zeigt Track-View
+4. Klick auf Ergebnis → `navigateToSearchResult()` → `playItem()` + `markActive()` (Suche bleibt offen, Next/Prev in Ergebnissen)
 5. Back-Button / Escape → `exitGlobalSearch()` → `showFolderView()`
 
 ### CSS

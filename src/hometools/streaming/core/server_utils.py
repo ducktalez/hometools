@@ -2521,29 +2521,68 @@ def render_player_js(
   function refreshCatalog() {
     if (_refreshBtn) _refreshBtn.classList.add('spinning');
     _ratingRefreshPath = null;
+
+    /* Only refresh the items currently displayed in the list */
+    var itemsToRefresh = inPlaylist ? playlistItems
+      : (currentPath ? itemsUnder(currentPath) : []);
+    if (!itemsToRefresh.length) {
+      if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+      showToast('Öffne einen Ordner, um Titel zu aktualisieren');
+      return;
+    }
+
+    var paths = itemsToRefresh.map(function(t) { return t.relative_path; });
     var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
-    fetch(base + '/refresh', { method: 'POST' })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function() {
-        return fetch(API_PATH, { cache: 'no-store' });
-      })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(data) {
-        if (_refreshBtn) _refreshBtn.classList.remove('spinning');
-        if (!data) { showToast('Refresh fehlgeschlagen'); return; }
-        allItems = data && Array.isArray(data.items) ? data.items : [];
-        if (inPlaylist) {
-          var items = itemsUnder(currentPath);
-          showPlaylist(items, false);
-        } else {
-          showFolderView();
+    fetch(base + '/refresh-ratings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths: paths })
+    })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+      if (!data || !data.ratings) { showToast('Refresh fehlgeschlagen'); return; }
+      var ratings = data.ratings;
+      var anyChange = data.changed > 0;
+      /* Patch allItems */
+      for (var i = 0; i < allItems.length; i++) {
+        var rp = allItems[i].relative_path;
+        if (ratings.hasOwnProperty(rp) && allItems[i].rating !== ratings[rp]) {
+          allItems[i] = Object.assign({}, allItems[i], { rating: ratings[rp] });
         }
-        showToast('Katalog aktualisiert — ' + allItems.length + ' Titel');
-      })
-      .catch(function() {
-        if (_refreshBtn) _refreshBtn.classList.remove('spinning');
-        showToast('Refresh fehlgeschlagen');
-      });
+      }
+      /* Patch playlistItems */
+      for (var j = 0; j < playlistItems.length; j++) {
+        var rp2 = playlistItems[j].relative_path;
+        if (ratings.hasOwnProperty(rp2) && playlistItems[j].rating !== ratings[rp2]) {
+          playlistItems[j] = Object.assign({}, playlistItems[j], { rating: ratings[rp2] });
+        }
+      }
+      /* Show refresh timestamp */
+      var infoEl = document.getElementById('refresh-info');
+      if (infoEl && data.last_refresh) {
+        var dt = new Date(data.last_refresh);
+        var hhmm = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
+        var countInfo = Object.keys(ratings).length + ' Ratings gelesen';
+        if (anyChange) countInfo += ', ' + data.changed + ' aktualisiert';
+        infoEl.textContent = countInfo + ' (' + hhmm + ')';
+        infoEl.title = 'Letzte Rating-Aktualisierung: ' + dt.toLocaleString();
+      }
+      /* Re-render current view */
+      if (inPlaylist) {
+        applyFilter();
+      } else {
+        showFolderView();
+      }
+      var count = Object.keys(ratings).length;
+      var msg = count + ' Titel aktualisiert';
+      if (anyChange) msg += ' (' + data.changed + ' Ratings geändert)';
+      showToast(msg);
+    })
+    .catch(function() {
+      if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+      showToast('Refresh fehlgeschlagen');
+    });
   }
   if (_refreshBtn) _refreshBtn.addEventListener('click', refreshCatalog);
 
@@ -3154,6 +3193,7 @@ def render_player_js(
     folderGrid.classList.add('view-hidden');
     trackView.classList.remove('view-hidden');
     filterBar.classList.add('view-hidden');
+    playerBar.classList.remove('view-hidden');
     headerTitle.textContent = results.length + ' Ergebnis' + (results.length !== 1 ? 'se' : '');
     backBtn.style.display = 'inline-block';
     playAllBtn.style.display = 'none';
@@ -3161,6 +3201,11 @@ def render_player_js(
     /* Hide recently played */
     var rs = document.getElementById('recent-section');
     if (rs) rs.hidden = true;
+    /* Use search results as current playlist so next/prev works */
+    playlistItems = results;
+    filteredItems = results;
+    inPlaylist = true;
+    if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
     /* Render search results */
     renderSearchResults(results);
   }
@@ -3174,7 +3219,7 @@ def render_player_js(
     results.forEach(function(t, i) {
       var li = document.createElement('li');
       li.className = 'track-item';
-      li.setAttribute('data-idx', i);
+      li.setAttribute('data-index', i);
       var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
       var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
       /* Extract folder path for context */
@@ -3188,33 +3233,15 @@ def render_player_js(
           '<div class="track-artist">' + escHtml(t.artist || '') + '</div>' +
           (folderPath ? '<div class="search-result-folder">' + escHtml(folderPath) + '</div>' : '') +
         '</div>';
-      li.addEventListener('click', function() { navigateToSearchResult(t); });
+      li.addEventListener('click', function() { navigateToSearchResult(t, i); });
       trackList.appendChild(li);
     });
   }
 
-  function navigateToSearchResult(item) {
-    var path = item.relative_path || '';
-    var folder = path.lastIndexOf('/') >= 0 ? path.substring(0, path.lastIndexOf('/')) : '';
-    currentPath = folder;
-    _globalSearchActive = false;
-    /* Clear global search input */
-    var inp = document.getElementById('global-search-input');
-    if (inp) inp.value = '';
-    /* Collect items in the same leaf folder */
-    var folderItems = folder
-      ? allItems.filter(function(it) {
-          return it.relative_path.startsWith(folder + '/') &&
-            it.relative_path.indexOf('/', folder.length + 1) < 0;
-        })
-      : allItems.filter(function(it) { return it.relative_path.indexOf('/') < 0; });
-    if (!folderItems.length) folderItems = [item];
-    var idx = 0;
-    for (var j = 0; j < folderItems.length; j++) {
-      if (folderItems[j].relative_path === path) { idx = j; break; }
-    }
-    showPlaylist(folderItems, false);
+  function navigateToSearchResult(item, idx) {
+    /* Play directly within search results — search stays open */
     playItem(item, idx);
+    markActive();
   }
 
   function exitGlobalSearch() {

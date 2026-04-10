@@ -20,7 +20,7 @@ import logging
 import time
 from pathlib import Path
 
-from hometools.audio.metadata import audiofile_assume_artist_title, get_genre, get_popm_rating, popm_raw_to_stars
+from hometools.audio.metadata import audiofile_assume_artist_title, get_genre, get_rating_stars
 from hometools.streaming.core.catalog import list_artists
 from hometools.streaming.core.catalog import query_items as query_tracks
 from hometools.streaming.core.catalog import sort_items as sort_tracks
@@ -85,9 +85,8 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             if thumb_lg is not None:
                 thumbnail_lg_url = f"/thumb?path={encode_relative_path(relative_path)}&size=lg"
 
-        # POPM rating: 0–255 → 0–5 stars (WMP standard step mapping)
-        raw_rating = get_popm_rating(audio_file)
-        stars = popm_raw_to_stars(raw_rating)
+        # Rating: format-aware (MP3 POPM, M4A freeform atom, FLAC Vorbis comment)
+        stars = get_rating_stars(audio_file)
 
         # Genre tag
         genre = get_genre(audio_file)
