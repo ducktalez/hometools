@@ -242,19 +242,19 @@ Nur MP3/ID3-Dateien werden ausgelesen — M4A/FLAC und andere Formate geben `0.0
 
 Konfigurierbar über `HOMETOOLS_MIN_RATING` (Env-Var, Default `0`, Bereich 0–5).
 
-Bewertete Tracks mit Rating **≤ Schwellenwert** werden aus der Track-Liste ausgeblendet. Unbewertete Tracks (`rating == 0`) sind immer sichtbar — sie gelten als „nicht bewertet", nicht als „schlecht bewertet".
+Bewertete Tracks mit Rating **< Schwellenwert** werden aus der Track-Liste ausgeblendet. Tracks mit Rating **= Schwellenwert** werden angezeigt. Unbewertete Tracks (`rating == 0`) sind immer sichtbar — sie gelten als „nicht bewertet", nicht als „schlecht bewertet".
 
 **Implementierung:** Die Funktion `get_min_rating()` in `config.py` liest den Wert. Er wird als `min_rating` Parameter durch `render_media_page()` → `render_player_js()` durchgereicht und als JS-Variable `MIN_RATING_THRESHOLD` injiziert. Die Filterung erfolgt in `applyFilter()` (JS) **vor** allen anderen Quick-Filtern:
 ```js
 if (MIN_RATING_THRESHOLD > 0) {
   items = items.filter(function(t) {
     var r = t.rating || 0;
-    return r === 0 || r > MIN_RATING_THRESHOLD;
+    return r === 0 || r >= MIN_RATING_THRESHOLD;
   });
 }
 ```
 
-**Beispiel:** `HOMETOOLS_MIN_RATING=2` blendet alle 1★ und 2★ Tracks aus, zeigt aber unbewertete und 3★+ Tracks.
+**Beispiel:** `HOMETOOLS_MIN_RATING=2` blendet alle 1★ Tracks aus, zeigt aber unbewertete und 2★+ Tracks.
 
 ### Lazy Per-Folder Rating Refresh
 
@@ -297,7 +297,7 @@ Wenn `HOMETOOLS_DEBUG_FILTER=true` in `.env` gesetzt ist, werden Items, die durc
 - `filteredItems` enthält **nur** die realen (nicht-debug) Tracks → Shuffle/Queue/Playback unbeeinträchtigt
 - CSS: `.track-item.debug-filtered`, `.debug-reason` in `render_base_css()`
 
-**Begründungstexte:** z.B. `"Rating 2★ ≤ Schwelle 3"`, `"Quick-Filter: Rating < 4★"`, `"Kein Favorit"`, `"Genre ≠ Rock"`
+**Begründungstexte:** z.B. `"Rating 2★ < Schwelle 3"`, `"Quick-Filter: Rating < 4★"`, `"Kein Favorit"`, `"Genre ≠ Rock"`
 
 ### Rating Refresh Log
 

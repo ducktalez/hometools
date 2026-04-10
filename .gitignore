@@ -30,6 +30,9 @@ tmp/
 .hometools-cache/
 .hometools-audit/
 test_*.txt
+_debug_*.py
+_debug_*.txt
+_check_*.py
 
 # OS
 Thumbs.db
