@@ -621,6 +621,20 @@ header {
 .folder-filter-bar {
   padding: 0 16px 4px; display: flex; align-items: center; gap: 8px;
 }
+#global-search-input {
+  flex: 1; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+  font-size: 0.95rem; outline: none;
+}
+#global-search-input:focus { border-color: var(--accent); }
+#global-search-input::placeholder { color: var(--sub); }
+.global-search-clear {
+  background: none; border: none; color: var(--sub); cursor: pointer;
+  font-size: 1.2rem; padding: 4px 8px; line-height: 1;
+}
+.global-search-clear:hover { color: var(--text); }
+/* Search results: folder path shown under artist */
+.search-result-folder { font-size: 0.7rem; color: var(--sub); opacity: 0.7; margin-top: 1px; }
 .offline-folder-card { cursor: pointer; }
 .offline-folder-icon {
   display: flex; align-items: center; justify-content: center;
@@ -1790,9 +1804,12 @@ def render_player_js(
   var filterFav    = localStorage.getItem('ht-filter-fav') === '1';
   var filterGenre  = localStorage.getItem('ht-filter-genre') || '';
   var folderGrid   = document.getElementById('folder-grid');
+  var folderFilterBar = document.getElementById('folder-filter-bar');
   var trackView    = document.getElementById('track-view');
   var filterBar    = document.querySelector('.filter-bar');
   var backBtn      = document.getElementById('back-btn');
+  /* Global search state */
+  var _globalSearchActive = false;
   var logoHomeBtn  = document.getElementById('header-logo');
   var headerTitle  = document.getElementById('header-title');
   var playerBar    = document.querySelector('.player-bar');
@@ -2811,12 +2828,20 @@ def render_player_js(
     destroyPlaylistDragDrop();
     inPlaylist = false;
     _currentPlaylistId = '';
+    _globalSearchActive = false;
     /* Clear refresh-info when leaving playlist view */
     var rInfo = document.getElementById('refresh-info');
     if (rInfo) rInfo.textContent = '';
     var c = contentsAt(currentPath);
     var isRoot = !currentPath;
     var showOrigNames = (viewMode === 'filenames');
+
+    /* Global search bar — only on root when catalog loaded */
+    if (isRoot && allItems.length > 0) {
+      initGlobalSearch();
+    } else {
+      if (folderFilterBar) folderFilterBar.hidden = true;
+    }
 
     /* empty library */
     if (c.folders.length === 0 && c.files.length === 0) {
@@ -3073,6 +3098,7 @@ def render_player_js(
 
   /* ── back ── */
   function goBack() {
+    if (_globalSearchActive) { exitGlobalSearch(); return; }
     if (currentPath === '__offline__') {
       currentPath = '';
       showFolderView();
@@ -3083,6 +3109,119 @@ def render_player_js(
       if (c.folders.length > 0) { showFolderView(); return; }
     }
     currentPath = parentPath(currentPath);
+    showFolderView();
+  }
+
+  /* ── global search (root view) ── */
+  var _globalSearchDebounce = null;
+  function initGlobalSearch() {
+    if (!folderFilterBar) return;
+    folderFilterBar.innerHTML =
+      '<input id="global-search-input" type="search" placeholder="Bibliothek durchsuchen\u2026" autocomplete="off" />';
+    folderFilterBar.hidden = false;
+    var inp = document.getElementById('global-search-input');
+    if (!inp) return;
+    inp.addEventListener('input', function() {
+      clearTimeout(_globalSearchDebounce);
+      var val = inp.value.trim();
+      if (!val) {
+        if (_globalSearchActive) exitGlobalSearch();
+        return;
+      }
+      _globalSearchDebounce = setTimeout(function() { globalSearch(val); }, 200);
+    });
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        inp.value = '';
+        if (_globalSearchActive) exitGlobalSearch();
+        inp.blur();
+      }
+    });
+  }
+
+  function globalSearch(needle) {
+    needle = needle.toLowerCase();
+    /* Filter allItems by needle — respect MIN_RATING */
+    var results = allItems.filter(function(t) {
+      var r = t.rating || 0;
+      if (MIN_RATING_THRESHOLD > 0 && r > 0 && r < MIN_RATING_THRESHOLD) return false;
+      return (t.title || '').toLowerCase().indexOf(needle) >= 0 ||
+             (t.artist || '').toLowerCase().indexOf(needle) >= 0 ||
+             (t.relative_path || '').toLowerCase().indexOf(needle) >= 0;
+    });
+    _globalSearchActive = true;
+    /* Hide folder grid, show track view with results */
+    folderGrid.classList.add('view-hidden');
+    trackView.classList.remove('view-hidden');
+    filterBar.classList.add('view-hidden');
+    headerTitle.textContent = results.length + ' Ergebnis' + (results.length !== 1 ? 'se' : '');
+    backBtn.style.display = 'inline-block';
+    playAllBtn.style.display = 'none';
+    trackCount.textContent = results.length + ' ' + (results.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
+    /* Hide recently played */
+    var rs = document.getElementById('recent-section');
+    if (rs) rs.hidden = true;
+    /* Render search results */
+    renderSearchResults(results);
+  }
+
+  function renderSearchResults(results) {
+    trackList.innerHTML = '';
+    if (results.length === 0) {
+      trackList.innerHTML = '<li class="track-item" style="opacity:0.5;pointer-events:none"><div class="track-info"><div class="track-title">Keine Ergebnisse</div></div></li>';
+      return;
+    }
+    results.forEach(function(t, i) {
+      var li = document.createElement('li');
+      li.className = 'track-item';
+      li.setAttribute('data-idx', i);
+      var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
+      var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
+      /* Extract folder path for context */
+      var folderPath = '';
+      var lastSlash = (t.relative_path || '').lastIndexOf('/');
+      if (lastSlash > 0) folderPath = t.relative_path.substring(0, lastSlash);
+      li.innerHTML = '<div class="track-number">' + (i + 1) + '</div>' +
+        '<div class="track-thumb-wrap"><img class="track-thumb" src="' + escHtml(thumbSrc) + '" loading="lazy">' + ratingBar + '</div>' +
+        '<div class="track-info">' +
+          '<div class="track-title">' + escHtml(t.title || t.relative_path) + '</div>' +
+          '<div class="track-artist">' + escHtml(t.artist || '') + '</div>' +
+          (folderPath ? '<div class="search-result-folder">' + escHtml(folderPath) + '</div>' : '') +
+        '</div>';
+      li.addEventListener('click', function() { navigateToSearchResult(t); });
+      trackList.appendChild(li);
+    });
+  }
+
+  function navigateToSearchResult(item) {
+    var path = item.relative_path || '';
+    var folder = path.lastIndexOf('/') >= 0 ? path.substring(0, path.lastIndexOf('/')) : '';
+    currentPath = folder;
+    _globalSearchActive = false;
+    /* Clear global search input */
+    var inp = document.getElementById('global-search-input');
+    if (inp) inp.value = '';
+    /* Collect items in the same leaf folder */
+    var folderItems = folder
+      ? allItems.filter(function(it) {
+          return it.relative_path.startsWith(folder + '/') &&
+            it.relative_path.indexOf('/', folder.length + 1) < 0;
+        })
+      : allItems.filter(function(it) { return it.relative_path.indexOf('/') < 0; });
+    if (!folderItems.length) folderItems = [item];
+    var idx = 0;
+    for (var j = 0; j < folderItems.length; j++) {
+      if (folderItems[j].relative_path === path) { idx = j; break; }
+    }
+    showPlaylist(folderItems, false);
+    playItem(item, idx);
+  }
+
+  function exitGlobalSearch() {
+    _globalSearchActive = false;
+    var inp = document.getElementById('global-search-input');
+    if (inp) inp.value = '';
+    currentPath = '';
     showFolderView();
   }
 
