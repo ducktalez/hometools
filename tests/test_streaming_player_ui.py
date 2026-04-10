@@ -1261,3 +1261,53 @@ def test_audio_server_passes_crossfade_duration():
 
     html = render_audio_index_html([])
     assert "CROSSFADE_DURATION" in html
+
+
+# ---------------------------------------------------------------------------
+# Global Search
+# ---------------------------------------------------------------------------
+
+
+def test_global_search_function_exists():
+    """The JS must contain the globalSearch function."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "function globalSearch" in js
+    assert "function initGlobalSearch" in js
+    assert "function exitGlobalSearch" in js
+    assert "function navigateToSearchResult" in js
+    assert "function renderSearchResults" in js
+
+
+def test_global_search_respects_min_rating():
+    """globalSearch must respect MIN_RATING_THRESHOLD."""
+    js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
+    assert "MIN_RATING_THRESHOLD" in js
+    # The globalSearch function filters by min rating
+    assert "r < MIN_RATING_THRESHOLD" in js
+
+
+def test_folder_filter_bar_in_html():
+    """The HTML must contain the folder-filter-bar element."""
+    from hometools.streaming.core.server_utils import render_media_page
+
+    html = render_media_page(
+        title="T",
+        emoji="X",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/t",
+        item_noun="track",
+    )
+    assert 'id="folder-filter-bar"' in html
+
+
+def test_global_search_shows_folder_path():
+    """Search results must show the folder path for context."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "search-result-folder" in js
+
+
+def test_global_search_debounce():
+    """Global search input should be debounced."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "_globalSearchDebounce" in js

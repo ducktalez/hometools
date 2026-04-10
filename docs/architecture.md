@@ -1297,3 +1297,53 @@ Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick
 2. **POST statt GET** — Refresh ist eine Zustandsänderung (Cache-Invalidierung), daher POST
 3. **Debounce via Spinning** — Während des Refresh dreht das Icon; kein Doppelklick nötig
 4. **Ansichts-bewahrend** — Nach dem Refresh wird die aktuelle Ansicht (Folder oder Playlist) beibehalten
+
+## Globale Suche (Root-View)
+
+**Modul:** `streaming/core/server_utils.py` (JS + CSS + HTML)
+
+Bibliotheksweite Echtzeit-Suche über alle Tracks direkt auf der Startseite. Rein client-seitig — `allItems` ist bereits im Browser geladen. Kein neuer Backend-Endpoint.
+
+### UI
+
+- **Suchfeld:** `<input id="global-search-input">` im `#folder-filter-bar`, sichtbar nur auf der Root-Ansicht wenn der Katalog geladen ist.
+- **Ergebnisse:** Werden als Track-Liste in `#track-list` gerendert (gleiche Darstellung wie Ordner-Playlists), mit zusätzlicher Ordner-Pfad-Anzeige (`.search-result-folder`) unter dem Artist-Namen.
+- **Navigation:** Klick auf ein Ergebnis navigiert in den Ordner des Tracks und startet die Wiedergabe.
+- **Zurück:** Escape, Leeren des Suchfelds oder Back-Button → zurück zur normalen Ordner-Ansicht.
+
+### JS-Funktionen
+
+| Funktion | Beschreibung |
+|---|---|
+| `initGlobalSearch()` | Erstellt Suchfeld im `#folder-filter-bar`, registriert `input`- und `keydown`-Events |
+| `globalSearch(needle)` | Filtert `allItems` nach Titel/Artist/Path, respektiert `MIN_RATING_THRESHOLD`, rendert Ergebnisse |
+| `renderSearchResults(results)` | Rendert Track-Liste mit Ordner-Kontext, registriert Click-Handler |
+| `navigateToSearchResult(item)` | Navigiert in den Ordner des Items, sammelt Geschwister-Items, startet Playback |
+| `exitGlobalSearch()` | Setzt Such-State zurück, zeigt normale Ordner-Ansicht |
+
+### State
+
+- `_globalSearchActive` (bool) — ob gerade Suchergebnisse angezeigt werden
+- `_globalSearchDebounce` — Timer-ID für 200ms Input-Debounce
+
+### Ablauf
+
+1. `showFolderView()` ruft `initGlobalSearch()` auf wenn Root + Katalog geladen
+2. User tippt → `input`-Event → 200ms Debounce → `globalSearch(needle)`
+3. `globalSearch` filtert `allItems`, blendet Folder-Grid aus, zeigt Track-View mit Ergebnissen
+4. Klick auf Ergebnis → `navigateToSearchResult()` → `showPlaylist()` + `playItem()`
+5. Back-Button / Escape → `exitGlobalSearch()` → `showFolderView()`
+
+### CSS
+
+- `#global-search-input` — Styling analog zu `#search-input` (Ordner-lokale Suche)
+- `.search-result-folder` — Grauer Text unter dem Artist, zeigt den Ordner-Pfad
+
+### Designregeln
+
+1. **Rein client-seitig** — kein neuer Backend-Endpoint, `allItems` wird im Browser gefiltert
+2. **Shared Core** — funktioniert identisch für Audio und Video
+3. **MIN_RATING respektiert** — Suche blendet die gleichen Tracks aus wie die Ordner-Ansicht
+4. **Debounced** — 200ms Verzögerung verhindert Flickering bei schnellem Tippen
+5. **`goBack()` integriert** — erkennt `_globalSearchActive` und kehrt zum Root zurück statt in den Elternordner
+

@@ -766,3 +766,36 @@ class TestLazyRatingRefreshParity:
 
         html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
         assert "refreshFolderRatings(items)" in html
+
+
+class TestGlobalSearchParity:
+    """Global search must be present in both audio and video UIs."""
+
+    def test_both_uis_include_global_search_js(self, tmp_path):
+        """Both UIs must include the globalSearch JS function."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "function globalSearch" in html
+            assert "function initGlobalSearch" in html
+            assert 'id="folder-filter-bar"' in html
+
+    def test_both_uis_have_search_result_css(self, tmp_path):
+        """Both UIs must include the search-result-folder CSS class."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "search-result-folder" in html
+            assert "#global-search-input" in html
