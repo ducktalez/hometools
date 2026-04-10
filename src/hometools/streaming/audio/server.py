@@ -12,6 +12,7 @@ import mimetypes
 import threading
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +65,7 @@ def resolve_audio_path(library_dir: Path, encoded_relative_path: str) -> Path:
 
 def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False) -> str:
     """Render the audio player UI — dark theme, folder grid, player."""
-    from hometools.config import get_min_rating, get_playlist_sync_interval
+    from hometools.config import get_crossfade_duration, get_debug_filter, get_min_rating, get_playlist_sync_interval
 
     items_json = _json.dumps([t.to_dict() for t in tracks], ensure_ascii=False)
 
@@ -83,11 +84,55 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         enable_rating_write=True,
         enable_metadata_edit=True,
         enable_recent=False,  # Audio: no "recently played" section; audiobooks resume via progress API
+        enable_auto_resume=False,  # Audio: don't auto-seek to last position (songs, not audiobooks)
         enable_lyrics=True,
         enable_playlists=True,
         playlist_sync_interval_ms=get_playlist_sync_interval() * 1000,
         min_rating=get_min_rating(),
+        crossfade_duration=get_crossfade_duration(),
+        debug_filter=get_debug_filter(),
     )
+
+
+# ---------------------------------------------------------------------------
+# Rating refresh log — persistent record of per-folder refresh timestamps
+# ---------------------------------------------------------------------------
+
+_REFRESH_LOG_FILENAME = "rating_refresh_log.json"
+
+
+def _read_refresh_log(cache_dir: Path) -> dict[str, object]:
+    """Load the refresh log from disk.  Returns ``{}`` on any failure."""
+    try:
+        log_path = cache_dir / _REFRESH_LOG_FILENAME
+        if log_path.exists():
+            return _json.loads(log_path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.debug("Could not read refresh log", exc_info=True)
+    return {}
+
+
+def _update_refresh_log(
+    cache_dir: Path,
+    folder: str,
+    total: int,
+    changed: int,
+) -> str:
+    """Record a rating-refresh event for *folder* and return the ISO timestamp."""
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        log = _read_refresh_log(cache_dir)
+        log[folder] = {
+            "last_refresh": now,
+            "total": total,
+            "changed": changed,
+        }
+        log_path = cache_dir / _REFRESH_LOG_FILENAME
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(_json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        logger.debug("Could not write refresh log", exc_info=True)
+    return now
 
 
 def create_app(
@@ -302,6 +347,84 @@ def create_app(
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
 
+    @app.post("/api/audio/refresh")
+    def audio_refresh() -> dict[str, object]:
+        """Invalidate the index cache and trigger a fresh rebuild from the filesystem."""
+        _audio_index_cache.invalidate()
+        _quick_cache["items"] = []
+        _quick_cache["at"] = 0.0
+        _audio_index_cache.ensure_background_refresh(
+            resolved_library_dir,
+            cache_dir=resolved_cache_dir,
+        )
+        return {"ok": True, "detail": "Refresh started"}
+
+    @app.post("/api/audio/refresh-ratings")
+    def audio_refresh_ratings(payload: dict[str, object]) -> dict[str, object]:
+        """Re-read POPM ratings from the filesystem for specific tracks.
+
+        Designed for lazy on-demand refresh: instead of rebuilding the entire
+        5 000-item index, the client sends only the paths it is currently
+        displaying (typically 10–50 items for a single folder).
+
+        Body: ``{"paths": ["Funsongs/song1.mp3", ...]}``
+        Returns: ``{"ok": true, "ratings": {"Funsongs/song1.mp3": 5.0, ...}, "changed": 3}``
+        """
+        from hometools.audio.metadata import get_popm_rating, popm_raw_to_stars
+
+        paths = payload.get("paths", [])
+        if not isinstance(paths, list) or not paths:
+            raise HTTPException(status_code=400, detail="paths must be a non-empty list")
+
+        ratings: dict[str, float] = {}
+        for path_str in paths[:500]:  # cap to prevent abuse
+            path_str = str(path_str).strip()
+            if not path_str:
+                continue
+            try:
+                file_path = resolve_audio_path(resolved_library_dir, path_str)
+                raw = get_popm_rating(file_path)
+                stars = popm_raw_to_stars(raw)
+                ratings[path_str] = stars
+            except Exception:
+                continue  # skip unresolvable / unreadable paths
+
+        # Patch in-memory cache so subsequent /api/audio/tracks responses
+        # already contain the corrected ratings.
+        cache_updates = {p: {"rating": r} for p, r in ratings.items()}
+        changed = _audio_index_cache.patch_items(cache_updates)
+
+        # Derive folder name from common prefix of requested paths
+        folder = ""
+        if paths:
+            parts = [str(p).replace("\\", "/") for p in paths[:500] if str(p).strip()]
+            if parts:
+                first_dir = parts[0].rsplit("/", 1)[0] if "/" in parts[0] else ""
+                if first_dir and all(str(p).replace("\\", "/").startswith(first_dir + "/") for p in parts):
+                    folder = first_dir
+                else:
+                    folder = "(root)"
+
+        last_refresh = _update_refresh_log(
+            resolved_cache_dir,
+            folder,
+            total=len(ratings),
+            changed=changed,
+        )
+
+        return {
+            "ok": True,
+            "ratings": ratings,
+            "changed": changed,
+            "last_refresh": last_refresh,
+            "folder": folder,
+        }
+
+    @app.get("/api/audio/refresh-log")
+    def audio_refresh_log() -> dict[str, object]:
+        """Return the persistent rating-refresh log (folder → last timestamp)."""
+        return _read_refresh_log(resolved_cache_dir)
+
     @app.get("/api/audio/status")
     def audio_status() -> dict[str, object]:
         from hometools.streaming.core.issue_registry import summarize_issue_and_todos
@@ -383,7 +506,7 @@ def create_app(
     @app.get("/api/audio/metadata")
     def audio_metadata(path: str) -> dict[str, object]:
         """Re-read embedded metadata for a single audio track."""
-        from hometools.audio.metadata import audiofile_assume_artist_title, get_popm_rating
+        from hometools.audio.metadata import audiofile_assume_artist_title, get_popm_rating, popm_raw_to_stars
 
         try:
             file_path = resolve_audio_path(resolved_library_dir, path)
@@ -398,7 +521,7 @@ def create_app(
         try:
             artist, title = audiofile_assume_artist_title(file_path)
             raw_rating = get_popm_rating(file_path)
-            stars = round(raw_rating / 255 * 5, 1) if raw_rating > 0 else 0.0
+            stars = popm_raw_to_stars(raw_rating)
         except Exception:
             logger.warning("GET /api/audio/metadata — fallback for %s due to metadata read error", path, exc_info=True)
 
@@ -411,7 +534,7 @@ def create_app(
         Returns the ``entry_id`` of the audit log entry so the client can
         offer a one-click undo.
         """
-        from hometools.audio.metadata import get_popm_rating, set_popm_rating
+        from hometools.audio.metadata import get_popm_rating, popm_raw_to_stars, set_popm_rating, stars_to_popm_raw
         from hometools.streaming.core.audit_log import log_rating_write
 
         path = str(payload.get("path") or "").strip()
@@ -431,8 +554,8 @@ def create_app(
 
         # Read current rating before overwriting (needed for undo)
         old_raw = get_popm_rating(file_path)
-        old_stars = round(old_raw / 255 * 5, 1) if old_raw > 0 else 0.0
-        new_raw = round(stars / 5 * 255)
+        old_stars = popm_raw_to_stars(old_raw)
+        new_raw = stars_to_popm_raw(stars)
 
         ok = set_popm_rating(file_path, new_raw)
         entry_id = ""

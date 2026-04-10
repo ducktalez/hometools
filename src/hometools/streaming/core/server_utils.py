@@ -46,6 +46,7 @@ SVG_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 SVG_LYRICS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>'
 SVG_PLAYLIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'
 SVG_QUEUE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="15" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><line x1="19" y1="15" x2="19" y2="21"/><line x1="16" y1="18" x2="22" y2="18"/></svg>'
+SVG_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>'
 
 
 # ---------------------------------------------------------------------------
@@ -794,6 +795,18 @@ body.modal-open { overflow: hidden; }
   border-bottom: 1px solid #1a1a1a;
 }
 .track-item.missing-episode .track-title { font-style: italic; }
+/* debug-filtered items (shown dimmed with filter reason) */
+.track-item.debug-filtered {
+  opacity: 0.35; pointer-events: none;
+}
+.track-item.debug-filtered .track-info { position: relative; }
+.debug-reason {
+  font-size: 0.7rem; color: #e57373; font-style: italic; margin-top: 2px;
+}
+/* refresh-info label in the header */
+.refresh-info {
+  font-size: 0.68rem; color: var(--sub); margin-left: 0.5rem; white-space: nowrap;
+}
 /* conversion badge for non-native formats */
 .convert-badge {
   display: inline-block; font-size: 0.65rem; color: #f5a623;
@@ -883,6 +896,15 @@ body.modal-open { overflow: hidden; }
 }
 .edit-modal-save:hover { background: #1ed760; }
 .edit-modal-save:disabled { opacity: 0.6; cursor: not-allowed; }
+/* rating inside edit modal */
+.edit-modal-rating { display: flex; gap: 4px; padding: 4px 0; }
+.edit-modal-rating-star {
+  background: none; border: none; color: #555; cursor: pointer;
+  padding: 2px; font-size: 0; line-height: 0; transition: color 0.1s;
+}
+.edit-modal-rating-star svg { width: 22px; height: 22px; }
+.edit-modal-rating-star.active { color: #ffd700; }
+.edit-modal-rating-star.hover { color: #ffd700; }
 /* ── Playlist add button (per track) ── */
 .track-playlist-btn {
   background: none; border: 1px solid #555; color: var(--sub);
@@ -1235,6 +1257,18 @@ body.playlist-dragging .track-list { overflow: visible; }
 .audit-btn svg { width: 16px; height: 16px; }
 .audit-btn:hover { color: var(--accent); border-color: var(--accent); }
 
+/* ── Refresh button ── */
+.refresh-btn {
+  background: none; border: 1px solid #444; color: var(--sub);
+  border-radius: 4px; padding: 0.25rem 0.4rem; cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  flex-shrink: 0; line-height: 0;
+}
+.refresh-btn svg { width: 16px; height: 16px; }
+.refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
+.refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* ── Folder list mode ── */
 .folder-grid.list-mode {
   display: flex; flex-direction: column; gap: 0; padding: 0;
@@ -1338,10 +1372,10 @@ body.playlist-dragging .track-list { overflow: visible; }
   /* max-height set dynamically by _syncQueueBottom() — user-resizable via drag handle */
   max-height: 70vh;
   box-shadow: 0 -8px 32px rgba(0,0,0,0.55);
-  transform: translateY(100%); opacity: 0; pointer-events: none;
-  transition: transform 0.25s cubic-bezier(.4,0,.2,1), opacity 0.25s cubic-bezier(.4,0,.2,1);
+  clip-path: inset(100% 0 0 0); pointer-events: none;
+  transition: clip-path 0.3s cubic-bezier(.4,0,.2,1);
 }
-.queue-panel.visible { transform: translateY(0); opacity: 1; pointer-events: auto; }
+.queue-panel.visible { clip-path: inset(0); pointer-events: auto; }
 .queue-panel.dragging { transition: none; }
 .queue-drag-handle {
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
@@ -1436,6 +1470,9 @@ def render_player_js(
     enable_playlists: bool = False,
     playlist_sync_interval_ms: int = 30000,
     min_rating: int = 0,
+    enable_auto_resume: bool = True,
+    crossfade_duration: int = 0,
+    debug_filter: bool = False,
 ) -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
@@ -1651,6 +1688,9 @@ def render_player_js(
   var MIN_RATING_THRESHOLD = """
         + str(min_rating)
         + """;
+  var DEBUG_FILTER = """
+        + ("true" if debug_filter else "false")
+        + """;
   var RATING_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/rating';
@@ -1663,6 +1703,12 @@ def render_player_js(
   var RECENT_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/recent';
+  var AUTO_RESUME_ENABLED = """
+        + ("true" if enable_auto_resume else "false")
+        + """;
+  var CROSSFADE_DURATION = """
+        + str(crossfade_duration)
+        + """;
   var METADATA_EDIT_ENABLED = """
         + ("true" if enable_metadata_edit else "false")
         + """;
@@ -1696,6 +1742,9 @@ def render_player_js(
         + SVG_QUEUE.replace("'", "\\'")
         + """';
   var IC_REMOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  var IC_REFRESH = '"""
+        + SVG_REFRESH.replace("'", "\\'")
+        + """';
   var AUDIOBOOK_DIRS = """
         + __import__("json").dumps(__import__("hometools.config", fromlist=["get_audiobook_dirs"]).get_audiobook_dirs())
         + """;
@@ -2450,6 +2499,89 @@ def render_player_js(
     scheduleBackgroundRefresh(0);
   }
 
+  /* ── Manual catalog refresh (user-triggered) ── */
+  var _refreshBtn = document.getElementById('refresh-btn');
+  function refreshCatalog() {
+    if (_refreshBtn) _refreshBtn.classList.add('spinning');
+    _ratingRefreshPath = null;
+    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
+    fetch(base + '/refresh', { method: 'POST' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function() {
+        return fetch(API_PATH, { cache: 'no-store' });
+      })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+        if (!data) { showToast('Refresh fehlgeschlagen'); return; }
+        allItems = data && Array.isArray(data.items) ? data.items : [];
+        if (inPlaylist) {
+          var items = itemsUnder(currentPath);
+          showPlaylist(items, false);
+        } else {
+          showFolderView();
+        }
+        showToast('Katalog aktualisiert — ' + allItems.length + ' Titel');
+      })
+      .catch(function() {
+        if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+        showToast('Refresh fehlgeschlagen');
+      });
+  }
+  if (_refreshBtn) _refreshBtn.addEventListener('click', refreshCatalog);
+
+  /* ── Lazy per-folder rating refresh ── */
+  var _ratingRefreshPath = null;
+  function refreshFolderRatings(folderItems) {
+    if (!RATING_WRITE_ENABLED || !folderItems.length) return;
+    var refreshPath = currentPath;
+    /* Skip if we just refreshed this exact folder */
+    if (_ratingRefreshPath === refreshPath) return;
+    _ratingRefreshPath = refreshPath;
+    var paths = folderItems.map(function(t) { return t.relative_path; });
+    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
+    fetch(base + '/refresh-ratings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths: paths })
+    })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (!data || !data.ratings) return;
+      var ratings = data.ratings;
+      var anyChange = data.changed > 0;
+      /* Patch allItems */
+      for (var i = 0; i < allItems.length; i++) {
+        var rp = allItems[i].relative_path;
+        if (ratings.hasOwnProperty(rp) && allItems[i].rating !== ratings[rp]) {
+          allItems[i] = Object.assign({}, allItems[i], { rating: ratings[rp] });
+        }
+      }
+      /* Patch playlistItems */
+      for (var j = 0; j < playlistItems.length; j++) {
+        var rp2 = playlistItems[j].relative_path;
+        if (ratings.hasOwnProperty(rp2) && playlistItems[j].rating !== ratings[rp2]) {
+          playlistItems[j] = Object.assign({}, playlistItems[j], { rating: ratings[rp2] });
+        }
+      }
+      /* Show refresh timestamp */
+      var infoEl = document.getElementById('refresh-info');
+      if (infoEl && data.last_refresh) {
+        var dt = new Date(data.last_refresh);
+        var hhmm = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
+        var countInfo = Object.keys(ratings).length + ' Ratings gelesen';
+        if (anyChange) countInfo += ', ' + data.changed + ' aktualisiert';
+        infoEl.textContent = countInfo + ' (' + hhmm + ')';
+        infoEl.title = 'Letzte Rating-Aktualisierung: ' + dt.toLocaleString();
+      }
+      /* Re-render if still viewing the same folder */
+      if (inPlaylist && currentPath === refreshPath) {
+        applyFilter();
+      }
+    })
+    .catch(function() { /* silent background refresh */ });
+  }
+
 """
         + waveform_setup_js
         + sprite_preview_js
@@ -2679,6 +2811,9 @@ def render_player_js(
     destroyPlaylistDragDrop();
     inPlaylist = false;
     _currentPlaylistId = '';
+    /* Clear refresh-info when leaving playlist view */
+    var rInfo = document.getElementById('refresh-info');
+    if (rInfo) rInfo.textContent = '';
     var c = contentsAt(currentPath);
     var isRoot = !currentPath;
     var showOrigNames = (viewMode === 'filenames');
@@ -2915,6 +3050,8 @@ def render_player_js(
     currentIndex = -1;
     renderBreadcrumb();
     applyFilter();
+    /* Lazy refresh: re-read ratings from filesystem for visible items */
+    refreshFolderRatings(items);
     /* Rebuild shuffle queue for the new playlist */
     if (shuffleMode) rebuildShuffleQueue(startIdx || 0);
     if (autoplay && playlistItems.length) {
@@ -3005,30 +3142,68 @@ def render_player_js(
     var needle = searchInput.value.trim().toLowerCase();
     var sortBy = sortField.value;
     var items = playlistItems;
-    /* Global min-rating threshold: hide tracks that have been rated at or below the threshold.
-       Unrated tracks (rating 0) are always shown. */
-    if (MIN_RATING_THRESHOLD > 0) {
-      items = items.filter(function(t) {
+
+    if (DEBUG_FILTER) {
+      /* ── Debug mode: annotate items with reasons instead of removing ── */
+      items = items.map(function(t) {
+        var reasons = [];
         var r = t.rating || 0;
-        return r === 0 || r > MIN_RATING_THRESHOLD;
+        if (MIN_RATING_THRESHOLD > 0 && r > 0 && r < MIN_RATING_THRESHOLD) {
+          reasons.push('Rating ' + r + '\\u2605 < Schwelle ' + MIN_RATING_THRESHOLD);
+        }
+        if (filterRating > 0 && (r < filterRating)) {
+          reasons.push('Quick-Filter: Rating < ' + filterRating + '\\u2605');
+        }
+        if (filterFav && !_savedFavorites[t.relative_path]) {
+          reasons.push('Kein Favorit');
+        }
+        if (filterGenre && t.genre !== filterGenre) {
+          reasons.push('Genre \\u2260 ' + filterGenre);
+        }
+        if (reasons.length > 0) {
+          /* Clone the item so we don't mutate the original in playlistItems */
+          var clone = {};
+          for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
+          clone._debugReason = reasons.join(' | ');
+          return clone;
+        }
+        return t;
       });
-    }
-    if (needle) {
-      items = items.filter(function(t) {
-        return t.title.toLowerCase().indexOf(needle) >= 0 ||
-               t.artist.toLowerCase().indexOf(needle) >= 0 ||
-               t.relative_path.toLowerCase().indexOf(needle) >= 0;
-      });
-    }
-    /* Quick-filters */
-    if (filterRating > 0) {
-      items = items.filter(function(t) { return (t.rating || 0) >= filterRating; });
-    }
-    if (filterFav) {
-      items = items.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
-    }
-    if (filterGenre) {
-      items = items.filter(function(t) { return t.genre === filterGenre; });
+      /* Text search always filters even in debug mode */
+      if (needle) {
+        items = items.filter(function(t) {
+          return t.title.toLowerCase().indexOf(needle) >= 0 ||
+                 t.artist.toLowerCase().indexOf(needle) >= 0 ||
+                 t.relative_path.toLowerCase().indexOf(needle) >= 0;
+        });
+      }
+    } else {
+      /* ── Normal mode: filter items out ── */
+      /* Global min-rating threshold: hide tracks that have been rated at or below the threshold.
+         Unrated tracks (rating 0) are always shown. */
+      if (MIN_RATING_THRESHOLD > 0) {
+        items = items.filter(function(t) {
+          var r = t.rating || 0;
+          return r === 0 || r >= MIN_RATING_THRESHOLD;
+        });
+      }
+      if (needle) {
+        items = items.filter(function(t) {
+          return t.title.toLowerCase().indexOf(needle) >= 0 ||
+                 t.artist.toLowerCase().indexOf(needle) >= 0 ||
+                 t.relative_path.toLowerCase().indexOf(needle) >= 0;
+        });
+      }
+      /* Quick-filters */
+      if (filterRating > 0) {
+        items = items.filter(function(t) { return (t.rating || 0) >= filterRating; });
+      }
+      if (filterFav) {
+        items = items.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
+      }
+      if (filterGenre) {
+        items = items.filter(function(t) { return t.genre === filterGenre; });
+      }
     }
     items = items.slice().sort(function(a, b) {
       var sa = a.season || 0, sb = b.season || 0;
@@ -3083,7 +3258,7 @@ def render_player_js(
   }
 
   function markActive() {
-    document.querySelectorAll('.track-item:not(.missing-episode)').forEach(function(el) {
+    document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered)').forEach(function(el) {
       var idx = Number(el.dataset.index);
       el.classList.toggle('active', idx === currentIndex);
       if (idx === currentIndex) el.scrollIntoView({ block: 'nearest' });
@@ -3115,11 +3290,15 @@ def render_player_js(
   }
 
   function renderTracks(tracks) {
-    filteredItems = tracks;
+    /* Separate real items from debug-dimmed items for filteredItems / shuffle */
+    var realTracks = DEBUG_FILTER ? tracks.filter(function(t) { return !t._debugReason; }) : tracks;
+    var debugCount = tracks.length - realTracks.length;
+    filteredItems = realTracks;
     /* Rebuild shuffle queue whenever the filtered set changes */
     if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
-    var noun = tracks.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
-    trackCount.textContent = tracks.length + ' ' + noun;
+    var noun = realTracks.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
+    trackCount.textContent = realTracks.length + ' ' + noun +
+      (debugCount > 0 ? ' (+ ' + debugCount + ' ausgeblendet)' : '');
     if (!tracks.length) {
       trackList.innerHTML = '<li class="empty-hint">No matching items.</li>';
       return;
@@ -3133,7 +3312,24 @@ def render_player_js(
         var seLabel = 'S' + String(t.season).padStart(2, '0') + 'E' + String(t.episode).padStart(2, '0');
         return '<li class="track-item missing-episode">' +
           '<span class="track-num"><span class="num-text">' + seLabel + '</span></span>' +
-          '<div class="track-info"><div class="track-title">—</div></div></li>';
+          '<div class="track-info"><div class="track-title">\u2014</div></div></li>';
+      }
+      /* debug-filtered placeholder: dimmed, not playable */
+      if (t._debugReason) {
+        var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
+        var subtitle = t.artist || t.relative_path;
+        var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
+        var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
+        return '<li class="track-item debug-filtered">' +
+          '<span class="track-num"><span class="num-text">\u00b7</span></span>' +
+          '<div class="thumb-wrap track-thumb-wrap">' +
+          '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
+          ratingBar + '</div>' +
+          '<div class="track-info">' +
+            '<div class="track-title">' + escHtml(displayTitle) + '</div>' +
+            '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
+            '<div class="debug-reason">' + escHtml(t._debugReason) + '</div>' +
+          '</div></li>';
       }
       var idx = realIdx++;
       var isSeries = (t.season || 0) > 0;
@@ -3170,7 +3366,7 @@ def render_player_js(
         '<button class="track-queue-btn" data-relative-path="' + escHtml(t.relative_path || '') + '" data-index="' + idx + '" title="Zur Warteschlange hinzuf\\u00fcgen">' + IC_QUEUE + '</button>' +
         '</li>';
     }).join('');
-    document.querySelectorAll('.track-item:not(.missing-episode)').forEach(function(el) {
+    document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered)').forEach(function(el) {
       el.addEventListener('click', function(e) { if (!wasDrag(e)) playTrack(Number(el.dataset.index)); });
     });
     document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
@@ -4162,6 +4358,8 @@ def render_player_js(
     /* Reset bg audio for new track */
     stopBgSync();
     if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; bgAudio.removeAttribute('src'); }
+    _xfadeCleanup();
+    player.volume = 1;
     wasPlaying = false;
     revokeOfflineUrl();
 
@@ -4224,7 +4422,7 @@ def render_player_js(
     /* playback progress: track current item and try to resume */
     clearTimeout(_progressTimer);
     _progressRelPath = t.relative_path || '';
-    loadAndSeekProgress(_progressRelPath);
+    if (AUTO_RESUME_ENABLED) loadAndSeekProgress(_progressRelPath);
 
     /* load sprite sheet for video scrubber preview */
     loadSpriteData(t.relative_path || '');
@@ -4546,8 +4744,108 @@ def render_player_js(
     });
   }
 
+  /* ── Crossfade (audio only) ── */
+  var _xfadeAudio = null;   /* second <audio> element for crossfade target */
+  var _xfading = false;     /* true while a crossfade is in progress */
+  var _xfadeTimer = null;   /* setInterval for volume ramp */
+  var _xfadeNextItem = null;/* the item being crossfaded into */
+  var _xfadeNextIndex = -1; /* filteredItems index of the crossfade target */
+
+  function _xfadeCleanup() {
+    if (_xfadeTimer) { clearInterval(_xfadeTimer); _xfadeTimer = null; }
+    if (_xfadeAudio) { _xfadeAudio.pause(); _xfadeAudio.removeAttribute('src'); }
+    _xfading = false;
+    _xfadeNextItem = null;
+    _xfadeNextIndex = -1;
+  }
+
+  function _resolveNextForCrossfade() {
+    /* Determine the next item WITHOUT consuming queue or advancing state */
+    if (_userQueue.length > 0) {
+      return { item: _userQueue[0], index: -1, fromQueue: true };
+    }
+    if (!filteredItems.length) return null;
+    var ni = nextIndex();
+    if (ni < 0 || ni >= filteredItems.length) return null;
+    return { item: filteredItems[ni], index: ni, fromQueue: false };
+  }
+
+  function _startCrossfade() {
+    if (_xfading) return;
+    var next = _resolveNextForCrossfade();
+    if (!next || !next.item || !next.item.stream_url) return;
+    _xfading = true;
+    _xfadeNextItem = next.item;
+    _xfadeNextIndex = next.index;
+
+    /* Create or reuse the xfade audio element */
+    if (!_xfadeAudio) {
+      _xfadeAudio = document.createElement('audio');
+      _xfadeAudio.style.display = 'none';
+      _xfadeAudio.preload = 'auto';
+      document.body.appendChild(_xfadeAudio);
+    }
+    _xfadeAudio.volume = 0;
+    _xfadeAudio.src = next.item.stream_url;
+    _xfadeAudio.load();
+    _xfadeAudio.play().catch(function() { _xfadeCleanup(); });
+
+    /* Ramp volumes: fade out current, fade in next */
+    var steps = 20; /* 50ms intervals over CROSSFADE_DURATION */
+    var interval = (CROSSFADE_DURATION * 1000) / steps;
+    var step = 0;
+    _xfadeTimer = setInterval(function() {
+      step++;
+      var progress = Math.min(step / steps, 1);
+      /* Ease curve: sine ease-in-out */
+      var ease = 0.5 - 0.5 * Math.cos(Math.PI * progress);
+      player.volume = Math.max(0, 1 - ease);
+      _xfadeAudio.volume = Math.min(1, ease);
+      if (step >= steps) {
+        clearInterval(_xfadeTimer);
+        _xfadeTimer = null;
+        _finishCrossfade();
+      }
+    }, interval);
+  }
+
+  function _finishCrossfade() {
+    if (!_xfadeNextItem) { _xfadeCleanup(); return; }
+    /* Save progress for the outgoing track */
+    saveProgressNow();
+    clearProgressFor(_progressRelPath);
+
+    /* Advance the actual playback state */
+    var nextItem = _xfadeNextItem;
+    var fromQueue = _xfadeNextIndex === -1 && _userQueue.length > 0;
+
+    /* Stop the xfade audio — main player takes over */
+    var xfSrc = _xfadeAudio.src;
+    var xfTime = _xfadeAudio.currentTime;
+    _xfadeAudio.pause();
+
+    _xfading = false;
+    _xfadeNextItem = null;
+
+    if (fromQueue) {
+      /* Consume from queue */
+      playFromQueue(0);
+    } else {
+      playTrack(_xfadeNextIndex >= 0 ? _xfadeNextIndex : nextIndex());
+    }
+    _xfadeNextIndex = -1;
+
+    /* Restore volume to 1 for the main player */
+    player.volume = 1;
+  }
+
   player.addEventListener('ended', function() {
     clearProgressFor(_progressRelPath);
+    if (_xfading) {
+      /* Crossfade already handled transition — just finish it */
+      _finishCrossfade();
+      return;
+    }
     playNextItem();
   });
   player.addEventListener('pause', function() {
@@ -4557,6 +4855,7 @@ def render_player_js(
     if (bgAudioIsActive()) return;
     /* User-initiated pause (custom button OR native controls) */
     wasPlaying = false;
+    if (_xfading) { _xfadeCleanup(); player.volume = 1; }
     if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
     stopBgSync();
     if (!player.ended) btnPlay.innerHTML = IC_PLAY;
@@ -4569,6 +4868,13 @@ def render_player_js(
     timeCur.textContent = fmtTime(player.currentTime);
     drawWaveform(player.currentTime / player.duration);
     saveProgressDebounced();
+    /* Crossfade trigger: start fading when remaining time <= CROSSFADE_DURATION */
+    if (CROSSFADE_DURATION > 0 && !_xfading && !isVideoPlayer) {
+      var remaining = player.duration - player.currentTime;
+      if (remaining > 0 && remaining <= CROSSFADE_DURATION && player.duration > CROSSFADE_DURATION + 5) {
+        _startCrossfade();
+      }
+    }
   });
   player.addEventListener('loadedmetadata', function() {
     timeDur.textContent = fmtTime(player.duration); progressBar.max = player.duration;
@@ -4638,6 +4944,50 @@ def render_player_js(
   }
 
   /* ── metadata edit modal ── */
+  var _editModalRating = 0; /* selected rating inside the edit modal */
+
+  function renderEditModalRating(stars) {
+    var container = document.getElementById('edit-modal-rating');
+    if (!container) return;
+    var rounded = Math.round(stars || 0);
+    _editModalRating = rounded;
+    container.innerHTML = '';
+    for (var i = 1; i <= 5; i++) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'edit-modal-rating-star' + (i <= rounded ? ' active' : '');
+      btn.innerHTML = i <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
+      btn.dataset.star = String(i);
+      btn.title = i + (i === 1 ? ' Stern' : ' Sterne');
+      container.appendChild(btn);
+    }
+  }
+
+  (function _initEditModalRatingEvents() {
+    var container = document.getElementById('edit-modal-rating');
+    if (!container) return;
+    container.addEventListener('mouseover', function(e) {
+      var btn = e.target.closest('.edit-modal-rating-star');
+      if (!btn) return;
+      var n = parseInt(btn.dataset.star, 10);
+      container.querySelectorAll('.edit-modal-rating-star').forEach(function(b, i) {
+        b.classList.toggle('hover', i < n);
+      });
+    });
+    container.addEventListener('mouseleave', function() {
+      container.querySelectorAll('.edit-modal-rating-star').forEach(function(b) {
+        b.classList.remove('hover');
+      });
+    });
+    container.addEventListener('click', function(e) {
+      var btn = e.target.closest('.edit-modal-rating-star');
+      if (!btn) return;
+      var n = parseInt(btn.dataset.star, 10);
+      /* Toggle off if clicking the same star */
+      renderEditModalRating(n === _editModalRating ? 0 : n);
+    });
+  })();
+
   function openEditModal(idx) {
     if (!METADATA_EDIT_ENABLED) return;
     var t = filteredItems[idx];
@@ -4649,6 +4999,14 @@ def render_player_js(
     document.getElementById('edit-modal-album-input').value = '';
     document.getElementById('edit-modal-path').value = t.relative_path || '';
     document.getElementById('edit-modal-idx').value = String(idx);
+    /* Rating stars — only if rating write is enabled */
+    var ratingField = document.getElementById('edit-modal-rating-field');
+    if (RATING_WRITE_ENABLED) {
+      if (ratingField) ratingField.style.display = '';
+      renderEditModalRating(t.rating || 0);
+    } else {
+      if (ratingField) ratingField.style.display = 'none';
+    }
     backdrop.removeAttribute('hidden');
     document.body.classList.add('modal-open');
     document.getElementById('edit-modal-title-input').focus();
@@ -4669,17 +5027,38 @@ def render_player_js(
     var saveBtn = document.getElementById('edit-modal-save-btn');
     if (!path) return;
     if (saveBtn) saveBtn.disabled = true;
-    fetch(METADATA_EDIT_PATH, {
+
+    /* Determine if rating changed */
+    var t = filteredItems[idx];
+    var oldRating = t ? Math.round(t.rating || 0) : 0;
+    var newRating = _editModalRating;
+    var ratingChanged = RATING_WRITE_ENABLED && (newRating !== oldRating);
+
+    /* Save metadata (title/artist/album) */
+    var metaPromise = fetch(METADATA_EDIT_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: path, title: title, artist: artist, album: album || null })
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
+    }).then(function(r) { return r.json(); });
+
+    /* Save rating if changed */
+    var ratingPromise = ratingChanged
+      ? fetch(RATING_API_PATH, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: path, rating: newRating })
+        }).then(function(r) { return r.ok ? r.json() : null; })
+      : Promise.resolve(null);
+
+    Promise.all([metaPromise, ratingPromise])
+      .then(function(results) {
+        var d = results[0];
+        var rd = results[1];
         if (saveBtn) saveBtn.disabled = false;
         if (d.ok) {
           /* Update in-memory items so the list reflects changes immediately */
           var updates = { title: title, artist: artist };
+          if (rd && rd.ok) updates.rating = rd.rating;
           if (filteredItems[idx]) {
             filteredItems[idx] = Object.assign({}, filteredItems[idx], updates);
           }
@@ -4695,7 +5074,10 @@ def render_player_js(
           if (idx === currentIndex) {
             if (playerTitle) playerTitle.textContent = title;
             if (playerArtist) playerArtist.textContent = artist;
+            if (rd && rd.ok) renderPlayerRating(rd.rating);
           }
+          /* Rebuild weighted shuffle queue if rating changed */
+          if (rd && rd.ok && shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
           showToast('Gespeichert \u2713');
         } else {
           showToast('Fehler beim Speichern');
@@ -5991,6 +6373,9 @@ def render_media_page(
     enable_playlists: bool = False,
     playlist_sync_interval_ms: int = 30000,
     min_rating: int = 0,
+    enable_auto_resume: bool = True,
+    crossfade_duration: int = 0,
+    debug_filter: bool = False,
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -6024,6 +6409,9 @@ def render_media_page(
         enable_playlists=enable_playlists,
         playlist_sync_interval_ms=playlist_sync_interval_ms,
         min_rating=min_rating,
+        enable_auto_resume=enable_auto_resume,
+        crossfade_duration=crossfade_duration,
+        debug_filter=debug_filter,
     )
     is_video = media_element_tag == "video"
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
@@ -6095,6 +6483,10 @@ def render_media_page(
       <div class="edit-field">
         <label for="edit-modal-album-input">Album <span style="color:var(--sub);font-size:0.75rem">(optional)</span></label>
         <input id="edit-modal-album-input" type="text" autocomplete="off" />
+      </div>
+      <div class="edit-field" id="edit-modal-rating-field">
+        <label>Bewertung</label>
+        <div class="edit-modal-rating" id="edit-modal-rating"></div>
       </div>
       <input type="hidden" id="edit-modal-path" />
       <input type="hidden" id="edit-modal-idx" />
@@ -6247,10 +6639,12 @@ def render_media_page(
     <span class="logo-title" id="header-title">{html.escape(title)}</span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
+    <button class="refresh-btn" id="refresh-btn" title="Katalog neu laden">{SVG_REFRESH}</button>
     <a class="audit-btn" href="/audit" title="Änderungsverlauf">{SVG_HISTORY}</a>
     {mode_controls_html}
     {playlist_pill_html}
     <span class="track-count" id="track-count"></span>
+    <span class="refresh-info" id="refresh-info"></span>
   </header>
 
   <!-- breadcrumb navigation -->

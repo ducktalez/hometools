@@ -70,7 +70,7 @@ def resolve_video_path(library_dir: Path, encoded_relative_path: str) -> Path:
 
 def render_video_index_html(items, *, safe_mode: bool = False) -> str:
     """Render the video player UI — dark theme, folder grid, inline video element."""
-    from hometools.config import get_min_rating, get_playlist_sync_interval
+    from hometools.config import get_debug_filter, get_min_rating, get_playlist_sync_interval
 
     items_json = _json.dumps([i.to_dict() for i in items], ensure_ascii=False)
 
@@ -88,6 +88,7 @@ def render_video_index_html(items, *, safe_mode: bool = False) -> str:
         enable_playlists=True,
         playlist_sync_interval_ms=get_playlist_sync_interval() * 1000,
         min_rating=get_min_rating(),
+        debug_filter=get_debug_filter(),
     )
 
 
@@ -305,6 +306,18 @@ def create_app(
             "cache": cache_status,
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
+
+    @app.post("/api/video/refresh")
+    def video_refresh() -> dict[str, object]:
+        """Invalidate the index cache and trigger a fresh rebuild from the filesystem."""
+        _video_index_cache.invalidate()
+        _quick_cache["items"] = []
+        _quick_cache["at"] = 0.0
+        _video_index_cache.ensure_background_refresh(
+            resolved_library_dir,
+            cache_dir=resolved_cache_dir,
+        )
+        return {"ok": True, "detail": "Refresh started"}
 
     @app.get("/api/video/status")
     def video_status() -> dict[str, object]:

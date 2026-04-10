@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["IndexCache"]
 
+# Bump this when the data format changes (e.g. POPM mapping) so stale
+# snapshots are discarded and rebuilt from the filesystem.
+# History: 1 = initial, 2 = WMP-standard POPM mapping (2026-04-10)
+_SNAPSHOT_VERSION = 2
+
 
 class IndexCache:
     """Thread-safe, TTL-based in-memory cache for a ``list[MediaItem]``.
@@ -296,6 +301,14 @@ class IndexCache:
 
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("version", 0) < _SNAPSHOT_VERSION:
+                logger.info(
+                    "Index cache snapshot outdated (v%s < v%s), discarding: %s",
+                    payload.get("version"),
+                    _SNAPSHOT_VERSION,
+                    self._label,
+                )
+                return None
             if payload.get("library_dir") != str(library_dir):
                 return None
             raw_items = payload.get("items")
@@ -323,7 +336,7 @@ class IndexCache:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             payload = {
-                "version": 1,
+                "version": _SNAPSHOT_VERSION,
                 "label": self._label,
                 "library_dir": str(library_dir),
                 "saved_at": time.time(),
@@ -332,6 +345,51 @@ class IndexCache:
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         except Exception:
             logger.debug("Index cache snapshot save failed for %s", self._label, exc_info=True)
+
+    def patch_items(self, updates: dict[str, dict[str, object]]) -> int:
+        """Replace fields on specific cached items without a full rebuild.
+
+        Useful for lazy per-item refreshes (e.g. re-reading POPM ratings for
+        only the tracks the user is currently viewing).
+
+        Parameters
+        ----------
+        updates:
+            Mapping of ``relative_path`` → dict of field overrides.
+            Example: ``{"folder/song.mp3": {"rating": 5.0}}``
+
+        Returns the number of items that were actually modified.
+        """
+        from dataclasses import replace
+
+        if not updates:
+            return 0
+        with self._lock:
+            if not self._items:
+                return 0
+            changed = 0
+            new_items: list[MediaItem] = []
+            for item in self._items:
+                if item.relative_path in updates:
+                    overrides = updates[item.relative_path]
+                    try:
+                        new_item = replace(item, **overrides)
+                        if new_item != item:
+                            changed += 1
+                        new_items.append(new_item)
+                    except Exception:
+                        new_items.append(item)
+                else:
+                    new_items.append(item)
+            if changed:
+                self._items = new_items
+                logger.info(
+                    "Index cache patched: %s — %d/%d items updated",
+                    self._label,
+                    changed,
+                    len(updates),
+                )
+        return changed
 
     def invalidate(self) -> None:
         """Force the next ``get()`` call to rebuild the index."""

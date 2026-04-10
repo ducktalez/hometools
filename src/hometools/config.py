@@ -296,9 +296,38 @@ def get_min_rating() -> int:
     return max(0, min(val, 5))
 
 
+def get_debug_filter() -> bool:
+    """Return whether filtered items should be shown greyed-out with reason.
+
+    When ``True``, items that are hidden by ``MIN_RATING`` or Quick-Filters
+    are **not** removed from the track list.  Instead, they appear dimmed
+    with a short text explaining why they would normally be hidden.
+
+    Useful for debugging rating issues and understanding filter behaviour.
+    Set ``HOMETOOLS_DEBUG_FILTER=true`` in ``.env`` to enable.
+    """
+    return _get_bool_from_env("HOMETOOLS_DEBUG_FILTER", False)
+
+
 # ---------------------------------------------------------------------------
 # Recently played
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Crossfade
+# ---------------------------------------------------------------------------
+
+
+def get_crossfade_duration() -> int:
+    """Return the crossfade duration in seconds.
+
+    ``0`` means crossfade is disabled (hard cut between tracks).
+    Typical values: 3–5 seconds.
+    Set ``HOMETOOLS_CROSSFADE_DURATION`` to override.  Default: 0.
+    """
+    val = _get_int_from_env("HOMETOOLS_CROSSFADE_DURATION", 0)
+    return max(0, min(val, 12))
 
 
 # ---------------------------------------------------------------------------

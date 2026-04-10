@@ -155,7 +155,16 @@ Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progr
 - Debounced Save alle 5 Sekunden via `timeupdate`-Event
 - Sofortiges Speichern bei Pause
 - Löschung bei `ended`
-- Beim Track-Wechsel: letzte Position laden, Toast „Fortfahren bei X:XX" anzeigen
+- Beim Track-Wechsel: letzte Position laden, Toast „Fortfahren bei X:XX" anzeigen (nur wenn `AUTO_RESUME_ENABLED`)
+
+**Auto-Resume (`enable_auto_resume`):**
+
+| Server | `enable_auto_resume` | Begründung |
+|---|---|---|
+| **Audio** | `False` | Songs starten immer von vorn; kein „Fortfahren bei"-Toast |
+| **Video** | `True` (Default) | Serien/Filme nahtlos an letzter Position fortsetzen |
+
+`AUTO_RESUME_ENABLED` steuert nur den Seek beim Track-Wechsel. Progress wird **immer** gespeichert (für „Zuletzt gespielt"-Sektion und explizites Resume via Klick in der Sektion).
 
 ## Recently Added (Sortierung nach Neuheit)
 
@@ -166,8 +175,8 @@ Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progr
 Alle Player-Buttons und UI-Controls verwenden **inline SVGs** statt Unicode-Zeichen. iOS rendert Unicode-Steuerzeichen (▶ ◄ ► ⏸ ⊞ ↓) als farbige Emojis, was das Layout zerstört.
 
 **Konvention:**
-- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST`, `SVG_QUEUE` in `server_utils.py`
-- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST`, `IC_QUEUE`, `IC_REMOVE` — über `innerHTML` gesetzt (nicht `textContent`)
+- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST`, `SVG_QUEUE`, `SVG_REFRESH` in `server_utils.py`
+- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST`, `IC_QUEUE`, `IC_REMOVE`, `IC_REFRESH` — über `innerHTML` gesetzt (nicht `textContent`)
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
 - **Nie** Unicode-Zeichen oder HTML-Entities (`&#9733;`, `&#9654;` etc.) — iOS rendert sie als Emoji
 
@@ -205,15 +214,29 @@ Jeder Track in der Liste hat einen Pin-Button (`track-pin-btn`, `IC_PIN` SVG). K
 
 `MediaItem` trägt ein `rating`-Feld (Float `0.0–5.0`, Default `0.0`).
 
-**Audio:** `get_popm_rating(path)` liest den ID3-POPM-Tag (Popularimeter, 0–255) und konvertiert ihn linear auf 0.0–5.0 Sterne. Nur MP3/ID3-Dateien werden ausgelesen — M4A/FLAC und andere Formate geben `0.0` zurück ohne Exception. Der `/api/audio/metadata`-Endpoint gibt das Rating ebenfalls zurück.
+**Audio:** `get_popm_rating(path)` liest den rohen ID3-POPM-Tag (Popularimeter, 0–255). Die Konvertierung in Sterne erfolgt über `popm_raw_to_stars()` mit dem **Windows Media Player Standard-Mapping** (nicht linear!):
+
+| Raw-Bereich | Sterne | Kanonischer Wert |
+|-------------|--------|-----------------|
+| 0           | 0 (unbewertet) | 0 |
+| 1–31        | 1★     | 1   |
+| 32–95       | 2★     | 64  |
+| 96–159      | 3★     | 128 |
+| 160–223     | 4★     | 196 |
+| 224–255     | 5★     | 255 |
+
+Umgekehrt schreibt `stars_to_popm_raw()` die kanonischen WMP-Werte. Dadurch sind Bewertungen mit foobar2000, MusicBee, Mp3tag und Windows Explorer kompatibel.
+
+Nur MP3/ID3-Dateien werden ausgelesen — M4A/FLAC und andere Formate geben `0.0` zurück ohne Exception. Der `/api/audio/metadata`-Endpoint gibt das Rating ebenfalls zurück.
 
 **Video:** Kein Rating-Lesen; Defaultwert `0.0`.
 
 **UI:** Eine 3px hohe Verlaufsleiste (orange–gelb) erscheint am unteren Rand des Thumbnail-Bilds — sowohl in Track-Listen als auch in Folder-Grid-Karten. Die Breite entspricht `rating / 5 * 100 %`. Unbewertet = keine Leiste. CSS-Klasse `.rating-bar`.
 
 **Design-Regeln:**
-- Schreiben von Ratings aus dem Browser ist nicht implementiert (kein Write-Endpoint).
+- `popm_raw_to_stars()` und `stars_to_popm_raw()` in `audio/metadata.py` sind die einzigen Stellen für POPM↔Sterne-Konvertierung. Niemals manuell `raw/255*5` oder `stars/5*255` rechnen.
 - `get_popm_rating()` prüft vor dem ID3-Lesen die Dateiendung; gibt bei M4A/FLAC `0` zurück um den `can't sync to MPEG frame`-Fehler zu vermeiden.
+- **Snapshot-Versionierung:** `_SNAPSHOT_VERSION` in `index_cache.py` muss gebumpt werden, wenn sich das Datenformat ändert (z.B. Rating-Mapping). Alte Snapshots werden beim Laden verworfen, erzwingen frischen Rebuild vom Dateisystem. Aktuell: v2 (WMP-Mapping).
 
 ### Rating-Schwellenwert (Min-Rating)
 
@@ -232,6 +255,83 @@ if (MIN_RATING_THRESHOLD > 0) {
 ```
 
 **Beispiel:** `HOMETOOLS_MIN_RATING=2` blendet alle 1★ und 2★ Tracks aus, zeigt aber unbewertete und 3★+ Tracks.
+
+### Lazy Per-Folder Rating Refresh
+
+Beim Öffnen eines Ordners (Leaf-Folder → `showPlaylist`) werden die POPM-Ratings der angezeigten Tracks on-demand vom Dateisystem neu gelesen — **ohne** den gesamten Katalog neu zu bauen. Das löst das Problem, dass ein Full-Rebuild von 5 000+ Songs mehrere Sekunden dauert und alte Ratings bis dahin sichtbar bleiben.
+
+**Ablauf:**
+1. `showPlaylist(items, ...)` rendert sofort mit den gecachten Daten (kein Delay).
+2. JS `refreshFolderRatings(items)` feuert einen asynchronen `POST /api/audio/refresh-ratings` mit den `relative_path`-Werten der Folder-Items.
+3. Der Server liest nur die übergebenen Dateien (typisch 10–50) via `get_popm_rating()` + `popm_raw_to_stars()`.
+4. `IndexCache.patch_items()` ersetzt die Ratings im In-Memory-Cache (frozen MediaItem → `dataclasses.replace()`).
+5. Der Server antwortet mit `{"ok": true, "ratings": {...}, "changed": N}`.
+6. JS patcht `allItems` und `playlistItems`, ruft `applyFilter()` auf → UI re-rendert nur wenn sich etwas geändert hat.
+
+**Dedup:** `_ratingRefreshPath` (JS) verhindert doppeltes Refresh beim erneuten Öffnen desselben Ordners. Wird bei `refreshCatalog()` zurückgesetzt.
+
+**Bugfix (2026-04-10):** Die Original-Bedingung `!data.ratings || !data.changed` in `refreshFolderRatings()` führte dazu, dass bei `changed === 0` (alle Ratings unverändert) die UI **nie** aktualisiert wurde — selbst wenn das initiale Snapshot-Rating falsch war. Gefixt zu `!data.ratings` (ohne `!data.changed`).
+
+**Module:**
+- `streaming/core/index_cache.py` → `IndexCache.patch_items(updates)` — generische Methode für partielle Cache-Updates
+- `streaming/audio/server.py` → `POST /api/audio/refresh-ratings` — Audio-spezifisch (POPM-Lesen)
+- `streaming/core/server_utils.py` → JS `refreshFolderRatings()` (guarded durch `RATING_WRITE_ENABLED`)
+
+### Debug Filter Mode
+
+Wenn `HOMETOOLS_DEBUG_FILTER=true` in `.env` gesetzt ist, werden Items, die durch `MIN_RATING`, Quick-Filter (Rating-Chip, Favoriten, Genre) ausgeblendet würden, **nicht** aus der Track-Liste entfernt, sondern **ausgegraut** mit Begründungstext angezeigt. Die Textsuche filtert weiterhin normal.
+
+**Motivation:** Beim Debugging von Rating-Problemen war unklar, warum bestimmte Tracks nicht angezeigt werden. Der Debug-Modus macht die Filterlogik transparent sichtbar.
+
+**Implementierung:**
+- `config.py` → `get_debug_filter()` liest `HOMETOOLS_DEBUG_FILTER` (bool, Default `false`)
+- Parameter-Pipeline: `render_audio_index_html()` / `render_video_index_html()` → `render_media_page(debug_filter=...)` → `render_player_js(debug_filter=...)` → JS-Variable `DEBUG_FILTER`
+- JS `applyFilter()`: Wenn `DEBUG_FILTER === true`, werden Items statt mit `.filter()` entfernt mit `._debugReason`-Property annotiert (Klonen des Objekts, Originalarray bleibt unverändert)
+- JS `renderTracks()`: Items mit `_debugReason` werden als `<li class="track-item debug-filtered">` gerendert mit:
+  - `·` als Nummerierung statt laufender Nummer
+  - Alle Track-Info-Felder (Titel, Artist, Thumbnail, Rating-Bar)
+  - Zusätzliche `<div class="debug-reason">` mit Begründungstext
+  - `pointer-events: none` — nicht klickbar/spielbar
+  - `opacity: 0.35` — visuell abgegrenzt
+- Track-Count-Header zeigt `"42 tracks (+ 7 ausgeblendet)"` im Debug-Modus
+- `filteredItems` enthält **nur** die realen (nicht-debug) Tracks → Shuffle/Queue/Playback unbeeinträchtigt
+- CSS: `.track-item.debug-filtered`, `.debug-reason` in `render_base_css()`
+
+**Begründungstexte:** z.B. `"Rating 2★ ≤ Schwelle 3"`, `"Quick-Filter: Rating < 4★"`, `"Kein Favorit"`, `"Genre ≠ Rock"`
+
+### Rating Refresh Log
+
+Persistentes JSON-Log, das festhält, wann die Ratings eines Ordners zuletzt vom Dateisystem gelesen wurden. Löst das Problem der Unsicherheit bei häufigen Server-Neustarts: „Woher weiß der Algo, ob ein Ordner schon indiziert wurde?"
+
+**Dateiformat:** `<cache_dir>/rating_refresh_log.json`
+```json
+{
+  "Funsongs": {"last_refresh": "2026-04-10T14:30:00+00:00", "total": 12, "changed": 3},
+  "Rock/Classic": {"last_refresh": "2026-04-10T14:25:00+00:00", "total": 8, "changed": 0}
+}
+```
+
+**Ablauf:**
+1. `POST /api/audio/refresh-ratings` schließt seinen Rating-Durchlauf ab
+2. Der Ordner-Pfad wird aus dem gemeinsamen Prefix der übergebenen Paths abgeleitet
+3. `_update_refresh_log()` schreibt Timestamp + Statistiken atomar in die JSON-Datei
+4. Die Response enthält nun zusätzlich `"last_refresh"` und `"folder"` Felder
+5. JS `refreshFolderRatings()` zeigt den Timestamp und die Statistiken im `#refresh-info`-Element im Header
+
+**Endpunkte:**
+- `POST /api/audio/refresh-ratings` → Response erweitert um `last_refresh`, `folder`
+- `GET /api/audio/refresh-log` → gibt das vollständige Log als JSON zurück
+
+**UI-Anzeige:** `<span id="refresh-info">` im Header neben `track-count`. Zeigt z.B. „23 Ratings gelesen, 5 aktualisiert (14:30)". Wird bei Ordner-Wechsel (`showFolderView`) geleert.
+
+**Module:**
+- `streaming/audio/server.py` → `_read_refresh_log()`, `_update_refresh_log()`, `GET /api/audio/refresh-log`
+- `streaming/core/server_utils.py` → JS `refreshFolderRatings()` (erweitert), HTML `#refresh-info`-Element, CSS `.refresh-info`
+
+**Design-Regeln:**
+- `patch_items()` ist generisch (dict of field overrides) und kann auch für andere Felder genutzt werden.
+- Maximal 500 Pfade pro Request (Server-Cap), um Missbrauch zu verhindern.
+- Video hat keinen `/refresh-ratings` Endpoint (kein POPM). Die JS-Funktion existiert in beiden UIs, ist aber für Video ein No-Op (`RATING_WRITE_ENABLED = false`).
 
 ## Server-Logging
 
@@ -361,7 +461,7 @@ Ein `<div id="player-rating" hidden>` befindet sich in der `.player-info`-Sektio
 
 `POST /api/audio/rating` in `audio/server.py`:
 - Body: `{ "path": "<relative_path>", "rating": 0–5 }`
-- Konvertiert `stars → POPM raw (0–255)` via `round(stars / 5 * 255)`
+- Konvertiert `stars → POPM raw` via `stars_to_popm_raw()` (WMP-Standard: 0→0, 1→1, 2→64, 3→128, 4→196, 5→255)
 - Schreibt via `set_popm_rating(path, raw)` aus `audio/metadata.py`
 - Invalidiert `_audio_index_cache` nach erfolgreichem Schreiben
 - Gibt `{ "ok": bool, "rating": float, "raw": int }` zurück
@@ -568,10 +668,11 @@ Nutzer können Titel, Interpret und Album direkt aus der Track-Liste heraus bear
 
 1. Klick auf Bleistift-Button → `openEditModal(idx)` → Modal öffnet sich, vorausgefüllt mit aktuellem Titel/Interpret aus `filteredItems[idx]`
 2. Album-Feld startet leer (nicht im `MediaItem`-Schema)
-3. Speichern → `submitEditModal()` → `POST /api/audio/metadata/edit`
-4. Bei Erfolg: lokaler JS-State (`filteredItems`, `allItems`) aktualisiert, Track-Liste neu gerendert, Player-Anzeige aktualisiert (wenn aktuell spielender Track)
-5. `closeEditModal()` bei Backdrop-Klick, Escape-Taste oder Cancel-Button
-6. Enter in Eingabefeld triggert `submitEditModal()`
+3. **Bewertungs-Sterne** werden mit dem aktuellen Rating des Tracks vorausgefüllt (`renderEditModalRating(t.rating)`). Sichtbar nur wenn `RATING_WRITE_ENABLED`. Klick auf Stern setzt Rating, erneuter Klick auf gleichen Stern setzt auf 0 zurück.
+4. Speichern → `submitEditModal()` → `POST /api/audio/metadata/edit` + ggf. `POST /api/audio/rating` (parallel via `Promise.all`)
+5. Bei Erfolg: lokaler JS-State (`filteredItems`, `allItems`) aktualisiert, Track-Liste neu gerendert, Player-Anzeige aktualisiert (wenn aktuell spielender Track), gewichtete Shuffle-Queue neu aufgebaut
+6. `closeEditModal()` bei Backdrop-Klick, Escape-Taste oder Cancel-Button
+7. Enter in Eingabefeld triggert `submitEditModal()`
 
 ### CSS-Klassen
 
@@ -579,7 +680,17 @@ Nutzer können Titel, Interpret und Album direkt aus der Track-Liste heraus bear
 - `.edit-modal-backdrop` — Fixed-Overlay, schließt bei Klick außerhalb
 - `.edit-modal` — Modal-Panel (max 480px Breite)
 - `.edit-field` — Label + Input-Zeile
+- `.edit-modal-rating` — Flex-Container für 5 Rating-Sterne im Modal
+- `.edit-modal-rating-star` — Einzelner klickbarer Stern (22×22 SVG, `.active` = gold, `.hover` = gold)
 - `.edit-modal-actions` — Cancel + Save Buttons
+
+### JS-Funktionen (Edit-Modal)
+
+- `_editModalRating` — State-Variable: aktuell im Modal ausgewählte Stern-Anzahl (0–5)
+- `renderEditModalRating(stars)` — Rendert 5 Sterne in `#edit-modal-rating`, setzt `_editModalRating`
+- `_initEditModalRatingEvents()` — IIFE: Hover-Preview + Klick-Handler auf dem Rating-Container
+- `openEditModal(idx)` — Füllt alle Felder inkl. Rating vor, versteckt Rating-Feld wenn `!RATING_WRITE_ENABLED`
+- `submitEditModal()` — Parallel: Metadata-POST + Rating-POST (nur wenn Rating geändert) via `Promise.all`
 
 ### API-Endpoint
 
@@ -1004,7 +1115,7 @@ Thread-sicher via `threading.Lock`. Atomare Schreibvorgänge (NamedTemporaryFile
 `render_media_page()` und `render_player_js()` haben den Parameter `enable_playlists: bool = False`. Er steuert:
 1. `PLAYLISTS_ENABLED = true` im generierten JS
 2. `PLAYLISTS_API_PATH = '/api/<media>/playlists'`
-3. `IC_PLAYLIST` — Listen-SVG-Icon als JS-Variable
+3. `IC_PLAYLIST` — SVG-Icon als JS-Variable
 4. Playlist-Button (`.track-playlist-btn`) pro Track in der Liste
 5. Playlist-Pseudo-Ordner-Karten auf der Root-Startseite (`.playlist-folder-card`)
 6. „Neue Playlist…"-Karte (`.playlist-new-card`)
@@ -1077,7 +1188,7 @@ In `grid`-Modus ist DnD **deaktiviert**. Klick auf einen Track spielt ihn ab.
 7. **No-Op-Unterdrückung:** Effektiven `toIndex` berechnen (same as `endDrag`-Logik). Wenn `toIndex === _dragFromIdx` → Indicator löschen, return.
 8. `drag-over-above` bzw. `drag-over-below` auf das Ziel-Item setzen.
 
-**CSS Insertion-Line:** `box-shadow: 0 3px 0 0 var(--accent) inset` für `.drag-over-above` (Linie am oberen Rand) und `0 -3px inset` für `.drag-over-below` (Linie am unteren Rand). `drag-over-below` wird durch die Normalisierung nur noch für die allerletzte Position verwendet (nach dem letzten Item).
+**CSS Insertion-Line:** `box-shadow: 0 3px 0 0 var(--accent) inset` für `.drag-over-above` (Linie am oberen Rand) und `0 -3px inset` für `.drag-over-below` (Linie am unteren Rand). `drag-over-below` wird durch die Normalisierung nur noch für die allerletzte Position verwendet (nach dem letzten Item). 
 
 ### Sort-Option „Liste" (custom)
 
@@ -1106,114 +1217,83 @@ Neues Core-Modul `streaming/core/custom_order.py` persistiert benutzerdefinierte
 
 **Thread-Sicherheit:** Module-level Lock, atomare Schreibvorgänge via `NamedTemporaryFile` + `replace` (analog zu `playlists.py`).
 
-### Cross-Device Playlist Sync
+## Crossfade (Audio-only)
 
-Polling-basierte Synchronisation, damit Playlist-Änderungen auf einem Gerät automatisch auf anderen Geräten sichtbar werden.
+**Modul:** `streaming/core/server_utils.py` (JS), `config.py` (Env-Var), rein client-seitig.
 
-**Storage-Format v2:** `{"revision": N, "playlists": [...]}` — Envelope mit globalem Revisions-Counter. Jede Mutation inkrementiert `revision` um 1. Legacy v1 (nacktes JSON-Array) wird transparent gelesen und beim ersten Schreiben in v2 konvertiert.
+Nahtlose Übergänge zwischen Songs: Der aktuelle Track wird ausgeblendet (fade-out) während der nächste Track parallel eingeblendet wird (fade-in). Nur für Audio, nicht für Video.
 
-**Changelog:** `<cache_dir>/playlists/changelog_<server>.jsonl` — Append-only JSONL mit je einer Zeile pro Mutation: `{timestamp, action, playlist_id, detail}`. Eigenes Log, kein Audit-Log. Primär für Debugging und zukünftige erweiterte Merge-Strategien.
+### Konfiguration
 
-**API-Endpoints:**
-- `GET /api/<media>/playlists/version` — Nur `{"revision": N}` (leichtgewichtig, kein Full-Load)
-- `GET /api/<media>/playlists` — Enthält jetzt zusätzlich `"revision": N` im Response
+- `HOMETOOLS_CROSSFADE_DURATION` Env-Var: Dauer in Sekunden (Default `0` = deaktiviert, Max `12`)
+- `get_crossfade_duration()` in `config.py` — clamped auf 0–12
+- `crossfade_duration` Parameter durchgereicht: `render_media_page()` → `render_player_js()` → `CROSSFADE_DURATION` JS-Variable
+- Audio-Server liest aus Config, Video-Server nutzt Default `0` (kein Crossfade)
 
-**JS-Polling-Mechanismus:**
-- `_playlistRevision` trackt die zuletzt bekannte Server-Revision
-- `_startPlaylistSync()` startet `setInterval` mit konfigurierbarem Intervall
-- `_PLAYLIST_SYNC_INTERVAL` wird aus `HOMETOOLS_PLAYLIST_SYNC_INTERVAL` (Env-Var, Default 30s, Minimum 5s) berechnet und als `playlist_sync_interval_ms` durch `render_player_js()` → `render_media_page()` injiziert
-- `_pollPlaylistVersion()` ruft `GET .../playlists/version` auf — bei `revision > _playlistRevision` wird `loadUserPlaylists()` aufgerufen, `_playlistRevision` aktualisiert und die Root-View re-gerendert
-- **Visibility API:** Polling pausiert bei `document.hidden`, startet bei Tab-Rückkehr mit sofortigem Check
-- **JS-Variable:** `PLAYLISTS_VERSION_PATH` (abgeleitet aus `PLAYLISTS_API_PATH + '/version'`)
+### JS-Architektur
 
-### Optimistic UI (Playlist-Mutationen)
+**State-Variablen:**
+- `_xfadeAudio` — Zweites `<audio>`-Element (lazy erstellt, `display: none`)
+- `_xfading` — Boolean, ob ein Crossfade läuft
+- `_xfadeTimer` — `setInterval`-ID für die Volume-Rampe
+- `_xfadeNextItem` / `_xfadeNextIndex` — Das Item/Index in das übergefadet wird
 
-Alle JS-Playlist-Mutationsfunktionen (`deleteUserPlaylist`, `addToPlaylist`, `reorderPlaylistItem`, `movePlaylistItem`) verwenden das Optimistic-UI-Pattern:
+**Funktionen:**
+- `_resolveNextForCrossfade()` — Bestimmt den nächsten Track **ohne** Queue zu konsumieren oder State zu ändern (Queue-Peeking)
+- `_startCrossfade()` — Erstellt/konfiguriert `_xfadeAudio`, startet Playback bei `volume=0`, initiiert Volume-Rampe
+- `_finishCrossfade()` — Speichert Progress des alten Tracks, konsumiert Queue-Item falls nötig, ruft `playTrack()`/`playFromQueue()` auf, setzt `player.volume = 1`
+- `_xfadeCleanup()` — Bricht laufenden Crossfade ab, stoppt Timer, pausiert xfade-Audio
 
-1. **Snapshot:** `_snapshotPlaylists()` klont `_userPlaylists` per `JSON.parse(JSON.stringify(...))`
-2. **Lokale Mutation:** State wird sofort lokal mutiert und UI re-gerendert (instant feedback)
-3. **Server-Request:** `fetch()` an Server
-4. **Erfolg:** Server-Response überschreibt lokalen State (autoritativ)
-5. **Fehler:** `_restorePlaylists(snap)` setzt auf Snapshot zurück, UI wird erneut re-gerendert, Toast „Fehler … rückgängig" erscheint
+### Trigger
 
-**Wichtig:** Favorites- und Folder-Reorder (`__favorites__`, `__folder__`) sind rein client-seitig und benötigen kein Optimistic-UI-Pattern — sie werden bereits sofort lokal angewendet und per fire-and-forget an den Server geschickt.
+- **`timeupdate`-Event:** Wenn `CROSSFADE_DURATION > 0 && !_xfading && !isVideoPlayer`, verbleibende Zeit ≤ `CROSSFADE_DURATION`, und Track lang genug (`duration > CROSSFADE_DURATION + 5`), wird `_startCrossfade()` aufgerufen
+- **Schutz gegen kurze Tracks:** Tracks kürzer als `CROSSFADE_DURATION + 5s` werden ohne Crossfade abgespielt (verhindert Overlap-Chaos)
 
-### Playlist Insert-Position
+### Volume-Rampe
 
-Konfigurierbar über `HOMETOOLS_PLAYLIST_INSERT_POSITION`:
-- `bottom` (Default, konsistent mit Spotify) — neue Items am Ende
-- `top` — neue Items an Index 0 (neueste zuerst)
+- 20 Schritte über `CROSSFADE_DURATION` Sekunden (50ms pro Schritt bei 1s, 250ms bei 5s)
+- Sinusoide Ease-Kurve: `ease = 0.5 - 0.5 * cos(π * progress)` für natürlichen Übergang
+- Ausgehender Track: `player.volume = 1 - ease`
+- Eingehender Track: `_xfadeAudio.volume = ease`
 
-`add_item()` in `playlists.py` akzeptiert `insert_position` Parameter. Beide Server lesen den Wert aus `config.py` und übergeben ihn. Die Diskussion aus dem Backlog ist damit aufgelöst.
+### Abbruch-Szenarien
 
-### Changelog-Retention
-
-`_rotate_changelog()` in `playlists.py` trimmt die JSONL-Datei auf `_MAX_CHANGELOG_LINES` (1000) Zeilen, wenn die Grenze überschritten wird. Wird nach jedem `_append_changelog()` aufgerufen. Atomare Schreibvorgänge. Älteste Einträge werden entfernt, neueste behalten. `make clean` löscht die Changelog-Dateien zusammen mit dem gesamten Cache.
-
-### Designregeln
-
-1. **Shared Core** — Modul `playlists.py` und alle JS-Logik leben in `streaming/core/`. Feature-Flag steuert Aktivierung — identisch für Audio und Video.
-2. **Audio + Video getrennt** — Separate JSON-Dateien pro Server (konsistent mit Shortcuts-Architektur). Cross-Server-Playlists nicht möglich (relative_path kollidiert).
-3. **Pseudo-Ordner statt Panel** — Playlists erscheinen als Karten auf der Root-Startseite. Kein separates Library-Panel, kein Header-Pill.
-4. **Drag-and-Drop in filenames- und list-Modus** — DnD in grid deaktiviert. Desktop: Drag startet erst nach 10px Mausbewegung (Threshold verhindert Flash bei einfachem Klick). Mobile: Long-Touch 500ms. Gezogenes Item wird ausgegraut (`opacity: 0.25`). Ghost-Element + Insertion-Line (3px `box-shadow inset`) als visuelles Feedback. No-Op-Unterdrückung für Positionen neben dem Drag-Source. Fallback für „unterhalb aller Items" → letztes Item als Drop-Target. **Listener-Lifecycle:** `initPlaylistDragDrop()` speichert named Handler-Referenzen in `_dndCleanup`. `destroyPlaylistDragDrop()` entfernt alle Listener via `removeEventListener`. Cleanup wird aufgerufen in: `showFolderView()`, `showPlaylist()`, und am Anfang von `initPlaylistDragDrop()` selbst. Keine externen Libraries.
-5. **Playlist-Wiedergabe nutzt `allItems`** — Items werden per `relative_path` aus dem Katalog aufgelöst. Items die nicht mehr im Katalog sind werden übersprungen.
-6. **Keine Duplikate** — Gleicher `relative_path` in einer Playlist wird silently ignoriert.
-7. **API-Response-Key `"items"`** — Konsistent mit allen anderen Endpoints (Architektur-Regel 3).
-8. **`_currentPlaylistId` trackt den aktiven Kontext** — Werte: Server-Playlist-ID (reale Playlists), `'__favorites__'` (Favoriten), `'__folder__'` (Filesystem-Ordner), `''` (kein DnD-Kontext). Wird von `showFolderView()` und `showPlaylist()` beim View-Wechsel zurückgesetzt, um stale DnD-Kontexte zu vermeiden.
-9. **PATCH-Endpoint bleibt erhalten** — `move_item()` (up/down Swap) als Legacy-API für Abwärtskompatibilität. UI verwendet ausschließlich `PUT` (`reorder_item()`).
-10. **Playlist-Management auf Root-Ebene** — Erstellen via „Neue Playlist…"-Karte, Löschen via X-Button auf der Playlist-Karte (mit `confirm()`-Dialog). Rename ist via bestehende API möglich (kein UI dafür). **TODO:** Nach der Entwicklungsphase soll Löschen durch Archivierung ersetzt werden (Nachfrage-Dialog statt `confirm()`).
-11. **Automatische Favoriten-Playlist** — Virtuelle Playlist-Karte „Favoriten" (`__favorites__`) wird auf der Root-Startseite vor den User-Playlists angezeigt, wenn mindestens ein Favorit existiert. Kein separater Playlist-Eintrag auf dem Server — wird client-seitig aus `_savedFavorites` und `allItems` erzeugt. Klick öffnet Browse-Ansicht (`showUserPlaylistView`), Play-Button spielt ab (`playUserPlaylist`). **DnD-Reorder:** `_currentPlaylistId = '__favorites__'` aktiviert DnD. Reihenfolge wird server-seitig persistiert (`PUT /api/<media>/folder-order` mit `folder_path: '__favorites__'`) und zusätzlich in `localStorage` (`ht-favorites-order`) als Offline-Fallback gespeichert. `_loadFavoritesOrderAsync()` fetcht vom Server und aktualisiert bei Abweichung. `_sortFavoritesByOrder()` wendet die gespeicherte Reihenfolge an; neue Favoriten ohne gespeicherte Position landen am Ende. `reorderPlaylistItem()` erkennt `__favorites__` und führt die Verschiebung client-seitig + server-seitig durch.
-12. **Click-Distance-Guard** — Globaler `wasDrag(e)`-Check (6px Threshold) auf allen Klick-Handlern für Ordner-Karten, Datei-Karten, Playlist-Karten und Track-Items. Verhindert versehentliches Abspielen/Navigieren wenn der Nutzer die Maus nach dem Klick wegzieht.
-13. **Test-Isolation** — `create_app()` akzeptiert einen optionalen `cache_dir`-Parameter. Tests müssen `cache_dir=tmp_path` übergeben, um Ghost-Playlists im echten `.hometools-cache/` zu vermeiden.
-
-## Warteschlange (Queue)
-
-**Modul:** `streaming/core/server_utils.py` (CSS + JS + HTML), rein client-seitig.
-
-Spotify-ähnliche Warteschlange: Der Benutzer kann Titel zur Warteschlange hinzufügen. Die Warteschlange hat Vorrang vor Shuffle und sequenziellem Modus bei der Wahl des nächsten Titels.
-
-### UI-Elemente
-
-- **Queue-Button** im Player-Bar (`#btn-queue`, `.ctrl-btn.queue-btn`): Öffnet/schließt das Queue-Panel. Badge (`#queue-badge`, `.queue-badge`) zeigt die Anzahl der Queue-Items an (ausgeblendet wenn leer via `:empty`).
-- **Queue-Panel** (`#queue-panel`, `.queue-panel`): Popup **oberhalb** der Player-Bar als viewport-fixes Overlay **auf Body-Ebene** (nicht innerhalb der `.player-bar`, da diese einen eigenen Stacking-Kontext erzeugt). Positionierung: `position: fixed; left: 0; right: 0` mit **dynamischem** `bottom` und `max-height` — `_syncQueueBottom()` misst die tatsächliche `.player-bar.offsetHeight` und die `header.offsetHeight`, setzt `bottom` auf die Player-Bar-Höhe und `max-height` auf den verfügbaren Platz zwischen Header und Player-Bar (minus 8px Abstand). Damit funktioniert die Positionierung sowohl im Classic-Modus (80px) als auch im Waveform-Modus (~140px). Das Panel wächst bei vielen Items nach oben bis knapp unter den Header und wird intern scrollbar (`.queue-body { overflow-y: auto; flex: 1 1 0; min-height: 0 }`). `overflow: hidden` auf `.queue-panel` stellt sicher, dass Flex-Kinder innerhalb des `max-height` bleiben und der Queue-Body korrekt scrollt. Bei wenig Inhalt schrumpft es auf die Content-Höhe. Animiert mit `opacity` + `translateY(100%)` → `translateY(0)` (gleitet von unten hoch). Abgerundete Ecken oben (`border-radius: 12px 12px 0 0`), Schatten nach oben. **Wichtig:** Das HTML des Panels liegt neben `lyrics_panel_html` und `playlist_modal_html` auf Dokument-Ebene — analog zum Lyrics-Panel. Platzierung innerhalb der `.player-bar` führt dazu, dass das Panel wegen `z-index: 100 + position: relative` (Stacking-Kontext) unsichtbar bleibt.
-- **Drag-Handle** (`#queue-drag-handle`, `.queue-drag-handle`): Greifleiste am oberen Rand des Queue-Panels. Der Nutzer kann die Höhe des Panels per Drag (Mouse + Touch) variieren: nach oben ziehen = höher, nach unten = niedriger. Min-Höhe 220px (`_QUEUE_MIN_H`, Head ~57px + mind. 3 Items à 53px), Max-Höhe = verfügbarer Platz (Header bis Player-Bar minus 8px). Die gewählte Höhe wird in `localStorage` (`hometools_queue_height`) persistiert und beim nächsten Öffnen wiederhergestellt (Werte unter `_QUEUE_MIN_H` werden verworfen). Visuell: 36×4px abgerundeter Balken (`#555`, Hover → `var(--accent)`), `cursor: grab` / `grabbing`. Während des Dragging wird die CSS-Transition via `.queue-panel.dragging` deaktiviert für flüssige Größenänderung.
-- **Queue-Item** (`.queue-item`): Thumbnail, Titel, Interpret, Entfernen-Button (X-Icon). Klick auf Item spielt es ab und entfernt es aus der Queue.
-- **Track-Queue-Button** (`.track-queue-btn`) pro Track in der Track-Liste: Fügt Track zur Queue hinzu oder entfernt ihn (Toggle). `.in-queue`-Klasse für visuelles Feedback.
-
-### State-Variablen
-
-- `_userQueue` — Array von Item-Objekten (Kopien, nicht Referenzen).
-- `_queueOpen` — Boolean, ob das Panel offen ist.
-- `_queueDndCleanup` — Cleanup-Funktion für Queue-DnD (Listener-Lifecycle, Regel 14).
-- `_queueUserHeight` — Benutzer-gewählte Panel-Höhe in Pixel (null = automatisch). Persistiert in `localStorage` unter `hometools_queue_height`.
-
-### Playback-Integration
-
-- Zentrale Next-Entscheidung über **`playNextItem()`**: zuerst `dequeueNext()`, danach `nextIndex()` (Shuffle/Sequential).
-- **Alle Next-Trigger verwenden denselben Flow**: `player ended`, `bgAudio ended`, `#btn-next` und `MediaSession nexttrack`.
-- **Prioritätsreihenfolge:** Queue > Shuffle > Sequential.
-- `dequeueNext()` entfernt das erste Item aus `_userQueue` und spielt es via `playItem()` ab.
-
-### DOM-Robustheit Queue-Panel
-
-- `_ensureQueueDom()` validiert Queue-DOM-Referenzen nicht nur auf `null`, sondern auch auf `!isConnected` (detached Nodes).
-- `openQueuePanel()`, `closeQueuePanel()` und `toggleQueuePanel()` rufen `_ensureQueueDom()` vor Zugriff auf DOM-Knoten auf.
-- Ziel: Warteschlangen-Panel bleibt sichtbar/funktionsfähig, auch wenn die UI neu aufgebaut wurde und frühere Element-Referenzen stale sind.
-
-### Drag-and-Drop
-
-Queue-Items sind per Drag-and-Drop umsortierbar. Implementierung folgt dem `initPlaylistDragDrop()`-Pattern (Regel 14):
-- `initQueueDragDrop()` / `destroyQueueDragDrop()` / `_queueDndCleanup`
-- Touch: Long-Press 400ms, Mouse: 8px Threshold
-- Ghost-Element (`.playlist-drag-ghost` wiederverwendet)
-- Rein client-seitig (kein API-Call, nur `_userQueue` Array umsortieren)
-- Cleanup bei `closeQueuePanel()` und am Anfang von `initQueueDragDrop()`
+- **Manueller Track-Wechsel** (`playItem`): `_xfadeCleanup()` + `player.volume = 1`
+- **User-Pause**: `_xfadeCleanup()` + `player.volume = 1`
+- **Track endet während Crossfade**: `_finishCrossfade()` wird aufgerufen statt `playNextItem()`
 
 ### Designregeln
 
-1. **Shared Core** — Queue lebt vollständig in `server_utils.py`, funktioniert identisch für Audio und Video. Kein Feature-Flag nötig.
-2. **Rein client-seitig** — Kein Backend-Endpoint, keine Persistenz. Queue geht beim Seiten-Reload verloren (konsistent mit Spotify-Verhalten).
-3. **Duplikate verhindert** — Prüfung per `relative_path`. Bereits in der Queue → Toast-Hinweis.
-4. **SVG-Icons:** `SVG_QUEUE` (Python), `IC_QUEUE` (JS) für den Queue-Button, `IC_REMOVE` (JS) für den Entfernen-Button (X-Icon).
-5. **Swipe-Exclusion** — Queue-Panel ist von Swipe-Gesten ausgenommen (wie Lyrics-Panel, Offline-Library).
-6. **Lyrics-Panel-Exklusivität** — Öffnen der Queue schließt das Lyrics-Panel und umgekehrt.
+1. **Audio-only** — `!isVideoPlayer`-Guard im Trigger. Video hat kein Crossfade.
+2. **Queue-kompatibel** — `_resolveNextForCrossfade()` peeked in die Queue, `_finishCrossfade()` konsumiert via `playFromQueue()`.
+3. **Kein Einfluss auf Progress-Speicherung** — Progress wird weiterhin normal gespeichert. `_finishCrossfade()` ruft `saveProgressNow()` + `clearProgressFor()` für den ausgehenden Track.
+4. **Volume statt muted** — Crossfade nutzt `player.volume` (0–1), nicht `muted`. Das ist korrekt weil Audio (nicht Video) kein `bgAudio`-Element benötigt und iOS-Volume-Beschränkungen nur `bgAudio` betreffen.
+5. **Konfigurierbar bis deaktiviert** — Default `0` = aus. Nutzer wählt Dauer selbst. Max 12s Obergrenze.
+
+## Katalog-Refresh (manuell)
+
+**Module:** `streaming/core/server_utils.py` (UI + JS), `streaming/audio/server.py`, `streaming/video/server.py`
+
+Ermöglicht dem Benutzer, den In-Memory-Index-Cache manuell zu invalidieren und eine frische Neuindexierung vom Dateisystem zu erzwingen.
+
+### API
+
+- `POST /api/audio/refresh` — Audio-Index invalidieren, Background-Rebuild starten
+- `POST /api/video/refresh` — Video-Index invalidieren, Background-Rebuild starten
+
+Response: `{"ok": true, "detail": "Refresh started"}`
+
+Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick-Scan-Cache zurück und starten `ensure_background_refresh()`. Das nächste `GET /api/<media>/tracks` (bzw. `/items`) liefert dann frische Filesystem-Daten.
+
+### Frontend
+
+- **Button:** `#refresh-btn` im `<header>`, SVG-Icon `SVG_REFRESH` / `IC_REFRESH`
+- **CSS:** `.refresh-btn` (gleicher Style wie `.view-toggle`), `.refresh-btn.spinning svg` rotiert via `@keyframes spin`
+- **JS:** `refreshCatalog()` → `POST` an `/api/<media>/refresh` → `fetch(API_PATH)` → `allItems` aktualisieren → aktuelle Ansicht neu rendern. Toast-Feedback: „Katalog aktualisiert — N Titel"
+
+### Designregeln
+
+1. **Shared-Core-UI** — Button und JS leben in `server_utils.py`, nicht dupliziert pro Server
+2. **POST statt GET** — Refresh ist eine Zustandsänderung (Cache-Invalidierung), daher POST
+3. **Debounce via Spinning** — Während des Refresh dreht das Icon; kein Doppelklick nötig
+4. **Ansichts-bewahrend** — Nach dem Refresh wird die aktuelle Ansicht (Folder oder Playlist) beibehalten
