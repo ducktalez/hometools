@@ -2,6 +2,7 @@
 
 import logging
 import re
+import struct
 from pathlib import Path
 
 from mutagen import File
@@ -229,25 +230,34 @@ def _m4a_rating_to_stars(raw_value: int) -> float:
 def _read_m4a_rating(p: Path) -> float:
     """Read star rating from an M4A/MP4 file (0.0–5.0).
 
-    Handles both UTF-8 text values (e.g. ``b"80"``) written by Mp3tag /
-    MediaMonkey / our own writer and raw binary values (e.g. ``\\x50``)
-    that some other tools produce.
+    Reading priority:
+
+    1. **Windows Xtra box** — ``WM/SharedUserRating`` (what Windows Explorer
+       shows).  This is the user-visible "ground truth" on Windows.
+    2. **iTunes freeform atom** — ``----:com.apple.iTunes:RATING`` (0–100
+       scale), used by Mp3tag / MediaMonkey / macOS.
+
+    Handles both UTF-8 text values (e.g. ``b"80"``) written by tagging tools
+    and raw binary values (e.g. ``\\x50``) from other sources.
     """
+    # 1) Prefer Windows Xtra box (ground truth for Windows Explorer)
+    xtra = _read_xtra_rating(p)
+    if xtra is not None:
+        return xtra
+
+    # 2) Fallback: iTunes freeform atom
     try:
         audio = MP4(p)
         if audio.tags is None:
             return 0.0
-        # Try freeform rating atom (----:com.apple.iTunes:RATING)
         val = audio.tags.get(_M4A_RATING_ATOM)
         if val:
             raw_bytes = bytes(val[0])
-            # 1) Try UTF-8 text parsing first (most common: b"80", b"60" …)
             try:
                 raw = int(raw_bytes.decode("utf-8", errors="ignore").strip())
             except (ValueError, UnicodeDecodeError):
-                # 2) Fallback: interpret as a binary integer
                 if len(raw_bytes) == 1:
-                    raw = raw_bytes[0]  # single byte → ordinal value
+                    raw = raw_bytes[0]
                 elif raw_bytes:
                     raw = int.from_bytes(raw_bytes, byteorder="big")
                 else:
@@ -259,11 +269,18 @@ def _read_m4a_rating(p: Path) -> float:
 
 
 def _write_m4a_rating(p: Path, stars: float) -> bool:
-    """Write star rating to an M4A/MP4 file as a freeform iTunes atom."""
+    """Write star rating to an M4A/MP4 file.
+
+    Updates **both** the iTunes freeform atom (``----:com.apple.iTunes:RATING``,
+    0–100 scale) and the Microsoft Xtra box (``WM/SharedUserRating``,
+    0/1/25/50/75/99 scale) so the rating is visible in iTunes-compatible
+    players **and** in Windows Explorer.
+    """
     from mutagen.mp4 import MP4FreeForm
 
     rounded = max(0, min(5, round(stars)))
     value = _STARS_TO_M4A.get(rounded, 0)
+    ok = False
     try:
         audio = MP4(p)
         if audio.tags is None:
@@ -272,11 +289,218 @@ def _write_m4a_rating(p: Path, stars: float) -> bool:
             MP4FreeForm(str(value).encode("utf-8"), dataformat=1)  # 1 = UTF-8
         ]
         audio.save()
-        logger.info("%s: M4A rating set to %d (stars=%s)", p.name, value, stars)
-        return True
+        logger.info("%s: M4A iTunes rating set to %d (stars=%s)", p.name, value, stars)
+        ok = True
     except Exception as exc:
-        logger.error("Error writing M4A rating to %s: %s", p.name, exc)
-        return False
+        logger.error("Error writing M4A iTunes rating to %s: %s", p.name, exc)
+
+    # Always attempt to sync the Windows Xtra box regardless of iTunes atom result
+    xtra_ok = _write_xtra_rating(p, stars)
+    return ok or xtra_ok
+
+
+# ---------------------------------------------------------------------------
+# Windows Xtra box (WM/SharedUserRating) — MP4/M4A
+# ---------------------------------------------------------------------------
+#
+# Windows Explorer stores user ratings in a Microsoft-proprietary ``Xtra``
+# box inside ``moov/udta/``.  The attribute ``WM/SharedUserRating`` uses the
+# Windows Media standard scale:  0 (unrated), 1 (1★), 25 (2★), 50 (3★),
+# 75 (4★), 99 (5★).  The value is stored as a **little-endian int64**
+# (type 0x0013) inside the Xtra attribute structure.
+#
+# Because mutagen does not know about the Xtra box, we parse and write it
+# as raw binary.  Mutagen preserves unknown boxes when saving, so the two
+# operations (mutagen save → Xtra patch) are safe to chain.
+# ---------------------------------------------------------------------------
+
+_WM_RATING_ATTR = "WM/SharedUserRating"
+_XTRA_TYPE_INT64 = 0x0013
+
+_STARS_TO_WM: dict[int, int] = {0: 0, 1: 1, 2: 25, 3: 50, 4: 75, 5: 99}
+
+# Boundary-based reverse mapping: midpoints between canonical WM values.
+_WM_TO_STARS: list[tuple[int, float]] = [
+    (1, 0.0),  # 0         = unrated
+    (13, 1.0),  # 1 – 12   = 1★
+    (38, 2.0),  # 13 – 37  = 2★
+    (63, 3.0),  # 38 – 62  = 3★
+    (87, 4.0),  # 63 – 86  = 4★
+]
+# 87–99 = 5★ (handled as fallback)
+
+
+def _wm_rating_to_stars(raw: int) -> float:
+    """Convert a ``WM/SharedUserRating`` value to 0–5 stars."""
+    for upper, stars in _WM_TO_STARS:
+        if raw < upper:
+            return stars
+    return 5.0
+
+
+def _find_mp4_box(data: bytes | bytearray, name: bytes, start: int, end: int) -> int | None:
+    """Find an MP4 box by *name* within *data[start:end]*.
+
+    Returns the offset of the box header (4-byte size field) or ``None``.
+    """
+    pos = start
+    while pos + 8 <= end:
+        size = struct.unpack(">I", data[pos : pos + 4])[0]
+        if size < 8:
+            break
+        if data[pos + 4 : pos + 8] == name:
+            return pos
+        pos += size
+    return None
+
+
+def _read_xtra_rating(p: Path) -> float | None:
+    """Read ``WM/SharedUserRating`` from the Xtra box in an MP4/M4A file.
+
+    Returns the star rating (0.0–5.0) or ``None`` when the attribute is
+    not present.
+    """
+    try:
+        data = p.read_bytes()
+
+        moov = _find_mp4_box(data, b"moov", 0, len(data))
+        if moov is None:
+            return None
+        moov_size = struct.unpack(">I", data[moov : moov + 4])[0]
+
+        udta = _find_mp4_box(data, b"udta", moov + 8, moov + moov_size)
+        if udta is None:
+            return None
+        udta_size = struct.unpack(">I", data[udta : udta + 4])[0]
+
+        xtra = _find_mp4_box(data, b"Xtra", udta + 8, udta + udta_size)
+        if xtra is None:
+            return None
+        xtra_size = struct.unpack(">I", data[xtra : xtra + 4])[0]
+        xtra_end = xtra + xtra_size
+
+        # Walk Xtra attributes
+        pos = xtra + 8  # skip box header
+        while pos + 8 < xtra_end:
+            entry_size = struct.unpack(">I", data[pos : pos + 4])[0]
+            if entry_size < 12 or pos + entry_size > xtra_end:
+                break
+            name_len = struct.unpack(">I", data[pos + 4 : pos + 8])[0]
+            attr_name = data[pos + 8 : pos + 8 + name_len].decode("ascii", errors="replace")
+
+            if attr_name == _WM_RATING_ATTR:
+                vpos = pos + 8 + name_len
+                val_count = struct.unpack(">I", data[vpos : vpos + 4])[0]
+                vpos += 4
+                if val_count >= 1:
+                    val_size = struct.unpack(">I", data[vpos : vpos + 4])[0]
+                    val_type = struct.unpack(">H", data[vpos + 4 : vpos + 6])[0]
+                    if val_type == _XTRA_TYPE_INT64 and val_size >= 10:
+                        raw = struct.unpack("<q", data[vpos + 6 : vpos + 14])[0]
+                        return _wm_rating_to_stars(raw)
+            pos += entry_size
+    except Exception as exc:
+        logger.debug("_read_xtra_rating %s: %s", p.name, exc)
+    return None
+
+
+def _build_xtra_rating_attr(stars: float) -> bytes:
+    """Build a complete ``WM/SharedUserRating`` attribute entry for the Xtra box."""
+    rounded = max(0, min(5, round(stars)))
+    wm_value = _STARS_TO_WM.get(rounded, 0)
+
+    name = _WM_RATING_ATTR.encode("ascii")
+    name_len = len(name)
+
+    # Value entry: 4(size) + 2(type) + 8(int64 LE) = 14 bytes
+    val_entry = struct.pack(">I", 14) + struct.pack(">H", _XTRA_TYPE_INT64) + struct.pack("<q", wm_value)
+
+    # Attribute: 4(entry_size) + 4(name_len) + name + 4(val_count=1) + val_entry
+    total = 4 + 4 + name_len + 4 + len(val_entry)
+    return struct.pack(">I", total) + struct.pack(">I", name_len) + name + struct.pack(">I", 1) + val_entry
+
+
+def _write_xtra_rating(p: Path, stars: float) -> bool:
+    """Write ``WM/SharedUserRating`` to the Xtra box in an MP4/M4A file.
+
+    Handles three cases:
+
+    1. Xtra box exists with ``WM/SharedUserRating`` → in-place value update
+       (no size change — the value is always an 8-byte int64).
+    2. Xtra box exists without ``WM/SharedUserRating`` → append attribute,
+       then update parent box sizes (Xtra, udta, moov).
+    3. No Xtra box → create one inside ``moov/udta`` and update parent sizes.
+    """
+    rounded = max(0, min(5, round(stars)))
+    wm_value = _STARS_TO_WM.get(rounded, 0)
+
+    try:
+        data = bytearray(p.read_bytes())
+
+        moov = _find_mp4_box(data, b"moov", 0, len(data))
+        if moov is None:
+            logger.debug("_write_xtra_rating: no moov box in %s", p.name)
+            return False
+        moov_size = struct.unpack(">I", data[moov : moov + 4])[0]
+
+        udta = _find_mp4_box(data, b"udta", moov + 8, moov + moov_size)
+        if udta is None:
+            logger.debug("_write_xtra_rating: no udta box in %s", p.name)
+            return False
+        udta_size = struct.unpack(">I", data[udta : udta + 4])[0]
+
+        xtra = _find_mp4_box(data, b"Xtra", udta + 8, udta + udta_size)
+
+        if xtra is not None:
+            xtra_size = struct.unpack(">I", data[xtra : xtra + 4])[0]
+            xtra_end = xtra + xtra_size
+
+            # Walk Xtra attributes to find WM/SharedUserRating
+            pos = xtra + 8
+            while pos + 8 < xtra_end:
+                entry_size = struct.unpack(">I", data[pos : pos + 4])[0]
+                if entry_size < 12 or pos + entry_size > xtra_end:
+                    break
+                name_len = struct.unpack(">I", data[pos + 4 : pos + 8])[0]
+                attr_name = data[pos + 8 : pos + 8 + name_len].decode("ascii", errors="replace")
+
+                if attr_name == _WM_RATING_ATTR:
+                    # Case 1: in-place update (value offset is fixed)
+                    vpos = pos + 8 + name_len + 4  # past val_count
+                    val_offset = vpos + 4 + 2  # past val_size + val_type
+                    struct.pack_into("<q", data, val_offset, wm_value)
+                    p.write_bytes(data)
+                    logger.info("%s: Xtra WM/SharedUserRating updated to %d (stars=%s)", p.name, wm_value, stars)
+                    return True
+
+                pos += entry_size
+
+            # Case 2: Xtra exists but no WM/SharedUserRating → append
+            new_attr = _build_xtra_rating_attr(stars)
+            delta = len(new_attr)
+            data[xtra_end:xtra_end] = new_attr
+            struct.pack_into(">I", data, xtra, xtra_size + delta)
+            struct.pack_into(">I", data, udta, udta_size + delta)
+            struct.pack_into(">I", data, moov, moov_size + delta)
+            p.write_bytes(data)
+            logger.info("%s: Xtra WM/SharedUserRating added (%d, stars=%s)", p.name, wm_value, stars)
+            return True
+        else:
+            # Case 3: no Xtra box → create one inside udta
+            new_attr = _build_xtra_rating_attr(stars)
+            xtra_box = struct.pack(">I", 8 + len(new_attr)) + b"Xtra" + new_attr
+            delta = len(xtra_box)
+            insert_pos = udta + udta_size
+            data[insert_pos:insert_pos] = xtra_box
+            struct.pack_into(">I", data, udta, udta_size + delta)
+            struct.pack_into(">I", data, moov, moov_size + delta)
+            p.write_bytes(data)
+            logger.info("%s: Xtra box created with WM/SharedUserRating=%d (stars=%s)", p.name, wm_value, stars)
+            return True
+
+    except Exception as exc:
+        logger.error("_write_xtra_rating %s: %s", p.name, exc)
+    return False
 
 
 def _read_vorbis_rating(p: Path) -> float:

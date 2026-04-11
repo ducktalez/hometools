@@ -29,7 +29,7 @@ __all__ = ["IndexCache"]
 # History: 1 = initial, 2 = WMP-standard POPM mapping (2026-04-10),
 #          3 = M4A / FLAC / Vorbis rating support,
 #          4 = M4A rating read fix (force rebuild after race-condition fix)
-_SNAPSHOT_VERSION = 4
+_SNAPSHOT_VERSION = 5
 
 
 class IndexCache:
