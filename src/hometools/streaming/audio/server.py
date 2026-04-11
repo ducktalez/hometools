@@ -81,6 +81,7 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         player_bar_style="classic" if safe_mode else get_player_bar_style(),
         safe_mode=safe_mode,
         enable_shuffle=True,
+        enable_repeat=True,
         enable_rating_write=True,
         enable_metadata_edit=True,
         enable_recent=False,  # Audio: no "recently played" section; audiobooks resume via progress API

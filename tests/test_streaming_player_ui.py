@@ -697,6 +697,132 @@ def test_video_server_does_not_enable_shuffle():
     assert "SHUFFLE_ENABLED = false" in html
 
 
+# ---------------------------------------------------------------------------
+# Repeat mode
+# ---------------------------------------------------------------------------
+
+
+def test_repeat_btn_present_when_enabled():
+    """Repeat button must appear in the HTML when enable_repeat=True."""
+    page = render_media_page(
+        title="Test",
+        emoji="🎵",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+        item_noun="track",
+        enable_repeat=True,
+    )
+    assert 'id="btn-repeat"' in page
+
+
+def test_repeat_btn_absent_when_disabled():
+    """Repeat button must NOT appear when enable_repeat=False (default)."""
+    page = _page()
+    assert 'id="btn-repeat"' not in page
+
+
+def test_repeat_js_enabled_flag_true():
+    """REPEAT_ENABLED must be true when enable_repeat=True."""
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    assert "REPEAT_ENABLED = true" in js
+
+
+def test_repeat_js_enabled_flag_false_by_default():
+    """REPEAT_ENABLED must be false when enable_repeat=False (default)."""
+    js = _js()
+    assert "REPEAT_ENABLED = false" in js
+
+
+def test_repeat_js_has_core_functions():
+    """Repeat logic functions must be present."""
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    assert "cycleRepeat" in js
+    assert "updateRepeatBtn" in js
+    assert "repeatMode" in js
+    assert "IC_REPEAT_ONE" in js
+    assert "IC_REPEAT" in js
+
+
+def test_repeat_js_restores_from_localstorage():
+    """Repeat preference must be loaded from localStorage on startup."""
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    assert "ht-repeat-mode" in js
+
+
+def test_repeat_css_has_active_styles():
+    """CSS must include styles for repeat active states."""
+    css = render_base_css()
+    assert "repeat-active" in css
+    assert "repeat-one" in css
+
+
+def test_repeat_btn_in_both_player_bar_styles():
+    """Repeat button must appear in both classic and waveform player bars."""
+    for style in ("classic", "waveform"):
+        page = render_media_page(
+            title="Test",
+            emoji="🎵",
+            items_json="[]",
+            media_element_tag="audio",
+            api_path="/api/audio/tracks",
+            item_noun="track",
+            player_bar_style=style,
+            enable_repeat=True,
+        )
+        assert 'id="btn-repeat"' in page, f"Missing repeat button in {style} player bar"
+
+
+def test_audio_server_enables_repeat():
+    """The audio server must enable repeat in its rendered HTML."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert 'id="btn-repeat"' in html
+    assert "REPEAT_ENABLED = true" in html
+
+
+def test_video_server_enables_repeat():
+    """The video server must enable repeat in its rendered HTML."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert 'id="btn-repeat"' in html
+    assert "REPEAT_ENABLED = true" in html
+
+
+def test_repeat_one_suppresses_crossfade():
+    """When repeat mode is 'one', the crossfade trigger must be skipped."""
+    js = render_player_js(
+        api_path="/api/test",
+        item_noun="track",
+        enable_repeat=True,
+        crossfade_duration=5,
+    )
+    assert "repeatMode !== 'one'" in js
+
+
+def test_repeat_nextindex_returns_minus_one_when_off():
+    """nextIndex must contain logic to return -1 (stop) when repeat is off at end of list."""
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    assert "repeat" in js.lower()
+    # When repeat is 'all' → wrap to 0; when off → return -1
+    assert "return repeatMode === 'all' ? 0 : -1" in js
+
+
+def test_play_next_item_handles_repeat_one():
+    """playNextItem must restart current track when repeat mode is 'one'."""
+    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    assert "repeatMode === 'one'" in js
+    assert "player.currentTime = 0" in js
+
+
 def test_shuffle_queue_rebuild_in_render_tracks():
     """JS must rebuild the shuffle queue when filteredItems changes (applyFilter)."""
     from hometools.streaming.core.server_utils import render_player_js

@@ -85,6 +85,7 @@ def render_video_index_html(items, *, safe_mode: bool = False) -> str:
         theme_color="#bb86fc",
         player_bar_style="classic" if safe_mode else get_player_bar_style(),
         safe_mode=safe_mode,
+        enable_repeat=True,
         enable_playlists=True,
         playlist_sync_interval_ms=get_playlist_sync_interval() * 1000,
         min_rating=get_min_rating(),
