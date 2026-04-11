@@ -679,6 +679,39 @@ class TestQueueParity:
             assert "dequeueNext" in html
 
 
+class TestRepeatParity:
+    """Repeat mode must be present in both audio and video UIs."""
+
+    def test_both_home_pages_include_repeat_button(self, tmp_path):
+        """Both UIs must have the repeat button in the player bar."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        assert 'id="btn-repeat"' in audio_html
+        assert 'id="btn-repeat"' in video_html
+
+    def test_both_home_pages_include_repeat_js(self, tmp_path):
+        """Both UIs must have REPEAT_ENABLED and repeat functions."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "REPEAT_ENABLED = true" in html
+            assert "cycleRepeat" in html
+            assert "updateRepeatBtn" in html
+            assert "repeatMode" in html
+
+
 class TestRefreshParity:
     """Refresh endpoint and button must be present in both servers."""
 

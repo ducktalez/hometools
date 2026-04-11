@@ -1095,6 +1095,9 @@ body.playlist-dragging .track-list { overflow: visible; }
 /* Shuffle button active states */
 .ctrl-btn.shuffle-btn.shuffle-active { color: var(--accent); }
 .ctrl-btn.shuffle-btn.shuffle-weighted { color: var(--accent); background: rgba(29, 185, 84, 0.15); border-radius: 50%; }
+/* Repeat button active states */
+.ctrl-btn.repeat-btn.repeat-active { color: var(--accent); }
+.ctrl-btn.repeat-btn.repeat-one { color: var(--accent); background: rgba(29, 185, 84, 0.15); border-radius: 50%; }
 /* Rating stars in player */
 .player-rating { display: flex; gap: 1px; margin-top: 2px; }
 .player-rating[hidden] { display: none; }
@@ -1477,6 +1480,7 @@ def render_player_js(
     player_bar_style: str = "classic",
     enable_offline: bool = True,
     enable_shuffle: bool = False,
+    enable_repeat: bool = False,
     enable_rating_write: bool = False,
     enable_metadata_edit: bool = False,
     enable_recent: bool = True,
@@ -1691,10 +1695,15 @@ def render_player_js(
   var IC_PIN = '<svg viewBox="0 0 24 24"><path d="M16 4l4 4-2.5 2.5 1.5 5.5-6-6-5 5v-2l3.5-3.5L6 4h2l5 1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var IC_STAR = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>';
   var IC_SHUFFLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16,3 21,3 21,8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21,16 21,21 16,21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>';
+  var IC_REPEAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17,1 21,5 17,9"/><path d="M3,11V9a4,4,0,0,1,4-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21,13v2a4,4,0,0,1-4,4H3"/></svg>';
+  var IC_REPEAT_ONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17,1 21,5 17,9"/><path d="M3,11V9a4,4,0,0,1,4-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21,13v2a4,4,0,0,1-4,4H3"/><text x="12" y="15.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="7" font-weight="bold">1</text></svg>';
   var IC_STAR_FILLED = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>';
   var IC_STAR_EMPTY  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>';
   var SHUFFLE_ENABLED = """
         + ("true" if enable_shuffle else "false")
+        + """;
+  var REPEAT_ENABLED = """
+        + ("true" if enable_repeat else "false")
         + """;
   var RATING_WRITE_ENABLED = """
         + ("true" if enable_rating_write else "false")
@@ -1773,6 +1782,7 @@ def render_player_js(
   var initialCatalogRetryCount = 0;
   /* ── Shuffle state ── */
   var shuffleMode = false;       /* false = off, 'normal' = random, 'weighted' = rating-weighted */
+  var repeatMode  = false;       /* false = off, 'all' = repeat playlist, 'one' = repeat single track */
   var shuffleQueue = [];         /* pre-built queue of indices for current session */
   var shufflePos = -1;           /* current position within shuffleQueue */
 
@@ -1786,6 +1796,7 @@ def render_player_js(
   var btnPrev      = document.getElementById('btn-prev');
   var btnNext      = document.getElementById('btn-next');
   var btnShuffle   = document.getElementById('btn-shuffle');
+  var btnRepeat    = document.getElementById('btn-repeat');
   var trackList    = document.getElementById('track-list');
   var trackCount   = document.getElementById('track-count');
   var playerTitle  = document.getElementById('player-title');
@@ -2169,9 +2180,22 @@ def render_player_js(
   }
 
   function playNextItem() {
+    if (repeatMode === 'one') {
+      /* Repeat single: restart the current track */
+      player.currentTime = 0;
+      player.play().catch(function() {});
+      return;
+    }
     if (dequeueNext()) return;
     if (!filteredItems.length) return;
-    playTrack(nextIndex());
+    var ni = nextIndex();
+    if (ni < 0) {
+      /* End of list, no repeat — stop playback */
+      wasPlaying = false;
+      btnPlay.innerHTML = IC_PLAY;
+      return;
+    }
+    playTrack(ni);
   }
 
   function _syncQueueBottom() {
@@ -4710,7 +4734,9 @@ def render_player_js(
       }
       return shuffleQueue[shufflePos];
     }
-    return currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0;
+    if (currentIndex < filteredItems.length - 1) return currentIndex + 1;
+    /* End of list: repeat-all wraps, otherwise return -1 (stop) */
+    return repeatMode === 'all' ? 0 : -1;
   }
 
   /* Prev index respecting shuffle state */
@@ -4719,7 +4745,8 @@ def render_player_js(
       shufflePos = (shufflePos - 1 + shuffleQueue.length) % shuffleQueue.length;
       return shuffleQueue[shufflePos];
     }
-    return currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1;
+    if (currentIndex > 0) return currentIndex - 1;
+    return repeatMode === 'all' ? filteredItems.length - 1 : 0;
   }
 
   /* Toggle shuffle mode: off → normal → weighted → off */
@@ -4754,6 +4781,31 @@ def render_player_js(
       : shuffleMode === 'normal'
         ? 'Shuffle (zufällig) — Klick für gewichtet, Long Press für Aus'
         : 'Shuffle aktivieren';
+  }
+
+  /* ── Repeat mode: off → all → one → off ── */
+  function cycleRepeat() {
+    if (!repeatMode) {
+      repeatMode = 'all';
+    } else if (repeatMode === 'all') {
+      repeatMode = 'one';
+    } else {
+      repeatMode = false;
+    }
+    localStorage.setItem('ht-repeat-mode', repeatMode || '');
+    updateRepeatBtn();
+  }
+
+  function updateRepeatBtn() {
+    if (!btnRepeat) return;
+    btnRepeat.classList.toggle('repeat-active', !!repeatMode);
+    btnRepeat.classList.toggle('repeat-one', repeatMode === 'one');
+    btnRepeat.innerHTML = repeatMode === 'one' ? IC_REPEAT_ONE : IC_REPEAT;
+    btnRepeat.title = repeatMode === 'one'
+      ? 'Einzeltitel wiederholen — Klick für Aus'
+      : repeatMode === 'all'
+        ? 'Alle wiederholen — Klick für Einzeltitel'
+        : 'Wiederholen aktivieren';
   }
 
   /* ── Rating stars (audio-only write, display-only for video) ── */
@@ -4910,6 +4962,18 @@ def render_player_js(
     });
   }
 
+  /* ── Repeat button: click = cycle modes (off → all → one → off) ── */
+  if (REPEAT_ENABLED) {
+    var _savedRepeat = localStorage.getItem('ht-repeat-mode');
+    if (_savedRepeat === 'all' || _savedRepeat === 'one') {
+      repeatMode = _savedRepeat;
+    }
+    updateRepeatBtn();
+  }
+  if (REPEAT_ENABLED && btnRepeat) {
+    btnRepeat.addEventListener('click', cycleRepeat);
+  }
+
   /* ── Crossfade (audio only) ── */
   var _xfadeAudio = null;   /* second <audio> element for crossfade target */
   var _xfading = false;     /* true while a crossfade is in progress */
@@ -5034,8 +5098,9 @@ def render_player_js(
     timeCur.textContent = fmtTime(player.currentTime);
     drawWaveform(player.currentTime / player.duration);
     saveProgressDebounced();
-    /* Crossfade trigger: start fading when remaining time <= CROSSFADE_DURATION */
-    if (CROSSFADE_DURATION > 0 && !_xfading && !isVideoPlayer) {
+    /* Crossfade trigger: start fading when remaining time <= CROSSFADE_DURATION
+       Skip crossfade for repeat-one (track restarts itself) */
+    if (CROSSFADE_DURATION > 0 && !_xfading && !isVideoPlayer && repeatMode !== 'one') {
       var remaining = player.duration - player.currentTime;
       if (remaining > 0 && remaining <= CROSSFADE_DURATION && player.duration > CROSSFADE_DURATION + 5) {
         _startCrossfade();
@@ -6532,6 +6597,7 @@ def render_media_page(
     player_bar_style: str = "classic",
     safe_mode: bool = False,
     enable_shuffle: bool = False,
+    enable_repeat: bool = False,
     enable_rating_write: bool = False,
     enable_metadata_edit: bool = False,
     enable_recent: bool = True,
@@ -6568,6 +6634,7 @@ def render_media_page(
         player_bar_style=player_bar_style,
         enable_offline=not safe_mode,
         enable_shuffle=enable_shuffle,
+        enable_repeat=enable_repeat,
         enable_rating_write=enable_rating_write,
         enable_metadata_edit=enable_metadata_edit,
         enable_recent=enable_recent,
@@ -6583,6 +6650,9 @@ def render_media_page(
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
     shuffle_btn_html = (
         f'<button class="ctrl-btn shuffle-btn" id="btn-shuffle" title="Shuffle">{SVG_SHUFFLE}</button>' if enable_shuffle else ""
+    )
+    repeat_btn_html = (
+        f'<button class="ctrl-btn repeat-btn" id="btn-repeat" title="Wiederholen">{SVG_REPEAT}</button>' if enable_repeat else ""
     )
     queue_btn_html = f'<button class="ctrl-btn queue-btn" id="btn-queue" title="Warteschlange">{SVG_QUEUE}<span class="queue-badge" id="queue-badge"></span></button>'
     sw_register = (
@@ -6742,6 +6812,7 @@ def render_media_page(
         <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>{SVG_PIP}</button>
         {lyrics_btn_html}
         {shuffle_btn_html}
+        {repeat_btn_html}
         {queue_btn_html}
       </div>
     </div>
@@ -6774,6 +6845,7 @@ def render_media_page(
       <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>{SVG_PIP}</button>
       {lyrics_btn_html}
       {shuffle_btn_html}
+      {repeat_btn_html}
       {queue_btn_html}
     </div>
     <div class="progress-wrap">

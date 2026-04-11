@@ -682,6 +682,63 @@ Die Shuffle-Queue wird **client-seitig** aus `filteredItems` berechnet — keine
 - Keine API-Endpunkte für Shuffle — nur client-seitig (offline-fähig).
 - `filteredItems` bestimmt die Queue-Basis — Filter und Shuffle kooperieren korrekt.
 
+## Repeat-Modus (Off / Alle / Einzeltitel)
+
+**Modul:** `streaming/core/server_utils.py` (Shared Core, Audio + Video)
+
+Wiederholungs-Button im Player-Bar mit drei Modi.
+
+### Feature-Flag
+
+```python
+# render_media_page(enable_repeat=True)  →  Audio + Video
+```
+
+`enable_repeat: bool = False` in `render_player_js()` / `render_media_page()`. Steuert:
+1. Ob der Button `<button id="btn-repeat">` gerendert wird
+2. Ob `REPEAT_ENABLED = true` in der JS-Payload gesetzt wird
+
+### Modi
+
+| Modus | State | `nextIndex()` am Listenende | `playNextItem()` bei `ended` |
+|---|---|---|---|
+| **Aus** (`false`) | Kein Wiederholungssymbol | Gibt `-1` zurück → Wiedergabe stoppt | Stoppt (`wasPlaying = false`) |
+| **Alle** (`'all'`) | Grünes Repeat-Icon | Wraps auf `0` zurück | Nächster Track normal |
+| **Einzeltitel** (`'one'`) | Grünes Repeat-Icon + „1" | N/A (wird nicht erreicht) | `player.currentTime = 0; player.play()` |
+
+### JS-Architektur
+
+```
+repeatMode: false | 'all' | 'one'
+
+IC_REPEAT          ← Standard Repeat-SVG
+IC_REPEAT_ONE      ← Repeat-SVG mit „1"-Text-Overlay
+
+cycleRepeat()       ← off → all → one → off (localStorage-Persistenz)
+updateRepeatBtn()   ← CSS-Klassen .repeat-active / .repeat-one, innerHTML ← IC_REPEAT / IC_REPEAT_ONE
+```
+
+### Interaktion mit anderen Features
+
+- **Queue:** Hat Vorrang. `playNextItem()` prüft erst `dequeueNext()`, dann `repeatMode`.
+- **Shuffle:** Koexistiert. Bei `repeat-all` + Shuffle → Shuffle-Queue wraps normal. Bei `repeat-one` → Shuffle irrelevant (Track startet neu).
+- **Crossfade:** Bei `repeat-one` unterdrückt: `repeatMode !== 'one'` Guard im `timeupdate` Crossfade-Trigger.
+- **localStorage:** `ht-repeat-mode` speichert den Modus sitzungsübergreifend.
+
+### CSS
+
+```css
+.ctrl-btn.repeat-btn.repeat-active { color: var(--accent); }
+.ctrl-btn.repeat-btn.repeat-one    { color: var(--accent); background: rgba(29,185,84,0.15); border-radius: 50%; }
+```
+
+### Design-Regeln
+
+- Repeat ist in **beiden** Servern aktiviert (Audio + Video) — eine Serie wiederholen ist ebenso nützlich wie ein Lieblingslied.
+- Repeat-Logik lebt ausschließlich in `server_utils.py` (Shared Core).
+- Keine API-Endpunkte — rein client-seitig.
+- `nextIndex()` gibt bei `repeat-off` am Listenende `-1` statt `0` zurück — das ist die einzige Verhaltensänderung gegenüber dem bisherigen Default (immer wrappen).
+
 ## Header-Navigation
 
 Der Header besteht aus vier Elementen:
