@@ -221,7 +221,7 @@ Ratings werden format-abhängig gelesen und geschrieben. Die zentralen Funktione
 | Format | Tag-Typ | Lesen | Schreiben | Wertebereich |
 |--------|---------|-------|-----------|--------------|
 | **MP3** | ID3 POPM (Popularimeter) | `get_popm_rating()` → `popm_raw_to_stars()` | `set_popm_rating()` | 0–255 (WMP-Mapping) |
-| **M4A/MP4** | `----:com.apple.iTunes:RATING` Freeform-Atom | `_read_m4a_rating()` | `_write_m4a_rating()` | 0–100 (20 pro Stern) |
+| **M4A/MP4** | Windows Xtra + iTunes Freeform | `_read_m4a_rating()` (Xtra→iTunes) | `_write_m4a_rating()` (beide) | Xtra: 0/1/25/50/75/99; iTunes: 0–100 |
 | **FLAC/OGG/Opus** | Vorbis `FMPS_RATING` + `RATING` | `_read_vorbis_rating()` | `_write_vorbis_rating()` | FMPS: 0.0–1.0, RATING: 0–5 |
 
 #### MP3 POPM-Mapping (Windows Media Player Standard)
@@ -235,18 +235,54 @@ Ratings werden format-abhängig gelesen und geschrieben. Die zentralen Funktione
 | 160–223     | 4★     | 196 |
 | 224–255     | 5★     | 255 |
 
-#### M4A/MP4 Prozent-Skala
+#### M4A/MP4 Dual-Tag-System (Xtra + iTunes)
 
-| Wert | Sterne | Kanonischer Schreibwert |
-|------|--------|------------------------|
-| 0    | 0 (unbewertet) | 0 |
-| 20   | 1★     | 20 |
-| 40   | 2★     | 40 |
-| 60   | 3★     | 60 |
-| 80   | 4★     | 80 |
-| 100  | 5★     | 100 |
+M4A/MP4-Dateien verwenden **zwei unabhängige Rating-Tags**, die beim Schreiben synchron gehalten werden:
+
+1. **Windows Xtra-Box** (`moov/udta/Xtra → WM/SharedUserRating`):
+   - Microsoft-proprietäre Box, die Windows Explorer zum Anzeigen/Setzen von Bewertungen verwendet.
+   - Werte als int64 (little-endian) im Xtra-Attribut-Format gespeichert.
+   - Da mutagen die Xtra-Box nicht kennt, wird sie als Raw-Binary gelesen/geschrieben.
+   - **Lese-Priorität 1** — das ist was der User im Windows Explorer sieht.
+
+| WM-Wert | Sterne |
+|---------|--------|
+| 0       | 0 (unbewertet) |
+| 1       | 1★     |
+| 25      | 2★     |
+| 50      | 3★     |
+| 75      | 4★     |
+| 99      | 5★     |
+
+2. **iTunes Freeform-Atom** (`----:com.apple.iTunes:RATING`):
+   - Prozent-Skala 0–100 (20 pro Stern), gespeichert als UTF-8-Text.
+   - Kompatibel mit Mp3tag, MediaMonkey, foobar2000, macOS.
+   - **Lese-Priorität 2** — Fallback wenn keine Xtra-Box vorhanden.
+
+| iTunes-Wert | Sterne |
+|-------------|--------|
+| 0    | 0 (unbewertet) |
+| 20   | 1★     |
+| 40   | 2★     |
+| 60   | 3★     |
+| 80   | 4★     |
+| 100  | 5★     |
 
 Werte ≤ 5 werden als direkte Sternzahl interpretiert (Kompatibilität mit Tools die 1–5 statt 0–100 schreiben).
+
+**Xtra-Box-Format (Binary):**
+```
+Box: 4 bytes size (BE) + "Xtra"
+  Attribute: 4 entry_size (BE) + 4 name_len (BE) + name (ASCII)
+           + 4 val_count (BE)
+           + [4 val_size (BE) + 2 val_type (BE) + value_data]
+  val_type 0x0013 = int64 (LE)
+```
+
+**Write-Fälle:**
+1. Xtra-Box existiert mit `WM/SharedUserRating` → In-Place-Update (keine Größenänderung)
+2. Xtra-Box existiert ohne `WM/SharedUserRating` → Attribut anhängen + Eltern-Boxen (Xtra/udta/moov) Größe anpassen
+3. Keine Xtra-Box → Neue Box in `moov/udta` erstellen + Eltern-Boxen Größe anpassen
 
 **Binary-Fallback:** `_read_m4a_rating` versucht zuerst UTF-8-Text-Parsing (z.B. `b"80"` → 80). Bei Fehlschlag wird der Wert als binärer Integer interpretiert (ein Byte: Ordinalwert; mehrere Bytes: Big-Endian). Damit werden auch Ratings gelesen, die von Tools mit IMPLICIT-Datenformat (statt UTF-8) geschrieben wurden.
 
@@ -264,7 +300,8 @@ Werte ≤ 5 werden als direkte Sternzahl interpretiert (Kompatibilität mit Tool
 - `get_rating_stars()` und `set_rating_stars()` in `audio/metadata.py` sind die einzigen öffentlichen Funktionen für format-bewusstes Rating-Lesen/-Schreiben.
 - `popm_raw_to_stars()` und `stars_to_popm_raw()` bleiben als MP3-spezifische Helfer erhalten (werden intern von `get_rating_stars`/`set_rating_stars` für MP3 aufgerufen).
 - `get_popm_rating()` prüft vor dem ID3-Lesen die Dateiendung; gibt bei Nicht-MP3 `0` zurück um den `can't sync to MPEG frame`-Fehler zu vermeiden.
-- **Snapshot-Versionierung:** `_SNAPSHOT_VERSION` in `index_cache.py` muss gebumpt werden, wenn sich das Datenformat ändert (z.B. Rating-Mapping). Alte Snapshots werden beim Laden verworfen, erzwingen frischen Rebuild vom Dateisystem. Aktuell: v4 (M4A-Rating-Read-Fix + Race-Condition-Fix).
+- **M4A Dual-Tag-Sync:** `_write_m4a_rating()` schreibt immer **beide** Tags (iTunes-Atom via mutagen, dann Xtra-Box via Raw-Binary). `_read_m4a_rating()` bevorzugt die Xtra-Box (Windows-Wahrheit), fällt auf iTunes-Atom zurück.
+- **Snapshot-Versionierung:** `_SNAPSHOT_VERSION` in `index_cache.py` muss gebumpt werden, wenn sich das Datenformat ändert (z.B. Rating-Mapping). Alte Snapshots werden beim Laden verworfen, erzwingen frischen Rebuild vom Dateisystem. Aktuell: v5 (M4A Xtra-Box-Support).
 - **Cache-Patch nach Rating-Write:** `audio_set_rating` ruft `patch_items()` auf, bevor `invalidate()` den Cache als stale markiert. So liefert die API sofort das korrekte Rating, auch wenn der Background-Rebuild noch nicht fertig ist.
 - **`refreshCatalog()` pollt bei laufendem Build:** Die JS-Funktion prüft `data.refreshing` und ruft `scheduleBackgroundRefresh()` auf, statt veraltete Daten als final darzustellen.
 

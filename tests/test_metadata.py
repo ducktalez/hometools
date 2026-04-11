@@ -1,6 +1,7 @@
 """Tests for hometools.audio.metadata — embedded metadata reading."""
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,9 @@ from hometools.audio.metadata import (
     _read_m4a_rating,
     _read_metadata_ffprobe,
     _read_vorbis_rating,
+    _read_xtra_rating,
+    _wm_rating_to_stars,
+    _write_xtra_rating,
     audiofile_assume_artist_title,
     get_rating_stars,
     popm_raw_to_stars,
@@ -690,3 +694,226 @@ class TestReadM4aRatingBinaryFallback:
                 "----:com.apple.iTunes:RATING": [binary_val],
             }
             assert _read_m4a_rating(p) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# M4A rating — real file integration test (local-only, skipped if missing)
+# ---------------------------------------------------------------------------
+
+_REAL_M4A_FILE = Path(r"C:\Users\Simon\Music\GETINHERE\Funsongs\Sitking - HELPER QUEST.m4a")
+
+
+class TestM4aRealFileRoundtrip:
+    """Roundtrip on a copy of a real M4A file from the local library.
+
+    These tests are skipped on CI / machines where the file does not exist.
+    They verify that the rating read/write code works with a real-world
+    M4A container (not a synthetically generated one).
+    """
+
+    @pytest.fixture()
+    def real_m4a(self, tmp_path):
+        if not _REAL_M4A_FILE.exists():
+            pytest.skip(f"Real test file not found: {_REAL_M4A_FILE}")
+        import shutil
+
+        copy = tmp_path / "helper_quest_copy.m4a"
+        shutil.copy2(_REAL_M4A_FILE, copy)
+        return copy
+
+    def test_read_original_rating(self, real_m4a):
+        """The copied file must have a readable non-zero rating (3★ from Windows Xtra box)."""
+        stars = get_rating_stars(real_m4a)
+        assert stars == 3.0, f"Expected 3.0 stars (from Xtra box), got {stars}"
+
+    def test_roundtrip_all_star_values(self, real_m4a):
+        """Write 0–5 stars and read each one back correctly."""
+        for stars in range(6):
+            ok = set_rating_stars(real_m4a, float(stars))
+            assert ok is True, f"set_rating_stars({stars}) failed"
+            result = get_rating_stars(real_m4a)
+            assert result == float(stars), f"Write {stars}→read {result}"
+
+    def test_write_preserves_existing_tags(self, real_m4a):
+        """Writing a rating must not corrupt the file or strip other tags."""
+        from mutagen.mp4 import MP4
+
+        before_tags = set(MP4(real_m4a).tags.keys()) if MP4(real_m4a).tags else set()
+        set_rating_stars(real_m4a, 3.0)
+        after_tags = set(MP4(real_m4a).tags.keys()) if MP4(real_m4a).tags else set()
+        # All original tags must still be present (new ones may be added)
+        assert before_tags <= after_tags, f"Lost tags: {before_tags - after_tags}"
+
+    def test_raw_atom_format_after_write(self, real_m4a):
+        """After writing, the atom must be UTF-8 text with correct value."""
+        from mutagen.mp4 import MP4
+
+        set_rating_stars(real_m4a, 3.0)
+        audio = MP4(real_m4a)
+        val = audio.tags.get("----:com.apple.iTunes:RATING")
+        assert val is not None, "Rating atom missing after write"
+        assert bytes(val[0]) == b"60", f"Expected b'60' for 3*, got {bytes(val[0])!r}"
+        assert val[0].dataformat == 1, f"Expected UTF-8 dataformat (1), got {val[0].dataformat}"
+
+
+# ---------------------------------------------------------------------------
+# Windows Xtra box (WM/SharedUserRating) — conversion + read/write
+# ---------------------------------------------------------------------------
+
+
+class TestWmRatingToStars:
+    """_wm_rating_to_stars uses the Windows Media standard mapping."""
+
+    def test_unrated(self):
+        assert _wm_rating_to_stars(0) == 0.0
+
+    def test_one_star(self):
+        assert _wm_rating_to_stars(1) == 1.0
+
+    def test_two_stars(self):
+        assert _wm_rating_to_stars(25) == 2.0
+
+    def test_three_stars(self):
+        assert _wm_rating_to_stars(50) == 3.0
+
+    def test_four_stars(self):
+        assert _wm_rating_to_stars(75) == 4.0
+
+    def test_five_stars(self):
+        assert _wm_rating_to_stars(99) == 5.0
+
+    def test_boundary_between_two_and_three(self):
+        assert _wm_rating_to_stars(37) == 2.0
+        assert _wm_rating_to_stars(38) == 3.0
+
+    def test_boundary_between_four_and_five(self):
+        assert _wm_rating_to_stars(86) == 4.0
+        assert _wm_rating_to_stars(87) == 5.0
+
+
+class TestXtraRatingReadWrite:
+    """Read and write WM/SharedUserRating in the Xtra box of M4A files."""
+
+    def test_read_nonexistent_file(self, tmp_path):
+        assert _read_xtra_rating(tmp_path / "nope.m4a") is None
+
+    def test_read_empty_file(self, tmp_path):
+        p = tmp_path / "empty.m4a"
+        p.write_bytes(b"")
+        assert _read_xtra_rating(p) is None
+
+    def test_read_file_without_xtra(self, m4a_file):
+        """A fresh ffmpeg M4A has no Xtra box → None."""
+        assert _read_xtra_rating(m4a_file) is None
+
+    def test_write_creates_xtra_box(self, m4a_file):
+        """Writing to a file without Xtra creates one."""
+        assert _write_xtra_rating(m4a_file, 3.0) is True
+        assert _read_xtra_rating(m4a_file) == 3.0
+
+    def test_roundtrip_all_stars(self, m4a_file):
+        """Write 0–5 stars to Xtra box and read each back."""
+        for stars in range(6):
+            ok = _write_xtra_rating(m4a_file, float(stars))
+            assert ok is True, f"_write_xtra_rating({stars}) failed"
+            result = _read_xtra_rating(m4a_file)
+            assert result == float(stars), f"Write {stars}→read {result}"
+
+    def test_inplace_update(self, m4a_file):
+        """Second write does an in-place update (no size change)."""
+        _write_xtra_rating(m4a_file, 2.0)
+        size_after_first = m4a_file.stat().st_size
+        _write_xtra_rating(m4a_file, 4.0)
+        size_after_second = m4a_file.stat().st_size
+        assert _read_xtra_rating(m4a_file) == 4.0
+        # In-place update should not change file size
+        assert size_after_first == size_after_second
+
+    def test_write_preserves_playability(self, m4a_file):
+        """After Xtra write, mutagen can still read the file."""
+        _write_xtra_rating(m4a_file, 5.0)
+        from mutagen.mp4 import MP4
+
+        audio = MP4(m4a_file)
+        assert audio.info.length > 0
+
+    def test_write_then_mutagen_save_preserves_xtra(self, m4a_file):
+        """Mutagen save after Xtra write must preserve the Xtra box."""
+        _write_xtra_rating(m4a_file, 4.0)
+        # Mutagen save (add a tag)
+        from mutagen.mp4 import MP4
+
+        audio = MP4(m4a_file)
+        if audio.tags is None:
+            audio.add_tags()
+        audio.tags["\xa9nam"] = ["Test"]
+        audio.save()
+        # Xtra must still be readable
+        assert _read_xtra_rating(m4a_file) == 4.0
+
+
+class TestM4aDualTagSync:
+    """set_rating_stars must sync both iTunes atom and Windows Xtra box."""
+
+    def test_set_updates_both_tags(self, m4a_file):
+        """After set_rating_stars, both iTunes atom and Xtra box match."""
+        set_rating_stars(m4a_file, 3.0)
+
+        # iTunes atom
+        from mutagen.mp4 import MP4
+
+        audio = MP4(m4a_file)
+        val = audio.tags.get("----:com.apple.iTunes:RATING")
+        assert val is not None
+        assert bytes(val[0]) == b"60"
+
+        # Xtra box
+        assert _read_xtra_rating(m4a_file) == 3.0
+
+    def test_get_prefers_xtra_over_itunes(self, m4a_file):
+        """If Xtra and iTunes disagree, get_rating_stars returns Xtra."""
+        from mutagen.mp4 import MP4, MP4FreeForm
+
+        # Write mismatched values
+        _write_xtra_rating(m4a_file, 2.0)
+        audio = MP4(m4a_file)
+        if audio.tags is None:
+            audio.add_tags()
+        audio.tags["----:com.apple.iTunes:RATING"] = [
+            MP4FreeForm(b"80", dataformat=1),  # 4 stars in iTunes scale
+        ]
+        audio.save()
+
+        # get_rating_stars should prefer Xtra (2★) over iTunes (4★)
+        assert get_rating_stars(m4a_file) == 2.0
+
+
+class TestXtraRealFile:
+    """Test Xtra operations on a copy of the real HELPER QUEST file."""
+
+    @pytest.fixture()
+    def real_m4a(self, tmp_path):
+        if not _REAL_M4A_FILE.exists():
+            pytest.skip(f"Real test file not found: {_REAL_M4A_FILE}")
+        import shutil
+
+        copy = tmp_path / "helper_quest_xtra.m4a"
+        shutil.copy2(_REAL_M4A_FILE, copy)
+        return copy
+
+    def test_read_xtra_matches_windows(self, real_m4a):
+        """The Xtra box must yield 3.0 (matching Windows Explorer)."""
+        assert _read_xtra_rating(real_m4a) == 3.0
+
+    def test_update_xtra_roundtrip(self, real_m4a):
+        """In-place update of existing Xtra value."""
+        _write_xtra_rating(real_m4a, 5.0)
+        assert _read_xtra_rating(real_m4a) == 5.0
+        _write_xtra_rating(real_m4a, 1.0)
+        assert _read_xtra_rating(real_m4a) == 1.0
+
+    def test_set_rating_syncs_both(self, real_m4a):
+        """set_rating_stars on real file syncs Xtra + iTunes."""
+        set_rating_stars(real_m4a, 4.0)
+        assert _read_xtra_rating(real_m4a) == 4.0
+        assert get_rating_stars(real_m4a) == 4.0
