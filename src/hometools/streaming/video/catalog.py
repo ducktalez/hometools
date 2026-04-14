@@ -27,6 +27,7 @@ from hometools.constants import VIDEO_SUFFIX
 from hometools.streaming.core.catalog import list_artists, parse_season_episode
 from hometools.streaming.core.catalog import query_items as query_videos
 from hometools.streaming.core.catalog import sort_items as sort_videos
+from hometools.streaming.core.language import parse_language_tag, parse_subtitle_hint
 from hometools.streaming.core.media_overrides import apply_overrides
 from hometools.streaming.core.models import MediaItem, encode_relative_path
 from hometools.streaming.core.server_utils import safe_resolve
@@ -246,6 +247,11 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         else:
             folder = _folder_as_artist(video_file, root)
 
+        # Detect language tag from folder name (e.g. "(engl)" → "en")
+        _clean_folder, lang_code = parse_language_tag(folder)
+        # Detect subtitle hint from folder name (e.g. "(engl, gersub)" → "de")
+        sub_lang_code = parse_subtitle_hint(folder)
+
         thumbnail_url = ""
         thumbnail_lg_url = ""
         if cache_dir is not None:
@@ -270,6 +276,8 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 episode=episode,
                 mtime=file_mtime,
                 thumbnail_lg_url=thumbnail_lg_url,
+                language=lang_code,
+                subtitle_language=sub_lang_code,
             )
         )
 

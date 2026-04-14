@@ -1437,3 +1437,206 @@ def test_global_search_debounce():
     """Global search input should be debounced."""
     js = render_player_js(api_path="/api/test", item_noun="track")
     assert "_globalSearchDebounce" in js
+
+
+# ---------------------------------------------------------------------------
+# Language tags & cleanFolderName
+# ---------------------------------------------------------------------------
+
+
+def test_js_has_clean_folder_name():
+    """JS must contain the cleanFolderName function."""
+    js = _js()
+    assert "function cleanFolderName" in js
+
+
+def test_js_has_lang_badges_html():
+    """JS must contain the langBadgesHtml function."""
+    js = _js()
+    assert "function langBadgesHtml" in js
+
+
+def test_js_has_lang_to_flag_map():
+    """JS must contain the LANG_TO_FLAG mapping with at least de and en."""
+    js = _js()
+    assert "LANG_TO_FLAG" in js
+    assert "'de'" in js
+    assert "'en'" in js
+
+
+def test_js_has_detect_lang_from_name():
+    """JS must contain the detectLangFromName helper."""
+    js = _js()
+    assert "function detectLangFromName" in js
+
+
+def test_js_clean_folder_name_strips_hash():
+    """cleanFolderName in contentsAt should strip # prefix from displayName."""
+    js = _js()
+    # The cleanFolderName function should strip # at start
+    assert "charAt(0) === '#'" in js
+
+
+def test_js_clean_folder_name_strips_lang_tag():
+    """cleanFolderName should strip language tags via _LANG_TAG_RE."""
+    js = _js()
+    assert "_LANG_TAG_RE" in js
+
+
+def test_js_folder_card_renders_lang_badges():
+    """Folder card rendering must include langBadgesHtml call."""
+    js = _js()
+    assert "langBadgesHtml(f.languages)" in js
+
+
+def test_js_contents_at_aggregates_languages():
+    """contentsAt must collect language codes into folderLangs."""
+    js = _js()
+    assert "folderLangs" in js
+
+
+def test_js_leaf_name_uses_clean_folder_name():
+    """leafName must use cleanFolderName for display."""
+    js = _js()
+    assert "cleanFolderName(raw)" in js
+
+
+def test_js_breadcrumb_uses_clean_folder_name():
+    """renderBreadcrumb must use cleanFolderName for folder labels."""
+    js = _js()
+    assert "cleanFolderName(parts[i])" in js
+
+
+def test_css_has_lang_badge():
+    """CSS must include .lang-badge styling."""
+    css = render_base_css()
+    assert ".lang-badge" in css
+
+
+# ---------------------------------------------------------------------------
+# Composite Flags & Subtitle Language (Phase 1b)
+# ---------------------------------------------------------------------------
+
+
+def test_js_has_detect_sub_lang_from_name():
+    """JS must contain the detectSubLangFromName function."""
+    js = _js()
+    assert "function detectSubLangFromName" in js
+
+
+def test_js_has_composite_flag_html():
+    """JS must contain the compositeFlagHtml function."""
+    js = _js()
+    assert "function compositeFlagHtml" in js
+
+
+def test_js_composite_flag_html_uses_composite_flag_class():
+    """compositeFlagHtml must produce HTML with composite-flag class."""
+    js = _js()
+    assert "composite-flag" in js
+    assert "composite-flag-sub" in js
+
+
+def test_js_has_default_lang_variable():
+    """JS must contain the DEFAULT_LANG variable."""
+    js = _js()
+    assert "DEFAULT_LANG" in js
+
+
+def test_js_default_lang_injectable():
+    """DEFAULT_LANG must be injectable via the default_language parameter."""
+    js = render_player_js(api_path="/api/test", item_noun="track", default_language="en")
+    assert "DEFAULT_LANG = 'en'" in js
+
+
+def test_js_default_lang_defaults_to_de():
+    """DEFAULT_LANG must default to 'de'."""
+    js = render_player_js(api_path="/api/test", item_noun="track")
+    assert "DEFAULT_LANG = 'de'" in js
+
+
+def test_css_has_composite_flag():
+    """CSS must include .composite-flag styling."""
+    css = render_base_css()
+    assert ".composite-flag" in css
+    assert ".composite-flag-sub" in css
+
+
+def test_css_has_lang_select_btn():
+    """CSS must include .lang-select-btn styling."""
+    css = render_base_css()
+    assert ".lang-select-btn" in css
+    assert ".lang-select-btn:hover" in css
+
+
+def test_js_contents_at_aggregates_sub_langs():
+    """contentsAt must collect subtitle language codes into folderSubLangs."""
+    js = _js()
+    assert "folderSubLangs" in js or "subLang" in js
+
+
+def test_js_folder_card_renders_lang_select_btn():
+    """Folder card rendering must include lang-select-btn for multi-lang folders."""
+    js = _js()
+    assert "lang-select-btn" in js
+
+
+def test_js_lang_select_btn_click_navigates():
+    """Clicking a lang-select-btn must navigate into the variant."""
+    js = _js()
+    assert "data-variant-name" in js
+    assert "navigateInto" in js
+
+
+def test_js_card_click_uses_default_lang():
+    """Folder card click must use DEFAULT_LANG to pick variant."""
+    js = _js()
+    assert "DEFAULT_LANG" in js
+
+
+def test_js_detect_sub_lang_maps():
+    """detectSubLangFromName must contain detection patterns for common subtitle hints."""
+    js = _js()
+    assert "gersub" in js or "ger" in js
+
+
+def test_config_get_default_language():
+    """get_default_language must return a valid language code."""
+    from hometools.config import get_default_language
+
+    lang = get_default_language()
+    assert isinstance(lang, str)
+    assert len(lang) == 2
+
+
+def test_config_get_default_language_from_env(monkeypatch):
+    """get_default_language must respect HOMETOOLS_DEFAULT_LANGUAGE env var."""
+    from hometools.config import get_default_language
+
+    monkeypatch.setenv("HOMETOOLS_DEFAULT_LANGUAGE", "en")
+    assert get_default_language() == "en"
+
+    monkeypatch.setenv("HOMETOOLS_DEFAULT_LANGUAGE", "  FR  ")
+    assert get_default_language() == "fr"
+
+
+def test_config_get_default_language_empty_fallback(monkeypatch):
+    """get_default_language must fall back to 'de' for empty values."""
+    from hometools.config import get_default_language
+
+    monkeypatch.setenv("HOMETOOLS_DEFAULT_LANGUAGE", "")
+    assert get_default_language() == "de"
+
+    monkeypatch.setenv("HOMETOOLS_DEFAULT_LANGUAGE", "   ")
+    assert get_default_language() == "de"
+
+
+def test_video_server_passes_default_language():
+    """Video server HTML must include DEFAULT_LANG variable."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert "DEFAULT_LANG" in html

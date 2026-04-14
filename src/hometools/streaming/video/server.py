@@ -68,9 +68,9 @@ def resolve_video_path(library_dir: Path, encoded_relative_path: str) -> Path:
     return resolve_media_path(library_dir, encoded_relative_path, VIDEO_SUFFIX)
 
 
-def render_video_index_html(items, *, safe_mode: bool = False) -> str:
+def render_video_index_html(items, *, safe_mode: bool = False, language_groups_json: str = "{}") -> str:
     """Render the video player UI — dark theme, folder grid, inline video element."""
-    from hometools.config import get_debug_filter, get_min_rating, get_playlist_sync_interval
+    from hometools.config import get_debug_filter, get_default_language, get_min_rating, get_playlist_sync_interval
 
     items_json = _json.dumps([i.to_dict() for i in items], ensure_ascii=False)
 
@@ -90,6 +90,8 @@ def render_video_index_html(items, *, safe_mode: bool = False) -> str:
         playlist_sync_interval_ms=get_playlist_sync_interval() * 1000,
         min_rating=get_min_rating(),
         debug_filter=get_debug_filter(),
+        language_groups_json=language_groups_json,
+        default_language=get_default_language(),
     )
 
 
@@ -107,6 +109,28 @@ def create_app(
     resolved_cache_dir = cache_dir or get_cache_dir()
     resolved_audit_dir = get_audit_dir()
     resolved_safe_mode = get_stream_safe_mode() if safe_mode is None else safe_mode
+
+    # Language group mapping for multi-language linking.
+    # Loaded in a background thread because load_language_groups scans the
+    # filesystem with rglob() which is slow on NAS/UNC paths and must never
+    # block server startup.
+    _lang_state: dict[str, str] = {"json": "{}"}
+
+    def _load_language_groups_bg() -> None:
+        try:
+            ok, msg = check_library_accessible(resolved_library_dir)
+            if not ok:
+                logger.info("Skipping language group scan — library not accessible: %s", msg)
+                return
+            from hometools.streaming.core.media_overrides import load_language_groups
+
+            groups = load_language_groups(resolved_library_dir)
+            _lang_state["json"] = _json.dumps(groups, ensure_ascii=False)
+            logger.info("Language groups loaded: %d entries", len(groups))
+        except Exception:
+            logger.debug("Failed to load language groups", exc_info=True)
+
+    threading.Thread(target=_load_language_groups_bg, daemon=True, name="video-lang-groups").start()
 
     # One-time migration: copy legacy audit log from cache dir to dedicated audit dir
     from hometools.streaming.core.audit_log import _migrate_from_cache
@@ -184,7 +208,7 @@ def create_app(
         if not ok:
             logger.warning("GET / — library not accessible: %s", msg)
             return HTMLResponse(render_error_page("hometools video", "🎬", msg, resolved_library_dir))
-        html = render_video_index_html([], safe_mode=resolved_safe_mode)
+        html = render_video_index_html([], safe_mode=resolved_safe_mode, language_groups_json=_lang_state["json"])
         elapsed = time.monotonic() - t0
         logger.info("GET / — shell rendered in %.2fs (HTML: %d bytes)", elapsed, len(html))
         return HTMLResponse(html)
