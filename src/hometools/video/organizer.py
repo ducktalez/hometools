@@ -233,7 +233,9 @@ def series_rename_episodes(
     if overrides and overrides.series_title:
         series_name = overrides.series_title
     else:
-        series_name = re.sub(r"#|\(engl\)", "", dir_p.name, flags=re.IGNORECASE)
+        from hometools.streaming.core.language import clean_folder_name
+
+        series_name = clean_folder_name(dir_p.name)
     if ignore_substrings:
         for ss in ignore_substrings:
             series_name = re.sub(ss, "", series_name)
@@ -327,7 +329,7 @@ def run_series_renaming(series_root: Path, language: str = "de"):
                 dir_p,
                 season_api,
                 tv,
-                ignore_substrings=[r"\(engl, gersub\)", r"\(engl\)", "1-8", "9-Rest"],
+                ignore_substrings=["1-8", "9-Rest"],
             )
             if from_to:
                 user_rename_from_to_dict(from_to, confirm_each=False)
@@ -350,7 +352,9 @@ def generate_overrides_yaml(
 
     Does **not** write any files — the caller decides where to persist.
     """
-    series_name = re.sub(r"#|\(engl\)", "", dir_p.name, flags=re.IGNORECASE)
+    from hometools.streaming.core.language import clean_folder_name
+
+    series_name = clean_folder_name(dir_p.name)
     if ignore_substrings:
         for ss in ignore_substrings:
             series_name = re.sub(ss, "", series_name)

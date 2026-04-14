@@ -310,6 +310,25 @@ def get_debug_filter() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Default language
+# ---------------------------------------------------------------------------
+
+
+def get_default_language() -> str:
+    """Return the default language code for multi-language folder navigation.
+
+    When a folder has multiple language variants (e.g. German + English),
+    clicking the folder card navigates into the variant matching this
+    language by default.
+
+    Value: ISO 639-1 code (e.g. ``de``, ``en``).  Default ``de``.
+    Set ``HOMETOOLS_DEFAULT_LANGUAGE`` to override.
+    """
+    raw = os.environ.get("HOMETOOLS_DEFAULT_LANGUAGE", "de").strip().lower()
+    return raw if raw else "de"
+
+
+# ---------------------------------------------------------------------------
 # Recently played
 # ---------------------------------------------------------------------------
 

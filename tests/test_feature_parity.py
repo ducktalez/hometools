@@ -832,3 +832,134 @@ class TestGlobalSearchParity:
         for html in [audio_html, video_html]:
             assert "search-result-folder" in html
             assert "#global-search-input" in html
+
+
+class TestLanguageParity:
+    """Language tag support must be present in both audio and video UIs."""
+
+    def test_both_uis_have_lang_badge_css(self, tmp_path):
+        """Both UIs must include the .lang-badge CSS class."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert ".lang-badge" in html
+
+    def test_both_uis_have_lang_to_flag_map(self, tmp_path):
+        """Both UIs must include the LANG_TO_FLAG JavaScript mapping."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "LANG_TO_FLAG" in html
+            assert "cleanFolderName" in html
+            assert "langBadgesHtml" in html
+
+    def test_media_item_has_language_field(self):
+        """MediaItem must have a language field."""
+        from hometools.streaming.core.models import MediaItem
+
+        item = MediaItem(
+            relative_path="test/ep.mp4",
+            title="Episode",
+            artist="Series",
+            stream_url="/stream?path=test/ep.mp4",
+            media_type="video",
+            language="en",
+        )
+        assert item.language == "en"
+        d = item.to_dict()
+        assert d["language"] == "en"
+
+    def test_media_item_language_default_empty(self):
+        """MediaItem language field must default to empty string."""
+        from hometools.streaming.core.models import MediaItem
+
+        item = MediaItem(
+            relative_path="test/ep.mp4",
+            title="Episode",
+            artist="Series",
+            stream_url="/stream?path=test/ep.mp4",
+            media_type="video",
+        )
+        assert item.language == ""
+
+    def test_media_item_has_subtitle_language_field(self):
+        """MediaItem must have a subtitle_language field."""
+        from hometools.streaming.core.models import MediaItem
+
+        item = MediaItem(
+            relative_path="test/ep.mp4",
+            title="Episode",
+            artist="Series",
+            stream_url="/stream?path=test/ep.mp4",
+            media_type="video",
+            language="en",
+            subtitle_language="de",
+        )
+        assert item.subtitle_language == "de"
+        d = item.to_dict()
+        assert d["subtitle_language"] == "de"
+
+    def test_media_item_subtitle_language_default_empty(self):
+        """MediaItem subtitle_language field must default to empty string."""
+        from hometools.streaming.core.models import MediaItem
+
+        item = MediaItem(
+            relative_path="test/ep.mp4",
+            title="Episode",
+            artist="Series",
+            stream_url="/stream?path=test/ep.mp4",
+            media_type="video",
+        )
+        assert item.subtitle_language == ""
+
+    def test_both_uis_have_default_lang_variable(self, tmp_path):
+        """Both UIs must include the DEFAULT_LANG JavaScript variable."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "DEFAULT_LANG" in html
+
+    def test_both_uis_have_composite_flag_css(self, tmp_path):
+        """Both UIs must include .composite-flag CSS class."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert ".composite-flag" in html
+
+    def test_both_uis_have_composite_flag_js(self, tmp_path):
+        """Both UIs must include compositeFlagHtml and detectSubLangFromName JS functions."""
+        from fastapi.testclient import TestClient
+
+        from hometools.streaming.audio.server import create_app as create_audio_app
+        from hometools.streaming.video.server import create_app as create_video_app
+
+        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
+        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
+
+        for html in [audio_html, video_html]:
+            assert "compositeFlagHtml" in html
+            assert "detectSubLangFromName" in html

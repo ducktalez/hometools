@@ -417,10 +417,112 @@ Ordner, deren Name mit `#` beginnt, werden als Favoriten behandelt:
 Folder-Favorites sind **nicht** interaktiv toggle-bar aus dem Browser. Änderungen erfordern Umbenennen des Verzeichnisses auf dem NAS (via separatem `rename`-Workflow — Regel 9: „File renames must be proposed, never auto-applied").
 
 **CSS-Konvention für SVG-Icons:**
-- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_PLAYLIST`)
-- JS-Variablen: `IC_*` in der generierten JS-Seite (inkl. `IC_STAR`, `IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_PLAYLIST`)
-- Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
+- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_PLAYLIST`, `SVG_FLAG_DE`, `SVG_FLAG_EN`, `SVG_FLAG_FR`, `SVG_FLAG_ES`, `SVG_FLAG_IT`, `SVG_FLAG_JA`, `SVG_FLAG_KO`, `SVG_FLAG_ZH`, `SVG_FLAG_PT`, `SVG_FLAG_RU`)
+- JS-Variablen: `IC_*` in der generierten JS-Seite (inkl. `IC_STAR`, `IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_PLAYLIST`); `LANG_TO_FLAG` Mapping-Objekt für Sprach-Flaggen
+- Alle SVGs nutzen `currentColor` für Theme-Kompatibilität (Ausnahme: Flaggen-SVGs verwenden Landesfarben)
 - Kein Unicode/HTML-Entities (`&#9733;`, `&#9654;` etc.) — sie rendern auf iOS als farbige Emojis
+
+## Language Tags (Sprach-Erkennung)
+
+**Modul:** `streaming/core/language.py`
+
+### Übersicht
+
+Ordnernamen wie `Malcolm in the Middle (engl)` oder `Narcos (engl, gersub)` werden automatisch erkannt: Das Sprach-Tag wird aus dem Anzeigenamen entfernt und stattdessen als SVG-Flaggen-Badge neben dem Ordnernamen dargestellt. Bei Multi-Language-Ordnern (z.B. „Malcolm Mittendrin" ↔ „Malcolm in the Middle (engl)") werden die Varianten zu einer Karte zusammengeführt mit inline-Flaggen-Buttons für Direktnavigation.
+
+### Backend
+
+**`parse_language_tag(name)`** — Zentrale Funktion für Sprach-Tag-Erkennung. Gibt `(clean_name, lang_code)` zurück. Unterstützte Muster:
+- Englisch: `(engl)`, `(english)`, `(eng)`, `(en)`, `(engl, gersub)`, `(engl, desub)`
+- Deutsch: `(german)`, `(deutsch)`, `(ger)`, `(de)`
+- Französisch: `(french)`, `(français)`, `(fr)`, `(french, ensub)`
+- Spanisch: `(spanish)`, `(español)`, `(es)`, `(spanish, ensub)`
+- Italienisch: `(italian)`, `(italiano)`, `(it)`
+- Japanisch: `(japanese)`, `(jap)`, `(jp)`, `(jpn)`, `(ja)`, `(japanese, ensub)`
+- Koreanisch: `(korean)`, `(ko)`, `(kor)`, `(korean, ensub)`
+- Chinesisch: `(chinese)`, `(zh)`
+- Portugiesisch: `(portuguese)`, `(pt)`
+- Russisch: `(russian)`, `(ru)`
+
+**`parse_subtitle_hint(name)`** — Extrahiert die Untertitelsprache aus zusammengesetzten Tags wie `(engl, gersub)` → `"de"`. Unterstützte Untertitel-Sprachen: de, en, fr, es, it, ja.
+
+**`parse_language_full(name)`** — Convenience-Wrapper: gibt `(clean_name, audio_lang, subtitle_lang)` zurück.
+
+**`strip_language_tag(name)`** — Entfernt Sprach-Tag, gibt bereinigten Namen zurück.
+
+**`clean_folder_name(name)`** — Kombiniert `#`-Prefix-Entfernung (Favoriten) und Sprach-Tag-Entfernung zu einer einzigen Hilfsfunktion. Wird auch vom Video-Organizer (`series_rename_episodes`, `generate_overrides_yaml`) verwendet (ersetzt das bisherige `re.sub(r"#|\(engl\)", ...)`).
+
+**`MediaItem.language`** — Feld `language: str = ""` (ISO 639-1 Code, z.B. `"en"`, `"de"`). Wird von `build_video_index()` über `parse_language_tag()` aus dem Ordnernamen befüllt. Audio-Items haben vorerst `language=""`.
+
+**`MediaItem.subtitle_language`** — Neues Feld `subtitle_language: str = ""` (ISO 639-1 Code). Wird von `build_video_index()` über `parse_subtitle_hint()` aus dem Ordnernamen befüllt.
+
+**`get_default_language()`** — Config-Funktion (`HOMETOOLS_DEFAULT_LANGUAGE`, Default `"de"`). Bestimmt welche Sprachvariante bei Klick auf eine Multi-Language-Karte standardmäßig navigiert wird.
+
+**Snapshot-Version** auf v7 gebumpt (neues Feld `subtitle_language`).
+
+### Frontend (JS)
+
+**`cleanFolderName(name)`** — JS-Pendant zu `clean_folder_name()`. Strippt `#`-Prefix und Sprach-Tags via `_LANG_TAG_RE` Regex. Wird verwendet in:
+- `contentsAt()` → `displayName`
+- `leafName()` → Header-Titel
+- `renderBreadcrumb()` → Breadcrumb-Labels
+
+**`detectLangFromName(name)`** — Erkennt Sprachcode aus Ordnernamen (JS-Pendant zu `parse_language_tag()`).
+
+**`detectSubLangFromName(name)`** — Erkennt Untertitelsprache aus zusammengesetzten Tags (JS-Pendant zu `parse_subtitle_hint()`).
+
+**`langBadgesHtml(langs)`** — Rendert ein Array von Sprachcodes als kleine SVG-Flaggen-Badges.
+
+**`compositeFlagHtml(mainLang, subLang)`** — Rendert eine zusammengesetzte Flagge: Hauptsprache als großes Flag mit optional kleinerem Untertitel-Flag in der rechten unteren Ecke.
+
+**`LANG_TO_FLAG`** — JS-Mapping-Objekt `{ 'de': '<svg ...>', 'en': '<svg ...>', ... }`.
+
+**`DEFAULT_LANG`** — JS-Variable mit der konfigurierten Standardsprache (`get_default_language()`).
+
+**`contentsAt()`** — Aggregiert Sprachen und Untertitelsprachen pro Ordner aus:
+1. `it.language`- und `it.subtitle_language`-Feldern der enthaltenen MediaItems
+2. Ordnernamen-Erkennung via `detectLangFromName()` und `detectSubLangFromName()`
+
+Ordner-Objekte enthalten jetzt: `languages: ['en']`, `subLang: 'de'`, `variants: [{name, lang, subLang, count}]`.
+
+**Multi-Language-Folder-Cards** — Wenn ein Ordner Varianten hat (`variants.length > 1`):
+- **Statt einfachem Zähler** zeigt die Karte inline Flaggen-Buttons (`.lang-select-btn`) mit zusammengesetzter Flagge + Episodenanzahl pro Variante.
+- **Klick auf Flaggen-Button** → Direktnavigation in diese Sprachvariante.
+- **Klick auf die Karte** (außerhalb der Buttons) → Navigation in die `DEFAULT_LANG`-Variante.
+- **Play-Button** → Lang-Picker-Overlay (wie bisher).
+- **Sortierung:** `DEFAULT_LANG` wird als erster Button angezeigt, Rest alphabetisch.
+
+### CSS
+
+```css
+.lang-badge { display: inline-block; width: 18px; height: 12px; vertical-align: middle; margin-left: 4px; border-radius: 2px; overflow: hidden; }
+.lang-badge svg { width: 18px; height: 12px; display: block; }
+/* Composite flags */
+.composite-flag { position: relative; display: inline-block; width: 22px; height: 14px; }
+.composite-flag > svg { width: 18px; height: 12px; border-radius: 2px; }
+.composite-flag-sub { position: absolute; bottom: -2px; right: -4px; width: 11px; height: 8px; border: 1px solid #1a1a1a; border-radius: 1px; }
+/* Language select buttons */
+.lang-select-btn { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; border: 1px solid transparent; border-radius: 4px; background: none; cursor: pointer; }
+.lang-select-btn:hover { border-color: var(--accent); background: rgba(255,255,255,0.05); }
+```
+
+### SVG-Flaggen
+
+Minimale 18×12 SVGs für jede unterstützte Sprache: `SVG_FLAG_DE` (Schwarz-Rot-Gold), `SVG_FLAG_EN` (Union Jack), `SVG_FLAG_FR` (Trikolore), `SVG_FLAG_ES`, `SVG_FLAG_IT`, `SVG_FLAG_JA`, `SVG_FLAG_KO`, `SVG_FLAG_ZH`, `SVG_FLAG_PT`, `SVG_FLAG_RU`.
+
+### Design-Regeln
+
+- Sprach-Tags werden nur aus Ordnernamen erkannt, nicht aus Dateinamen (die haben eigene Codec-Stripping-Logik in `_title_from_filename`).
+- Das `artist`-Feld (= roher Ordnername) bleibt **unverändert** — die Bereinigung erfolgt nur für die Anzeige.
+- `data-folder` im HTML nutzt weiterhin den **rohen** Ordnernamen für korrekte Navigation.
+- Multi-Language-Grouping gruppiert Ordner mit gleichem `displayName` zu einer einzigen Karte.
+- Klick auf eine Multi-Language-Karte navigiert direkt in die `DEFAULT_LANG`-Variante (keine Overlay-Auswahl nötig).
+
+### Tests
+
+- `test_language.py`: 28+ Unit-Tests (parse_language_tag, strip_language_tag, clean_folder_name, parse_subtitle_hint, parse_language_full, build_video_index Integration)
+- `test_streaming_player_ui.py`: 12+ neue Tests (JS-Funktionen, CSS, Breadcrumb, Folder-Card, composite flags)
+- `test_feature_parity.py`: `TestLanguageParity` (4+ Tests: CSS, JS-Map, MediaItem-Feld, subtitle_language)
 
 ## Audit-Log & Change-Log
 
@@ -1424,6 +1526,24 @@ Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick
 3. **Debounce via Spinning** — Während des Refresh dreht das Icon; kein Doppelklick nötig
 4. **Ansichts-bewahrend** — Nach dem Refresh wird die aktuelle Ansicht (Folder oder Playlist) beibehalten
 5. **Gezielter Refresh** — `refreshCatalog()` nutzt den `refresh-ratings`-Endpoint und sendet nur die Pfade der aktuell angezeigten Items (Playlist-View: `playlistItems`, Folder-View: `itemsUnder(currentPath)`). Kein voller Index-Rebuild, damit der 5 000-Titel-Katalog nicht unnötig gescannt wird. Bei leerem Root-View wird eine Toast-Meldung angezeigt.
+
+## Non-blocking Video-Server-Start (Language-Groups)
+
+**Modul:** `streaming/video/server.py`
+
+### Problem
+
+`load_language_groups()` → `load_all_overrides()` → `rglob("*")` scannt die gesamte Bibliothek rekursiv. Bei NAS-Pfaden (UNC wie `\\Syn723\Serien\`) kann dieser Scan bei einer großen Videobibliothek mehrere Minuten dauern. Da der Aufruf synchron in `create_app()` stattfand (vor der FastAPI-App-Erstellung), konnte der Server nicht starten, bis der Scan abgeschlossen war.
+
+### Lösung
+
+Die Language-Group-Beladung wurde aus dem synchronen `create_app()`-Pfad in einen **Daemon-Thread** verschoben (`video-lang-groups`). Der Thread prüft zunächst `check_library_accessible()` (mit 3s-Timeout) und lädt die Groups nur bei erreichbarer Bibliothek. `_lang_state["json"]` wird dynamisch aktualisiert und von `render_video_index_html()` bei jedem Request gelesen.
+
+### Designregeln
+
+- Server-Startup darf **nie** durch Dateisystem-Scans blockiert werden (Regel 6: No blocking).
+- Langsame I/O (Thumbnail-Gen, Index-Build, Language-Group-Scan) → immer Hintergrund-Threads.
+- `check_library_accessible()` muss vor **jedem** rekursiven Dateisystem-Zugriff (rglob, iterdir) geprüft werden, wenn der Pfad ein UNC/NAS sein kann.
 
 ## Globale Suche (Root-View)
 

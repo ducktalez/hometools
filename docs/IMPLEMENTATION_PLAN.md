@@ -2,7 +2,42 @@
 
 ## Current Sprint
 
-(frei)
+### Restrukturierung `server_utils.py` → `server_utils/`-Package
+
+Die Datei `streaming/core/server_utils.py` ist auf **7298 Zeilen** angewachsen und soll in ein Python-Package mit fokussierten Sub-Modulen aufgeteilt werden. Ziel: ≤1500 Zeilen pro Modul, 100% backward-kompatible Imports.
+
+**Zielstruktur:**
+```
+streaming/core/server_utils/
+├── __init__.py          (~60 Zeilen)   Re-exports aller Public-Symbole
+├── _icons.py            (~45 Zeilen)   SVG_* Konstanten
+├── _library.py          (~120 Zeilen)  check_library_accessible, render_error_page, build_index_status_payload
+├── _paths.py            (~50 Zeilen)   safe_resolve, resolve_media_path
+├── _pwa.py              (~340 Zeilen)  render_pwa_manifest, render_pwa_service_worker, Icons, Head-Tags
+├── _css.py              (~970 Zeilen)  render_base_css
+├── _js_player.py        (~1400 Zeilen) render_player_js — Orchestrator + Config/Variablen-Preamble
+├── _js_helpers.py       (~800 Zeilen)  JS-Sektionen: Hilfsfunktionen, Progress, Click-Guard, Lyrics, Queue
+├── _js_navigation.py    (~1200 Zeilen) JS-Sektionen: Catalog-Refresh, Folder-View, Language-Picker, Globale Suche
+├── _js_rendering.py     (~1000 Zeilen) JS-Sektionen: renderTracks, Offline-Downloads, Playback, Rating, Shuffle
+├── _js_events.py        (~1300 Zeilen) JS-Sektionen: Event-Wiring, Playlist-DnD, MediaSession, Startup
+├── _audit.py            (~240 Zeilen)  Audit-Panel CSS + HTML
+└── _html.py             (~360 Zeilen)  render_media_page
+```
+
+**Ausführungsschritte:**
+1. `server_utils.py` → `server_utils/__init__.py` umwandeln (Package-Konversion, Zero-Change-Test)
+2. Nicht-JS-Module extrahieren (`_icons`, `_library`, `_paths`, `_pwa`, `_css`, `_audit`, `_html`) — einzeln, Test nach jedem Schritt
+3. `render_player_js()` in Orchestrator + JS-Section-Builder aufspalten (Shared IIFE-Scope bleibt erhalten durch String-Konkatenation)
+4. JS-Builder in eigene `_js_*.py`-Dateien verschieben
+5. Re-Export-Vollständigkeit validieren, Validation Checklist durchlaufen
+6. Dokumentation aktualisieren
+
+**Risikobewertung:**
+- Schritte 1–2: **Niedrig** — klare Funktionsgrenzen, kein geteilter mutable State
+- Schritt 3: **Mittel-Hoch** — JS teilt `var`-Scope innerhalb einer IIFE; Split nur an `/* ── section ── */` Kommentargrenzen
+- Schritte 4–6: **Niedrig** — reine Code-Verschiebung nach bestandenen Tests
+
+**Empfehlung:** `@dataclass PlayerJSConfig` (frozen) für die ~15 Feature-Flags, statt 15+ Parameter durch jede Sub-Funktion zu reichen.
 
 ## Backlog — High
 
@@ -16,12 +51,12 @@
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB) (zurückstellen)
 
 ### Video-spezifisch
-- Sprache/Untertitel/Auflösung taggen und auswählbar machen
-- Multi-Language-Linking („Malcolm Mittendrin" ↔ „Malcolm in the Middle")
+- Multi-Language-Linking — Phase 2: Fuzzy-Name-Matching oder manuelles Mapping in `hometools_overrides.yaml` (Phase 1b — Inline-Flaggen-Buttons + Untertitelsprache — ist abgeschlossen)
 - Englische Serien: Metadaten + Titel in Englisch laden
 - „Intro überspringen" (TMDB-Daten oder manuelle Markierung)
 - Scan-Hinweise: Filesystem-Organisation ausreichend?
 - Untertitelfiles + TMDB-Integration bei Umbenennungen
+- `hometools_overrides.yaml` Erweiterung: `language: "en"` als Override-Feld für Ordner ohne erkennbaren Tag
 
 ### Infrastruktur
 - Tools-Code restrukturieren + umfassende Tests (Edge Cases, Dummy-Dateien)
@@ -44,6 +79,12 @@
 - **Phase 3: Native iOS Apps** — Hybrid WebView Wrapper für Video + Audio → [plans/native_app_plan.md](plans/native_app_plan.md)
 
 ## Done
+
+- **Non-blocking Video-Server-Start (Language-Groups)** (2026-04-14) — Root Cause: `load_language_groups()` in `create_app()` des Video-Servers rief `load_all_overrides()` → `rglob("*")` synchron auf der NAS-Bibliothek auf. Bei großen Bibliotheken (UNC-Pfad `\\Syn723\Serien\`) blockierte der Scan mehrere Minuten und verhinderte den Server-Start. Fix: Language-Group-Beladung in einen Daemon-Thread (`video-lang-groups`) verschoben. Der Thread prüft zuerst `check_library_accessible()` (3s-Timeout) und überspringt den Scan bei nicht erreichbarer Bibliothek. `_lang_state["json"]` wird dynamisch aktualisiert und bei jedem Request gelesen. Kein Blocking des Server-Starts mehr. `architecture.md` aktualisiert.
+
+- **Multi-Language Phase 1b: Inline-Flaggen-Buttons + Untertitelsprache** (2026-04-13) — Erweiterung des Sprach-Tag-Systems um Untertitel-Erkennung und verbesserte Multi-Language-Navigation. **Backend:** Neue Funktionen `parse_subtitle_hint()` und `parse_language_full()` in `language.py` erkennen Untertitelsprachen aus zusammengesetzten Tags (z.B. `(engl, gersub)` → sub=de). Neues `MediaItem.subtitle_language`-Feld (ISO 639-1). `build_video_index()` befüllt beide Felder. Neue Config `get_default_language()` (`HOMETOOLS_DEFAULT_LANGUAGE`, Default `de`). **Frontend:** `detectSubLangFromName()` JS-Funktion für client-seitige Untertitel-Erkennung. `compositeFlagHtml(mainLang, subLang)` rendert zusammengesetzte Flaggen (große Hauptflagge + kleine Untertitel-Flagge in der Ecke). Multi-Language-Ordnerkarten zeigen jetzt inline `.lang-select-btn`-Buttons mit zusammengesetzter Flagge + Episodenanzahl statt einfachem Zähler. Klick auf Flaggen-Button → Direktnavigation in Variante. Klick auf Karte → Navigation in `DEFAULT_LANG`-Variante. `contentsAt()` aggregiert `subLang` pro Ordner. Varianten enthalten jetzt `subLang`-Feld. `DEFAULT_LANG` JS-Variable durch Config injiziert. **CSS:** `.composite-flag`, `.composite-flag-sub`, `.lang-select-btn` (hover + active styling). Snapshot-Version v7. `architecture.md` aktualisiert.
+
+- **Sprach-Tags & Flaggen-Badges (Video)** (2026-04-11) — Automatische Erkennung von Sprach-Tags in Ordnernamen wie `(engl)`, `(eng)`, `(en)`, `(german)`, `(de)` etc. Neues Modul `streaming/core/language.py` mit `parse_language_tag()`, `strip_language_tag()`, `clean_folder_name()`. Neues `language: str`-Feld auf `MediaItem` (ISO 639-1). `build_video_index()` befüllt das Feld aus Ordnernamen. Sprach-Tags werden im UI entfernt und durch SVG-Flaggen-Badges ersetzt (10 Sprachen: DE, EN, FR, ES, IT, JA, KO, ZH, PT, RU). `cleanFolderName()` JS-Funktion strippt sowohl `#`-Prefix als auch Sprach-Tags — wird in `contentsAt()`, `leafName()` und `renderBreadcrumb()` verwendet. `contentsAt()` aggregiert Sprachen pro Ordner in ein `languages`-Array. CSS: `.lang-badge` (18×12px inline SVG-Flaggen). Video-Organizer (`series_rename_episodes`, `generate_overrides_yaml`) nutzt jetzt `clean_folder_name()` statt manueller Regex. Snapshot-Version v6. 44 neue Tests (28 language.py + 12 player_ui + 4 feature_parity). `architecture.md` aktualisiert.
 
 - **Repeat-Modus (Off / Alle / Einzeltitel)** (2026-04-11) — Neuer Wiederholungs-Button im Player-Bar mit drei Modi: Off → Alle wiederholen → Einzeltitel wiederholen → Off. `SVG_REPEAT` wurde bereits als Konstante vorbereitet — jetzt mit Logik versehen. Neue JS-Ikonen-Variablen: `IC_REPEAT` (Standard), `IC_REPEAT_ONE` (mit „1"-Overlay). State: `repeatMode` (false / 'all' / 'one'), persistiert in `localStorage` (`ht-repeat-mode`). Neues Feature-Flag `enable_repeat` in `render_player_js()` / `render_media_page()`, JS-Variable `REPEAT_ENABLED`. Neue Funktionen: `cycleRepeat()`, `updateRepeatBtn()`. **Verhalten:** `repeat-one` → Track startet bei `ended` automatisch von vorn (`player.currentTime = 0`), kein Crossfade. `repeat-all` → `nextIndex()` wraps am Ende der Liste auf 0 zurück (bisheriges Default-Verhalten). `repeat-off` → `nextIndex()` gibt `-1` zurück am Ende der Liste → `playNextItem()` stoppt die Wiedergabe. Queue hat Vorrang (wird vor Repeat geprüft). Crossfade wird bei `repeat-one` unterdrückt (`repeatMode !== 'one'` Guard). CSS: `.repeat-btn.repeat-active`, `.repeat-btn.repeat-one`. Beide Server: `enable_repeat=True` (Audio + Video). 15 neue Tests (8 UI + 5 Logik + 2 Feature-Parity). `architecture.md` aktualisiert.
 

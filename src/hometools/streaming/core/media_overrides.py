@@ -51,6 +51,7 @@ class FolderOverrides:
 
     series_title: str  # empty string → no override
     episodes: dict[str, EpisodeOverride]  # filename → overrides
+    language_group: str = ""  # group id for multi-language linking (empty = auto)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +87,9 @@ def _parse_overrides(raw: dict) -> FolderOverrides:
                 episode=int(episode) if episode is not None else None,
             )
 
-    return FolderOverrides(series_title=series_title, episodes=episodes)
+    language_group = str(raw.get("language_group") or "")
+
+    return FolderOverrides(series_title=series_title, episodes=episodes, language_group=language_group)
 
 
 def load_overrides(folder: Path) -> FolderOverrides | None:
@@ -255,4 +258,36 @@ def apply_overrides(
     if applied:
         logger.info("Applied %d episode overrides to media items", applied)
 
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Language groups — folder-name → group-id mapping for multi-language linking
+# ---------------------------------------------------------------------------
+
+
+def load_language_groups(library_root: Path) -> dict[str, str]:
+    """Scan *library_root* for ``language_group`` overrides.
+
+    Returns a mapping ``{folder_name: group_id}`` for all folders that
+    declare a ``language_group`` in their ``hometools_overrides.yaml``.
+    Only **top-level** subfolders are considered (direct children of
+    *library_root*).
+
+    This allows the JS UI to merge folders like "Malcolm Mittendrin" and
+    "Malcolm in the Middle (engl)" into a single display entry when they
+    share the same ``language_group`` id.
+    """
+    result: dict[str, str] = {}
+    overrides = load_all_overrides(library_root)
+    for rel_path, ov in overrides.items():
+        if not ov.language_group:
+            continue
+        # Only top-level folders (no '/' in path)
+        if "/" in rel_path:
+            continue
+        if rel_path:
+            result[rel_path] = ov.language_group
+    if result:
+        logger.info("Language groups: %d folder(s) linked", len(result))
     return result

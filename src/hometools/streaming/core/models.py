@@ -34,6 +34,8 @@ class MediaItem:
     mtime: float = 0.0  # file modification time (Unix timestamp, 0.0 = unknown)
     thumbnail_lg_url: str = ""  # URL to large (480 px) shadow-cached thumbnail
     genre: str = ""  # music genre tag (empty = unset; audio only)
+    language: str = ""  # ISO 639-1 language code from folder tag (empty = unset)
+    subtitle_language: str = ""  # ISO 639-1 subtitle language from folder tag (empty = none)
 
     def to_dict(self) -> dict[str, str]:
         """Return a JSON-serializable representation."""

@@ -48,6 +48,18 @@ SVG_PLAYLIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 SVG_QUEUE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="15" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><line x1="19" y1="15" x2="19" y2="21"/><line x1="16" y1="18" x2="22" y2="18"/></svg>'
 SVG_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>'
 
+# Language flag SVGs — small rectangular flags (18×12 viewBox)
+SVG_FLAG_DE = '<svg viewBox="0 0 18 12"><rect width="18" height="4" fill="#000"/><rect y="4" width="18" height="4" fill="#D00"/><rect y="8" width="18" height="4" fill="#FFCE00"/></svg>'
+SVG_FLAG_EN = '<svg viewBox="0 0 18 12"><rect width="18" height="12" fill="#012169"/><path d="M0,0L18,12M18,0L0,12" stroke="#fff" stroke-width="2"/><path d="M0,0L18,12M18,0L0,12" stroke="#C8102E" stroke-width="1"/><path d="M9,0V12M0,6H18" stroke="#fff" stroke-width="3.5"/><path d="M9,0V12M0,6H18" stroke="#C8102E" stroke-width="2"/></svg>'
+SVG_FLAG_FR = '<svg viewBox="0 0 18 12"><rect width="6" height="12" fill="#002395"/><rect x="6" width="6" height="12" fill="#fff"/><rect x="12" width="6" height="12" fill="#ED2939"/></svg>'
+SVG_FLAG_ES = '<svg viewBox="0 0 18 12"><rect width="18" height="3" fill="#AA151B"/><rect y="3" width="18" height="6" fill="#F1BF00"/><rect y="9" width="18" height="3" fill="#AA151B"/></svg>'
+SVG_FLAG_IT = '<svg viewBox="0 0 18 12"><rect width="6" height="12" fill="#009246"/><rect x="6" width="6" height="12" fill="#fff"/><rect x="12" width="6" height="12" fill="#CE2B37"/></svg>'
+SVG_FLAG_JA = '<svg viewBox="0 0 18 12"><rect width="18" height="12" fill="#fff"/><circle cx="9" cy="6" r="3.5" fill="#BC002D"/></svg>'
+SVG_FLAG_KO = '<svg viewBox="0 0 18 12"><rect width="18" height="12" fill="#fff"/><circle cx="9" cy="6" r="3" fill="#CD2E3A"/><path d="M9,3a3,3,0,0,1,0,6" fill="#0047A0"/></svg>'
+SVG_FLAG_ZH = '<svg viewBox="0 0 18 12"><rect width="18" height="12" fill="#DE2910"/><polygon points="3,1.5 3.6,3.3 5.4,3.3 3.9,4.3 4.5,6.1 3,5.1 1.5,6.1 2.1,4.3 0.6,3.3 2.4,3.3" fill="#FFDE00"/></svg>'
+SVG_FLAG_PT = '<svg viewBox="0 0 18 12"><rect width="7" height="12" fill="#006600"/><rect x="7" width="11" height="12" fill="#FF0000"/><circle cx="7" cy="6" r="2.5" fill="#FFCC00"/></svg>'
+SVG_FLAG_RU = '<svg viewBox="0 0 18 12"><rect width="18" height="4" fill="#fff"/><rect y="4" width="18" height="4" fill="#0039A6"/><rect y="8" width="18" height="4" fill="#D52B1E"/></svg>'
+
 
 # ---------------------------------------------------------------------------
 # Library directory validation
@@ -647,6 +659,62 @@ header {
   pointer-events: none; z-index: 2;
 }
 .fav-folder { border: 1px solid var(--accent); border-radius: 8px; }
+/* Language flag badges */
+.lang-badge {
+  display: inline-block; width: 18px; height: 12px; vertical-align: middle;
+  margin-left: 4px; border-radius: 2px; overflow: hidden;
+  line-height: 0; flex-shrink: 0;
+}
+.lang-badge svg { width: 18px; height: 12px; display: block; }
+/* Composite flag: main flag + optional smaller subtitle flag overlay */
+.composite-flag {
+  position: relative; display: inline-block; width: 22px; height: 14px;
+  vertical-align: middle; flex-shrink: 0;
+}
+.composite-flag > svg { width: 18px; height: 12px; display: block; border-radius: 2px; }
+.composite-flag-sub {
+  position: absolute; bottom: -2px; right: -4px;
+  width: 11px; height: 8px; line-height: 0;
+  border: 1px solid #1a1a1a; border-radius: 1px; overflow: hidden;
+  background: #1a1a1a;
+}
+.composite-flag-sub svg { width: 11px; height: 8px; display: block; }
+/* Language select buttons on multi-lang folder cards */
+.lang-select-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 4px; border: 1px solid transparent; border-radius: 4px;
+  background: none; cursor: pointer; color: var(--sub); font-size: 0.7rem;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent; vertical-align: middle;
+}
+.lang-select-btn:hover { border-color: var(--accent); background: rgba(255,255,255,0.05); }
+.lang-select-btn.active-lang { border-color: var(--accent); }
+.folder-count .lang-select-btn + .lang-select-btn { margin-left: 2px; }
+/* Multi-language folder cards */
+.multi-lang-folder { position: relative; }
+/* Language picker overlay */
+.lang-picker-overlay {
+  z-index: 50; min-width: 220px; max-width: 300px;
+  background: #2a2a2a; border: 1px solid #444; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5); padding: 8px 0;
+  animation: langPickerIn .15s ease-out;
+}
+@keyframes langPickerIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.lang-picker-title {
+  padding: 6px 14px 8px; color: #aaa; font-size: 0.78rem; font-weight: 600;
+  border-bottom: 1px solid #333; margin-bottom: 4px;
+}
+.lang-picker-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 14px; border: none; background: none; color: #eee;
+  font-size: 0.9rem; cursor: pointer; text-align: left;
+  transition: background .1s;
+}
+.lang-picker-item:hover { background: #3a3a3a; }
+.lang-picker-flag { display: inline-block; width: 24px; height: 16px; line-height: 0; flex-shrink: 0; }
+.lang-picker-flag svg { width: 24px; height: 16px; display: block; }
+.lang-picker-label { flex: 1; }
+.lang-picker-count { color: #888; font-size: 0.8rem; }
 /* Audiobook folder styling */
 .audiobook-folder .folder-icon { color: #a0c4ff; }
 .audiobook-folder .folder-name { color: #a0c4ff; }
@@ -1491,6 +1559,8 @@ def render_player_js(
     enable_auto_resume: bool = True,
     crossfade_duration: int = 0,
     debug_filter: bool = False,
+    language_groups_json: str = "{}",
+    default_language: str = "de",
 ) -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
@@ -1768,9 +1838,52 @@ def render_player_js(
   var IC_REFRESH = '"""
         + SVG_REFRESH.replace("'", "\\'")
         + """';
+  var LANG_TO_FLAG = {
+    'de': '"""
+        + SVG_FLAG_DE.replace("'", "\\'")
+        + """',
+    'en': '"""
+        + SVG_FLAG_EN.replace("'", "\\'")
+        + """',
+    'fr': '"""
+        + SVG_FLAG_FR.replace("'", "\\'")
+        + """',
+    'es': '"""
+        + SVG_FLAG_ES.replace("'", "\\'")
+        + """',
+    'it': '"""
+        + SVG_FLAG_IT.replace("'", "\\'")
+        + """',
+    'ja': '"""
+        + SVG_FLAG_JA.replace("'", "\\'")
+        + """',
+    'ko': '"""
+        + SVG_FLAG_KO.replace("'", "\\'")
+        + """',
+    'zh': '"""
+        + SVG_FLAG_ZH.replace("'", "\\'")
+        + """',
+    'pt': '"""
+        + SVG_FLAG_PT.replace("'", "\\'")
+        + """',
+    'ru': '"""
+        + SVG_FLAG_RU.replace("'", "\\'")
+        + """'
+  };
   var AUDIOBOOK_DIRS = """
         + __import__("json").dumps(__import__("hometools.config", fromlist=["get_audiobook_dirs"]).get_audiobook_dirs())
         + """;
+  var LANG_GROUPS = """
+        + language_groups_json
+        + """;
+  var DEFAULT_LANG = '"""
+        + default_language
+        + """';
+  var _LANG_NAME_MAP = {
+    'de': 'Deutsch', 'en': 'English', 'fr': 'Fran\u00e7ais', 'es': 'Espa\u00f1ol',
+    'it': 'Italiano', 'ja': '\u65e5\u672c\u8a9e', 'ko': '\ud55c\uad6d\uc5b4',
+    'zh': '\u4e2d\u6587', 'pt': 'Portugu\u00eas', 'ru': '\u0420\u0443\u0441\u0441\u043a\u0438\u0439'
+  };
 
   var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
@@ -2676,12 +2789,86 @@ def render_player_js(
 
   /* compute direct sub-folders and loose files at a path level */
   var IGNORED_FOLDERS = {'#recycle': true, '@eaDir': true};
+  var _LANG_TAG_RE = /\\s*\\(\\s*(?:engl(?:ish)?|eng|en|german|deutsch|ger|de|french|fran[c\u00e7]ais(?:e)?|fr|spanish|espa[n\u00f1]ol|es|italian(?:o)?|it|japanese|jap|jpn?|ja|korean|kor?|ko|chinese|zh|portuguese|pt|russian|ru)(?:\\s*,\\s*(?:ger|de|eng|en)(?:\\s*sub(?:s)?)?)?\\s*\\)/gi;
+  var _LANG_DETECT_MAP = [
+    [/\\(\\s*engl(?:ish)?\\s*(?:,\\s*(?:ger|de)(?:\\s*sub(?:s)?)?)?\\s*\\)/i, 'en'],
+    [/\\(\\s*eng\\s*\\)/i, 'en'], [/\\(\\s*en\\s*\\)/i, 'en'],
+    [/\\(\\s*german\\s*\\)/i, 'de'], [/\\(\\s*deutsch\\s*\\)/i, 'de'],
+    [/\\(\\s*ger\\s*\\)/i, 'de'], [/\\(\\s*de\\s*\\)/i, 'de'],
+    [/\\(\\s*french\\s*\\)/i, 'fr'], [/\\(\\s*fran[c\u00e7]ais(?:e)?\\s*\\)/i, 'fr'], [/\\(\\s*fr\\s*\\)/i, 'fr'],
+    [/\\(\\s*spanish\\s*\\)/i, 'es'], [/\\(\\s*espa[n\u00f1]ol\\s*\\)/i, 'es'], [/\\(\\s*es\\s*\\)/i, 'es'],
+    [/\\(\\s*italian(?:o)?\\s*\\)/i, 'it'], [/\\(\\s*it\\s*\\)/i, 'it'],
+    [/\\(\\s*japanese\\s*\\)/i, 'ja'], [/\\(\\s*jap\\s*\\)/i, 'ja'], [/\\(\\s*jpn?\\s*\\)/i, 'ja'],
+    [/\\(\\s*korean\\s*\\)/i, 'ko'], [/\\(\\s*kor?\\s*\\)/i, 'ko'],
+    [/\\(\\s*chinese\\s*\\)/i, 'zh'], [/\\(\\s*zh\\s*\\)/i, 'zh'],
+    [/\\(\\s*portuguese\\s*\\)/i, 'pt'], [/\\(\\s*pt\\s*\\)/i, 'pt'],
+    [/\\(\\s*russian\\s*\\)/i, 'ru'], [/\\(\\s*ru\\s*\\)/i, 'ru']
+  ];
+
+  function detectLangFromName(name) {
+    for (var i = 0; i < _LANG_DETECT_MAP.length; i++) {
+      if (_LANG_DETECT_MAP[i][0].test(name)) return _LANG_DETECT_MAP[i][1];
+    }
+    return '';
+  }
+
+  function cleanFolderName(name) {
+    /* Strip # favourite prefix */
+    if (name.charAt(0) === '#') name = name.substring(1);
+    /* Strip language tags */
+    name = name.replace(_LANG_TAG_RE, '');
+    return name.replace(/\\s{2,}/g, ' ').trim();
+  }
+
+  function langBadgesHtml(langs) {
+    if (!langs || !langs.length) return '';
+    var html = '';
+    langs.forEach(function(lc) {
+      var svg = LANG_TO_FLAG[lc];
+      if (svg) {
+        html += '<span class="lang-badge" title="' + lc.toUpperCase() + '">' + svg + '</span>';
+      }
+    });
+    return html;
+  }
+
+  /* Detect subtitle language hint from folder name, e.g. "(engl, gersub)" → "de" */
+  var _SUB_DETECT_MAP = [
+    [/\\(\\s*\\w+\\s*,\\s*(?:ger(?:man)?|de(?:utsch)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'de'],
+    [/\\(\\s*\\w+\\s*,\\s*(?:eng(?:l(?:ish)?)?|en)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'en'],
+    [/\\(\\s*\\w+\\s*,\\s*(?:fr(?:ench)?|fran[c\\u00e7]ais(?:e)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'fr'],
+    [/\\(\\s*\\w+\\s*,\\s*(?:es(?:pa[n\\u00f1]ol)?|spanish)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'es'],
+    [/\\(\\s*\\w+\\s*,\\s*(?:it(?:alian(?:o)?)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'it'],
+    [/\\(\\s*\\w+\\s*,\\s*(?:ja(?:p(?:anese)?|pn?)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'ja']
+  ];
+  function detectSubLangFromName(name) {
+    for (var i = 0; i < _SUB_DETECT_MAP.length; i++) {
+      if (_SUB_DETECT_MAP[i][0].test(name)) return _SUB_DETECT_MAP[i][1];
+    }
+    return '';
+  }
+
+  /* Composite flag: main language flag with optional smaller subtitle flag overlay */
+  function compositeFlagHtml(mainLang, subLang) {
+    var mainSvg = mainLang && LANG_TO_FLAG[mainLang] ? LANG_TO_FLAG[mainLang] : '';
+    if (!mainSvg) return '';
+    var subSvg = subLang && LANG_TO_FLAG[subLang] ? LANG_TO_FLAG[subLang] : '';
+    if (!subSvg) {
+      return '<span class="composite-flag" title="' + (mainLang || '').toUpperCase() + '">' + mainSvg + '</span>';
+    }
+    return '<span class="composite-flag" title="' + (mainLang || '').toUpperCase() + ' + ' + (subLang || '').toUpperCase() + ' Sub">' +
+      mainSvg +
+      '<span class="composite-flag-sub">' + subSvg + '</span>' +
+    '</span>';
+  }
 
   function contentsAt(path) {
     var items = itemsUnder(path);
     var folderMap = {};
     var folderThumb = {};
     var folderThumbLg = {};
+    var folderLangs = {};
+    var folderSubLangs = {};
     var files = [];
     var off = path ? path.length + 1 : 0;
     items.forEach(function(it) {
@@ -2694,6 +2881,18 @@ def render_player_js(
         folderMap[name]++;
         if (!folderThumb[name] && it.thumbnail_url) folderThumb[name] = it.thumbnail_url;
         if (!folderThumbLg[name] && it.thumbnail_lg_url) folderThumbLg[name] = it.thumbnail_lg_url;
+        /* Aggregate languages from items + folder-name detection */
+        if (!folderLangs[name]) folderLangs[name] = {};
+        if (it.language) folderLangs[name][it.language] = true;
+        var folderLang = detectLangFromName(name);
+        if (folderLang) folderLangs[name][folderLang] = true;
+        /* Aggregate subtitle languages from items + folder-name detection */
+        if (!folderSubLangs[name]) folderSubLangs[name] = '';
+        if (!folderSubLangs[name] && it.subtitle_language) folderSubLangs[name] = it.subtitle_language;
+        if (!folderSubLangs[name]) {
+          var detSub = detectSubLangFromName(name);
+          if (detSub) folderSubLangs[name] = detSub;
+        }
       } else {
         files.push(it);
       }
@@ -2708,22 +2907,71 @@ def render_player_js(
       })
       .map(function(n) {
         var isFav = n.charAt(0) === '#';
+        var langs = folderLangs[n] ? Object.keys(folderLangs[n]).sort() : [];
         return {
           name: n,
-          displayName: isFav ? n.substring(1) : n,
+          displayName: cleanFolderName(n),
           isFavorite: isFav,
           count: folderMap[n],
           thumbnail_url: folderThumb[n] || '',
-          thumbnail_lg_url: folderThumbLg[n] || ''
+          thumbnail_lg_url: folderThumbLg[n] || '',
+          languages: langs,
+          subLang: folderSubLangs[n] || '',
+          variants: null
         };
       });
-    return { folders: folders, files: files };
+
+    /* ── Multi-language merge ── */
+    /* Group folders by merge-key: LANG_GROUPS[name] or displayName */
+    var _mergeMap = {};
+    folders.forEach(function(f) {
+      var key = LANG_GROUPS[f.name] || f.displayName;
+      if (!_mergeMap[key]) _mergeMap[key] = [];
+      _mergeMap[key].push(f);
+    });
+    var merged = [];
+    Object.keys(_mergeMap).forEach(function(key) {
+      var group = _mergeMap[key];
+      if (group.length === 1) {
+        merged.push(group[0]);
+        return;
+      }
+      /* Pick primary: prefer variant without language tag, or favorite, or first */
+      var primary = group[0];
+      for (var gi = 0; gi < group.length; gi++) {
+        if (group[gi].isFavorite) { primary = group[gi]; break; }
+        if (!detectLangFromName(group[gi].name) && !LANG_GROUPS[group[gi].name]) primary = group[gi];
+      }
+      var allLangs = {};
+      var totalCount = 0;
+      var variants = [];
+      group.forEach(function(g) {
+        totalCount += g.count;
+        g.languages.forEach(function(lc) { allLangs[lc] = true; });
+        var lang = g.languages.length ? g.languages[0] : detectLangFromName(g.name) || '';
+        var subLang = detectSubLangFromName(g.name) || g.subLang || '';
+        variants.push({ name: g.name, lang: lang, subLang: subLang, count: g.count });
+      });
+      merged.push({
+        name: primary.name,
+        displayName: primary.displayName,
+        isFavorite: group.some(function(g) { return g.isFavorite; }),
+        count: totalCount,
+        thumbnail_url: primary.thumbnail_url || group[1].thumbnail_url || '',
+        thumbnail_lg_url: primary.thumbnail_lg_url || group[1].thumbnail_lg_url || '',
+        languages: Object.keys(allLangs).sort(),
+        variants: variants
+      });
+    });
+
+    return { folders: merged, files: files };
   }
 
   function leafName(path) {
     if (!path) return originalTitle;
     var i = path.lastIndexOf('/');
-    return i >= 0 ? path.substring(i + 1) : path;
+    var raw = i >= 0 ? path.substring(i + 1) : path;
+    return cleanFolderName(raw);
   }
 
   function parentPath(path) {
@@ -2846,10 +3094,11 @@ def render_player_js(
     for (var i = 0; i < parts.length; i++) {
       h += '<span class="sep">\\u203A</span>';
       var p = parts.slice(0, i + 1).join('/');
+      var label = cleanFolderName(parts[i]);
       if (i < parts.length - 1) {
-        h += '<a data-path="' + escHtml(p) + '">' + escHtml(parts[i]) + '</a>';
+        h += '<a data-path="' + escHtml(p) + '">' + escHtml(label) + '</a>';
       } else {
-        h += '<span class="current">' + escHtml(parts[i]) + '</span>';
+        h += '<span class="current">' + escHtml(label) + '</span>';
       }
     }
     breadcrumb.innerHTML = h;
@@ -2889,6 +3138,7 @@ def render_player_js(
 
   function showFolderView() {
     destroyPlaylistDragDrop();
+    closeLangPicker();
     inPlaylist = false;
     _currentPlaylistId = '';
     _globalSearchActive = false;
@@ -3000,13 +3250,40 @@ def render_player_js(
         : (f.thumbnail_url || FOLDER_PLACEHOLDER);
       var displayLabel = showOrigNames ? f.name : f.displayName;
       var favBadge = f.isFavorite && !showOrigNames ? '<span class="fav-badge" title="Favorit">' + IC_STAR + '</span>' : '';
+      var langBadges = !showOrigNames ? langBadgesHtml(f.languages) : '';
       var isAudiobook = AUDIOBOOK_DIRS.some(function(d) { return f.name.toLowerCase().startsWith(d.toLowerCase()); });
-      var extraClass = (f.isFavorite ? ' fav-folder' : '') + (isAudiobook ? ' audiobook-folder' : '');
-      html += '<div class="folder-card' + extraClass + '" data-folder="' + escHtml(f.name) + '">' +
+      var hasVariants = f.variants && f.variants.length > 1;
+      var extraClass = (f.isFavorite ? ' fav-folder' : '') + (isAudiobook ? ' audiobook-folder' : '') + (hasVariants ? ' multi-lang-folder' : '');
+      var variantsAttr = hasVariants ? ' data-variants="' + escHtml(JSON.stringify(f.variants)) + '"' : '';
+
+      /* Build folder-count content: inline flag buttons for multi-lang, plain count otherwise */
+      var countContent;
+      if (hasVariants && !showOrigNames) {
+        /* Sort: DEFAULT_LANG first, then alphabetical */
+        var sortedV = f.variants.slice().sort(function(a, b) {
+          if (a.lang === DEFAULT_LANG && b.lang !== DEFAULT_LANG) return -1;
+          if (b.lang === DEFAULT_LANG && a.lang !== DEFAULT_LANG) return 1;
+          return (a.lang || '').localeCompare(b.lang || '');
+        });
+        countContent = '';
+        sortedV.forEach(function(v) {
+          var flag = compositeFlagHtml(v.lang, v.subLang);
+          if (flag) {
+            countContent += '<button class="lang-select-btn" data-variant-name="' + escHtml(v.name) + '" title="' +
+              escHtml((_LANG_NAME_MAP[v.lang] || v.lang || '') + (v.subLang ? ' + ' + (_LANG_NAME_MAP[v.subLang] || v.subLang) + ' Sub' : '') + ' (' + v.count + ')') + '">' +
+              flag + '<span class="lang-select-count">' + v.count + '</span></button>';
+          }
+        });
+        if (!countContent) countContent = f.count + ' ' + noun;
+      } else {
+        countContent = f.count + ' ' + noun;
+      }
+
+      html += '<div class="folder-card' + extraClass + '" data-folder="' + escHtml(f.name) + '"' + variantsAttr + '>' +
         favBadge +
         '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-        '<div class="folder-name">' + escHtml(displayLabel) + '</div>' +
-        '<div class="folder-count">' + f.count + ' ' + noun + '</div>' +
+        '<div class="folder-name">' + escHtml(displayLabel) + (langBadges && !hasVariants ? ' ' + langBadges : '') + '</div>' +
+        '<div class="folder-count">' + countContent + '</div>' +
         '<button class="folder-play-btn" title="Play all">' + IC_FOLDER_PLAY + '</button>' +
       '</div>';
     });
@@ -3082,14 +3359,38 @@ def render_player_js(
 
     folderGrid.querySelectorAll('.folder-card:not(.file-card):not(.offline-folder-card):not(.playlist-folder-card):not(.playlist-new-card)').forEach(function(card) {
       var pb = card.querySelector('.folder-play-btn');
+      var variants = card.dataset.variants ? JSON.parse(card.dataset.variants) : null;
+
+      /* Lang-select buttons: direct navigation into that variant */
+      card.querySelectorAll('.lang-select-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (wasDrag(e)) return;
+          var vName = btn.dataset.variantName;
+          if (vName) navigateInto(vName);
+        });
+      });
+
       card.addEventListener('click', function(e) {
         if (wasDrag(e)) return;
-        if (e.target !== pb) navigateInto(card.dataset.folder);
+        if (e.target.closest('.folder-play-btn')) return;
+        if (e.target.closest('.lang-select-btn')) return;
+        if (variants && variants.length > 1) {
+          /* Navigate into the DEFAULT_LANG variant, or first variant */
+          var defaultV = variants.find(function(v) { return v.lang === DEFAULT_LANG; });
+          navigateInto(defaultV ? defaultV.name : card.dataset.folder);
+        } else {
+          navigateInto(card.dataset.folder);
+        }
       });
       pb.addEventListener('click', function(e) {
         e.stopPropagation();
         if (wasDrag(e)) return;
-        playAllIn(card.dataset.folder);
+        if (variants && variants.length > 1) {
+          showLangPicker(card, variants, true);
+        } else {
+          playAllIn(card.dataset.folder);
+        }
       });
     });
 
@@ -3104,6 +3405,63 @@ def render_player_js(
 
     renderBreadcrumb();
     applyViewMode();
+  }
+
+  /* ── Language picker for multi-language folders ── */
+  var _langPickerCleanup = null;
+  function closeLangPicker() {
+    if (_langPickerCleanup) { _langPickerCleanup(); _langPickerCleanup = null; }
+    var old = document.querySelector('.lang-picker-overlay');
+    if (old) old.remove();
+  }
+  function showLangPicker(card, variants, playMode) {
+    closeLangPicker();
+    var overlay = document.createElement('div');
+    overlay.className = 'lang-picker-overlay';
+    var heading = playMode ? 'Sprache zum Abspielen w\u00e4hlen' : 'Sprachversion w\u00e4hlen';
+    var inner = '<div class="lang-picker-title">' + escHtml(heading) + '</div>';
+    variants.forEach(function(v) {
+      var flagSvg = v.lang && LANG_TO_FLAG[v.lang] ? LANG_TO_FLAG[v.lang] : '';
+      var langLabel = v.lang && _LANG_NAME_MAP[v.lang] ? _LANG_NAME_MAP[v.lang] : cleanFolderName(v.name);
+      var countLabel = v.count + ' ' + (v.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
+      inner += '<button class="lang-picker-item" data-variant-name="' + escHtml(v.name) + '">' +
+        (flagSvg ? '<span class="lang-picker-flag">' + flagSvg + '</span>' : '') +
+        '<span class="lang-picker-label">' + escHtml(langLabel) + '</span>' +
+        '<span class="lang-picker-count">' + countLabel + '</span>' +
+      '</button>';
+    });
+    overlay.innerHTML = inner;
+
+    /* Position near the card */
+    var rect = card.getBoundingClientRect();
+    overlay.style.position = 'fixed';
+    overlay.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 260)) + 'px';
+    var spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow > 200) {
+      overlay.style.top = rect.bottom + 4 + 'px';
+    } else {
+      overlay.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+    }
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('.lang-picker-item').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var vName = btn.dataset.variantName;
+        closeLangPicker();
+        if (playMode) { playAllIn(vName); } else { navigateInto(vName); }
+      });
+    });
+
+    /* Close on click outside or Escape */
+    function onDocClick(e) { if (!overlay.contains(e.target) && !card.contains(e.target)) closeLangPicker(); }
+    function onKeyDown(e) { if (e.key === 'Escape') closeLangPicker(); }
+    document.addEventListener('click', onDocClick, true);
+    document.addEventListener('keydown', onKeyDown);
+    _langPickerCleanup = function() {
+      document.removeEventListener('click', onDocClick, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }
 
   function navigateInto(name) {
@@ -6608,6 +6966,8 @@ def render_media_page(
     enable_auto_resume: bool = True,
     crossfade_duration: int = 0,
     debug_filter: bool = False,
+    language_groups_json: str = "{}",
+    default_language: str = "de",
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -6645,6 +7005,8 @@ def render_media_page(
         enable_auto_resume=enable_auto_resume,
         crossfade_duration=crossfade_duration,
         debug_filter=debug_filter,
+        language_groups_json=language_groups_json,
+        default_language=default_language,
     )
     is_video = media_element_tag == "video"
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
