@@ -144,11 +144,16 @@ class IndexCache:
         with self._lock:
             if not self._items or self._library_dir != library_dir or self._cache_dir != cache_dir:
                 self._items = items
-                self._built_at = built_at
+                # Mark snapshot data as stale so ensure_background_refresh()
+                # always triggers a rebuild after loading from disk.  The
+                # snapshot is still served instantly (fast startup), but the
+                # filesystem is rescanned in the background to pick up any
+                # changes that happened while the server was offline.
+                self._built_at = 0.0
                 self._library_dir = library_dir
                 self._cache_dir = cache_dir
                 logger.info(
-                    "Index cache snapshot loaded: %s => %d items (age=%.2fs)",
+                    "Index cache snapshot loaded: %s => %d items (snapshot_age=%.0fs, marked stale for refresh)",
                     self._label,
                     len(items),
                     max(0.0, now - built_at),

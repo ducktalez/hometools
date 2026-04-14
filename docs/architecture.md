@@ -1517,7 +1517,7 @@ Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick
 
 - **Button:** `#refresh-btn` im `<header>`, SVG-Icon `SVG_REFRESH` / `IC_REFRESH`
 - **CSS:** `.refresh-btn` (gleicher Style wie `.view-toggle`), `.refresh-btn.spinning svg` rotiert via `@keyframes spin`
-- **JS:** `refreshCatalog()` → `POST` an `/api/<media>/refresh-ratings` mit den Pfaden der **aktuell angezeigten** Items → patcht `allItems` + `playlistItems` → aktuelle Ansicht neu rendern. Toast-Feedback: „N Titel aktualisiert (M Ratings geändert)". Kein voller Index-Rebuild — nur Ratings der sichtbaren Titel werden vom Dateisystem neu gelesen.
+- **JS:** `refreshCatalog()` → `POST` an `/api/<media>/refresh` (voller Index-Rebuild, Cache-Invalidierung) → pollt `GET /api/<media>/tracks` bis `refreshing: false` → ersetzt `allItems` komplett → aktuelle Ansicht neu rendern. Toast-Feedback: „N Titel geladen (+M neu / -M entfernt)". Polling via `_refreshPoll()` mit 800ms Intervall.
 
 ### Designregeln
 
@@ -1525,7 +1525,25 @@ Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick
 2. **POST statt GET** — Refresh ist eine Zustandsänderung (Cache-Invalidierung), daher POST
 3. **Debounce via Spinning** — Während des Refresh dreht das Icon; kein Doppelklick nötig
 4. **Ansichts-bewahrend** — Nach dem Refresh wird die aktuelle Ansicht (Folder oder Playlist) beibehalten
-5. **Gezielter Refresh** — `refreshCatalog()` nutzt den `refresh-ratings`-Endpoint und sendet nur die Pfade der aktuell angezeigten Items (Playlist-View: `playlistItems`, Folder-View: `itemsUnder(currentPath)`). Kein voller Index-Rebuild, damit der 5 000-Titel-Katalog nicht unnötig gescannt wird. Bei leerem Root-View wird eine Toast-Meldung angezeigt.
+5. **Voller Index-Rebuild** — `refreshCatalog()` nutzt den `/api/<media>/refresh`-Endpoint, der den In-Memory-Cache invalidiert und den Index vom Dateisystem neu baut. Dadurch werden **neue Dateien/Ordner entdeckt**, gelöschte entfernt und Metadaten aktualisiert. Die Lazy-Per-Folder-Rating-Aktualisierung (`refreshFolderRatings()`) bleibt separat für automatische Ordner-Öffnung.
+
+## Index-Cache: Snapshot-Staleness nach Serverneustart
+
+**Modul:** `streaming/core/index_cache.py`
+
+### Problem
+
+Nach einem Serverneustart wurde der persistierte Snapshot (JSON-Datei im Shadow-Cache) als "frisch" behandelt, wenn sein Alter innerhalb des TTL lag (Standard: 900s). Dadurch wurde **kein Background-Rebuild** gestartet, und neue Dateien/Ordner, die während der Downtime hinzugefügt wurden, erschienen erst nach Ablauf des TTL (bis zu 15 Minuten).
+
+### Lösung
+
+`get_cached()` setzt `_built_at = 0.0` beim Laden eines Snapshots von der Festplatte. Dadurch gibt `_is_fresh()` immer `False` zurück und `ensure_background_refresh()` startet sofort einen Hintergrund-Rebuild. Der Snapshot wird weiterhin sofort ausgeliefert (schneller Startup), aber das Dateisystem wird parallel rescannt, um Änderungen zu erkennen.
+
+### Designregeln
+
+- Snapshot dient nur als **sofort-verfügbarer Fallback** — nie als Quelle der Wahrheit
+- Background-Refresh wird **immer** nach Snapshot-Laden gestartet, unabhängig vom Snapshot-Alter
+- In-Memory-Cache nach erfolgreichem Rebuild ist die einzige "frische" Datenquelle
 
 ## Non-blocking Video-Server-Start (Language-Groups)
 
