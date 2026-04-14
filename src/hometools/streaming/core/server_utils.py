@@ -2655,67 +2655,59 @@ def render_player_js(
 
   /* ── Manual catalog refresh (user-triggered) ── */
   var _refreshBtn = document.getElementById('refresh-btn');
-  function refreshCatalog() {
-    if (_refreshBtn) _refreshBtn.classList.add('spinning');
-    _ratingRefreshPath = null;
 
-    /* Only refresh the items currently displayed in the list */
-    var itemsToRefresh = inPlaylist ? playlistItems
-      : (currentPath ? itemsUnder(currentPath) : []);
-    if (!itemsToRefresh.length) {
-      if (_refreshBtn) _refreshBtn.classList.remove('spinning');
-      showToast('Öffne einen Ordner, um Titel zu aktualisieren');
-      return;
-    }
-
-    var paths = itemsToRefresh.map(function(t) { return t.relative_path; });
-    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
-    fetch(base + '/refresh-ratings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: paths })
-    })
+  function _refreshPoll() {
+    fetch(API_PATH, { cache: 'no-store' })
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(data) {
+      if (!data) {
+        if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+        showToast('Refresh fehlgeschlagen');
+        return;
+      }
+      if (data.refreshing) {
+        setTimeout(_refreshPoll, 800);
+        return;
+      }
+      var oldCount = allItems.length;
+      allItems = Array.isArray(data.items) ? data.items : [];
       if (_refreshBtn) _refreshBtn.classList.remove('spinning');
-      if (!data || !data.ratings) { showToast('Refresh fehlgeschlagen'); return; }
-      var ratings = data.ratings;
-      var anyChange = data.changed > 0;
-      /* Patch allItems */
-      for (var i = 0; i < allItems.length; i++) {
-        var rp = allItems[i].relative_path;
-        if (ratings.hasOwnProperty(rp) && allItems[i].rating !== ratings[rp]) {
-          allItems[i] = Object.assign({}, allItems[i], { rating: ratings[rp] });
-        }
-      }
-      /* Patch playlistItems */
-      for (var j = 0; j < playlistItems.length; j++) {
-        var rp2 = playlistItems[j].relative_path;
-        if (ratings.hasOwnProperty(rp2) && playlistItems[j].rating !== ratings[rp2]) {
-          playlistItems[j] = Object.assign({}, playlistItems[j], { rating: ratings[rp2] });
-        }
-      }
+
       /* Show refresh timestamp */
       var infoEl = document.getElementById('refresh-info');
-      if (infoEl && data.last_refresh) {
-        var dt = new Date(data.last_refresh);
+      if (infoEl) {
+        var dt = new Date();
         var hhmm = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
-        var countInfo = Object.keys(ratings).length + ' Ratings gelesen';
-        if (anyChange) countInfo += ', ' + data.changed + ' aktualisiert';
-        infoEl.textContent = countInfo + ' (' + hhmm + ')';
-        infoEl.title = 'Letzte Rating-Aktualisierung: ' + dt.toLocaleString();
+        infoEl.textContent = allItems.length + ' Titel (' + hhmm + ')';
+        infoEl.title = 'Letzter Katalog-Refresh: ' + dt.toLocaleString();
       }
+
       /* Re-render current view */
       if (inPlaylist) {
+        var newItems = itemsUnder(currentPath);
+        if (newItems.length) playlistItems = newItems;
         applyFilter();
       } else {
         showFolderView();
       }
-      var count = Object.keys(ratings).length;
-      var msg = count + ' Titel aktualisiert';
-      if (anyChange) msg += ' (' + data.changed + ' Ratings geändert)';
+      var diff = allItems.length - oldCount;
+      var msg = allItems.length + ' Titel geladen';
+      if (diff > 0) msg += ' (+' + diff + ' neu)';
+      else if (diff < 0) msg += ' (' + diff + ' entfernt)';
       showToast(msg);
     })
+    .catch(function() { setTimeout(_refreshPoll, 2000); });
+  }
+
+  function refreshCatalog() {
+    if (_refreshBtn) _refreshBtn.classList.add('spinning');
+    _ratingRefreshPath = null;
+
+    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
+    /* Invalidate server-side index cache and trigger full rebuild */
+    fetch(base + '/refresh', { method: 'POST' })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function() { _refreshPoll(); })
     .catch(function() {
       if (_refreshBtn) _refreshBtn.classList.remove('spinning');
       showToast('Refresh fehlgeschlagen');
