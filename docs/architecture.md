@@ -175,7 +175,7 @@ Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progr
 Alle Player-Buttons und UI-Controls verwenden **inline SVGs** statt Unicode-Zeichen. iOS rendert Unicode-Steuerzeichen (▶ ◄ ► ⏸ ⊞ ↓) als farbige Emojis, was das Layout zerstört.
 
 **Konvention:**
-- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST`, `SVG_QUEUE`, `SVG_REFRESH` in `server_utils.py`
+- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST`, `SVG_QUEUE`, `SVG_REFRESH`, `SVG_DUPLICATE` in `server_utils.py`
 - JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST`, `IC_QUEUE`, `IC_REMOVE`, `IC_REFRESH` — über `innerHTML` gesetzt (nicht `textContent`)
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
 - **Nie** Unicode-Zeichen oder HTML-Entities (`&#9733;`, `&#9654;` etc.) — iOS rendert sie als Emoji
@@ -417,8 +417,8 @@ Ordner, deren Name mit `#` beginnt, werden als Favoriten behandelt:
 Folder-Favorites sind **nicht** interaktiv toggle-bar aus dem Browser. Änderungen erfordern Umbenennen des Verzeichnisses auf dem NAS (via separatem `rename`-Workflow — Regel 9: „File renames must be proposed, never auto-applied").
 
 **CSS-Konvention für SVG-Icons:**
-- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_PLAYLIST`, `SVG_FLAG_DE`, `SVG_FLAG_EN`, `SVG_FLAG_FR`, `SVG_FLAG_ES`, `SVG_FLAG_IT`, `SVG_FLAG_JA`, `SVG_FLAG_KO`, `SVG_FLAG_ZH`, `SVG_FLAG_PT`, `SVG_FLAG_RU`)
-- JS-Variablen: `IC_*` in der generierten JS-Seite (inkl. `IC_STAR`, `IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_PLAYLIST`); `LANG_TO_FLAG` Mapping-Objekt für Sprach-Flaggen
+- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_PLAYLIST`, `SVG_TRASH`, `SVG_FLAG_DE`, `SVG_FLAG_EN`, `SVG_FLAG_FR`, `SVG_FLAG_ES`, `SVG_FLAG_IT`, `SVG_FLAG_JA`, `SVG_FLAG_KO`, `SVG_FLAG_ZH`, `SVG_FLAG_PT`, `SVG_FLAG_RU`)
+- JS-Variablen: `IC_*` in der generierten JS-Seite (inkl. `IC_STAR`, `IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_PLAYLIST`, `IC_TRASH`); `LANG_TO_FLAG` Mapping-Objekt für Sprach-Flaggen
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität (Ausnahme: Flaggen-SVGs verwenden Landesfarben)
 - Kein Unicode/HTML-Entities (`&#9733;`, `&#9654;` etc.) — sie rendern auf iOS als farbige Emojis
 
@@ -553,7 +553,7 @@ Atomic writes via `threading.Lock()`. Undo-Operation schreibt mit `tmp → renam
 AuditEntry(
     entry_id:    str,    # UUID — referenzierbar für Undo
     timestamp:   str,    # ISO 8601 UTC
-    action:      str,    # "rating_write" | "tag_write" | "file_rename"
+    action:      str,    # "rating_write" | "tag_write" | "file_rename" | "file_move" | "file_delete"
     server:      str,    # "audio" | "video"
     path:        str,    # relativer Pfad in der Library
     field:       str,    # geändertes Feld ("rating", "title", …)
@@ -573,7 +573,9 @@ Beide Server bieten:
 - `GET /audit` — HTML Control Panel
 
 Undo-Unterstützung:
-- **Audio-Server:** `rating_write` → `set_popm_rating(path, old_raw)` + Cache-Invalidierung
+- **Audio-Server:** `rating_write` → `set_rating_stars(path, old_stars)` (format-bewusst: MP3/M4A/FLAC/OGG) + `patch_items()` + Cache-Invalidierung
+- **Audio-Server:** `tag_write` → `write_track_tags(path, field=old_value)` + Cache-Invalidierung
+- **Audio-Server:** `file_move` → `shutil.move(new_path, old_path)` (Rück-Verschiebung) + Cache-Invalidierung
 - **Video-Server:** noch keine Write-Ops → `POST /api/video/audit/undo` gibt 422 zurück
 
 ### Control Panel (`/audit`)
@@ -581,7 +583,9 @@ Undo-Unterstützung:
 Eigenständige Dark-Theme-HTML-Seite (generiert durch `render_audit_panel_html()`):
 - Filterbar nach Dateiname und Aktion
 - Tabelle: Zeitpunkt | Aktion | Datei | Änderung (`old → new`) | Rückgängig-Button
-- Sterndarstellung für Ratings (★☆ statt Zahlen)
+- Sterndarstellung für Ratings via SVG-Icons (`IC_STAR_FILLED`/`IC_STAR_EMPTY`) — identisch mit Player- und Inline-Rating-Sternen
+- History-Link pro Datei via SVG-Clipboard-Icon (`IC_CLIPBOARD`)
+- Alle Icons sind inline SVGs — keine Unicode/Emoji (Regel 13)
 - `MEDIA_TYPE` JS-Variable steuert welchen API-Pfad das JS verwendet
 - URL-Parameter `?path_filter=…` für Deep-Link in Bewertungshistorie einer Datei
 
@@ -592,7 +596,8 @@ Nach erfolgreichem Rating-Write gibt der Endpoint `entry_id` zurück. Das JS zei
 ### Design-Regeln
 
 - Audit-Log ist **append-only** — Einträge werden nie gelöscht, nur als `undone` markiert.
-- `old_value` wird **vor** dem Schreiben gelesen (via `get_popm_rating()` vor `set_popm_rating()`).
+- `old_value` wird **vor** dem Schreiben gelesen (via `get_rating_stars()` vor `set_rating_stars()`).
+- `undo_payload.rating` enthält den alten Stern-Wert (0.0–5.0), `undo_payload.raw` den POPM-Raw-Wert. Undo verwendet `set_rating_stars(path, old_stars)` (format-bewusst), nicht `set_popm_rating()`.
 - `undo_payload.entry_id` enthält die eigene UUID — beim Undo wird die ID aus dem Payload validiert.
 - Fehler beim Log-Schreiben unterbrechen **nie** den eigentlichen Write-Vorgang (silent fail + logging).
 - Beide Server lesen **denselben** JSONL (shared `audit_dir`) — Audio-Ratings sind im Video-Control-Panel sichtbar.
@@ -1425,190 +1430,113 @@ Neue Sort-Option `<option value="custom">Liste ⇅</option>` im Sort-Dropdown. *
 - **In Playlist-Kontext:** Behält die Server-Reihenfolge bei (kein Re-Sort). DnD-Reorder verändert die Reihenfolge.
 - **In Filesystem-Ordner:** Sortiert nach benutzerdefinierter Reihenfolge (server-seitig gespeichert, localStorage als Offline-Fallback).
 
-### Server-seitige Ordner-Reihenfolge (Custom Order)
+---
 
-Neues Core-Modul `streaming/core/custom_order.py` persistiert benutzerdefinierte Item-Reihenfolgen pro Ordner (und für Favoriten) auf dem Server. Damit überlebt die Sortierung Browser-Clear und funktioniert geräteübergreifend.
+## Tools-Panel (UI-Einstellungen)
 
-**Storage:** `<cache_dir>/custom_order/<server>/<md5_hash>.json` — MD5-Hash des normalisierten Ordner-Pfads als Dateiname. Für Favoriten wird `__favorites__` als Pfad verwendet.
+**Modul:** `streaming/core/server_utils.py` (CSS + JS + HTML)
 
-**API-Endpoints:**
-- `GET /api/<media>/folder-order?path=<folder>` — Reihenfolge laden
-- `PUT /api/<media>/folder-order` (`{folder_path, items: [...]}`) — Reihenfolge speichern
-- `DELETE /api/<media>/folder-order?path=<folder>` — Reihenfolge löschen
-
-**Dual-Source-Strategie (JS):**
-- **Speichern:** `_saveFolderOrder()` / `_saveFavoritesOrder()` schreiben sowohl in `localStorage` (sofort) als auch per `PUT` an den Server (fire-and-forget).
-- **Laden:** Synchron aus `localStorage` für sofortige Anzeige. Parallel `_loadFolderOrderAsync()` / `_loadFavoritesOrderAsync()` fetcht vom Server. Wenn der Server eine andere Reihenfolge hat, wird `localStorage` aktualisiert und die Ansicht re-sortiert.
-- **Offline-Fallback:** Bei Server-Fehler wird ausschließlich auf `localStorage` zurückgegriffen.
-
-**JS-Variable:** `FOLDER_ORDER_API_PATH` (abgeleitet aus `api_path`).
-
-**Thread-Sicherheit:** Module-level Lock, atomare Schreibvorgänge via `NamedTemporaryFile` + `replace` (analog zu `playlists.py`).
-
-## Crossfade (Audio-only)
-
-**Modul:** `streaming/core/server_utils.py` (JS), `config.py` (Env-Var), rein client-seitig.
-
-Nahtlose Übergänge zwischen Songs: Der aktuelle Track wird ausgeblendet (fade-out) während der nächste Track parallel eingeblendet wird (fade-in). Nur für Audio, nicht für Video.
-
-### Konfiguration
-
-- `HOMETOOLS_CROSSFADE_DURATION` Env-Var: Dauer in Sekunden (Default `0` = deaktiviert, Max `12`)
-- `get_crossfade_duration()` in `config.py` — clamped auf 0–12
-- `crossfade_duration` Parameter durchgereicht: `render_media_page()` → `render_player_js()` → `CROSSFADE_DURATION` JS-Variable
-- Audio-Server liest aus Config, Video-Server nutzt Default `0` (kein Crossfade)
-
-### JS-Architektur
-
-**State-Variablen:**
-- `_xfadeAudio` — Zweites `<audio>`-Element (lazy erstellt, `display: none`)
-- `_xfading` — Boolean, ob ein Crossfade läuft
-- `_xfadeTimer` — `setInterval`-ID für die Volume-Rampe
-- `_xfadeNextItem` / `_xfadeNextIndex` — Das Item/Index in das übergefadet wird
-
-**Funktionen:**
-- `_resolveNextForCrossfade()` — Bestimmt den nächsten Track **ohne** Queue zu konsumieren oder State zu ändern (Queue-Peeking)
-- `_startCrossfade()` — Erstellt/konfiguriert `_xfadeAudio`, startet Playback bei `volume=0`, initiiert Volume-Rampe
-- `_finishCrossfade()` — Speichert Progress des alten Tracks, konsumiert Queue-Item falls nötig, ruft `playTrack()`/`playFromQueue()` auf, setzt `player.volume = 1`
-- `_xfadeCleanup()` — Bricht laufenden Crossfade ab, stoppt Timer, pausiert xfade-Audio
-
-### Trigger
-
-- **`timeupdate`-Event:** Wenn `CROSSFADE_DURATION > 0 && !_xfading && !isVideoPlayer`, verbleibende Zeit ≤ `CROSSFADE_DURATION`, und Track lang genug (`duration > CROSSFADE_DURATION + 5`), wird `_startCrossfade()` aufgerufen
-- **Schutz gegen kurze Tracks:** Tracks kürzer als `CROSSFADE_DURATION + 5s` werden ohne Crossfade abgespielt (verhindert Overlap-Chaos)
-
-### Volume-Rampe
-
-- 20 Schritte über `CROSSFADE_DURATION` Sekunden (50ms pro Schritt bei 1s, 250ms bei 5s)
-- Sinusoide Ease-Kurve: `ease = 0.5 - 0.5 * cos(π * progress)` für natürlichen Übergang
-- Ausgehender Track: `player.volume = 1 - ease`
-- Eingehender Track: `_xfadeAudio.volume = ease`
-
-### Abbruch-Szenarien
-
-- **Manueller Track-Wechsel** (`playItem`): `_xfadeCleanup()` + `player.volume = 1`
-- **User-Pause**: `_xfadeCleanup()` + `player.volume = 1`
-- **Track endet während Crossfade**: `_finishCrossfade()` wird aufgerufen statt `playNextItem()`
-
-### Designregeln
-
-1. **Audio-only** — `!isVideoPlayer`-Guard im Trigger. Video hat kein Crossfade.
-2. **Queue-kompatibel** — `_resolveNextForCrossfade()` peeked in die Queue, `_finishCrossfade()` konsumiert via `playFromQueue()`.
-3. **Kein Einfluss auf Progress-Speicherung** — Progress wird weiterhin normal gespeichert. `_finishCrossfade()` ruft `saveProgressNow()` + `clearProgressFor()` für den ausgehenden Track.
-4. **Volume statt muted** — Crossfade nutzt `player.volume` (0–1), nicht `muted`. Das ist korrekt weil Audio (nicht Video) kein `bgAudio`-Element benötigt und iOS-Volume-Beschränkungen nur `bgAudio` betreffen.
-5. **Konfigurierbar bis deaktiviert** — Default `0` = aus. Nutzer wählt Dauer selbst. Max 12s Obergrenze.
-
-## Katalog-Refresh (manuell)
-
-**Module:** `streaming/core/server_utils.py` (UI + JS), `streaming/audio/server.py`, `streaming/video/server.py`
-
-Ermöglicht dem Benutzer, den In-Memory-Index-Cache manuell zu invalidieren und eine frische Neuindexierung vom Dateisystem zu erzwingen.
-
-### API
-
-- `POST /api/audio/refresh` — Audio-Index invalidieren, Background-Rebuild starten
-- `POST /api/video/refresh` — Video-Index invalidieren, Background-Rebuild starten
-
-Response: `{"ok": true, "detail": "Refresh started"}`
-
-Beide Endpoints invalidieren den `IndexCache` (`invalidate()`), setzen den Quick-Scan-Cache zurück und starten `ensure_background_refresh()`. Das nächste `GET /api/<media>/tracks` (bzw. `/items`) liefert dann frische Filesystem-Daten.
-
-### Frontend
-
-- **Button:** `#refresh-btn` im `<header>`, SVG-Icon `SVG_REFRESH` / `IC_REFRESH`
-- **CSS:** `.refresh-btn` (gleicher Style wie `.view-toggle`), `.refresh-btn.spinning svg` rotiert via `@keyframes spin`
-- **JS:** `refreshCatalog()` → `POST` an `/api/<media>/refresh` (voller Index-Rebuild, Cache-Invalidierung) → pollt `GET /api/<media>/tracks` bis `refreshing: false` → ersetzt `allItems` komplett → aktuelle Ansicht neu rendern. Toast-Feedback: „N Titel geladen (+M neu / -M entfernt)". Polling via `_refreshPoll()` mit 800ms Intervall.
-
-### Designregeln
-
-1. **Shared-Core-UI** — Button und JS leben in `server_utils.py`, nicht dupliziert pro Server
-2. **POST statt GET** — Refresh ist eine Zustandsänderung (Cache-Invalidierung), daher POST
-3. **Debounce via Spinning** — Während des Refresh dreht das Icon; kein Doppelklick nötig
-4. **Ansichts-bewahrend** — Nach dem Refresh wird die aktuelle Ansicht (Folder oder Playlist) beibehalten
-5. **Voller Index-Rebuild** — `refreshCatalog()` nutzt den `/api/<media>/refresh`-Endpoint, der den In-Memory-Cache invalidiert und den Index vom Dateisystem neu baut. Dadurch werden **neue Dateien/Ordner entdeckt**, gelöschte entfernt und Metadaten aktualisiert. Die Lazy-Per-Folder-Rating-Aktualisierung (`refreshFolderRatings()`) bleibt separat für automatische Ordner-Öffnung.
-
-## Index-Cache: Snapshot-Staleness nach Serverneustart
-
-**Modul:** `streaming/core/index_cache.py`
-
-### Problem
-
-Nach einem Serverneustart wurde der persistierte Snapshot (JSON-Datei im Shadow-Cache) als "frisch" behandelt, wenn sein Alter innerhalb des TTL lag (Standard: 900s). Dadurch wurde **kein Background-Rebuild** gestartet, und neue Dateien/Ordner, die während der Downtime hinzugefügt wurden, erschienen erst nach Ablauf des TTL (bis zu 15 Minuten).
-
-### Lösung
-
-`get_cached()` setzt `_built_at = 0.0` beim Laden eines Snapshots von der Festplatte. Dadurch gibt `_is_fresh()` immer `False` zurück und `ensure_background_refresh()` startet sofort einen Hintergrund-Rebuild. Der Snapshot wird weiterhin sofort ausgeliefert (schneller Startup), aber das Dateisystem wird parallel rescannt, um Änderungen zu erkennen.
-
-### Designregeln
-
-- Snapshot dient nur als **sofort-verfügbarer Fallback** — nie als Quelle der Wahrheit
-- Background-Refresh wird **immer** nach Snapshot-Laden gestartet, unabhängig vom Snapshot-Alter
-- In-Memory-Cache nach erfolgreichem Rebuild ist die einzige "frische" Datenquelle
-
-## Non-blocking Video-Server-Start (Language-Groups)
-
-**Modul:** `streaming/video/server.py`
-
-### Problem
-
-`load_language_groups()` → `load_all_overrides()` → `rglob("*")` scannt die gesamte Bibliothek rekursiv. Bei NAS-Pfaden (UNC wie `\\Syn723\Serien\`) kann dieser Scan bei einer großen Videobibliothek mehrere Minuten dauern. Da der Aufruf synchron in `create_app()` stattfand (vor der FastAPI-App-Erstellung), konnte der Server nicht starten, bis der Scan abgeschlossen war.
-
-### Lösung
-
-Die Language-Group-Beladung wurde aus dem synchronen `create_app()`-Pfad in einen **Daemon-Thread** verschoben (`video-lang-groups`). Der Thread prüft zunächst `check_library_accessible()` (mit 3s-Timeout) und lädt die Groups nur bei erreichbarer Bibliothek. `_lang_state["json"]` wird dynamisch aktualisiert und von `render_video_index_html()` bei jedem Request gelesen.
-
-### Designregeln
-
-- Server-Startup darf **nie** durch Dateisystem-Scans blockiert werden (Regel 6: No blocking).
-- Langsame I/O (Thumbnail-Gen, Index-Build, Language-Group-Scan) → immer Hintergrund-Threads.
-- `check_library_accessible()` muss vor **jedem** rekursiven Dateisystem-Zugriff (rglob, iterdir) geprüft werden, wenn der Pfad ein UNC/NAS sein kann.
-
-## Globale Suche (Root-View)
-
-**Modul:** `streaming/core/server_utils.py` (JS + CSS + HTML)
-
-Bibliotheksweite Echtzeit-Suche über alle Tracks direkt auf der Startseite. Rein client-seitig — `allItems` ist bereits im Browser geladen. Kein neuer Backend-Endpoint.
+Benutzer-steuerbares Panel zum Ein-/Ausblenden von UI-Funktionen. Öffnet sich über die "Tools"-Pill in der Kopfzeile (neben "Downloaded").
 
 ### UI
 
-- **Suchfeld:** `<input id="global-search-input">` im `#folder-filter-bar`, sichtbar nur auf der Root-Ansicht wenn der Katalog geladen ist.
-- **Ergebnisse:** Werden als Track-Liste in `#track-list` gerendert (gleiche Darstellung wie Ordner-Playlists), mit zusätzlicher Ordner-Pfad-Anzeige (`.search-result-folder`) unter dem Artist-Namen.
-- **Navigation:** Klick auf ein Ergebnis startet die Wiedergabe direkt in der Suchliste — die Suche bleibt offen. Die Suchergebnisse werden zur aktiven Playlist (Next/Prev navigiert innerhalb der Ergebnisse).
-- **Zurück:** Escape, Leeren des Suchfelds oder Back-Button → zurück zur normalen Ordner-Ansicht.
+- **Pill:** `<span class="tools-pill" id="tools-pill">Tools</span>` im `<header>`, neben der Downloaded-Pill
+- **Panel:** Modal-Dialog mit Backdrop (`#tools-panel-backdrop`), Toggle-Switches pro Feature
+- **Toggle-Switches:** CSS-only Toggle (`.tools-toggle` mit `<input type="checkbox">` + `.tools-toggle-track`-Slider)
+- **State:** `localStorage` unter Key `ht-tools` (JSON-Objekt mit Boolean-Feldern)
 
-### JS-Funktionen
+### Verfügbare Tools
 
-| Funktion | Beschreibung |
-|---|---|
-| `initGlobalSearch()` | Erstellt Suchfeld im `#folder-filter-bar`, registriert `input`- und `keydown`-Events |
-| `globalSearch(needle)` | Filtert `allItems` nach Titel/Artist/Path, respektiert `MIN_RATING_THRESHOLD`, rendert Ergebnisse |
-| `renderSearchResults(results)` | Rendert Track-Liste mit Ordner-Kontext, registriert Click-Handler |
-| `navigateToSearchResult(item, idx)` | Spielt den gewählten Track direkt in der Suchliste ab (Suche bleibt offen) |
-| `exitGlobalSearch()` | Setzt Such-State zurück, zeigt normale Ordner-Ansicht |
+| Tool-ID | Label | Beschreibung | CSS-Klasse | Status |
+|---------|-------|-------------|------------|--------|
+| `inlineRatings` | Inline-Ratings | Bewertungssterne direkt in der Track-Liste | `body.tool-inline-ratings` | Implementiert |
+| `downloads` | Downloads | Download-Buttons pro Track ein/ausblenden | `body.tool-hide-downloads` | Implementiert |
+| `playlists` | Zur Playlist hinzufügen | Playlist-Buttons pro Track ein/ausblenden | `body.tool-hide-playlists` | Implementiert |
+| `duplicates` | Duplikate suchen | Doppelte Dateien finden | `body.tool-show-duplicates` | Implementiert |
+| `fileMover` | Dateien verschieben | Songs in andere Ordner verschieben | `body.tool-show-file-mover` | Implementiert |
 
-### State
+### Inline-Ratings
 
-- `_globalSearchActive` (bool) — ob gerade Suchergebnisse angezeigt werden
-- `_globalSearchDebounce` — Timer-ID für 200ms Input-Debounce
+Wenn aktiv, werden 5 klickbare Bewertungssterne (`.track-inline-rating`) rechts neben jedem Track-Item angezeigt. Gleichzeitig werden andere Track-Buttons (Download, Pin, Edit, Playlist, Queue) ausgeblendet, um Platz zu schaffen. Die Sterne nutzen dieselben `IC_STAR_FILLED`/`IC_STAR_EMPTY`-Icons und das gleiche `POST /api/<media>/rating`-API wie der Player-Rating im Player-Bar.
 
-### Ablauf
+- **`renderInlineRating(t, idx)`** — generiert den HTML-String für die 5 Sterne pro Track
+- **`setInlineRating(idx, stars)`** — sendet Rating an den Server, aktualisiert Sterne in-place, Toast-Feedback mit Undo
+- **Event-Delegation:** Sterne-Clicks werden via `stopPropagation` abgefangen, um Playback-Trigger zu verhindern
+- **DnD-Kompatibilität:** `.track-inline-rating-star` ist in den DnD-Exclusion-Selektoren enthalten
 
-1. `showFolderView()` ruft `initGlobalSearch()` auf wenn Root + Katalog geladen
-2. User tippt → `input`-Event → 200ms Debounce → `globalSearch(needle)`
-3. `globalSearch` filtert `allItems`, blendet Folder-Grid aus, setzt Ergebnisse als `playlistItems`/`filteredItems`, zeigt Track-View
-4. Klick auf Ergebnis → `navigateToSearchResult()` → `playItem()` + `markActive()` (Suche bleibt offen, Next/Prev in Ergebnissen)
-5. Back-Button / Escape → `exitGlobalSearch()` → `showFolderView()`
+### Duplikat-Erkennung (Client-Side)
 
-### CSS
+Rein client-seitige Erkennung von Duplikaten über die bereits geladene `allItems`-Liste. Kein zusätzlicher Backend-Endpoint nötig.
 
-- `#global-search-input` — Styling analog zu `#search-input` (Ordner-lokale Suche)
-- `.search-result-folder` — Grauer Text unter dem Artist, zeigt den Ordner-Pfad
+**Algorithmus:**
+1. **`_normalizeStem(s)`** — JS-Port von `stem_identifier()` aus `audio/sanitize.py`: Normalisiert `feat.`/`prod.`/`vs.`-Varianten, entfernt Bitrate-Tags, URLs, Emojis, Official-Video-Marker, trimmt Leerzeichen, lowercased.
+2. **`_dupeKey(item)`** — JS-Port von `split_extreme()` aus `audio/sanitize.py`: Strippt zuerst Download-Duplikat-Suffixe (`_2`, `(2)`, `-2`, `_copy`, `(kopie)` etc.), dann splittet normalisierten Titel an Trennzeichen (`feat.`, `prod.`, `vs.`, `-`, `,`, `&`, Klammern), entfernt aggressiv Musik-Keywords (Remix, Mix, Version, Edit, Remaster, Live, Acoustic, etc.), strippt Non-Word-Chars, filtert Parts ≤ 2 Zeichen, sortiert und joined zu stabilem Key.
+3. **`_buildDuplicateMap()`** — Iteriert einmal über `allItems`, baut `Map<dupeKey, [itemIndex, ...]>`, filtert auf Gruppen mit `length > 1`. Speichert zusätzlich `_dupePaths` (Set aller `relative_path`-Strings) für O(1)-Lookup beim Rendering.
+4. **Cache-Invalidierung:** `_invalidateDupeMap()` wird bei jedem `allItems`-Replacement aufgerufen (Background-Refresh, Initial-Catalog-Load, Explicit-Refresh, File-Delete, File-Move). Lazy Re-Build beim nächsten Zugriff. `renderTracks()` ruft `_ensureDupeMap()` auf, wenn `_toolState.duplicates` aktiv ist — dadurch sind Badges sofort beim ersten Rendering und nach Löschvorgängen stabil sichtbar.
+
+**UI-Elemente:**
+- **`.dupe-badge`** — kleines orangenes Pill-Badge neben dem Track-Titel; via CSS `body.tool-show-duplicates .dupe-badge { display:inline-flex }` gesteuert. Enthält den Text „Duplikat" und bei Duplikaten den Trash-Button (`.track-delete-btn`).
+- **Dupe-Show-Link** — Link unter dem Toggle im Tools-Panel (`"N Duplikat-Gruppen gefunden — anzeigen"`), öffnet das Duplikat-Panel.
+- **Duplikat-Panel** — Modal-Dialog (`.dupe-panel-backdrop` + `.dupe-panel`) mit Gruppenübersicht: pro Gruppe Header (Titel + Anzahl), pro Item Thumbnail, Titel, Ordner-Pfad. Click navigiert zum Ordner und spielt den Track ab.
+- **Trash-Button (Panel)** — Pro Duplikat-Item ein `.dupe-trash-btn` (Mülleimer-Icon `IC_TRASH`/`SVG_TRASH`), nur im Duplikat-Panel sichtbar. Click öffnet `confirm()`-Dialog, bei Bestätigung wird die Datei per Soft-Delete in den Papierkorb verschoben.
+- **Inline-Delete-Button** — `.track-delete-btn` (kleines Mülleimer-Icon `IC_TRASH`) sitzt direkt innerhalb der `.dupe-badge`-Pill in `renderTracks()`. Da die Badge nur bei `body.tool-show-duplicates` sichtbar ist, braucht der Button keine eigene Visibility-Regel. Click löst `_deleteTrackFromList(filteredIdx)` aus.
+
+### Duplikat-Löschung (Soft-Delete)
+
+Ermöglicht das Löschen einzelner Duplikat-Dateien direkt aus dem Duplikat-Panel. Dateien werden nie hart gelöscht, sondern per Soft-Delete in das Trash-Verzeichnis (`HOMETOOLS_DELETE_DIR`, Default: `~/Music/DELETE_ME`) verschoben.
+
+**Backend:**
+- **`POST /api/audio/delete-file`** in `audio/server.py`: Body `{ "path": "Folder/song.mp3" }`. Validiert Pfad via `resolve_audio_path()`, verschiebt via `attention_delete_files()` (Soft-Delete), loggt `file_delete`-AuditEntry, invalidiert IndexCache. Returns `{ "ok": true, "entry_id": "..." }`.
+- **`POST /api/video/delete-file`** in `video/server.py`: Identisch mit `resolve_video_path()` — Feature-Parity.
+- **Audit-Log:** `log_file_delete()` in `audit_log.py`, Action `"file_delete"`, `undo_payload` enthält `original_path` und `trash_path`. Kein automatisches Undo im Audit-Panel (Datei manuell aus Trash wiederherstellbar).
+
+**Frontend (JS in `server_utils.py`):**
+- **`IC_TRASH`** — JS-Variable mit SVG-Trash-Icon (aus `SVG_TRASH`).
+- **`DELETE_API_PATH`** — JS-Variable abgeleitet aus `api_path` (Pattern wie `MOVE_API_PATH`).
+- **`_deleteDuplicateFile(allIndex)`** — `confirm()`-Dialog, dann `fetch(DELETE_API_PATH, {method:'POST', body: {path}})`. Bei Erfolg: `allItems.splice()`, `_invalidateDupeMap()`, `_invalidateFolderCache()`, `showToast()`, Panel neu rendern via `openDupePanel()`. Playback-aware: erkennt ob der gelöschte Track der aktuell spielende ist und springt ggf. zum nächsten Track; adjustiert `currentIndex` wenn ein Track davor gelöscht wird.
+- **`_deleteTrackFromList(filteredIdx)`** — Wie `_deleteDuplicateFile`, aber nutzt `filteredItems[idx]`. Bei Erfolg: `allItems.filter()`, Cache invalidieren, View neu rendern (Playlist/Folder). Playback-aware: speichert vor dem Delete, ob der Track aktuell spielt oder vor dem aktuellen Index liegt, passt `currentIndex` nach dem Re-Render an und ruft `playTrack()` auf, wenn der spielende Track gelöscht wurde.
+- **`.dupe-trash-btn`** — Icon-Button mit `stopPropagation()` (verhindert Click-to-Play des Parent-Items). CSS: transparent, rot-auf-hover (`#ef4444`).
+- **`.track-delete-btn`** — Inline-Delete-Button in der Track-Liste, nur für Duplikate gerendert und via CSS-Klasse sichtbar.
+
+**Design-Prinzipien:**
+1. **Nur Duplikate löschbar** — Kein allgemeiner Delete-Button in der UI. Trash im Duplikat-Panel und als Inline-Button in der Track-Liste, nur für Duplikate sichtbar (CSS `body.tool-show-duplicates .track-delete-btn`).
+2. **Soft-Delete** — Datei wird verschoben, nie gelöscht. Trash-Verzeichnis konfigurierbar.
+3. **Bestätigung erforderlich** — `confirm()`-Dialog vor jeder Löschung.
+4. **Feature-Parity** — Beide Server (Audio + Video) haben den Endpoint.
+5. **Playback-Awareness** — Löschung während der Wiedergabe ist sicher: wird der aktuell spielende Track gelöscht, springt der Player automatisch zum nächsten Track. Wird ein Track vor dem aktuellen gelöscht, wird `currentIndex` korrigiert.
+
+### Dateien verschieben (File Mover)
+
+Inline-Widget zum Verschieben von Audio-Dateien in einen anderen Ordner der Bibliothek. Kombiniert Schnellwahl mit Vollauswahl.
+
+**Backend:**
+- **`POST /api/audio/move-file`** in `audio/server.py`: Body `{ "path": "OLD/song.mp3", "target_folder": "NEW" }`. Validiert Quell-/Zielpfad, prüft Traversal-Schutz, verhindert Überschreiben, verschiebt via `shutil.move`, loggt `file_move`-AuditEntry, invalidiert IndexCache. Returns `{ "ok": true, "new_path": "NEW/song.mp3", "entry_id": "..." }`.
+- **`GET /api/audio/folders`** in `audio/server.py`: Gibt alle Top-Level-Ordnernamen als `{ "folders": [...] }` zurück.
+- **Audit-Log:** `log_file_move()` in `audit_log.py`, Action `"file_move"`, undo_payload enthält `old_path` und `new_path` für Rück-Verschiebung.
+- **Undo:** Im `audio_audit_undo()`-Handler wird `file_move` unterstützt: Datei wird von `new_path` zurück nach `old_path` verschoben.
+
+**Frontend (JS in `server_utils.py`):**
+- **`_getRecentMoveTargets()`** — Liest die letzten 4 Zielordner aus `localStorage` Key `ht-move-recent`.
+- **`_saveRecentMoveTarget(folder)`** — Speichert einen Ordner als MRU-Eintrag (max. 4, neuester zuerst).
+- **`_getAllFolders()`** — Berechnet alle Top-Level-Ordner aus `allItems` (lazy, mit `_allFoldersCache`). Wird bei `allItems`-Replacement invalidiert via `_invalidateFolderCache()`.
+- **`renderMoveWidget(t, idx)`** — Generiert pro Track: (1) aktueller Ordner als farbiges Tag, (2) 2×2-Grid der letzten 4 Ordner als Quick-Pick-Buttons, (3) `<select>` Dropdown mit allen Ordnern.
+- **`moveFileToFolder(idx, targetFolder)`** — Sendet `POST /api/audio/move-file`, aktualisiert `allItems` in-place (neuer `relative_path`, `stream_url`, `artist`), invalidiert Caches, rendert View neu.
+
+**CSS:**
+- `.track-move-widget` — `display:none` default, via `body.tool-show-file-mover .track-move-widget { display:flex }` sichtbar.
+- Wenn File-Mover aktiv, werden andere Track-Buttons ausgeblendet (analog Inline-Ratings).
+- `.move-current-folder` — grüner Tag mit aktuellem Ordnernamen.
+- `.move-quick-grid` — 2×2 CSS-Grid für Schnellwahl-Buttons.
+- `.move-quick-btn` — kompakter Button pro MRU-Ordner, `.is-current` bei aktuellem Ordner (disabled, dimmed).
+- `.move-folder-select` — Dropdown mit allen Ordnern.
 
 ### Designregeln
 
-1. **Rein client-seitig** — kein neuer Backend-Endpoint, `allItems` wird im Browser gefiltert
-2. **Shared Core** — funktioniert identisch für Audio und Video
-3. **MIN_RATING respektiert** — Suche blendet die gleichen Tracks aus wie die Ordner-Ansicht
-4. **Debounced** — 200ms Verzögerung verhindert Flickering bei schnellem Tippen
-5. **`goBack()` integriert** — erkennt `_globalSearchActive` und kehrt zum Root zurück statt in den Elternordner
-
+1. **Shared-Core-UI** — Tools-Panel lebt in `server_utils.py`, nicht pro Server dupliziert
+2. **Keine Feature-Flags nötig** — Tools sind client-seitig (localStorage), kein Server-Flag
+3. **CSS-only Visibility** — `body`-Klassen steuern Sichtbarkeit via CSS, kein JS-DOM-Manipulation pro Element
+4. **Inline-Ratings exklusiv** — Wenn aktiv, werden andere Track-Buttons ausgeblendet (kein Platzproblem auf Mobile)
+5. **State persistent** — `ht-tools` in localStorage, überlebt Page-Reloads und Server-Restarts
+6. **Duplikat-Erkennung rein client-seitig** — Kein zusätzlicher Backend-Endpoint, keine Server-Last. Dupe-Map wird lazy berechnet und bei Catalog-Wechsel invalidiert.
+7. **File-Mover exklusiv** — Wenn aktiv, werden andere Track-Buttons ausgeblendet (wie Inline-Ratings). MRU-Ordner in `localStorage`, Ordnerliste aus `allItems` gecached.
+8. **Duplikat-Löschung nur für Duplikate** — Trash-Button im Duplikat-Panel und als Inline-Button (`.track-delete-btn`) in der Track-Liste, nur für als Duplikat erkannte Items gerendert. Soft-Delete via `attention_delete_files()`, Bestätigung via `confirm()`.

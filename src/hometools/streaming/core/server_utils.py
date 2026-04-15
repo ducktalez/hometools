@@ -47,6 +47,9 @@ SVG_LYRICS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 SVG_PLAYLIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'
 SVG_QUEUE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="15" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><line x1="19" y1="15" x2="19" y2="21"/><line x1="16" y1="18" x2="22" y2="18"/></svg>'
 SVG_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>'
+SVG_DUPLICATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'
+SVG_MOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><path d="M12 11v6m0 0l-3-3m3 3l3-3"/></svg>'
+SVG_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>'
 
 # Language flag SVGs — small rectangular flags (18×12 viewBox)
 SVG_FLAG_DE = '<svg viewBox="0 0 18 12"><rect width="18" height="4" fill="#000"/><rect y="4" width="18" height="4" fill="#D00"/><rect y="8" width="18" height="4" fill="#FFCE00"/></svg>'
@@ -630,6 +633,172 @@ header {
 }
 .downloaded-pill:hover, .downloaded-pill.has-downloads { color: var(--accent); border-color: var(--accent); }
 .downloaded-pill.is-offline { color: #ffcc00; border-color: #ffcc00; }
+/* ── Tools pill + panel ── */
+.tools-pill {
+  font-size: 0.72rem; color: var(--sub); border: 1px solid #3a3a3a;
+  border-radius: 999px; padding: 0.28rem 0.55rem; margin-left: 0.35rem;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tools-pill:hover, .tools-pill.has-active { color: var(--accent); border-color: var(--accent); }
+.tools-panel-backdrop {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
+}
+.tools-panel-backdrop[hidden] { display: none; }
+.tools-panel {
+  background: var(--surface); border: 1px solid #333; border-radius: 12px;
+  padding: 1.2rem 1.4rem; width: min(360px, 92vw);
+  max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.tools-panel-title { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 1rem; }
+.tools-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.6rem 0; border-bottom: 1px solid #222;
+}
+.tools-item:last-child { border-bottom: none; }
+.tools-item-label { font-size: 0.85rem; color: var(--text); }
+.tools-item-desc { font-size: 0.7rem; color: var(--sub); margin-top: 2px; }
+.tools-toggle {
+  position: relative; width: 40px; height: 22px; flex-shrink: 0; margin-left: 0.5rem;
+}
+.tools-toggle input { opacity: 0; width: 0; height: 0; }
+.tools-toggle-track {
+  position: absolute; inset: 0; background: #444; border-radius: 11px;
+  cursor: pointer; transition: background 0.2s;
+}
+.tools-toggle-track::after {
+  content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;
+  background: #ccc; border-radius: 50%; transition: transform 0.2s;
+}
+.tools-toggle input:checked + .tools-toggle-track { background: var(--accent); }
+.tools-toggle input:checked + .tools-toggle-track::after { transform: translateX(18px); background: #fff; }
+.tools-panel-close {
+  background: none; border: 1px solid #555; color: var(--sub);
+  border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
+  font-size: 0.85rem; margin-top: 1rem; width: 100%;
+  transition: border-color 0.12s, color 0.12s;
+}
+.tools-panel-close:hover { border-color: var(--text); color: var(--text); }
+/* ── Inline track rating stars ── */
+.track-inline-rating {
+  display: none; align-items: center; gap: 0px; flex-shrink: 0; margin-left: 4px;
+}
+body.tool-inline-ratings .track-inline-rating { display: flex; }
+.track-inline-rating-star {
+  background: none; border: none; padding: 1px; cursor: pointer; color: #555;
+  width: 18px; height: 18px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.1s; -webkit-tap-highlight-color: transparent;
+}
+.track-inline-rating-star svg { width: 13px; height: 13px; }
+.track-inline-rating-star.active { color: #ffd700; }
+.track-inline-rating-star:hover { color: #ffd700; }
+/* Hide other track buttons when inline ratings active (reduce clutter) */
+body.tool-inline-ratings .track-dl-btn,
+body.tool-inline-ratings .track-pin-btn,
+body.tool-inline-ratings .track-edit-btn,
+body.tool-inline-ratings .track-playlist-btn,
+body.tool-inline-ratings .track-queue-btn { display: none; }
+/* Hide individual button groups via tools toggles */
+body.tool-hide-downloads .track-dl-btn { display: none; }
+body.tool-hide-playlists .track-playlist-btn { display: none; }
+/* ── Duplicate detection badges ── */
+.dupe-badge {
+  display: none; font-size: 0.6rem; color: #000; background: #f5a623;
+  padding: 1px 4px 1px 6px; border-radius: 8px; margin-left: 6px; vertical-align: middle;
+  font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+  align-items: center; gap: 2px;
+}
+body.tool-show-duplicates .dupe-badge { display: inline-flex; }
+/* Inline delete button — lives inside .dupe-badge pill */
+.track-delete-btn {
+  background: none; border: none; color: #000; cursor: pointer;
+  padding: 0; margin-left: 2px; display: inline-flex; align-items: center;
+  opacity: 0.55; transition: opacity 0.12s, color 0.12s;
+  line-height: 1;
+}
+.track-delete-btn svg { width: 12px; height: 12px; }
+.track-delete-btn:hover { opacity: 1; color: #7f1d1d; }
+/* ── Duplicate list panel ── */
+.dupe-panel-backdrop {
+  position: fixed; inset: 0; z-index: 310; background: rgba(0,0,0,0.65);
+  display: flex; align-items: center; justify-content: center;
+}
+.dupe-panel-backdrop[hidden] { display: none; }
+.dupe-panel {
+  background: var(--surface); border: 1px solid #333; border-radius: 12px;
+  padding: 1.2rem 1.4rem; width: min(480px, 94vw);
+  max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.dupe-panel-title { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 0.5rem; }
+.dupe-panel-subtitle { font-size: 0.75rem; color: var(--sub); margin-bottom: 1rem; }
+.dupe-group { margin-bottom: 1rem; border-bottom: 1px solid #262626; padding-bottom: 0.75rem; }
+.dupe-group:last-child { border-bottom: none; }
+.dupe-group-header {
+  font-size: 0.78rem; font-weight: 600; color: var(--accent); margin-bottom: 0.4rem;
+  display: flex; align-items: center; gap: 6px;
+}
+.dupe-group-header svg { width: 14px; height: 14px; flex-shrink: 0; }
+.dupe-group-count { font-size: 0.65rem; color: var(--sub); font-weight: 400; }
+.dupe-group-item {
+  display: flex; align-items: center; gap: 0.6rem; padding: 0.3rem 0; cursor: pointer;
+  border-radius: 6px; transition: background 0.1s;
+}
+.dupe-group-item:hover { background: var(--surface2); }
+.dupe-group-item img { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+.dupe-group-item-info { flex: 1; min-width: 0; }
+.dupe-group-item-title { font-size: 0.82rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dupe-group-item-path { font-size: 0.65rem; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dupe-trash-btn {
+  background: none; border: none; color: var(--sub); cursor: pointer; padding: 0.3rem;
+  flex-shrink: 0; border-radius: 4px; transition: color 0.12s, background 0.12s;
+  display: flex; align-items: center; justify-content: center;
+}
+.dupe-trash-btn svg { width: 16px; height: 16px; }
+.dupe-trash-btn:hover { color: #ef4444; background: rgba(239,68,68,0.12); }
+.dupe-panel-close {
+  background: none; border: 1px solid #555; color: var(--sub);
+  border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
+  font-size: 0.85rem; margin-top: 0.75rem; width: 100%;
+  transition: border-color 0.12s, color 0.12s;
+}
+.dupe-panel-close:hover { border-color: var(--text); color: var(--text); }
+.dupe-show-link {
+  display: none; font-size: 0.72rem; color: var(--accent); cursor: pointer;
+  margin-top: 2px; background: none; border: none; padding: 0;
+  text-decoration: underline;
+}
+.dupe-show-link:hover { color: var(--warn); }
+/* ── File-Mover (inline move-to-folder widget) ── */
+.track-move-widget {
+  display: none; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0;
+  font-size: 0.68rem; padding: 2px 0;
+}
+body.tool-show-file-mover .track-move-widget { display: flex; }
+body.tool-show-file-mover .track-dl-btn,
+body.tool-show-file-mover .track-pin-btn,
+body.tool-show-file-mover .track-edit-btn,
+body.tool-show-file-mover .track-playlist-btn,
+body.tool-show-file-mover .track-queue-btn { display: none; }
+.move-quick-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px; flex-shrink: 0;
+}
+.move-quick-btn {
+  background: var(--surface2); color: var(--sub); border: 1px solid transparent;
+  border-radius: 4px; padding: 1px 6px; cursor: pointer; font-size: 0.62rem;
+  white-space: nowrap; max-width: 78px; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.35; transition: background 0.1s, border-color 0.12s, color 0.12s;
+  text-align: left;
+}
+.move-quick-btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+.move-quick-btn.is-current { border-color: var(--accent); color: var(--accent); pointer-events: none; opacity: 0.5; }
+.move-folder-select {
+  background: var(--surface2); color: var(--text); border: 1px solid #444;
+  border-radius: 6px; padding: 2px 6px; font-size: 0.75rem; cursor: pointer;
+  max-width: 140px; flex-shrink: 1;
+}
+.move-folder-select:focus { border-color: var(--accent); outline: none; }
 .folder-filter-bar {
   padding: 0 16px 4px; display: flex; align-items: center; gap: 8px;
 }
@@ -1828,6 +1997,15 @@ def render_player_js(
   var FOLDER_ORDER_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/folder-order';
+  var MOVE_API_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/move-file';
+  var DELETE_API_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/delete-file';
+  var FOLDERS_API_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/folders';
   var IC_PLAYLIST = '"""
         + SVG_PLAYLIST.replace("'", "\\'")
         + """';
@@ -1835,6 +2013,9 @@ def render_player_js(
         + SVG_QUEUE.replace("'", "\\'")
         + """';
   var IC_REMOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  var IC_TRASH = '"""
+        + SVG_TRASH.replace("'", "\\'")
+        + """';
   var IC_REFRESH = '"""
         + SVG_REFRESH.replace("'", "\\'")
         + """';
@@ -2630,6 +2811,8 @@ def render_player_js(
             var newItems = data && Array.isArray(data.items) ? data.items : [];
             if (newItems.length > allItems.length) {
               allItems = newItems;
+              _invalidateDupeMap();
+              _invalidateFolderCache();
               showFolderView();
             }
             return;
@@ -2637,6 +2820,8 @@ def render_player_js(
           /* Full index ready */
           hideIndexingToast();
           allItems = data && Array.isArray(data.items) ? data.items : [];
+          _invalidateDupeMap();
+          _invalidateFolderCache();
           console.info('Background refresh complete:', allItems.length, 'items');
           showFolderView();
         })
@@ -2671,6 +2856,8 @@ def render_player_js(
       }
       var oldCount = allItems.length;
       allItems = Array.isArray(data.items) ? data.items : [];
+      _invalidateDupeMap();
+      _invalidateFolderCache();
       if (_refreshBtn) _refreshBtn.classList.remove('spinning');
 
       /* Show refresh timestamp */
@@ -3044,6 +3231,8 @@ def render_player_js(
         }
         initialCatalogRetryCount = 0;
         allItems = data && Array.isArray(data.items) ? data.items : [];
+        _invalidateDupeMap();
+        _invalidateFolderCache();
         console.info('Initial catalog parsed after', Date.now() - t0, 'ms:', allItems.length, 'items');
         showFolderView();
         /* If still building, show indexing toast and poll for updates */
@@ -3830,6 +4019,8 @@ def render_player_js(
   }
 
   function renderTracks(tracks) {
+    /* Ensure dupe data is available when the dupe tool is active */
+    if (_toolState.duplicates) _ensureDupeMap();
     /* Separate real items from debug-dimmed items for filteredItems / shuffle */
     var realTracks = DEBUG_FILTER ? tracks.filter(function(t) { return !t._debugReason; }) : tracks;
     var debugCount = tracks.length - realTracks.length;
@@ -3882,6 +4073,8 @@ def render_player_js(
       var extraCls = idx === currentIndex ? ' active' : '';
       var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
       var convertBadge = needsConversion(t.relative_path) ? '<span class="convert-badge" title="Wird on-the-fly konvertiert">\\u26A1</span>' : '';
+      var isDupe = _dupePaths && _dupePaths.has(t.relative_path);
+      var dupeBadge = isDupe ? '<span class="dupe-badge" title="Duplikat erkannt">Duplikat<button class="track-delete-btn" data-index="' + idx + '" title="Duplikat l\\u00f6schen">' + IC_TRASH + '</button></span>' : '';
       return '<li class="track-item' + extraCls +
         '" data-index="' + idx + '">' +
         '<span class="track-num"><span class="num-text">' + numLabel + '</span></span>' +
@@ -3889,7 +4082,7 @@ def render_player_js(
         '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         ratingBar + '</div>' +
         '<div class="track-info">' +
-          '<div class="track-title">' + escHtml(displayTitle) + convertBadge + '</div>' +
+          '<div class="track-title">' + escHtml(displayTitle) + convertBadge + dupeBadge + '</div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
         '</div>' +
         '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
@@ -3904,10 +4097,20 @@ def render_player_js(
         (METADATA_EDIT_ENABLED ? '<button class="track-edit-btn" data-index="' + idx + '" title="Bearbeiten">' + IC_EDIT + '</button>' : '') +
         (PLAYLISTS_ENABLED ? '<button class="track-playlist-btn" data-relative-path="' + escHtml(t.relative_path || '') + '" title="Zur Playlist hinzuf\\u00fcgen">' + IC_PLAYLIST + '</button>' : '') +
         '<button class="track-queue-btn" data-relative-path="' + escHtml(t.relative_path || '') + '" data-index="' + idx + '" title="Zur Warteschlange hinzuf\\u00fcgen">' + IC_QUEUE + '</button>' +
+        renderInlineRating(t, idx) +
+        renderMoveWidget(t, idx) +
         '</li>';
     }).join('');
     document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered)').forEach(function(el) {
       el.addEventListener('click', function(e) { if (!wasDrag(e)) playTrack(Number(el.dataset.index)); });
+    });
+    /* Wire up inline rating star clicks */
+    document.querySelectorAll('.track-inline-rating-star').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        setInlineRating(Number(btn.dataset.index), Number(btn.dataset.star));
+      });
     });
     document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
@@ -3977,6 +4180,32 @@ def render_player_js(
       });
     });
     updateQueueButtons();
+    /* Wire up file-mover widgets */
+    document.querySelectorAll('.move-quick-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        moveFileToFolder(Number(btn.dataset.index), btn.dataset.target);
+      });
+    });
+    document.querySelectorAll('.move-folder-select').forEach(function(sel) {
+      sel.addEventListener('click', function(e) { e.stopPropagation(); });
+      sel.addEventListener('change', function(e) {
+        e.stopPropagation();
+        var target = sel.value;
+        if (!target) return;
+        moveFileToFolder(Number(sel.dataset.index), target);
+        sel.value = '';
+      });
+    });
+    /* Wire up inline delete buttons for duplicate tracks */
+    document.querySelectorAll('.track-delete-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        _deleteTrackFromList(Number(btn.dataset.index));
+      });
+    });
   }
 
   /* ── offline download management ── */
@@ -4644,6 +4873,559 @@ def render_player_js(
   }
   window.addEventListener('online', refreshOfflineLibrary);
   window.addEventListener('offline', refreshOfflineLibrary);
+
+  /* ── Tools panel ── */
+  var toolsPill = document.getElementById('tools-pill');
+  var toolsBackdrop = document.getElementById('tools-panel-backdrop');
+  var toolsClose = document.getElementById('tools-panel-close');
+  var _toolInlineRatings = document.getElementById('tool-inline-ratings');
+  var _toolDownloads = document.getElementById('tool-downloads');
+  var _toolPlaylists = document.getElementById('tool-playlists');
+  var _toolDuplicates = document.getElementById('tool-duplicates');
+  var _dupeShowLink = document.getElementById('dupe-show-link');
+  var _toolFileMover = document.getElementById('tool-file-mover');
+
+  /* Load saved tool states from localStorage */
+  var _toolState = JSON.parse(localStorage.getItem('ht-tools') || '{}');
+
+  function _applyToolState() {
+    if (_toolState.inlineRatings) {
+      document.body.classList.add('tool-inline-ratings');
+      if (_toolInlineRatings) _toolInlineRatings.checked = true;
+    } else {
+      document.body.classList.remove('tool-inline-ratings');
+      if (_toolInlineRatings) _toolInlineRatings.checked = false;
+    }
+    if (_toolState.downloads === false) {
+      document.body.classList.add('tool-hide-downloads');
+      if (_toolDownloads) _toolDownloads.checked = false;
+    } else {
+      document.body.classList.remove('tool-hide-downloads');
+      if (_toolDownloads) _toolDownloads.checked = true;
+    }
+    if (_toolState.playlists === false) {
+      document.body.classList.add('tool-hide-playlists');
+      if (_toolPlaylists) _toolPlaylists.checked = false;
+    } else {
+      document.body.classList.remove('tool-hide-playlists');
+      if (_toolPlaylists) _toolPlaylists.checked = true;
+    }
+    if (_toolState.duplicates) {
+      document.body.classList.add('tool-show-duplicates');
+      if (_toolDuplicates) _toolDuplicates.checked = true;
+      _ensureDupeMap();
+      var dc = _getDupeCount();
+      if (_dupeShowLink) {
+        _dupeShowLink.textContent = dc > 0 ? dc + ' Duplikat-Gruppe' + (dc !== 1 ? 'n' : '') + ' gefunden \\u2014 anzeigen' : 'Keine Duplikate gefunden';
+        _dupeShowLink.style.display = 'inline-block';
+      }
+    } else {
+      document.body.classList.remove('tool-show-duplicates');
+      if (_toolDuplicates) _toolDuplicates.checked = false;
+      if (_dupeShowLink) _dupeShowLink.style.display = 'none';
+    }
+    if (_toolState.fileMover) {
+      document.body.classList.add('tool-show-file-mover');
+      if (_toolFileMover) _toolFileMover.checked = true;
+    } else {
+      document.body.classList.remove('tool-show-file-mover');
+      if (_toolFileMover) _toolFileMover.checked = false;
+    }
+    /* Update pill highlight */
+    var anyActive = !!_toolState.inlineRatings || !!_toolState.duplicates || !!_toolState.fileMover;
+    if (toolsPill) toolsPill.classList.toggle('has-active', anyActive);
+  }
+
+  function _saveToolState() {
+    localStorage.setItem('ht-tools', JSON.stringify(_toolState));
+    _applyToolState();
+  }
+
+  function openToolsPanel() {
+    if (toolsBackdrop) toolsBackdrop.removeAttribute('hidden');
+  }
+  function closeToolsPanel() {
+    if (toolsBackdrop) toolsBackdrop.setAttribute('hidden', '');
+  }
+
+  if (toolsPill) toolsPill.addEventListener('click', openToolsPanel);
+  if (toolsClose) toolsClose.addEventListener('click', closeToolsPanel);
+  if (toolsBackdrop) {
+    toolsBackdrop.addEventListener('click', function(e) {
+      if (e.target === toolsBackdrop) closeToolsPanel();
+    });
+  }
+  var _dupePanelBackdrop = document.getElementById('dupe-panel-backdrop');
+  var _dupePanelClose = document.getElementById('dupe-panel-close');
+  if (_dupePanelClose) _dupePanelClose.addEventListener('click', closeDupePanel);
+  if (_dupePanelBackdrop) {
+    _dupePanelBackdrop.addEventListener('click', function(e) {
+      if (e.target === _dupePanelBackdrop) closeDupePanel();
+    });
+  }
+  if (_toolInlineRatings) {
+    _toolInlineRatings.addEventListener('change', function() {
+      _toolState.inlineRatings = _toolInlineRatings.checked;
+      _saveToolState();
+      /* Re-render current track list to add/remove inline stars */
+      if (inPlaylist) applyFilter();
+    });
+  }
+  if (_toolDownloads) {
+    _toolDownloads.addEventListener('change', function() {
+      _toolState.downloads = _toolDownloads.checked;
+      _saveToolState();
+    });
+  }
+  if (_toolPlaylists) {
+    _toolPlaylists.addEventListener('change', function() {
+      _toolState.playlists = _toolPlaylists.checked;
+      _saveToolState();
+    });
+  }
+  if (_toolDuplicates) {
+    _toolDuplicates.addEventListener('change', function() {
+      _toolState.duplicates = _toolDuplicates.checked;
+      if (_toolDuplicates.checked) _ensureDupeMap();
+      else _invalidateDupeMap();
+      _saveToolState();
+      /* Re-render to show/hide badges */
+      if (inPlaylist) applyFilter();
+    });
+  }
+  if (_dupeShowLink) {
+    _dupeShowLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      closeToolsPanel();
+      openDupePanel();
+    });
+  }
+  if (_toolFileMover) {
+    _toolFileMover.addEventListener('change', function() {
+      _toolState.fileMover = _toolFileMover.checked;
+      _saveToolState();
+      /* Re-render to show/hide move widgets */
+      if (inPlaylist) applyFilter();
+    });
+  }
+  _applyToolState();
+
+  /* ── Inline track rating stars ── */
+  function renderInlineRating(t, idx) {
+    if (!RATING_WRITE_ENABLED) return '';
+    var rounded = Math.round(t.rating || 0);
+    var html = '<span class="track-inline-rating" data-index="' + idx + '">';
+    for (var i = 1; i <= 5; i++) {
+      html += '<button class="track-inline-rating-star' + (i <= rounded ? ' active' : '') +
+        '" data-star="' + i + '" data-index="' + idx + '" title="' + i + (i === 1 ? ' Stern' : ' Sterne') + '">' +
+        (i <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY) + '</button>';
+    }
+    html += '</span>';
+    return html;
+  }
+
+  function setInlineRating(idx, stars) {
+    if (!RATING_WRITE_ENABLED) return;
+    var t = filteredItems[idx];
+    if (!t) return;
+    var prevRating = t.rating || 0;
+    fetch(RATING_API_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: t.relative_path, rating: stars })
+    })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d || !d.ok) return;
+      t.rating = d.rating;
+      /* Update the inline stars in-place */
+      var container = document.querySelector('.track-inline-rating[data-index="' + idx + '"]');
+      if (container) {
+        var rounded = Math.round(d.rating || 0);
+        container.querySelectorAll('.track-inline-rating-star').forEach(function(btn) {
+          var s = Number(btn.dataset.star);
+          btn.className = 'track-inline-rating-star' + (s <= rounded ? ' active' : '');
+          btn.innerHTML = s <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
+        });
+      }
+      /* Also update player rating if this track is currently playing */
+      if (currentIndex === idx) renderPlayerRating(d.rating);
+      /* rebuild weighted shuffle queue so new rating is reflected */
+      if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
+      if (d.entry_id) {
+        showRatingToastWithUndo(stars, prevRating, d.entry_id, t);
+      } else {
+        showToast(stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben');
+      }
+    })
+    .catch(function() {});
+  }
+
+  /* ── Duplicate detection (client-side) ── */
+  var IC_DUPLICATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+  var _dupeMap = null;   /* Map<key, [itemIndex, ...]> — only groups with 2+ items */
+  var _dupePaths = null;  /* Set<relative_path> — all paths that belong to a dupe group */
+
+  function _normalizeStem(s) {
+    if (!s) return '';
+    s = s.replace(/&amp;/g, '&');
+    s = s.replace(/\\(\\d{1,3}kbit_[A-Za-z]+\\)/gi, '');
+    s = s.replace(/\\(Official.{0,8}Video\\)/gi, '');
+    s = s.replace(/\\(\\w*\\.[a-zA-Z]{2,5}\\)/gi, '');
+    s = s.replace(/\\w*\\.(?:com|net|org|co\\.uk|de|vu|ru|pl)/gi, '');
+    s = s.replace(/(?<=\\W)(?:featuring|feat\\.|feat)\\W/gi, 'feat. ');
+    s = s.replace(/(?<=\\W)(?:produced by|produced|prod\\. by|prod by|prod\\.|prod)\\W/gi, 'prod. ');
+    s = s.replace(/(?<=(?:\\W|\\(|\\[))(?:vs\\.|vs|versus)/gi, 'vs. ');
+    s = s.replace(/\\(\\s*\\)|\\[\\s*\\]/g, '');
+    s = s.replace(/ {2,}/g, ' ');
+    return s.trim().toLowerCase();
+  }
+
+  function _dupeKey(item) {
+    /* Build a stable key from title — strip remix/version keywords, remove non-word chars */
+    var raw = item.title || '';
+    if (!raw) {
+      var rp = item.relative_path || '';
+      var sl = rp.lastIndexOf('/');
+      raw = sl >= 0 ? rp.substring(sl + 1) : rp;
+      var dot = raw.lastIndexOf('.');
+      if (dot > 0) raw = raw.substring(0, dot);
+    }
+    var cleaned = _normalizeStem(raw);
+    /* Strip common download-duplicate suffixes: _2, (2), -2, _copy, - Copy, (copy) etc. */
+    cleaned = cleaned.replace(/[\\s_-]*\\(?(?:copy|kopie)\\)?\\s*$/i, '');
+    cleaned = cleaned.replace(/[\\s_-]+\\d{1,2}\\s*$/, '');
+    cleaned = cleaned.replace(/\\s*\\(\\d{1,2}\\)\\s*$/, '');
+    cleaned = cleaned.replace(/\\s*\\[\\d{1,2}\\]\\s*$/, '');
+    /* Split on common separators */
+    var parts = cleaned.split(/feat\\.|prod\\.|vs\\.|\\(|\\[| - |, | & |\\)|\\]/i);
+    /* Remove music keywords aggressively */
+    parts = parts.map(function(p) {
+      return p.replace(/original|official|extended|radio|vocal|edit|remix|mix|version|release|remaster|remastered|live|acoustic|instrumental|explicit|clean/gi, '');
+    });
+    /* Strip non-word characters and filter short parts */
+    parts = parts.map(function(p) { return p.replace(/[^a-z0-9]/gi, ''); });
+    parts = parts.filter(function(p) { return p.length > 2; });
+    /* Deduplicate and sort for stable key */
+    var seen = {};
+    var unique = [];
+    parts.forEach(function(p) { if (!seen[p]) { seen[p] = true; unique.push(p); } });
+    unique.sort();
+    return unique.join('|');
+  }
+
+  function _buildDuplicateMap() {
+    var map = {};
+    allItems.forEach(function(item, i) {
+      var key = _dupeKey(item);
+      if (!key) return;
+      if (!map[key]) map[key] = [];
+      map[key].push(i);
+    });
+    /* Keep only groups with 2+ items */
+    _dupeMap = {};
+    _dupePaths = new Set();
+    var keys = Object.keys(map);
+    for (var k = 0; k < keys.length; k++) {
+      if (map[keys[k]].length > 1) {
+        _dupeMap[keys[k]] = map[keys[k]];
+        map[keys[k]].forEach(function(idx) {
+          var rp = allItems[idx] ? allItems[idx].relative_path : null;
+          if (rp) _dupePaths.add(rp);
+        });
+      }
+    }
+  }
+
+  function _invalidateDupeMap() {
+    _dupeMap = null;
+    _dupePaths = null;
+  }
+
+  function _ensureDupeMap() {
+    if (!_dupeMap) _buildDuplicateMap();
+  }
+
+  function _getDupeCount() {
+    _ensureDupeMap();
+    return Object.keys(_dupeMap).length;
+  }
+
+  function openDupePanel() {
+    _ensureDupeMap();
+    var backdrop = document.getElementById('dupe-panel-backdrop');
+    if (!backdrop) return;
+    var body = document.getElementById('dupe-panel-body');
+    if (!body) return;
+    var keys = Object.keys(_dupeMap);
+    if (keys.length === 0) {
+      body.innerHTML = '<div style="text-align:center;color:var(--sub);padding:2rem 0">Keine Duplikate gefunden.</div>';
+    } else {
+      var html = '';
+      keys.forEach(function(key) {
+        var indices = _dupeMap[key];
+        var firstTitle = allItems[indices[0]] ? (allItems[indices[0]].title || key) : key;
+        html += '<div class="dupe-group">';
+        html += '<div class="dupe-group-header">' + IC_DUPLICATE +
+          '<span>' + escHtml(firstTitle) + '</span>' +
+          '<span class="dupe-group-count">(' + indices.length + 'x)</span></div>';
+        indices.forEach(function(idx) {
+          var t = allItems[idx];
+          if (!t) return;
+          var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
+          var folder = '';
+          var sl = (t.relative_path || '').lastIndexOf('/');
+          if (sl > 0) folder = t.relative_path.substring(0, sl);
+          html += '<div class="dupe-group-item" data-all-index="' + idx + '">' +
+            '<img src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
+            '<div class="dupe-group-item-info">' +
+              '<div class="dupe-group-item-title">' + escHtml(t.title || t.relative_path) + '</div>' +
+              '<div class="dupe-group-item-path">' + escHtml(folder || t.relative_path) + '</div>' +
+            '</div>' +
+            '<button class="dupe-trash-btn" data-all-index="' + idx + '" title="In den Papierkorb verschieben">' + IC_TRASH + '</button>' +
+            '</div>';
+        });
+        html += '</div>';
+      });
+      body.innerHTML = html;
+      /* Wire up trash buttons */
+      body.querySelectorAll('.dupe-trash-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var ai = Number(btn.dataset.allIndex);
+          _deleteDuplicateFile(ai);
+        });
+      });
+      /* Wire up clicks to play */
+      body.querySelectorAll('.dupe-group-item').forEach(function(el) {
+        el.addEventListener('click', function() {
+          var ai = Number(el.dataset.allIndex);
+          var t = allItems[ai];
+          if (!t) return;
+          closeDupePanel();
+          /* Navigate to folder and play */
+          var sl = (t.relative_path || '').lastIndexOf('/');
+          if (sl > 0) {
+            var folder = t.relative_path.substring(0, sl);
+            var items = itemsUnder(folder);
+            showPlaylist(items, folder);
+            var localIdx = -1;
+            for (var j = 0; j < filteredItems.length; j++) {
+              if (filteredItems[j].relative_path === t.relative_path) { localIdx = j; break; }
+            }
+            if (localIdx >= 0) playTrack(localIdx);
+          }
+        });
+      });
+    }
+    /* Update subtitle */
+    var sub = document.getElementById('dupe-panel-subtitle');
+    if (sub) sub.textContent = keys.length + ' Duplikat-Gruppe' + (keys.length !== 1 ? 'n' : '') +
+      ' (' + (_dupePaths ? _dupePaths.size : 0) + ' Dateien)';
+    backdrop.removeAttribute('hidden');
+  }
+
+  function closeDupePanel() {
+    var backdrop = document.getElementById('dupe-panel-backdrop');
+    if (backdrop) backdrop.setAttribute('hidden', '');
+  }
+
+  function _deleteDuplicateFile(allIndex) {
+    var t = allItems[allIndex];
+    if (!t) return;
+    var name = t.title || t.relative_path;
+    if (!confirm('Datei "' + name + '" in den Papierkorb verschieben?')) return;
+    /* Check if this track is the currently playing one */
+    var playingFilteredIdx = -1;
+    if (currentIndex >= 0 && currentIndex < filteredItems.length &&
+        filteredItems[currentIndex].relative_path === t.relative_path) {
+      playingFilteredIdx = currentIndex;
+    }
+    var wasBefore = false;
+    if (playingFilteredIdx < 0 && currentIndex >= 0) {
+      for (var fi = 0; fi < currentIndex && fi < filteredItems.length; fi++) {
+        if (filteredItems[fi].relative_path === t.relative_path) { wasBefore = true; break; }
+      }
+    }
+    fetch(DELETE_API_PATH, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: t.relative_path})
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Fehler'); });
+      return r.json();
+    }).then(function() {
+      /* Remove item from allItems */
+      allItems.splice(allIndex, 1);
+      _invalidateDupeMap();
+      _invalidateFolderCache();
+      /* Adjust currentIndex */
+      if (wasBefore) {
+        currentIndex = Math.max(0, currentIndex - 1);
+      }
+      showToast('Datei gel\\u00f6scht: ' + name);
+      /* Re-render the dupe panel with updated data */
+      openDupePanel();
+      /* If the playing track was deleted, advance to next */
+      if (playingFilteredIdx >= 0 && filteredItems.length > 0) {
+        var ni = Math.min(currentIndex, filteredItems.length - 1);
+        playTrack(ni);
+      }
+    }).catch(function(err) {
+      showToast('L\\u00f6schen fehlgeschlagen: ' + (err.message || err));
+    });
+  }
+
+  function _deleteTrackFromList(filteredIdx) {
+    var t = filteredItems[filteredIdx];
+    if (!t) return;
+    var name = t.title || t.relative_path;
+    if (!confirm('Datei "' + name + '" in den Papierkorb verschieben?')) return;
+    var wasCurrentlyPlaying = (filteredIdx === currentIndex);
+    var wasBefore = (currentIndex >= 0 && filteredIdx < currentIndex);
+    fetch(DELETE_API_PATH, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: t.relative_path})
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Fehler'); });
+      return r.json();
+    }).then(function() {
+      allItems = allItems.filter(function(it) { return it.relative_path !== t.relative_path; });
+      _invalidateDupeMap();
+      _invalidateFolderCache();
+      /* Adjust currentIndex so the player stays on the right track */
+      if (wasBefore) {
+        currentIndex = Math.max(0, currentIndex - 1);
+      } else if (wasCurrentlyPlaying) {
+        /* Will point to the next song (which shifted into our slot) */
+        if (currentIndex >= filteredItems.length - 1) currentIndex = Math.max(0, currentIndex - 1);
+      }
+      showToast('Datei gel\\u00f6scht: ' + name);
+      if (inPlaylist) {
+        var items = itemsUnder(currentPath);
+        if (items.length) { playlistItems = items; applyFilter(); }
+        else { showFolderView(); }
+      } else { showFolderView(); }
+      /* If the playing track was deleted, advance to the next one */
+      if (wasCurrentlyPlaying && filteredItems.length > 0) {
+        playTrack(Math.min(currentIndex, filteredItems.length - 1));
+      }
+    }).catch(function(err) {
+      showToast('L\\u00f6schen fehlgeschlagen: ' + (err.message || err));
+    });
+  }
+
+  /* ── File mover (move to folder) ── */
+  var _MOVE_RECENT_KEY = 'ht-move-recent';
+  var _allFoldersCache = null;
+
+  function _getRecentMoveTargets() {
+    try { return JSON.parse(localStorage.getItem(_MOVE_RECENT_KEY) || '[]').slice(0, 4); }
+    catch(e) { return []; }
+  }
+
+  function _saveRecentMoveTarget(folder) {
+    var recent = _getRecentMoveTargets().filter(function(f) { return f !== folder; });
+    recent.unshift(folder);
+    if (recent.length > 4) recent = recent.slice(0, 4);
+    try { localStorage.setItem(_MOVE_RECENT_KEY, JSON.stringify(recent)); } catch(e) {}
+  }
+
+  function _getAllFolders() {
+    if (_allFoldersCache) return _allFoldersCache;
+    var set = {};
+    allItems.forEach(function(it) {
+      var sl = it.relative_path.indexOf('/');
+      if (sl > 0) set[it.relative_path.substring(0, sl)] = true;
+    });
+    _allFoldersCache = Object.keys(set).sort(function(a, b) { return a.localeCompare(b); });
+    return _allFoldersCache;
+  }
+
+  function _invalidateFolderCache() { _allFoldersCache = null; }
+
+  function _currentFolderOf(item) {
+    var rp = item.relative_path || '';
+    var sl = rp.indexOf('/');
+    return sl > 0 ? rp.substring(0, sl) : '';
+  }
+
+  function renderMoveWidget(t, idx) {
+    var curFolder = _currentFolderOf(t);
+    var recent = _getRecentMoveTargets();
+    var allF = _getAllFolders();
+    /* Build 4 quick-pick folders: MRU first, fill with allFolders */
+    var picks = recent.slice(0, 4);
+    if (picks.length < 4) {
+      var seen = {};
+      picks.forEach(function(p) { seen[p] = true; });
+      for (var fi = 0; fi < allF.length && picks.length < 4; fi++) {
+        if (!seen[allF[fi]]) { picks.push(allF[fi]); seen[allF[fi]] = true; }
+      }
+    }
+    var html = '<span class="track-move-widget" data-index="' + idx + '">';
+    /* 2x2 quick-pick grid — always 4 buttons */
+    html += '<span class="move-quick-grid">';
+    for (var i = 0; i < Math.min(4, picks.length); i++) {
+      var isCur = picks[i] === curFolder;
+      html += '<button class="move-quick-btn' + (isCur ? ' is-current' : '') +
+        '" data-target="' + escHtml(picks[i]) +
+        '" data-index="' + idx + '" title="Verschieben nach: ' + escHtml(picks[i]) + '">' +
+        escHtml(picks[i]) + '</button>';
+    }
+    html += '</span>';
+    /* Dropdown with all folders */
+    html += '<select class="move-folder-select" data-index="' + idx + '">';
+    html += '<option value="">Ordner\u2026</option>';
+    allF.forEach(function(f) {
+      html += '<option value="' + escHtml(f) + '"' + (f === curFolder ? ' disabled' : '') + '>' + escHtml(f) + '</option>';
+    });
+    html += '</select>';
+    html += '</span>';
+    return html;
+  }
+
+  function moveFileToFolder(idx, targetFolder) {
+    var t = filteredItems[idx];
+    if (!t) return;
+    var curFolder = _currentFolderOf(t);
+    if (targetFolder === curFolder) { showToast('Datei ist bereits in diesem Ordner'); return; }
+    fetch(MOVE_API_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: t.relative_path, target_folder: targetFolder })
+    })
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Move failed'); });
+      return r.json();
+    })
+    .then(function(d) {
+      if (!d || !d.ok) return;
+      _saveRecentMoveTarget(targetFolder);
+      /* Update allItems in-place */
+      for (var i = 0; i < allItems.length; i++) {
+        if (allItems[i].relative_path === t.relative_path) {
+          allItems[i] = Object.assign({}, allItems[i], {
+            relative_path: d.new_path,
+            stream_url: allItems[i].stream_url.replace(encodeURIComponent(t.relative_path), encodeURIComponent(d.new_path)),
+            artist: targetFolder
+          });
+          break;
+        }
+      }
+      _invalidateDupeMap();
+      _invalidateFolderCache();
+      /* Re-render current view */
+      if (inPlaylist) {
+        var items = itemsUnder(currentPath);
+        if (items.length) { playlistItems = items; applyFilter(); }
+        else { showFolderView(); }
+      } else { showFolderView(); }
+      showToast('Verschoben nach ' + targetFolder);
+    })
+    .catch(function(err) { showToast('Fehler: ' + (err.message || 'Verschieben fehlgeschlagen')); });
+  }
 
   /* ── playback ── */
   /* Background playback for video — three layers of defence:
@@ -6511,7 +7293,7 @@ def render_player_js(
     /* --- Named handlers for proper cleanup --- */
     function onMouseDown(e) {
       if (e.button !== 0) return;
-      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn')) return;
+      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn,.track-inline-rating-star')) return;
       var item = getTrackItem(e.target);
       if (!item) return;
       _pendingDrag = { item: item, x: e.clientX, y: e.clientY };
@@ -6540,7 +7322,7 @@ def render_player_js(
 
     function onTouchStart(e) {
       if (e.touches.length !== 1) return;
-      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn')) return;
+      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn,.track-inline-rating-star')) return;
       var item = getTrackItem(e.target);
       if (!item) return;
       _touchStartX = e.touches[0].clientX;
@@ -6744,8 +7526,13 @@ td { padding:0.5rem 0.75rem; vertical-align:middle; }
 .undo-btn:disabled { opacity:0.35; cursor:default; }
 .undo-btn.done { border-color:#555; color:var(--sub); }
 .badge-undone { font-size:0.7rem; color:var(--sub); font-style:italic; }
-.stars { color:var(--warn); letter-spacing:-1px; }
-.rating-hist-link { font-size:0.7rem; color:var(--sub); margin-left:0.4rem; text-decoration:none; }
+.stars { display:inline-flex; align-items:center; gap:1px; color:var(--warn); vertical-align:middle; }
+.audit-star { display:inline-flex; width:14px; height:14px; color:#555; flex-shrink:0; }
+.audit-star svg { width:14px; height:14px; }
+.audit-star.active { color:var(--warn); }
+.star-value { font-size:0.72rem; color:var(--sub); margin-left:2px; }
+.rating-hist-link { font-size:0.7rem; color:var(--sub); margin-left:0.4rem; text-decoration:none; display:inline-flex; align-items:center; vertical-align:middle; }
+.rating-hist-link svg { width:13px; height:13px; }
 .rating-hist-link:hover { color:var(--accent); }
 .toast { position:fixed; bottom:1.5rem; right:1.5rem; background:var(--surface);
          border:1px solid #444; border-radius:8px; padding:0.7rem 1rem; font-size:0.82rem;
@@ -6756,6 +7543,9 @@ td { padding:0.5rem 0.75rem; vertical-align:middle; }
 
 _AUDIT_PANEL_JS = """
 var SERVER_LABEL = document.querySelector('header h1')?.textContent || '';
+var IC_STAR_FILLED = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>';
+var IC_STAR_EMPTY  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>';
+var IC_CLIPBOARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>';
 
 function fmtDate(iso) {
   try {
@@ -6770,7 +7560,12 @@ function fmtStars(v) {
   var n = parseFloat(v);
   if (isNaN(n)) return String(v);
   var full = Math.round(n);
-  return '★'.repeat(full) + '☆'.repeat(5 - full) + ' (' + n.toFixed(1) + ')';
+  var html = '';
+  for (var i = 1; i <= 5; i++) {
+    html += '<span class="audit-star' + (i <= full ? ' active' : '') + '">' +
+      (i <= full ? IC_STAR_FILLED : IC_STAR_EMPTY) + '</span>';
+  }
+  return html + ' <span class="star-value">(' + n.toFixed(1) + ')</span>';
 }
 
 function fmtValue(field, v) {
@@ -6799,7 +7594,7 @@ function renderTable(entries) {
     var undone = !!e.undone;
     var filename = e.path ? e.path.split('/').pop() : '–';
     var shortPath = e.path || '–';
-    var histLink = '<a class="rating-hist-link" href="?path_filter=' + encodeURIComponent(e.path) + '" title="Nur dieses File anzeigen">📋</a>';
+    var histLink = '<a class="rating-hist-link" href="?path_filter=' + encodeURIComponent(e.path) + '" title="Nur dieses File anzeigen">' + IC_CLIPBOARD + '</a>';
     var changeHtml = fmtValue(e.field, e.old_value)
       + '<span class="arrow">→</span>'
       + fmtValue(e.field, e.new_value);
@@ -6892,7 +7687,7 @@ def render_audit_panel_html(*, server: str, media_type: str, title: str) -> str:
 </head>
 <body>
   <header>
-    <h1>🗒 Audit-Log — {html.escape(server)}</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;vertical-align:text-bottom;margin-right:4px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>Audit-Log — {html.escape(server)}</h1>
     <a href="/" style="color:var(--sub);font-size:0.82rem;text-decoration:none;">← Zurück zur App</a>
   </header>
   <div class="filter-bar">
@@ -7021,9 +7816,77 @@ def render_media_page(
     )
     mode_controls_html = (
         '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
+        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
         if safe_mode
         else '<span class="downloaded-pill" id="downloaded-pill" title="Offline-Downloads anzeigen">Downloaded (0)</span>'
+        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
     )
+    tools_panel_html = """
+  <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
+    <div class="tools-panel">
+      <div class="tools-panel-title">Tools &amp; Einstellungen</div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Inline-Ratings</div>
+          <div class="tools-item-desc">Bewertungssterne direkt in der Track-Liste anzeigen</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-inline-ratings">
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Downloads</div>
+          <div class="tools-item-desc">Download-Buttons pro Track anzeigen</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-downloads" checked>
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Zur Playlist hinzuf\\u00fcgen</div>
+          <div class="tools-item-desc">Playlist-Buttons pro Track anzeigen</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-playlists" checked>
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Duplikate suchen</div>
+          <div class="tools-item-desc">Doppelte Dateien in der Bibliothek finden</div>
+          <button class="dupe-show-link" id="dupe-show-link"></button>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-duplicates">
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Dateien verschieben</div>
+          <div class="tools-item-desc">Songs in andere Ordner verschieben (2x2 Schnellwahl + Dropdown)</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-file-mover">
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <button class="tools-panel-close" id="tools-panel-close">Schlie\\u00dfen</button>
+    </div>
+  </div>
+  <div class="dupe-panel-backdrop" id="dupe-panel-backdrop" hidden>
+    <div class="dupe-panel">
+      <div class="dupe-panel-title">Duplikate</div>
+      <div class="dupe-panel-subtitle" id="dupe-panel-subtitle"></div>
+      <div id="dupe-panel-body"></div>
+      <button class="dupe-panel-close" id="dupe-panel-close">Schlie\\u00dfen</button>
+    </div>
+  </div>"""
     offline_library_html = (
         ""
         if safe_mode
@@ -7272,6 +8135,7 @@ def render_media_page(
   </div>
 
 {offline_library_html}
+{tools_panel_html}
 {edit_modal_html}
 {lyrics_panel_html}
 {queue_panel_html}

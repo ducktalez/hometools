@@ -10,6 +10,9 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
+- wav/mp3 Organisation für DJs.
+- Deleted files landen in delete_me statt in den Papierkorb
+- original-downloadname vs. syntaktisch korrekter Name
 - podcast & Musik gleichzeitig laufen lassen
 - Intelligente Wiedergabelisten: Kombinieren verschiedene Regeln/Filter automatisch (wie bei iTunes).
 - TV-Idee: Stream der Wer wird Millionär Show aus dem Quiz Repository. Hier kann eine zufällige Person online teilnehmen. 
