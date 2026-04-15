@@ -760,10 +760,17 @@ body.tool-show-duplicates .dupe-badge { display: inline-flex; }
 .dupe-panel-close {
   background: none; border: 1px solid #555; color: var(--sub);
   border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
-  font-size: 0.85rem; margin-top: 0.75rem; width: 100%;
+  font-size: 0.85rem; margin-top: 0.5rem; width: 100%;
   transition: border-color 0.12s, color 0.12s;
 }
 .dupe-panel-close:hover { border-color: var(--text); color: var(--text); }
+.dupe-panel-play-all {
+  background: var(--accent); border: none; color: #000;
+  border-radius: 6px; padding: 0.5rem 0.9rem; cursor: pointer;
+  font-size: 0.85rem; font-weight: 600; margin-top: 0.75rem; width: 100%;
+  transition: opacity 0.12s;
+}
+.dupe-panel-play-all:hover { opacity: 0.85; }
 .dupe-show-link {
   display: none; font-size: 0.72rem; color: var(--accent); cursor: pointer;
   margin-top: 2px; background: none; border: none; padding: 0;
@@ -4957,7 +4964,9 @@ def render_player_js(
   }
   var _dupePanelBackdrop = document.getElementById('dupe-panel-backdrop');
   var _dupePanelClose = document.getElementById('dupe-panel-close');
+  var _dupePanelPlayAll = document.getElementById('dupe-panel-play-all');
   if (_dupePanelClose) _dupePanelClose.addEventListener('click', closeDupePanel);
+  if (_dupePanelPlayAll) _dupePanelPlayAll.addEventListener('click', playDuplicates);
   if (_dupePanelBackdrop) {
     _dupePanelBackdrop.addEventListener('click', function(e) {
       if (e.target === _dupePanelBackdrop) closeDupePanel();
@@ -5082,7 +5091,9 @@ def render_player_js(
   }
 
   function _dupeKey(item) {
-    /* Build a stable key from title — strip remix/version keywords, remove non-word chars */
+    /* Build a stable key from artist + title — strip remix/version keywords, remove non-word chars.
+       Artist is included so that "Blümchen - Nur Geträumt" and "Nena - Nur Geträumt"
+       are NOT considered duplicates. Duplicates must match artist, title AND remix version. */
     var raw = item.title || '';
     if (!raw) {
       var rp = item.relative_path || '';
@@ -5111,7 +5122,11 @@ def render_player_js(
     var unique = [];
     parts.forEach(function(p) { if (!seen[p]) { seen[p] = true; unique.push(p); } });
     unique.sort();
-    return unique.join('|');
+    var titleKey = unique.join('|');
+    /* Include the artist to prevent false positives across different artists */
+    var artistRaw = (item.artist || '').toLowerCase().replace(/[^a-z0-9]/gi, '');
+    if (artistRaw.length > 2) titleKey = artistRaw + '::' + titleKey;
+    return titleKey;
   }
 
   function _buildDuplicateMap() {
@@ -5228,6 +5243,40 @@ def render_player_js(
   function closeDupePanel() {
     var backdrop = document.getElementById('dupe-panel-backdrop');
     if (backdrop) backdrop.setAttribute('hidden', '');
+  }
+
+  function playDuplicates() {
+    _ensureDupeMap();
+    var keys = Object.keys(_dupeMap);
+    if (!keys.length) { showToast('Keine Duplikate gefunden'); return; }
+    /* Collect all items from dupe groups, grouped by key for natural listening order */
+    var dupeItems = [];
+    keys.forEach(function(key) {
+      _dupeMap[key].forEach(function(idx) {
+        var t = allItems[idx];
+        if (t) dupeItems.push(t);
+      });
+    });
+    if (!dupeItems.length) return;
+    closeDupePanel();
+    /* Show as virtual playlist */
+    destroyPlaylistDragDrop();
+    inPlaylist = true;
+    _currentPlaylistId = '__duplicates__';
+    currentPath = '';
+    playlistItems = dupeItems;
+    headerTitle.textContent = 'Duplikate (' + keys.length + ' Gruppen)';
+    backBtn.style.display = 'inline-block';
+    playAllBtn.style.display = 'none';
+    folderGrid.classList.add('view-hidden');
+    trackView.classList.remove('view-hidden');
+    filterBar.classList.remove('view-hidden');
+    playerBar.classList.remove('view-hidden');
+    searchInput.value = '';
+    currentIndex = -1;
+    renderBreadcrumb();
+    applyFilter();
+    if (shuffleMode) rebuildShuffleQueue(0);
   }
 
   function _deleteDuplicateFile(allIndex) {
@@ -7884,6 +7933,7 @@ def render_media_page(
       <div class="dupe-panel-title">Duplikate</div>
       <div class="dupe-panel-subtitle" id="dupe-panel-subtitle"></div>
       <div id="dupe-panel-body"></div>
+      <button class="dupe-panel-play-all" id="dupe-panel-play-all">Alle Duplikate abspielen</button>
       <button class="dupe-panel-close" id="dupe-panel-close">Schlie\\u00dfen</button>
     </div>
   </div>"""
