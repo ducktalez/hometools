@@ -684,6 +684,50 @@ def create_app(
         ok = delete_order(resolved_cache_dir, "video", path)
         return {"deleted": ok}
 
+    # --- File delete (soft-delete for duplicates) ---
+
+    @app.post("/api/video/delete-file")
+    def video_delete_file(payload: dict[str, object]) -> dict[str, object]:
+        """Soft-delete a video file (move to trash directory).
+
+        Body: ``{"path": "Folder/movie.mp4"}``
+        Returns ``{"ok": true, "entry_id": "..."}``
+        """
+        from hometools.config import get_delete_dir
+        from hometools.streaming.core.audit_log import log_file_delete
+        from hometools.utils import attention_delete_files
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+
+        try:
+            file_path = resolve_video_path(resolved_library_dir, path)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        delete_dir = get_delete_dir()
+        trash_dest = delete_dir / file_path.name
+
+        try:
+            attention_delete_files([file_path], delete_dir=delete_dir)
+        except Exception as exc:
+            logger.exception("Failed to delete file %s", file_path)
+            raise HTTPException(status_code=500, detail=f"Delete failed: {exc}") from exc
+
+        entry = log_file_delete(
+            resolved_audit_dir,
+            server="video",
+            path=path,
+            trash_path=str(trash_dest),
+        )
+
+        _video_index_cache.invalidate()
+
+        return {"ok": True, "entry_id": entry.entry_id}
+
     # --- Shortcuts API ---
 
     @app.get("/api/video/shortcuts")

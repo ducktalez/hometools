@@ -47,6 +47,8 @@ VALID_ACTIONS = {
     "rating_write",
     "tag_write",
     "file_rename",
+    "file_move",
+    "file_delete",
 }
 
 
@@ -347,6 +349,77 @@ def log_tag_write(
         field,
         old_value,
         new_value,
+        entry.entry_id,
+    )
+    return entry
+
+
+def log_file_move(
+    audit_dir: Path,
+    *,
+    server: str,
+    old_path: str,
+    new_path: str,
+) -> AuditEntry:
+    """Create, append, and return an audit entry for a file move.
+
+    The undo_payload contains the information needed to move the file back.
+    """
+    entry = new_entry(
+        action="file_move",
+        server=server,
+        path=new_path,
+        field="location",
+        old_value=old_path,
+        new_value=new_path,
+        undo_payload={
+            "entry_id": "",
+            "old_path": old_path,
+            "new_path": new_path,
+        },
+    )
+    entry = AuditEntry(**{**asdict(entry), "undo_payload": {**entry.undo_payload, "entry_id": entry.entry_id}})
+    append_entry(audit_dir, entry)
+    logger.info(
+        "audit: file_move %s → %s (entry %s)",
+        old_path,
+        new_path,
+        entry.entry_id,
+    )
+    return entry
+
+
+def log_file_delete(
+    audit_dir: Path,
+    *,
+    server: str,
+    path: str,
+    trash_path: str,
+) -> AuditEntry:
+    """Create, append, and return an audit entry for a soft file deletion.
+
+    The file is moved to the trash directory (soft-delete).
+    The undo_payload contains the trash and original paths for manual recovery.
+    """
+    entry = new_entry(
+        action="file_delete",
+        server=server,
+        path=path,
+        field="deleted",
+        old_value=path,
+        new_value=trash_path,
+        undo_payload={
+            "entry_id": "",
+            "original_path": path,
+            "trash_path": trash_path,
+        },
+    )
+    entry = AuditEntry(**{**asdict(entry), "undo_payload": {**entry.undo_payload, "entry_id": entry.entry_id}})
+    append_entry(audit_dir, entry)
+    logger.info(
+        "audit: file_delete %s → %s (entry %s)",
+        path,
+        trash_path,
         entry.entry_id,
     )
     return entry

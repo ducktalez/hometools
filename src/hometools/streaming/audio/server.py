@@ -45,6 +45,7 @@ from hometools.streaming.core.server_utils import (
     render_pwa_manifest,
     render_pwa_service_worker,
     resolve_media_path,
+    safe_resolve,
 )
 from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
 
@@ -570,7 +571,7 @@ def create_app(
                 path=path,
                 old_stars=old_stars,
                 new_stars=stars,
-                old_raw=0,
+                old_raw=stars_to_popm_raw(old_stars),
                 new_raw=new_raw,
             )
             entry_id = entry.entry_id
@@ -630,6 +631,126 @@ def create_app(
 
         return {"ok": ok, "entry_ids": entry_ids}
 
+    @app.get("/api/audio/folders")
+    def audio_list_folders() -> dict[str, object]:
+        """Return all top-level folder names in the audio library."""
+        try:
+            items = _audio_index_cache.get(library_dir=resolved_library_dir, cache_dir=resolved_cache_dir)
+            folders: set[str] = set()
+            for item in items:
+                parts = item.relative_path.split("/")
+                if len(parts) > 1:
+                    folders.add(parts[0])
+            return {"folders": sorted(folders, key=str.casefold)}
+        except Exception:
+            logger.exception("Failed to list folders")
+            return {"folders": []}
+
+    @app.post("/api/audio/move-file")
+    def audio_move_file(payload: dict[str, object]) -> dict[str, object]:
+        """Move an audio file to a different folder within the library.
+
+        Body: ``{"path": "OLD/song.mp3", "target_folder": "NEW"}``
+        Returns ``{"ok": true, "new_path": "NEW/song.mp3", "entry_id": "..."}``
+        """
+        import shutil
+
+        from hometools.streaming.core.audit_log import log_file_move
+
+        path = str(payload.get("path") or "").strip()
+        target_folder = str(payload.get("target_folder") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        if not target_folder:
+            raise HTTPException(status_code=400, detail="target_folder is required")
+
+        # Validate the source file exists
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        # Compute target path
+        filename = file_path.name
+        target_dir = resolved_library_dir / target_folder
+        target_file = target_dir / filename
+
+        # Safety checks
+        try:
+            safe_target = safe_resolve(target_file)
+            safe_target.relative_to(safe_resolve(resolved_library_dir))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Target path escapes the library.") from exc
+
+        if target_file.exists():
+            raise HTTPException(status_code=409, detail=f"File already exists: {target_folder}/{filename}")
+
+        # Create target directory if needed and move the file
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(file_path), str(target_file))
+        except Exception as exc:
+            logger.exception("Failed to move file %s → %s", file_path, target_file)
+            raise HTTPException(status_code=500, detail=f"Move failed: {exc}") from exc
+
+        # Compute the new relative path
+        new_relative = safe_resolve(target_file).relative_to(safe_resolve(resolved_library_dir)).as_posix()
+
+        # Audit log entry
+        entry = log_file_move(
+            resolved_audit_dir,
+            server="audio",
+            old_path=path,
+            new_path=new_relative,
+        )
+
+        # Invalidate the index so the next request picks up the change
+        _audio_index_cache.invalidate()
+
+        return {"ok": True, "new_path": new_relative, "entry_id": entry.entry_id}
+
+    @app.post("/api/audio/delete-file")
+    def audio_delete_file(payload: dict[str, object]) -> dict[str, object]:
+        """Soft-delete an audio file (move to trash directory).
+
+        Body: ``{"path": "Folder/song.mp3"}``
+        Returns ``{"ok": true, "entry_id": "..."}``
+        """
+        from hometools.config import get_delete_dir
+        from hometools.streaming.core.audit_log import log_file_delete
+        from hometools.utils import attention_delete_files
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        delete_dir = get_delete_dir()
+        trash_dest = delete_dir / file_path.name
+
+        try:
+            attention_delete_files([file_path], delete_dir=delete_dir)
+        except Exception as exc:
+            logger.exception("Failed to delete file %s", file_path)
+            raise HTTPException(status_code=500, detail=f"Delete failed: {exc}") from exc
+
+        entry = log_file_delete(
+            resolved_audit_dir,
+            server="audio",
+            path=path,
+            trash_path=str(trash_dest),
+        )
+
+        _audio_index_cache.invalidate()
+
+        return {"ok": True, "entry_id": entry.entry_id}
+
     @app.get("/api/audio/recent")
     def audio_recent(limit: int = 10) -> dict[str, object]:
         """No recently-played section for audio.
@@ -667,7 +788,7 @@ def create_app(
 
         Re-applies the stored ``undo_payload`` (currently: rating writes).
         """
-        from hometools.audio.metadata import set_popm_rating
+        from hometools.audio.metadata import set_rating_stars
         from hometools.streaming.core.audit_log import get_entry, mark_undone
 
         entry_id = str(payload.get("entry_id") or "").strip()
@@ -685,16 +806,17 @@ def create_app(
 
         if action == "rating_write":
             path = str(undo.get("path") or "").strip()
-            raw = int(undo.get("raw") or 0)
+            restore_stars = float(undo.get("rating") or 0)
             try:
                 file_path = resolve_audio_path(resolved_library_dir, path)
             except (FileNotFoundError, ValueError) as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
-            ok = set_popm_rating(file_path, raw)
+            ok = set_rating_stars(file_path, restore_stars)
             if ok:
                 mark_undone(resolved_audit_dir, entry_id)
+                _audio_index_cache.patch_items({path: {"rating": restore_stars}})
                 _audio_index_cache.invalidate()
-                return {"ok": True, "action": action, "restored_rating": undo.get("rating")}
+                return {"ok": True, "action": action, "restored_rating": restore_stars}
             raise HTTPException(status_code=500, detail="Failed to restore rating")
 
         if action == "tag_write":
@@ -714,6 +836,34 @@ def create_app(
                 _audio_index_cache.invalidate()
                 return {"ok": True, "action": action, "restored_field": field, "restored_value": value}
             raise HTTPException(status_code=500, detail="Failed to restore tag")
+
+        if action == "file_move":
+            import shutil
+
+            old_path = str(undo.get("old_path") or "").strip()
+            new_path = str(undo.get("new_path") or "").strip()
+            if not old_path or not new_path:
+                raise HTTPException(status_code=400, detail="old_path and new_path required in undo payload")
+            # The file is currently at new_path, move back to old_path
+            try:
+                current_file = resolve_audio_path(resolved_library_dir, new_path)
+            except (FileNotFoundError, ValueError) as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            restore_target = safe_resolve(resolved_library_dir / Path(old_path))
+            try:
+                restore_target.relative_to(safe_resolve(resolved_library_dir))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="Restore path escapes the library.") from exc
+            restore_target.parent.mkdir(parents=True, exist_ok=True)
+            if restore_target.exists():
+                raise HTTPException(status_code=409, detail=f"File already exists at original location: {old_path}")
+            try:
+                shutil.move(str(current_file), str(restore_target))
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"Move-back failed: {exc}") from exc
+            mark_undone(resolved_audit_dir, entry_id)
+            _audio_index_cache.invalidate()
+            return {"ok": True, "action": action, "restored_path": old_path}
 
         raise HTTPException(status_code=422, detail=f"Undo not supported for action '{action}'")
 
