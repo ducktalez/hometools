@@ -1500,7 +1500,7 @@ Ermöglicht das Löschen einzelner Duplikat-Dateien direkt aus dem Duplikat-Pane
 - **`.track-delete-btn`** — Inline-Delete-Button in der Track-Liste, nur für Duplikate gerendert und via CSS-Klasse sichtbar.
 
 **Design-Prinzipien:**
-1. **Nur Duplikate löschbar** — Kein allgemeiner Delete-Button in der UI. Trash im Duplikat-Panel und als Inline-Button in der Track-Liste, nur für Duplikate sichtbar (CSS `body.tool-show-duplicates .track-delete-btn`).
+1. **Nur Duplikate löschbar** — Kein allgemeiner Delete-Button in der UI. Trash im Duplikat-Panel und als Inline-Button (`.track-delete-btn`) in der Track-Liste, nur für als Duplikat erkannte Items gerendert. Soft-Delete via `attention_delete_files()`, Bestätigung via `confirm()`.
 2. **Soft-Delete** — Datei wird verschoben, nie gelöscht. Trash-Verzeichnis konfigurierbar.
 3. **Bestätigung erforderlich** — `confirm()`-Dialog vor jeder Löschung.
 4. **Feature-Parity** — Beide Server (Audio + Video) haben den Endpoint.
@@ -1541,3 +1541,40 @@ Inline-Widget zum Verschieben von Audio-Dateien in einen anderen Ordner der Bibl
 6. **Duplikat-Erkennung rein client-seitig** — Kein zusätzlicher Backend-Endpoint, keine Server-Last. Dupe-Map wird lazy berechnet und bei Catalog-Wechsel invalidiert.
 7. **File-Mover exklusiv** — Wenn aktiv, werden andere Track-Buttons ausgeblendet (wie Inline-Ratings). MRU-Ordner in `localStorage`, Ordnerliste aus `allItems` gecached.
 8. **Duplikat-Löschung nur für Duplikate** — Trash-Button im Duplikat-Panel und als Inline-Button (`.track-delete-btn`) in der Track-Liste, nur für als Duplikat erkannte Items gerendert. Soft-Delete via `attention_delete_files()`, Bestätigung via `confirm()`.
+
+## iOS-kompatibler Video-Stream (Faststart-Cache)
+
+### Problem
+
+iOS Safari erfordert zwingend HTTP Range Requests (`Accept-Ranges: bytes` + `206 Partial Content`), um Video-Playback zu starten. FastAPI's `StreamingResponse` unterstützt diese nicht nativ. MP4-Dateien, deren `moov`-Atom am Ende liegt (kein Faststart), wurden bisher on-the-fly per ffmpeg geremuxed — was auf iOS komplett stumm scheitert.
+
+### Lösung
+
+Für `.mp4`-Dateien ohne Faststart wird **einmalig eine gecachte Faststart-Kopie** im Shadow Cache erstellt (`ffmpeg -c copy -movflags +faststart`). Diese wird per `FileResponse` ausgeliefert, das Range Requests vollständig unterstützt. Für MKV/AVI/andere Container bleibt der bestehende `StreamingResponse`-Pfad (fragmented MP4) als Fallback aktiv.
+
+### Module
+
+- `streaming/core/remux.py` — `ensure_faststart_cache()`, `get_faststart_cache_path()`
+- `streaming/video/server.py` — `GET /video/stream` entscheidet zwischen Cache-Pfad und Remux-Pfad
+
+### Cache-Pfad
+
+```
+{cache_dir}/video/{relative_path}.faststart.mp4
+```
+
+### Entscheidungslogik in `/video/stream`
+
+1. `.mp4` + Faststart vorhanden → `FileResponse` (direkt, Range-konform)
+2. `.mp4` + **kein** Faststart → `ensure_faststart_cache()` → `FileResponse` (Cache, Range-konform)  
+   Fallback wenn ffmpeg fehlt: `StreamingResponse` (wie vorher)
+3. Nicht-native Container (MKV, AVI…) → `remux_stream()` → `StreamingResponse`
+
+### Designregeln
+
+- Faststart-Konvertierung ist **-c copy** (keine Neukodierung), dauert Sekunden auch für große Dateien.
+- MTime-basierte Invalidierung: Cache wird neu erzeugt, wenn die Quelldatei neuer ist.
+- `ensure_faststart_cache()` ist idempotent, thread-safe über tmp→rename-Pattern.
+- Fehler (ffmpeg fehlt, Timeout, Disk-Fehler) werden geloggt; die Funktion gibt `None` zurück und der Aufrufer fällt auf den alten Remux-Pfad zurück — kein Absturz.
+
+

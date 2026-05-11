@@ -199,6 +199,98 @@ def can_copy_codecs(file_path: Path) -> bool:
     return video_ok and audio_ok
 
 
+FASTSTART_SUFFIX = ".faststart.mp4"
+
+
+def get_faststart_cache_path(cache_dir: Path, relative_path: str) -> Path:
+    """Return the shadow-cache path for a faststart-converted MP4.
+
+    >>> get_faststart_cache_path(Path("/cache"), "Series/ep01.mp4")
+    PosixPath('/cache/video/Series/ep01.mp4.faststart.mp4')
+    """
+    return cache_dir / "video" / (relative_path + FASTSTART_SUFFIX)
+
+
+def ensure_faststart_cache(
+    file_path: Path,
+    cache_dir: Path,
+    relative_path: str,
+) -> Path | None:
+    """Ensure a faststart-converted copy of *file_path* exists in the shadow cache.
+
+    Uses ``ffmpeg -c copy -movflags +faststart`` — purely a moov-atom
+    rearrangement, no re-encoding.  Typically completes in a few seconds
+    even for large files.
+
+    MTime-based invalidation: regenerates if the source is newer than the cache.
+
+    Returns the cached :class:`~pathlib.Path` on success, ``None`` on failure
+    (ffmpeg missing, disk error, …).  Never raises.
+    """
+    out_path = get_faststart_cache_path(cache_dir, relative_path)
+
+    try:
+        # Check mtime-based invalidation
+        if out_path.exists():
+            src_mtime = file_path.stat().st_mtime
+            cache_mtime = out_path.stat().st_mtime
+            if cache_mtime >= src_mtime:
+                logger.debug("ensure_faststart_cache — cache hit: %s", out_path.name)
+                return out_path
+            logger.info(
+                "ensure_faststart_cache — source newer than cache, regenerating: %s",
+                file_path.name,
+            )
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        tmp_path = out_path.with_suffix(".tmp.mp4")
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(file_path),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            "-v",
+            "warning",
+            str(tmp_path),
+        ]
+        logger.info(
+            "ensure_faststart_cache — creating faststart copy: %s → %s",
+            file_path.name,
+            out_path.name,
+        )
+        proc = subprocess.run(cmd, capture_output=True, timeout=300)
+        if proc.returncode != 0:
+            stderr_msg = proc.stderr.decode("utf-8", errors="replace")[:300]
+            logger.warning(
+                "ensure_faststart_cache — ffmpeg failed (rc=%d) for %s: %s",
+                proc.returncode,
+                file_path.name,
+                stderr_msg,
+            )
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            return None
+
+        tmp_path.rename(out_path)
+        logger.info("ensure_faststart_cache — done: %s", out_path.name)
+        return out_path
+
+    except FileNotFoundError:
+        logger.warning("ensure_faststart_cache — ffmpeg not found, cannot create cache for %s", file_path.name)
+        return None
+    except subprocess.TimeoutExpired:
+        logger.warning("ensure_faststart_cache — ffmpeg timed out for %s", file_path.name)
+        return None
+    except Exception:
+        logger.warning("ensure_faststart_cache — unexpected error for %s", file_path.name, exc_info=True)
+        return None
+
+
 def remux_stream(
     file_path: Path,
     *,

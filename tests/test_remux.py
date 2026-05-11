@@ -11,6 +11,8 @@ import pytest
 from hometools.streaming.core.remux import (
     BROWSER_NATIVE_EXTENSIONS,
     can_copy_codecs,
+    ensure_faststart_cache,
+    get_faststart_cache_path,
     has_faststart,
     needs_remux,
     probe_codecs,
@@ -279,7 +281,8 @@ def test_video_stream_serves_mp4_directly(tmp_path: Path) -> None:
 
 
 def test_video_stream_remuxes_non_faststart_mp4(tmp_path: Path) -> None:
-    """The /video/stream endpoint remuxes .mp4 files that lack fast-start."""
+    """The /video/stream endpoint falls back to remux when faststart cache fails
+    (e.g. ffmpeg not available in test environment)."""
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
@@ -292,12 +295,88 @@ def test_video_stream_remuxes_non_faststart_mp4(tmp_path: Path) -> None:
 
     client = TestClient(create_app(tmp_path))
 
-    with patch(
-        "hometools.streaming.core.remux.remux_stream",
-        return_value=iter([b"fakemp4data"]),
-    ) as mock_remux:
+    with (
+        patch(
+            "hometools.streaming.core.remux.ensure_faststart_cache",
+            return_value=None,  # simulate ffmpeg not available
+        ),
+        patch(
+            "hometools.streaming.core.remux.remux_stream",
+            return_value=iter([b"fakemp4data"]),
+        ) as mock_remux,
+    ):
         response = client.get("/video/stream?path=TestFolder%2Fslow.mp4")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "video/mp4"
     mock_remux.assert_called_once()
+
+
+def test_video_stream_serves_faststart_cache_for_non_faststart_mp4(tmp_path: Path) -> None:
+    """When ensure_faststart_cache succeeds, /video/stream returns the cached file
+    via FileResponse (which supports HTTP Range requests — required for iOS Safari)."""
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    sub = tmp_path / "TestFolder"
+    sub.mkdir()
+    mp4_file = sub / "slow.mp4"
+    mp4_file.write_bytes(_make_mp4_atoms(b"ftyp", b"mdat", b"moov"))
+
+    # Create a fake faststart cache file
+    cache_dir = tmp_path / ".hometools-cache"
+    cached_file = cache_dir / "video" / "TestFolder" / "slow.mp4.faststart.mp4"
+    cached_file.parent.mkdir(parents=True, exist_ok=True)
+    cached_file.write_bytes(b"faststart_mp4_data")
+
+    client = TestClient(create_app(tmp_path))
+
+    with patch(
+        "hometools.streaming.core.remux.ensure_faststart_cache",
+        return_value=cached_file,
+    ) as mock_cache:
+        response = client.get("/video/stream?path=TestFolder%2Fslow.mp4")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "video/mp4"
+    mock_cache.assert_called_once()
+
+
+def test_get_faststart_cache_path(tmp_path: Path) -> None:
+    """get_faststart_cache_path returns the correct shadow-cache path."""
+    result = get_faststart_cache_path(tmp_path, "Series/ep01.mp4")
+    assert result == tmp_path / "video" / "Series" / "ep01.mp4.faststart.mp4"
+
+
+def test_ensure_faststart_cache_no_ffmpeg(tmp_path: Path) -> None:
+    """ensure_faststart_cache returns None gracefully when ffmpeg is missing."""
+    mp4 = tmp_path / "test.mp4"
+    mp4.write_bytes(b"fake")
+    with patch("subprocess.run", side_effect=FileNotFoundError("ffmpeg not found")):
+        result = ensure_faststart_cache(mp4, tmp_path / "cache", "test.mp4")
+    assert result is None
+
+
+def test_ensure_faststart_cache_hit(tmp_path: Path) -> None:
+    """ensure_faststart_cache returns cached path without calling ffmpeg on a cache hit."""
+    import time
+
+    mp4 = tmp_path / "test.mp4"
+    mp4.write_bytes(b"fake")
+
+    cache_path = get_faststart_cache_path(tmp_path / "cache", "test.mp4")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(b"cached_faststart")
+    # Make the cache newer than the source
+    time.sleep(0.01)
+    future_mtime = mp4.stat().st_mtime + 10
+    import os
+
+    os.utime(cache_path, (future_mtime, future_mtime))
+
+    with patch("subprocess.run") as mock_run:
+        result = ensure_faststart_cache(mp4, tmp_path / "cache", "test.mp4")
+
+    assert result == cache_path
+    mock_run.assert_not_called()  # ffmpeg must NOT be called on cache hit

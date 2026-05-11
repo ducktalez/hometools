@@ -478,7 +478,13 @@ def create_app(
     def video_stream(path: str):
         from fastapi.responses import StreamingResponse
 
-        from hometools.streaming.core.remux import has_faststart, needs_remux, remux_stream
+        from hometools.streaming.core.remux import (
+            ensure_faststart_cache,
+            get_faststart_cache_path,
+            has_faststart,
+            needs_remux,
+            remux_stream,
+        )
 
         try:
             file_path = resolve_video_path(resolved_library_dir, path)
@@ -489,20 +495,43 @@ def create_app(
             logger.warning("GET /video/stream — invalid path: %s (%s)", path, exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        do_remux = needs_remux(file_path)
-
-        if not do_remux and not has_faststart(file_path):
-            # MP4 with moov atom at end — browser can't start playback
-            # until the entire file is downloaded.  Remux to fragmented
-            # MP4 so playback begins immediately.
-            do_remux = True
+        # --- MP4 without faststart → serve cached faststart copy (iOS-safe) ---
+        # iOS Safari requires proper HTTP Range request support to even start
+        # playback. FastAPI's FileResponse handles this natively; StreamingResponse
+        # does not.  For MP4 files whose moov atom sits at the end we create a
+        # faststart copy in the shadow cache (ffmpeg -c copy, no re-encoding)
+        # and serve that via FileResponse.  Extra cost is paid once; subsequent
+        # requests are cache hits served instantly.
+        if not needs_remux(file_path) and not has_faststart(file_path):
             logger.info(
-                "GET /video/stream — %s lacks fast-start (moov at end), remuxing to fragmented MP4",
+                "GET /video/stream — %s lacks fast-start, using shadow-cache faststart copy",
                 file_path.name,
             )
+            relative_path = str(file_path.relative_to(resolved_library_dir)).replace("\\", "/")
+            # Check if cache already exists (fast path, no ffmpeg spawn)
+            cached = get_faststart_cache_path(resolved_cache_dir, relative_path)
+            if not cached.exists() or cached.stat().st_mtime < file_path.stat().st_mtime:
+                # Build synchronously — ffmpeg -c copy is fast (seconds, not minutes)
+                cached = ensure_faststart_cache(file_path, resolved_cache_dir, relative_path)
+            if cached is not None and cached.exists():
+                logger.debug("GET /video/stream — serving faststart cache: %s", cached.name)
+                return FileResponse(cached, media_type="video/mp4", filename=file_path.name)
+            # Faststart cache failed → fall through to legacy remux (no Range support, but better than 500)
+            logger.warning(
+                "GET /video/stream — faststart cache failed for %s, falling back to StreamingResponse",
+                file_path.name,
+            )
+            return StreamingResponse(
+                remux_stream(file_path),
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f'inline; filename="{file_path.stem}.mp4"',
+                    "Cache-Control": "no-store",
+                },
+            )
 
-        if do_remux:
-            # On-the-fly remux/transcode to fragmented MP4 (like Jellyfin)
+        # --- Non-native container (MKV, AVI, …) or codec incompatibility ---
+        if needs_remux(file_path):
             logger.info("GET /video/stream — remuxing %s for browser playback", file_path.name)
             return StreamingResponse(
                 remux_stream(file_path),
@@ -513,6 +542,7 @@ def create_app(
                 },
             )
 
+        # --- Native MP4/WebM with faststart → serve directly (Range-aware) ---
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         logger.debug("GET /video/stream — serving %s (%s)", file_path.name, media_type)
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
