@@ -50,6 +50,8 @@ SVG_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 SVG_DUPLICATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'
 SVG_MOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><path d="M12 11v6m0 0l-3-3m3 3l3-3"/></svg>'
 SVG_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>'
+SVG_FULLSCREEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,3 21,3 21,9"/><polyline points="9,21 3,21 3,15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
+SVG_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,3 21,3 21,9"/><polyline points="9,21 3,21 3,15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
 
 # Language flag SVGs — small rectangular flags (18×12 viewBox)
 SVG_FLAG_DE = '<svg viewBox="0 0 18 12"><rect width="18" height="4" fill="#000"/><rect y="4" width="18" height="4" fill="#D00"/><rect y="8" width="18" height="4" fill="#FFCE00"/></svg>'
@@ -1709,6 +1711,80 @@ body.playlist-dragging .track-list { overflow: visible; }
 .ctrl-btn.queue-btn.queue-active { color: var(--accent); }
 .queue-item.drag-over-above { box-shadow: 0 3px 0 0 var(--accent) inset; }
 .queue-item.drag-over-below { box-shadow: 0 -3px 0 0 var(--accent) inset; }
+
+/* ── Video overlay (video-mode only) ── */
+.video-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: #000; z-index: 500;
+  display: flex; flex-direction: column;
+}
+.video-overlay.view-hidden { display: none; }
+.video-overlay-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: max(0.6rem, env(safe-area-inset-top, 0.6rem)) max(0.75rem, env(safe-area-inset-right, 0.75rem)) 2rem max(0.75rem, env(safe-area-inset-left, 0.75rem));
+  background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
+  pointer-events: none;
+}
+.video-overlay-header > * { pointer-events: auto; }
+.video-overlay-close {
+  background: rgba(0,0,0,0.45); border: none; color: #fff;
+  border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.video-overlay-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.video-overlay-title-text {
+  flex: 1; font-size: 0.9rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9); color: #fff;
+}
+.video-fs-btn {
+  background: rgba(0,0,0,0.45); border: none; color: #fff;
+  border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.video-fs-btn svg { width: 16px; height: 16px; }
+.video-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.video-wrap video { width: 100%; height: 100%; object-fit: contain; }
+/* Player bar inside overlay — no extra background needed, black bg from overlay */
+.video-overlay .player-bar {
+  background: rgba(0,0,0,0.6);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: max(var(--sab), env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(8px);
+}
+.video-overlay .player-bar.view-hidden { display: none; }
+/* ── Video mini bar (compact strip when overlay is closed) ── */
+.video-mini-bar {
+  background: var(--surface); border-top: 1px solid #333;
+  display: flex; align-items: center; gap: 0.65rem;
+  min-height: var(--player-h); flex-shrink: 0; z-index: 100;
+  padding: 0.4rem max(0.75rem, env(safe-area-inset-right, 0.75rem)) calc(0.4rem + var(--sab)) max(0.75rem, env(safe-area-inset-left, 0.75rem));
+  cursor: pointer;
+}
+.video-mini-bar[hidden] { display: none; }
+.video-mini-bar .track-thumb {
+  width: 40px; height: 40px; object-fit: cover; border-radius: 4px; flex-shrink: 0;
+}
+.mini-info { flex: 1; min-width: 0; }
+.mini-title { font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-artist { font-size: 0.75rem; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-btn {
+  background: none; border: none; color: var(--text); cursor: pointer;
+  padding: 0.35rem; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.mini-btn svg { width: 22px; height: 22px; fill: currentColor; }
+.mini-btn:hover { color: var(--accent); }
+.mini-play-btn { background: var(--accent); color: #000; width: 38px; height: 38px; }
+.mini-play-btn:hover { background: #1ed760; color: #000; }
+.mini-play-btn svg { width: 16px; height: 16px; }
 """
 
 
@@ -2125,6 +2201,20 @@ def render_player_js(
   var logoHomeBtn  = document.getElementById('header-logo');
   var headerTitle  = document.getElementById('header-title');
   var playerBar    = document.querySelector('.player-bar');
+  /* ── Video overlay (video-mode only) ── */
+  var videoOverlay   = document.getElementById('video-overlay');
+  var videoMiniBar   = document.getElementById('video-mini-bar');
+  var miniTitle      = document.getElementById('mini-title');
+  var miniArtist     = document.getElementById('mini-artist');
+  var miniThumb      = document.getElementById('mini-thumb');
+  var miniPlayBtn    = document.getElementById('mini-play-btn');
+  var miniExpandBtn  = document.getElementById('mini-expand-btn');
+  var videoCloseBtn  = document.getElementById('video-close-btn');
+  var videoFsBtn     = document.getElementById('video-fs-btn');
+  var videoOverlayTitleText = document.getElementById('video-overlay-title-text');
+  /* In video-mode the overlay controls visibility; playerBar points to
+     the .player-bar INSIDE the overlay, so existing classList calls work
+     on the inner controls and the overlay is managed separately. */
   var playAllBtn   = document.getElementById('play-all-btn');
   var offlineLibrary = document.getElementById('offline-library');
   var offlineClose = document.getElementById('offline-close');
@@ -2145,6 +2235,79 @@ def render_player_js(
 """
         + waveform_js
         + """
+
+  /* ── Video overlay helpers (no-op in audio mode) ── */
+  function openVideoOverlay() {
+    if (!videoOverlay) return;
+    videoOverlay.classList.remove('view-hidden');
+    if (videoMiniBar) videoMiniBar.hidden = true;
+  }
+  function closeVideoOverlay() {
+    if (!videoOverlay) return;
+    videoOverlay.classList.add('view-hidden');
+    /* Show mini-bar only when a video source is loaded */
+    if (videoMiniBar) videoMiniBar.hidden = !player.currentSrc;
+  }
+  function _syncMiniBar(t) {
+    if (!videoMiniBar) return;
+    if (miniTitle)  miniTitle.textContent  = t.title  || '';
+    if (miniArtist) miniArtist.textContent = t.artist || '';
+    if (miniThumb) {
+      var src = t.thumbnail_lg_url || t.thumbnail_url || '';
+      miniThumb.src = src;
+      miniThumb.style.display = src ? '' : 'none';
+    }
+  }
+  function _syncMiniPlayBtn() {
+    if (!miniPlayBtn) return;
+    miniPlayBtn.innerHTML = player.paused ? IC_PLAY : IC_PAUSE;
+  }
+  if (videoCloseBtn) {
+    videoCloseBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      closeVideoOverlay();
+    });
+  }
+  if (miniExpandBtn) {
+    miniExpandBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openVideoOverlay();
+    });
+  }
+  if (videoMiniBar) {
+    videoMiniBar.addEventListener('click', function(e) {
+      /* Clicking the bar (not its buttons) reopens the overlay */
+      if (e.target === miniPlayBtn || miniPlayBtn && miniPlayBtn.contains(e.target)) return;
+      if (e.target === miniExpandBtn || miniExpandBtn && miniExpandBtn.contains(e.target)) return;
+      openVideoOverlay();
+    });
+  }
+  if (miniPlayBtn) {
+    miniPlayBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (player.paused) { player.play(); } else { player.pause(); }
+    });
+  }
+  if (videoFsBtn) {
+    videoFsBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (player.requestFullscreen) { player.requestFullscreen(); }
+      else if (player.webkitEnterFullscreen) { player.webkitEnterFullscreen(); }
+      else if (player.webkitRequestFullscreen) { player.webkitRequestFullscreen(); }
+    });
+  }
+  /* Toggle play/pause by clicking the video area */
+  if (isVideoMode) {
+    var _videoWrap = document.querySelector('.video-wrap');
+    if (_videoWrap) {
+      _videoWrap.addEventListener('click', function() {
+        if (player.paused) { player.play(); } else { player.pause(); }
+      });
+    }
+  }
+  /* Keep mini-bar play button icon in sync */
+  player.addEventListener('play',  _syncMiniPlayBtn);
+  player.addEventListener('pause', _syncMiniPlayBtn);
 
   /* ── helpers ── */
   function fmtTime(s) {
@@ -5780,6 +5943,12 @@ def render_player_js(
     }
     btnPlay.innerHTML = IC_PAUSE;
     playerBar.classList.remove('view-hidden');
+    /* In video mode: open the overlay and sync the mini-bar title/thumb */
+    if (isVideoMode) {
+      openVideoOverlay();
+      _syncMiniBar(t);
+      if (videoOverlayTitleText) videoOverlayTitleText.textContent = t.title || '';
+    }
     /* Show video player element before playback starts — the CSS sets
        #player { display:none }, so we must override with inline block */
     if (player.tagName === 'VIDEO') player.style.display = 'block';
@@ -8128,6 +8297,34 @@ def render_media_page(
     </div>
   </div>"""
 
+    # Build the player section: video mode → overlay modal, audio mode → inline bar
+    if is_video:
+        player_section_html = f"""  <!-- Video overlay (replaces bottom player bar in video mode) -->
+  <div class="video-overlay view-hidden" id="video-overlay">
+    <div class="video-overlay-header">
+      <button class="video-overlay-close" id="video-close-btn" title="Zur\u00fcck zur Liste">{SVG_BACK}</button>
+      <span class="video-overlay-title-text" id="video-overlay-title-text"></span>
+      <button class="video-fs-btn" id="video-fs-btn" title="Vollbild">{SVG_FULLSCREEN}</button>
+    </div>
+    <div class="video-wrap">
+      <video id="player" preload="auto" playsinline controls autopictureinpicture></video>
+    </div>
+{player_bar_html}
+  </div>
+  <!-- Video mini bar (compact strip when overlay is closed but video active) -->
+  <div class="video-mini-bar" id="video-mini-bar" hidden>
+    <img class="track-thumb" id="mini-thumb" src="" alt="" style="display:none">
+    <div class="mini-info">
+      <div class="mini-title" id="mini-title"></div>
+      <div class="mini-artist" id="mini-artist"></div>
+    </div>
+    <button class="mini-btn mini-expand-btn" id="mini-expand-btn" title="Video \u00f6ffnen">{SVG_EXPAND}</button>
+    <button class="mini-btn mini-play-btn" id="mini-play-btn">{SVG_PLAY}</button>
+  </div>"""
+    else:
+        player_section_html = f"""  <audio id="player" preload="auto" playsinline></audio>
+{player_bar_html}"""
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -8192,8 +8389,7 @@ def render_media_page(
 {playlist_library_html}
 {playlist_modal_html}
 
-  <{media_element_tag} id="player" preload="auto" playsinline{" controls autopictureinpicture" if media_element_tag == "video" else ""}></{media_element_tag}>
-{player_bar_html}
+{player_section_html}
 
   <script id="initial-data" type="application/json">{items_json}</script>
   <script>{js}</script>
