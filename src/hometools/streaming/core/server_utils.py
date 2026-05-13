@@ -1716,8 +1716,13 @@ body.playlist-dragging .track-list { overflow: visible; }
 /* ── Video overlay (video-mode only) ── */
 .video-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  /* Explicit dimensions fix iOS Safari: position:fixed inside body{overflow:hidden;display:flex}
+     gets clipped to the flex container. Setting width/height explicitly + will-change bypasses this. */
+  width: 100%; width: 100vw;
+  height: 100%; height: 100vh; height: 100dvh;
   background: #000; z-index: 500;
   display: flex; flex-direction: column;
+  will-change: transform; /* new compositor layer → no iOS clipping */
 }
 .video-overlay.view-hidden { display: none; }
 .video-overlay-header {
@@ -2278,9 +2283,24 @@ def render_player_js(
   /* ── Video overlay helpers (no-op in audio mode) ── */
   var _isFloating = false;
 
+  function _fixOverlaySize() {
+    /* iOS Safari clips position:fixed inside body{overflow:hidden} to the flex
+       container height. Setting an explicit pixel height via JS is the only
+       reliable cross-browser fix. */
+    if (!videoOverlay) return;
+    var h = window.innerHeight;
+    videoOverlay.style.height = h + 'px';
+    videoOverlay.style.width  = window.innerWidth + 'px';
+  }
+  if (isVideoMode) {
+    window.addEventListener('resize', _fixOverlaySize);
+    _fixOverlaySize();
+  }
+
   function openVideoOverlay() {
     if (!videoOverlay) return;
     _isFloating = false;
+    _fixOverlaySize(); /* ensure pixel-perfect height before showing */
     videoOverlay.classList.remove('view-hidden');
     if (videoMiniBar) videoMiniBar.hidden = true;
     if (videoFloatContainer) videoFloatContainer.classList.remove('active');
