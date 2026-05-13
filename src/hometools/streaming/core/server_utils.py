@@ -52,6 +52,7 @@ SVG_MOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 SVG_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>'
 SVG_FULLSCREEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,3 21,3 21,9"/><polyline points="9,21 3,21 3,15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
 SVG_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,3 21,3 21,9"/><polyline points="9,21 3,21 3,15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
+SVG_CLOSE_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
 
 # Language flag SVGs — small rectangular flags (18×12 viewBox)
 SVG_FLAG_DE = '<svg viewBox="0 0 18 12"><rect width="18" height="4" fill="#000"/><rect y="4" width="18" height="4" fill="#D00"/><rect y="8" width="18" height="4" fill="#FFCE00"/></svg>'
@@ -1785,6 +1786,39 @@ body.playlist-dragging .track-list { overflow: visible; }
 .mini-play-btn { background: var(--accent); color: #000; width: 38px; height: 38px; }
 .mini-play-btn:hover { background: #1ed760; color: #000; }
 .mini-play-btn svg { width: 16px; height: 16px; }
+
+/* ── Floating mini-player (appears when exiting overlay via Escape / fullscreenchange) ── */
+.video-float-container {
+  position: fixed; bottom: 80px; right: 16px;
+  width: 300px; height: 170px;
+  background: #000; border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.08);
+  z-index: 700; overflow: hidden;
+  display: none; touch-action: none;
+  transition: box-shadow 0.15s;
+}
+.video-float-container.active { display: block; }
+.video-float-container.dragging { box-shadow: 0 16px 48px rgba(0,0,0,0.8); transition: none; cursor: grabbing; }
+.video-float-container video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.video-float-controls {
+  position: absolute; top: 5px; right: 5px;
+  display: flex; gap: 4px; z-index: 2;
+  opacity: 0; transition: opacity 0.2s;
+}
+.video-float-container:hover .video-float-controls { opacity: 1; }
+.video-float-btn {
+  background: rgba(0,0,0,0.65); border: none; color: #fff;
+  border-radius: 50%; width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.video-float-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
+.video-float-btn svg[fill=currentColor] { fill: currentColor; stroke: none; }
+.video-float-btn:hover { background: rgba(255,255,255,0.25); }
+@media (max-width: 480px) {
+  .video-float-container { width: 200px; height: 113px; bottom: 60px; right: 8px; }
+}
 """
 
 
@@ -2212,6 +2246,11 @@ def render_player_js(
   var videoCloseBtn  = document.getElementById('video-close-btn');
   var videoFsBtn     = document.getElementById('video-fs-btn');
   var videoOverlayTitleText = document.getElementById('video-overlay-title-text');
+  var videoFloatContainer = document.getElementById('video-float-container');
+  var videoFloatWrap   = document.getElementById('video-float-wrap');
+  var floatExpandBtn   = document.getElementById('float-expand-btn');
+  var floatCloseBtn    = document.getElementById('float-close-btn');
+  var videoWrap        = document.querySelector('.video-wrap');
   /* In video-mode the overlay controls visibility; playerBar points to
      the .player-bar INSIDE the overlay, so existing classList calls work
      on the inner controls and the overlay is managed separately. */
@@ -2237,16 +2276,49 @@ def render_player_js(
         + """
 
   /* ── Video overlay helpers (no-op in audio mode) ── */
+  var _isFloating = false;
+
   function openVideoOverlay() {
     if (!videoOverlay) return;
+    _isFloating = false;
     videoOverlay.classList.remove('view-hidden');
     if (videoMiniBar) videoMiniBar.hidden = true;
+    if (videoFloatContainer) videoFloatContainer.classList.remove('active');
+    /* Move <video> back to overlay if it was in float container */
+    if (videoWrap && player.parentNode !== videoWrap) videoWrap.appendChild(player);
+    player.style.display = 'block';
   }
   function closeVideoOverlay() {
     if (!videoOverlay) return;
     videoOverlay.classList.add('view-hidden');
     /* Show mini-bar only when a video source is loaded */
     if (videoMiniBar) videoMiniBar.hidden = !player.currentSrc;
+  }
+  function enterFloatPlayer() {
+    /* Move <video> to float container and show it without closing the overlay completely */
+    if (!videoFloatContainer || !videoFloatWrap || !isVideoMode) return;
+    if (_isFloating) return; /* already floating */
+    _isFloating = true;
+    videoOverlay.classList.add('view-hidden');
+    if (videoMiniBar) videoMiniBar.hidden = true;
+    /* Move <video> into float wrap */
+    videoFloatWrap.appendChild(player);
+    player.style.display = 'block';
+    videoFloatContainer.classList.add('active');
+    /* Reset position to default bottom-right */
+    videoFloatContainer.style.bottom = '80px';
+    videoFloatContainer.style.right = '16px';
+    videoFloatContainer.style.left = '';
+    videoFloatContainer.style.top = '';
+  }
+  function exitFloatPlayer() {
+    if (!_isFloating) return;
+    _isFloating = false;
+    videoFloatContainer.classList.remove('active');
+    /* Move <video> back to overlay */
+    if (videoWrap) videoWrap.appendChild(player);
+    player.style.display = 'block';
+    openVideoOverlay();
   }
   function _syncMiniBar(t) {
     if (!videoMiniBar) return;
@@ -2257,11 +2329,14 @@ def render_player_js(
       miniThumb.src = src;
       miniThumb.style.display = src ? '' : 'none';
     }
+    if (videoOverlayTitleText) videoOverlayTitleText.textContent = t.title || '';
   }
   function _syncMiniPlayBtn() {
     if (!miniPlayBtn) return;
     miniPlayBtn.innerHTML = player.paused ? IC_PLAY : IC_PAUSE;
   }
+
+  /* ── Close / expand / mini-bar event listeners ── */
   if (videoCloseBtn) {
     videoCloseBtn.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -2288,14 +2363,125 @@ def render_player_js(
       if (player.paused) { player.play(); } else { player.pause(); }
     });
   }
+
+  /* ── Fullscreen button — uses requestFullscreen on the OVERLAY div ── */
   if (videoFsBtn) {
     videoFsBtn.addEventListener('click', function(e) {
       e.stopPropagation();
-      if (player.requestFullscreen) { player.requestFullscreen(); }
-      else if (player.webkitEnterFullscreen) { player.webkitEnterFullscreen(); }
-      else if (player.webkitRequestFullscreen) { player.webkitRequestFullscreen(); }
+      var target = videoOverlay || player;
+      if (document.fullscreenEnabled && target.requestFullscreen) {
+        target.requestFullscreen().catch(function() {
+          /* fallback: iOS webkitEnterFullscreen on video element */
+          if (player.webkitEnterFullscreen) player.webkitEnterFullscreen();
+        });
+      } else if (target.webkitRequestFullscreen) {
+        target.webkitRequestFullscreen();
+      } else if (player.webkitEnterFullscreen) {
+        player.webkitEnterFullscreen(); /* iOS Safari */
+      }
     });
   }
+
+  /* ── Fullscreen exit → float player ── */
+  function _handleFullscreenChange() {
+    var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fsEl && !videoOverlay.classList.contains('view-hidden') && player.currentSrc) {
+      /* Exited native fullscreen (Escape / browser UI) while overlay was visible */
+      enterFloatPlayer();
+    }
+  }
+  document.addEventListener('fullscreenchange', _handleFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', _handleFullscreenChange);
+
+  /* ── Escape key in overlay → float player ── */
+  document.addEventListener('keydown', function(e) {
+    if (!isVideoMode) return;
+    if (e.key !== 'Escape') return;
+    /* Escape while overlay is open (and not in native fullscreen) → float */
+    if (!videoOverlay.classList.contains('view-hidden') && !document.fullscreenElement) {
+      enterFloatPlayer();
+    }
+  });
+
+  /* ── Float player: close and expand buttons ── */
+  if (floatCloseBtn) {
+    floatCloseBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      player.pause();
+      videoFloatContainer.classList.remove('active');
+      _isFloating = false;
+      /* Move <video> back to overlay (hidden) */
+      if (videoWrap) videoWrap.appendChild(player);
+    });
+  }
+  if (floatExpandBtn) {
+    floatExpandBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      exitFloatPlayer();
+    });
+  }
+
+  /* ── Float player: drag to reposition ── */
+  if (videoFloatContainer && isVideoMode) {
+    (function _initFloatDrag() {
+      var _dragging = false;
+      var _startX = 0, _startY = 0;
+      var _origLeft = 0, _origTop = 0;
+
+      function _getControlled(e) {
+        /* Don't start drag if clicking a button */
+        var t = e.target;
+        while (t && t !== videoFloatContainer) {
+          if (t.tagName === 'BUTTON') return false;
+          t = t.parentNode;
+        }
+        return true;
+      }
+      function _onDown(e) {
+        if (!videoFloatContainer.classList.contains('active')) return;
+        if (!_getControlled(e)) return;
+        _dragging = true;
+        var rect = videoFloatContainer.getBoundingClientRect();
+        var cx = e.touches ? e.touches[0].clientX : e.clientX;
+        var cy = e.touches ? e.touches[0].clientY : e.clientY;
+        _startX = cx - rect.left;
+        _startY = cy - rect.top;
+        videoFloatContainer.classList.add('dragging');
+        /* Switch to left/top positioning */
+        videoFloatContainer.style.right = '';
+        videoFloatContainer.style.bottom = '';
+        videoFloatContainer.style.left = rect.left + 'px';
+        videoFloatContainer.style.top  = rect.top  + 'px';
+        e.preventDefault();
+      }
+      function _onMove(e) {
+        if (!_dragging) return;
+        var cx = e.touches ? e.touches[0].clientX : e.clientX;
+        var cy = e.touches ? e.touches[0].clientY : e.clientY;
+        var newLeft = cx - _startX;
+        var newTop  = cy - _startY;
+        var maxL = window.innerWidth  - videoFloatContainer.offsetWidth;
+        var maxT = window.innerHeight - videoFloatContainer.offsetHeight;
+        newLeft = Math.max(0, Math.min(newLeft, maxL));
+        newTop  = Math.max(0, Math.min(newTop, maxT));
+        videoFloatContainer.style.left = newLeft + 'px';
+        videoFloatContainer.style.top  = newTop  + 'px';
+        e.preventDefault();
+      }
+      function _onUp() {
+        if (!_dragging) return;
+        _dragging = false;
+        videoFloatContainer.classList.remove('dragging');
+      }
+      videoFloatContainer.addEventListener('mousedown',  _onDown, {passive: false});
+      videoFloatContainer.addEventListener('touchstart', _onDown, {passive: false});
+      document.addEventListener('mousemove',  _onMove, {passive: false});
+      document.addEventListener('touchmove',  _onMove, {passive: false});
+      document.addEventListener('mouseup',  _onUp);
+      document.addEventListener('touchend', _onUp);
+    })();
+  }
+
   /* Toggle play/pause by clicking the video area */
   if (isVideoMode) {
     var _videoWrap = document.querySelector('.video-wrap');
@@ -8310,6 +8496,14 @@ def render_media_page(
       <video id="player" preload="auto" playsinline controls autopictureinpicture></video>
     </div>
 {player_bar_html}
+  </div>
+  <!-- Floating mini-player (when exiting overlay via Escape / fullscreenchange) -->
+  <div class="video-float-container" id="video-float-container">
+    <div id="video-float-wrap" style="width:100%;height:100%"></div>
+    <div class="video-float-controls">
+      <button class="video-float-btn" id="float-expand-btn" title="Zur\u00fcck zum Video">{SVG_EXPAND}</button>
+      <button class="video-float-btn" id="float-close-btn" title="Schlie\u00dfen">{SVG_CLOSE_X}</button>
+    </div>
   </div>
   <!-- Video mini bar (compact strip when overlay is closed but video active) -->
   <div class="video-mini-bar" id="video-mini-bar" hidden>
