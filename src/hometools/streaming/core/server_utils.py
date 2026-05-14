@@ -1753,10 +1753,16 @@ body.playlist-dragging .track-list { overflow: visible; }
 }
 .video-fs-btn svg { width: 16px; height: 16px; }
 .video-wrap {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
+  flex: 1; position: relative; overflow: hidden;
+  /* position:relative + inset:0 on child is the only cross-browser-reliable way
+     to make the video fill the flex item — height:100% in a flex context with
+     align-items:center resolves against intrinsic size, not the container. */
 }
-.video-wrap video { width: 100%; height: 100%; object-fit: contain; }
+.video-wrap video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+}
 /* Player bar inside overlay — no extra background needed, black bg from overlay */
 .video-overlay .player-bar {
   background: rgba(0,0,0,0.6);
@@ -8513,7 +8519,7 @@ def render_media_page(
       <button class="video-fs-btn" id="video-fs-btn" title="Vollbild">{SVG_FULLSCREEN}</button>
     </div>
     <div class="video-wrap">
-      <video id="player" preload="auto" playsinline controls autopictureinpicture></video>
+      <video id="player" preload="auto" playsinline autopictureinpicture></video>
     </div>
 {player_bar_html}
   </div>

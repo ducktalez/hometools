@@ -408,10 +408,13 @@ def test_video_has_autopictureinpicture_attribute():
     assert "autopictureinpicture" in page
 
 
-def test_video_has_controls_attribute():
-    """Video element must have native controls for fullscreen button."""
+def test_video_has_no_native_controls():
+    """Video element must NOT have native controls — custom player-bar is used instead.
+    Native controls were removed to fix the overlay height bug (the browser's control
+    bar took space inside the video element, causing the video to appear small)."""
     page = _page(media="video", style="classic")
-    assert '<video id="player" preload="auto" playsinline controls autopictureinpicture>' in page
+    assert '<video id="player" preload="auto" playsinline autopictureinpicture>' in page
+    assert "controls" not in page.split('<video id="player"', 1)[1].split(">", 1)[0]
 
 
 def test_audio_element_has_no_controls():
