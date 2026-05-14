@@ -1714,61 +1714,66 @@ body.playlist-dragging .track-list { overflow: visible; }
 .queue-item.drag-over-below { box-shadow: 0 -3px 0 0 var(--accent) inset; }
 
 /* ── Video overlay (video-mode only) ── */
+/* ── Video overlay: 3-zone flex column (header | video | controls) ── */
 .video-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   /* Explicit dimensions fix iOS Safari: position:fixed inside body{overflow:hidden;display:flex}
      gets clipped to the flex container. Setting width/height explicitly + will-change bypasses this. */
-  width: 100%; width: 100vw;
-  height: 100%; height: 100vh; height: 100dvh;
+  width: 100vw;
+  height: 100vh; height: 100dvh;
   background: #000; z-index: 500;
   display: flex; flex-direction: column;
   will-change: transform; /* new compositor layer → no iOS clipping */
 }
 .video-overlay.view-hidden { display: none; }
+/* Zone 1: header bar — proper flex item (not absolute) so it reserves real height */
 .video-overlay-header {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
-  display: flex; align-items: center; gap: 0.5rem;
-  padding: max(0.6rem, env(safe-area-inset-top, 0.6rem)) max(0.75rem, env(safe-area-inset-right, 0.75rem)) 2rem max(0.75rem, env(safe-area-inset-left, 0.75rem));
-  background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
-  pointer-events: none;
+  display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;
+  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0.75rem));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0.75rem));
+  background: var(--surface);
+  border-bottom: 1px solid #333;
+  z-index: 2;
 }
-.video-overlay-header > * { pointer-events: auto; }
 .video-overlay-close {
-  background: rgba(0,0,0,0.45); border: none; color: #fff;
+  background: none; border: none; color: #fff;
   border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.video-overlay-close:hover { background: rgba(255,255,255,0.1); }
 .video-overlay-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .video-overlay-title-text {
-  flex: 1; font-size: 0.9rem; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.9); color: #fff;
+  flex: 1; font-size: 1rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff;
 }
 .video-fs-btn {
-  background: rgba(0,0,0,0.45); border: none; color: #fff;
+  background: none; border: none; color: #fff;
   border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.video-fs-btn svg { width: 16px; height: 16px; }
+.video-fs-btn:hover { background: rgba(255,255,255,0.1); }
+.video-fs-btn svg { width: 18px; height: 18px; }
+/* Zone 2: video — fills all remaining space between header and controls */
 .video-wrap {
-  flex: 1; position: relative; overflow: hidden;
-  /* position:relative + inset:0 on child is the only cross-browser-reliable way
-     to make the video fill the flex item — height:100% in a flex context with
-     align-items:center resolves against intrinsic size, not the container. */
+  flex: 1 1 0; min-height: 0; position: relative; overflow: hidden;
+  background: #000;
 }
 .video-wrap video {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   object-fit: contain;
+  display: block;
 }
-/* Player bar inside overlay — no extra background needed, black bg from overlay */
+/* Zone 3: controls bar — anchored at bottom */
 .video-overlay .player-bar {
-  background: rgba(0,0,0,0.6);
-  border-top: 1px solid rgba(255,255,255,0.1);
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid #333;
   padding-bottom: max(var(--sab), env(safe-area-inset-bottom, 0px));
-  backdrop-filter: blur(8px);
 }
 .video-overlay .player-bar.view-hidden { display: none; }
 /* ── Video mini bar (compact strip when overlay is closed) ── */
