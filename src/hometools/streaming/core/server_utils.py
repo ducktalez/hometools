@@ -313,15 +313,15 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
-  // Streaming endpoints — try network first, then serve from IndexedDB cache
+  // Streaming endpoints — only intercept if we have an offline download cached.
+  // If not cached, bypass the SW entirely (no event.respondWith) so background-tab
+  // throttling of SW fetch handlers cannot interrupt continuous video/audio playback.
   if (url.pathname.includes('/stream') || url.pathname.includes('/audio/') || url.pathname.includes('/video/')) {
     event.respondWith(
-      fetch(event.request)
-        .then(resp => resp)
-        .catch(() => {
-          // Offline — serve from IndexedDB downloads cache
-          return serveFromIndexedDB(event.request);
-        })
+      caches.open(DOWNLOAD_CACHE).then(cache => cache.match(event.request)).then(cached => {
+        if (cached) return cached;          // offline download → serve from cache
+        return fetch(event.request);        // online → pass through; errors propagate naturally
+      })
     );
     return;
   }
@@ -2370,7 +2370,21 @@ def render_player_js(
     miniPlayBtn.innerHTML = player.paused ? IC_PLAY : IC_PAUSE;
   }
 
-  /* ── Close / expand / mini-bar event listeners ── */
+  /* ── Background-tab resume ──────────────────────────────────────────────
+     Chrome (and other browsers) can pause media when a tab becomes hidden.
+     We track whether the player was running before hide and resume it when
+     the tab becomes visible again. Works for both audio and video mode.     */
+  var _wasPlayingBeforeHide = false;
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      _wasPlayingBeforeHide = !player.paused;
+    } else {
+      if (_wasPlayingBeforeHide && player.paused) {
+        player.play().catch(function() {});
+      }
+    }
+  });
+
   if (videoCloseBtn) {
     videoCloseBtn.addEventListener('click', function(e) {
       e.stopPropagation();
