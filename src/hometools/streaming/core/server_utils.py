@@ -1761,16 +1761,17 @@ body.playlist-dragging .track-list { overflow: visible; }
 .video-wrap {
   flex: 1 1 0; min-height: 0; overflow: hidden;
   background: #000;
-  /* CSS Grid is the most reliable way to stretch a replaced element (<video>)
-     to fill its container. Flex-stretch can be ignored by browsers for replaced
-     elements with intrinsic dimensions; grid-item stretch is not. */
-  display: grid;
+  /* flex-centering so letterboxed/pillarboxed content is centered */
+  display: flex; align-items: center; justify-content: center;
 }
 .video-wrap video {
-  /* grid item defaults to align-self:stretch + justify-self:stretch → fills cell */
-  width: 100%; height: 100%;
-  object-fit: contain;
+  /* Responsive fit — exactly like max-width:100% on <img>:
+     max-width + max-height prevent any overflow;
+     width/height auto let the browser maintain intrinsic aspect ratio.
+     No object-fit needed: the element box itself IS aspect-ratio-correct. */
   display: block;
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
 }
 /* Zone 3: controls bar — anchored at bottom */
 .video-overlay .player-bar {
