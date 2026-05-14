@@ -1761,17 +1761,15 @@ body.playlist-dragging .track-list { overflow: visible; }
 .video-wrap {
   flex: 1 1 0; min-height: 0; overflow: hidden;
   background: #000;
-  /* flex-centering so letterboxed/pillarboxed content is centered */
-  display: flex; align-items: center; justify-content: center;
 }
 .video-wrap video {
-  /* Responsive fit — exactly like max-width:100% on <img>:
-     max-width + max-height prevent any overflow;
-     width/height auto let the browser maintain intrinsic aspect ratio.
-     No object-fit needed: the element box itself IS aspect-ratio-correct. */
+  /* Fill entire wrap, scale content to fit while keeping aspect ratio.
+     width/height:100% on a flex item with definite container height works correctly
+     now that the legacy #player{max-height:35vh} override has been removed.
+     object-fit:contain handles letterbox/pillarbox automatically. */
   display: block;
-  max-width: 100%; max-height: 100%;
-  width: auto; height: auto;
+  width: 100%; height: 100%;
+  object-fit: contain;
 }
 /* Zone 3: controls bar — anchored at bottom */
 .video-overlay .player-bar {
