@@ -55,11 +55,6 @@ VIDEO_CSS_EXTRA = """
 .view-toggle:hover { color: var(--accent); border-color: var(--accent); }
 .breadcrumb a:hover { color: #d1a3ff; }
 input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
-#player {
-  width: 100%; max-height: 35vh; background: #000;
-  border-top: 1px solid #333; flex-shrink: 0;
-  display: none;
-}
 """
 
 
