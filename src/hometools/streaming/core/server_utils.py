@@ -1761,13 +1761,14 @@ body.playlist-dragging .track-list { overflow: visible; }
 .video-wrap {
   flex: 1 1 0; min-height: 0; overflow: hidden;
   background: #000;
-  /* display:flex + align-items:stretch on the video makes it fill reliably:
-     replaced elements like <video> ignore inset:0 in some browsers when they
-     have an intrinsic size, but flex-stretch bypasses that entirely. */
-  display: flex; align-items: stretch;
+  /* CSS Grid is the most reliable way to stretch a replaced element (<video>)
+     to fill its container. Flex-stretch can be ignored by browsers for replaced
+     elements with intrinsic dimensions; grid-item stretch is not. */
+  display: grid;
 }
 .video-wrap video {
-  flex: 1 1 0; min-height: 0; min-width: 0;
+  /* grid item defaults to align-self:stretch + justify-self:stretch → fills cell */
+  width: 100%; height: 100%;
   object-fit: contain;
   display: block;
 }
