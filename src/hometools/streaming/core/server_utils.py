@@ -1759,12 +1759,15 @@ body.playlist-dragging .track-list { overflow: visible; }
 .video-fs-btn svg { width: 18px; height: 18px; }
 /* Zone 2: video — fills all remaining space between header and controls */
 .video-wrap {
-  flex: 1 1 0; min-height: 0; position: relative; overflow: hidden;
+  flex: 1 1 0; min-height: 0; overflow: hidden;
   background: #000;
+  /* display:flex + align-items:stretch on the video makes it fill reliably:
+     replaced elements like <video> ignore inset:0 in some browsers when they
+     have an intrinsic size, but flex-stretch bypasses that entirely. */
+  display: flex; align-items: stretch;
 }
 .video-wrap video {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
+  flex: 1 1 0; min-height: 0; min-width: 0;
   object-fit: contain;
   display: block;
 }
