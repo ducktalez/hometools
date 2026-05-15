@@ -13,7 +13,7 @@ Always run commands from the repo root. The virtualenv is `hometools-env/`.
 - **Entry point:** `src/hometools/cli.py` → `hometools = hometools.cli:main`
 - **Config:** `config.py` — all paths/ports from `HOMETOOLS_*` env vars, never hardcode.
 - **Streaming:** `streaming/core/` is shared, `streaming/audio/` and `streaming/video/` are thin wrappers with `catalog.py`, `server.py`, `sync.py` each.
-- **UI:** `streaming/core/server_utils.py` (~2500 lines) generates all HTML/CSS/JS as Python strings — no separate frontend files.
+- **UI:** `streaming/core/server_utils/` package generates all HTML/CSS/JS as Python strings — no separate frontend files. Split into `_svg.py` (icon/flag constants), `_css.py` (`render_base_css`), `_player_js.py` (`render_player_js`), `_html.py` (`render_media_page`), `_pwa.py` (manifest/SW/icons), `_audit.py` (`render_audit_panel_html`), `_library.py` (status/error pages), `_paths.py` (path validation). `__init__.py` re-exports everything for backward compatibility.
 - **All config** (deps, ruff, pytest) lives in `pyproject.toml`. Pre-commit in `.pre-commit-config.yaml`.
 
 ## Architecture Rules

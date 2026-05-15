@@ -1583,17 +1583,7 @@ Für `.mp4`-Dateien ohne Faststart wird **einmalig eine gecachte Faststart-Kopie
 - `ensure_faststart_cache()` ist idempotent, thread-safe über tmp→rename-Pattern.
 - Fehler (ffmpeg fehlt, Timeout, Disk-Fehler) werden geloggt; die Funktion gibt `None` zurück und der Aufrufer fällt auf den alten Remux-Pfad zurück — kein Absturz.
 
-
-
-````
-This is the description of what the code block changes:
-<changeDescription>
-Add documentation for the 3 UI changes at the end of architecture.md
-</changeDescription>
-
-This is the code block that represents the suggested code change:
-````markdown
-// ...existing code...
+---
 
 ## UI-Layout-Änderungen: Suchleisten-Umstrukturierung (2026-05-15)
 
@@ -1633,5 +1623,50 @@ Die Listen-Suchleiste (`.filter-bar`) ist standardmäßig verborgen, wenn eine P
 
 **Alle Eintrittspunkte** (die die Filter-Bar sichtbar machen) rufen jetzt auch `_hideGlobalSearch()` auf und setzen `fb-scroll-hidden`, damit der Zustand konsistent ist.
 
-````
+---
 
+## `server_utils` Paket-Split
+
+**Modul:** `streaming/core/server_utils/` (Paket, vorher monolithische Datei `server_utils.py` mit ~9000 Zeilen)
+
+Die UI-Generierung lebte ursprünglich in einer einzigen `server_utils.py`-Datei,
+die durch Wachstum auf >9000 Zeilen für Agent-gestützte Entwicklung
+(Kontextfenster-Druck, Edit-Risiko, Navigations-Latenz) zum Problem wurde.
+Die Datei wurde in ein Paket aufgeteilt — **rein strukturell, keine
+Verhaltensänderung**.
+
+### Struktur
+
+| Datei | Inhalt | Zweck |
+|-------|--------|-------|
+| `__init__.py` | Re-Exports, `logger` | Backward-Compatible Public-API |
+| `_svg.py` | 37 `SVG_*`-Konstanten (Icons + Flaggen) | Zentrale Icon-Bibliothek |
+| `_css.py` | `render_base_css` | Komplettes dark-theme CSS als Python-String |
+| `_player_js.py` | `render_player_js` | Großer JS-Generator (Player + Listen + Modals) |
+| `_html.py` | `render_media_page` | Einziges HTML-Skelett für Audio + Video |
+| `_pwa.py` | `render_pwa_manifest`, `render_pwa_service_worker`, `render_pwa_icon_svg`, `render_pwa_icon_png`, `render_pwa_head_tags` | PWA-Assets |
+| `_audit.py` | `render_audit_panel_html` | Audit-Log-Panel |
+| `_library.py` | `build_index_status_payload`, `check_library_accessible`, `render_error_page` | Status- & Fehlerseiten |
+| `_paths.py` | `resolve_media_path`, `safe_resolve` | Pfad-Validierung gegen Traversal |
+
+### Backward-Compatibility
+
+`__init__.py` re-exportiert sämtliche öffentlichen Symbole. Externe Importe
+wie `from hometools.streaming.core.server_utils import render_player_js`
+oder `from hometools.streaming.core.server_utils import SVG_PLAY`
+funktionieren **unverändert** — kein Aufruferkode wurde angepasst.
+
+### Designregeln
+
+- **Keine Quer-Imports zwischen den Submodulen außer für `_svg`.** `_player_js`
+  importiert `SVG_*`-Konstanten via `from ._svg import ...`. Sonst keine
+  Abhängigkeiten zwischen den Submodulen.
+- **`__init__.py` enthält keine Logik**, nur Re-Exports. Wenn neue Helpers
+  hinzukommen, gehören sie in eines der Submodule (oder ein neues).
+- **Public-API-Drift vermeiden:** Wer ein neues Public-Symbol exportieren
+  will, muss es explizit in `__init__.py` ergänzen.
+- **Bestehende Architektur-Regeln (insb. Regel 13 SVG-Icons) gelten weiterhin.**
+  Neue `SVG_*`-Konstanten kommen in `_svg.py` (nicht in `_player_js.py`).
+- Architecture-Doku-Verweise auf `server_utils.py` bleiben gültig (das Paket
+  trägt denselben Namen wie die alte Datei) und werden nicht massenhaft
+  umgeschrieben.
