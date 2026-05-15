@@ -1007,23 +1007,29 @@ Alle Werte steuern den `/api/video/recent`-Endpunkt im Video-Server:
 
 ---
 
-## Ansichtsumschalter (view toggle) – drei Modi
+## Ansichtsumschalter (view toggle) – zwei Modi
 
-Der Header-Button `#view-toggle` schaltet zyklisch durch drei Modi:
+Der Header-Button `#view-toggle` schaltet zyklisch durch zwei Modi:
 
-| Modus | CSS-Klassen auf `#folder-grid` | Thumbnail | Anzeigename | Tooltip |
-|---|---|---|---|---|
-| `'list'` | `list-mode` | Klein | Listenansicht | „Listenansicht — Klick für Kachelansicht" |
-| `'grid'` | — | Groß | Galerieansicht / Kacheln | „Kachelansicht — Klick für Dateinamen" |
-| `'filenames'` | `list-mode filenames-mode` | Groß | Original-Dateinamen | „Dateinamen — Klick für Listenansicht" |
+| Modus | CSS-Klassen auf `#folder-grid` | Thumbnail | Tooltip |
+|---|---|---|---|
+| `'list'` | `list-mode` | Klein | „Listenansicht — Klick für Kachelansicht" |
+| `'grid'` | — | Groß | „Kachelansicht — Klick für Listenansicht" |
 
-Im Modus `'filenames'` werden die rohen Dateinamen angezeigt (kein Display-Name/Override). Dieses Verhalten ersetzt jegliche separate „\[ \] Original"-Checkbox – der Toggle ist die einzige UI-Stelle für dieses Feature.
+Reihenfolge: `list → grid → list`
 
-**DnD-Reorder ist nur im `filenames`-Modus aktiv** (+ Playlist-Kontext). In `list` und `grid` ist Drag-and-Drop deaktiviert — Klick auf einen Track spielt ihn ab.
+Gespeichert in `localStorage` unter `ht-view-mode`. Ein gespeichertes `'filenames'` wird beim Laden auf `'list'` gemappt.
 
-Reihenfolge: `list → grid → filenames → list`
+### Tools-Modus-Override
 
-Gespeichert in `localStorage` unter `ht-view-mode`.
+Wenn im Tools-Panel mindestens ein Tool aktiv ist (`_anyToolActive()` = true), wird der View-Toggle **gesperrt**:
+
+- `folderGrid` erhält `list-mode filenames-mode` unabhängig vom gespeicherten `viewMode`
+- Ordner- und Track-Karten zeigen den rohen Dateinamen (`f.name` / `t.relative_path`-Basename) statt des Display-Namens
+- Der Toggle-Button erhält `.view-toggle-locked` (CSS: `opacity: 0.45; cursor: default; pointer-events: none`)
+- Beim Deaktivieren aller Tools wird die normale Ansicht wiederhergestellt
+
+**DnD-Reorder ist nur im `list`-Modus aktiv** (+ Playlist-Kontext). In `grid` ist Drag-and-Drop deaktiviert — Klick auf einen Track spielt ihn ab.
 
 ---
 
@@ -1577,4 +1583,55 @@ Für `.mp4`-Dateien ohne Faststart wird **einmalig eine gecachte Faststart-Kopie
 - `ensure_faststart_cache()` ist idempotent, thread-safe über tmp→rename-Pattern.
 - Fehler (ffmpeg fehlt, Timeout, Disk-Fehler) werden geloggt; die Funktion gibt `None` zurück und der Aufrufer fällt auf den alten Remux-Pfad zurück — kein Absturz.
 
+
+
+````
+This is the description of what the code block changes:
+<changeDescription>
+Add documentation for the 3 UI changes at the end of architecture.md
+</changeDescription>
+
+This is the code block that represents the suggested code change:
+````markdown
+// ...existing code...
+
+## UI-Layout-Änderungen: Suchleisten-Umstrukturierung (2026-05-15)
+
+### Bibliotheks-Suchleiste (Global Search) im Header
+
+Die globale Bibliotheks-Suchleiste (`#global-search-input`) wurde aus dem `#folder-filter-bar`-Container (der dynamisch bestückt wurde) in den `<header>` direkt verschoben. Sie erscheint dauerhaft als letztes Element im Header-Flex-Container, rechts ausgerichtet.
+
+- **CSS-Klasse:** `.header-search` — `flex: 0 1 200px`, `border-radius: 20px`, Pill-Form
+- **Sichtbarkeit:** Gesteuert über `view-hidden`-Klasse. `initGlobalSearch()` entfernt die Klasse (zeigt an). `_hideGlobalSearch()` fügt sie wieder hinzu (versteckt).
+- **Event-Wiring:** Nur einmalig via `_globalSearchListenersInit`-Flag — verhindert doppelte Listener-Registrierung.
+- **`#folder-filter-bar`:** Bleibt im DOM (Tests prüfen `id="folder-filter-bar"`), aber immer `hidden`. Kein HTML-Inhalt mehr.
+
+### Track-Count in der Filter-Bar
+
+Der `<span id="track-count">` wurde aus dem `<header>` in die `.filter-bar` (Listen-Suchleiste) verschoben — als letztes Element mit `margin-left: auto`. Er zeigt die Anzahl der gefilterten Tracks direkt neben den Suchfiltern an.
+
+### Filter-Bar Scroll-Reveal (erscheint beim Hochscrollen)
+
+Die Listen-Suchleiste (`.filter-bar`) ist standardmäßig verborgen, wenn eine Playlist/Ordner-Ansicht geöffnet wird, und erscheint erst beim Hochscrollen.
+
+**Mechanismus:**
+1. Wenn `filterBar.classList.remove('view-hidden')` aufgerufen wird (in `showPlaylist`, `showUserPlaylistView`, `playDuplicates`), wird **sofort** `filterBar.classList.add('fb-scroll-hidden')` gesetzt — damit startet die Filter-Bar versteckt.
+2. `_initFilterBarScrollReveal()` registriert (einmalig, via `_fbScrollInitDone`-Flag) einen `scroll`-EventListener auf `#track-view`.
+3. Der Listener: wenn `scrollTop < 10` oder der User nach oben scrollt → `fb-scroll-hidden` entfernen (einblenden). Wenn nach unten gescrollt wird → `fb-scroll-hidden` hinzufügen (ausblenden).
+
+**CSS:**
+```css
+.filter-bar {
+  overflow: hidden;
+  max-height: 100px;
+  transition: max-height 0.22s ease, padding-top 0.22s ease, padding-bottom 0.22s ease, border-bottom-width 0.22s ease;
+}
+.filter-bar.fb-scroll-hidden {
+  max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0;
+}
+```
+
+**Alle Eintrittspunkte** (die die Filter-Bar sichtbar machen) rufen jetzt auch `_hideGlobalSearch()` auf und setzen `fb-scroll-hidden`, damit der Zustand konsistent ist.
+
+````
 

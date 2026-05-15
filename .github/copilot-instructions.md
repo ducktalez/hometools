@@ -41,6 +41,12 @@ After any change, run in this order:
 3. `python -m pytest tests/ -q` — all tests must pass
 4. If you changed streaming UI or API: also run `python -m pytest tests/test_feature_parity.py -v` — catches audio↔video drift
 
+## Working Behaviour
+- **Proactive code review**: When working on a task, report any **bugs**, **code smells**, or **questionable patterns** discovered along the way — even if unrelated to the current task. Include a brief suggestion for each finding.
+- **Don't silently fix ambiguous findings**: Only fix a discovered issue directly if it is **unambiguously wrong** (missing import, typo, off-by-one). If the intent is unclear, or a comment/print suggests ongoing work — **ask first** or add a `# TODO` instead of removing/rewriting it. Debug prints or markers like `# discuss` are investigation aids, not dead code.
+- **Open tasks → implementation plan**: Add new TODOs to `docs/implementation-plan.md` instead of writing `# TODO` in source code.
+- **Design discussions → implementation plan**: Open architectural questions and trade-off decisions go into the **Design Discussions** section of `docs/implementation-plan.md`. Do not embed them inline in source code.
+- **Raise concerns**: If an approach seems risky, fragile, or architecturally problematic, voice the concern explicitly before or alongside the implementation.
 ## Maintaining these docs
 
 **MANDATORY: Every code change must be documented. No exceptions.**
@@ -51,3 +57,4 @@ After any change, run in this order:
 - **When you identify an open task**, add it to `docs/IMPLEMENTATION_PLAN.md`.
 - **When adding new SVG constants** (`SVG_*` / `IC_*`), update the list in Architecture Rule 13 in this file AND in the SVG-Icons section of `docs/architecture.md`.
 - **After every session**, verify that `docs/IMPLEMENTATION_PLAN.md` Done-section and `docs/architecture.md` are in sync with the actual code.
+

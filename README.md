@@ -10,6 +10,7 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
+
 - wav/mp3 Organisation für DJs.
 - Deleted files landen in delete_me statt in den Papierkorb
 - original-downloadname vs. syntaktisch korrekter Name

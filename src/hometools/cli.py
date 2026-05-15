@@ -273,35 +273,29 @@ def _console_print(text: str = "") -> None:
 
 
 def _print_server_banner(current: str, host: str, port: int) -> None:
-    """Print a banner showing both configured server URLs.
+    """Print the URL(s) for the server that is being started.
 
-    *current* should be ``"audio"`` or ``"video"`` — the one being started
-    will be highlighted with an arrow.
-
-    If host is 0.0.0.0 (all interfaces), show available network IPs.
+    *current* is ``"audio"``, ``"video"`` or ``"channel"``.
+    When host is ``0.0.0.0`` (all interfaces), the first available network IP
+    is shown as the primary address with ``127.0.0.1`` in parentheses.
     """
-    audio_port = get_audio_port()
-    video_port = get_video_port()
+    icons = {"audio": "🎵", "video": "🎬", "channel": "📺"}
+    icon = icons.get(current, "🌐")
 
-    # If binding to all interfaces, show network IPs
     if host == "0.0.0.0":
         local_ips = _get_local_ips()
-        hosts_to_show = local_ips + ["127.0.0.1"]
+        # First non-loopback IP is the "network" address we want to highlight
+        network_ip = local_ips[0] if local_ips else "127.0.0.1"
+        primary_url = f"http://{network_ip}:{port}/"
+        local_url = f"http://127.0.0.1:{port}/"
+        if network_ip != "127.0.0.1":
+            url_display = f"{primary_url}  ({local_url})"
+        else:
+            url_display = primary_url
     else:
-        hosts_to_show = [host]
+        url_display = f"http://{host}:{port}/"
 
-    _console_print("\n  ╔═ Verbindungsadressen ════════════════════════════╗")
-
-    for _i, h in enumerate(hosts_to_show):
-        audio_url = f"http://{h}:{audio_port}/"
-        video_url = f"http://{h}:{video_port}/"
-
-        _console_print("  ║                                                  ║")
-        _console_print(f"  ║  🎵  {audio_url:<37}")
-        _console_print(f"  ║  🎬  {video_url:<37}")
-
-    _console_print("  ╚════════════════════════════════════════════════╝")
-    _console_print()
+    _console_print(f"\n  {icon}  {url_display}\n")
 
 
 def _check_library_dir(path: Path, label: str) -> None:
