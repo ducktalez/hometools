@@ -1102,13 +1102,12 @@ body.modal-open { overflow: hidden; }
 }
 /* hidden-shown: normally filtered by MIN_RATING, visible via toggle */
 .track-item--hidden-shown {
-  opacity: 0.4; background: rgba(110,110,110,0.05); cursor: default;
+  opacity: 0.4; background: rgba(110,110,110,0.05);
   filter: saturate(0.2);
 }
 .track-item--hidden-shown:hover { opacity: 0.58; filter: saturate(0.35); }
 .track-item--hidden-shown .track-title-text { color: var(--sub); }
 .track-item--hidden-shown .track-artist { color: #555; }
-.track-item--hidden-shown .track-info { pointer-events: none; }
 /* Keep the "ausgeblendet" indicator even in active/playing state */
 .track-item--hidden-shown.active { background: rgba(24,51,32,0.55); opacity: 0.5; }
 /* filter-hidden chip: stable width so click target doesn't shift */
@@ -1125,7 +1124,7 @@ body.modal-open { overflow: hidden; }
 .hidden-badge {
   display: inline-flex; align-items: center; font-size: 0.6rem;
   color: #fff; background: rgba(120,120,120,0.7);
-  padding: 1px 5px; border-radius: 8px; margin-left: 2px;
+  padding: 1px 5px; border-radius: 8px; margin-right: 5px;
   vertical-align: middle; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
   flex-shrink: 0;
 }
@@ -4690,7 +4689,7 @@ def render_player_js(
         '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         ratingBar + '</div>' +
         '<div class="track-info">' +
-          '<div class="track-title"><span class="track-title-text">' + escHtml(displayTitle) + convertBadge + dupeBadge + '</span>' + hiddenBadge + '</div>' +
+          '<div class="track-title"><span class="track-title-text">' + hiddenBadge + escHtml(displayTitle) + convertBadge + dupeBadge + '</span></div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
         '</div>' +
         '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
@@ -4709,7 +4708,7 @@ def render_player_js(
         renderMoveWidget(t, idx) +
         '</li>';
     }).join('');
-    document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered):not(.track-item--hidden-shown)').forEach(function(el) {
+    document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered)').forEach(function(el) {
       el.addEventListener('click', function(e) { if (!wasDrag(e)) playTrack(Number(el.dataset.index)); });
     });
     /* Wire up inline rating star clicks */
@@ -6468,7 +6467,6 @@ def render_player_js(
 
   function playTrack(index) {
     if (index < 0 || index >= filteredItems.length) return;
-    if (filteredItems[index] && filteredItems[index]._hiddenShown) return; /* ausgeblendet — nicht abspielbar */
     playItem(filteredItems[index], index);
   }
 
@@ -6553,19 +6551,11 @@ def render_player_js(
   /* Rebuild shuffle queue — called whenever filteredItems or shuffleMode changes */
   function rebuildShuffleQueue(startIndex) {
     if (!shuffleMode || !filteredItems.length) { shuffleQueue = []; shufflePos = -1; return; }
-    /* Only include playable (non-hidden) items in the shuffle queue */
-    var playableItems = [];
-    var playableOffset = []; /* maps playableItems index → filteredItems index */
-    filteredItems.forEach(function(t, i) {
-      if (!t._hiddenShown) { playableOffset.push(i); playableItems.push(t); }
-    });
-    if (!playableItems.length) { shuffleQueue = []; shufflePos = -1; return; }
     var rawQueue = shuffleMode === 'weighted'
-      ? buildWeightedQueue(playableItems)
-      : buildNormalQueue(playableItems);
-    /* Map back to filteredItems indices */
-    shuffleQueue = rawQueue.map(function(qi) { return playableOffset[qi]; });
-    /* Put startIndex first so current track leads (if it's playable) */
+      ? buildWeightedQueue(filteredItems)
+      : buildNormalQueue(filteredItems);
+    shuffleQueue = rawQueue; /* already filteredItems indices */
+    /* Put startIndex first so current track leads */
     if (typeof startIndex === 'number' && startIndex >= 0) {
       var pos = shuffleQueue.indexOf(startIndex);
       if (pos > 0) {
@@ -6582,27 +6572,18 @@ def render_player_js(
       shufflePos = (shufflePos + 1) % shuffleQueue.length;
       /* Replenish weighted queue when exhausted */
       if (shufflePos === 0 && shuffleMode === 'weighted') {
-        var playableItems2 = filteredItems.filter(function(t) { return !t._hiddenShown; });
-        var playableOffset2 = [];
-        filteredItems.forEach(function(t, i) { if (!t._hiddenShown) playableOffset2.push(i); });
-        shuffleQueue = buildWeightedQueue(playableItems2).map(function(qi) { return playableOffset2[qi]; });
+        shuffleQueue = buildWeightedQueue(filteredItems);
       }
       return shuffleQueue[shufflePos];
     }
-    /* Sequential: skip hidden items */
+    /* Sequential */
     var ni = currentIndex + 1;
-    while (ni < filteredItems.length && filteredItems[ni] && filteredItems[ni]._hiddenShown) ni++;
-    if (ni >= filteredItems.length) return repeatMode === 'all' ? _firstPlayableIndex() : -1;
+    if (ni >= filteredItems.length) return repeatMode === 'all' ? 0 : -1;
     return ni;
   }
 
-  /* First playable index (non-hidden) */
-  function _firstPlayableIndex() {
-    for (var i = 0; i < filteredItems.length; i++) {
-      if (!filteredItems[i]._hiddenShown) return i;
-    }
-    return 0;
-  }
+  /* First playable index — kept for API compat, returns 0 */
+  function _firstPlayableIndex() { return 0; }
 
   /* Prev index respecting shuffle state */
   function prevIndex() {
@@ -6610,15 +6591,10 @@ def render_player_js(
       shufflePos = (shufflePos - 1 + shuffleQueue.length) % shuffleQueue.length;
       return shuffleQueue[shufflePos];
     }
-    /* Sequential: skip hidden items */
+    /* Sequential */
     var pi = currentIndex - 1;
-    while (pi >= 0 && filteredItems[pi] && filteredItems[pi]._hiddenShown) pi--;
     if (pi < 0) {
-      if (repeatMode === 'all') {
-        pi = filteredItems.length - 1;
-        while (pi >= 0 && filteredItems[pi] && filteredItems[pi]._hiddenShown) pi--;
-        return pi >= 0 ? pi : 0;
-      }
+      if (repeatMode === 'all') return filteredItems.length - 1;
       return 0;
     }
     return pi;

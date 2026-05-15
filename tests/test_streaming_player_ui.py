@@ -816,7 +816,7 @@ def test_repeat_nextindex_returns_minus_one_when_off():
     js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
     assert "repeat" in js.lower()
     # When repeat is 'all' → wrap to first playable; when off → return -1
-    assert "return repeatMode === 'all' ? _firstPlayableIndex() : -1" in js
+    assert "return repeatMode === 'all' ? 0 : -1" in js
 
 
 def test_play_next_item_handles_repeat_one():
