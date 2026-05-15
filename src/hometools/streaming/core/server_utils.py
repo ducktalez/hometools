@@ -617,9 +617,8 @@ header {
 .logo-home-btn:hover { opacity: 0.75; }
 .logo-title {
   font-size: 1.1rem; font-weight: 700; color: var(--accent);
-  user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 0; min-width: 0;
 }
-.track-count { font-size: 0.8rem; color: var(--sub); margin-left: auto; }
 .offline-close, .offline-action-btn {
   background: var(--surface2); color: var(--text); border: 1px solid #444;
   border-radius: 999px; cursor: pointer; padding: 0.4rem 0.8rem;
@@ -683,6 +682,17 @@ header {
   transition: border-color 0.12s, color 0.12s;
 }
 .tools-panel-close:hover { border-color: var(--text); color: var(--text); }
+.tools-activate-all {
+  background: var(--accent); border: none; color: #fff;
+  border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
+  font-size: 0.85rem; margin-bottom: 1rem; width: 100%;
+  transition: opacity 0.12s; font-weight: 600;
+}
+.tools-activate-all:hover { opacity: 0.85; }
+/* When tool mode is ON, button turns to a muted "deactivate" style */
+.tools-activate-all--active {
+  background: rgba(180,60,60,0.75);
+}
 /* ── Inline track rating stars ── */
 .track-inline-rating {
   display: none; align-items: center; gap: 0px; flex-shrink: 0; margin-left: 4px;
@@ -1000,7 +1010,23 @@ body.modal-open { overflow: hidden; }
   padding: 0.5rem max(1rem, var(--sal)) 0.5rem max(1rem, var(--sar));
   background: var(--surface);
   border-bottom: 1px solid #333; flex-shrink: 0;
+  overflow: hidden;
+  max-height: 100px;
+  transition: max-height 0.22s ease, padding-top 0.22s ease, padding-bottom 0.22s ease, border-bottom-width 0.22s ease;
 }
+.filter-bar.fb-scroll-hidden {
+  max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0;
+}
+/* Header global search (right-aligned in the header) */
+.header-search {
+  margin-left: auto; flex: 0 1 200px; min-width: 80px;
+  background: var(--surface2); color: var(--text);
+  border: 1px solid #444; border-radius: 20px;
+  padding: 0.35rem 0.75rem; font-size: 0.82rem; outline: none;
+}
+.header-search:focus { border-color: var(--accent); }
+.header-search::placeholder { color: var(--sub); }
+.track-count { font-size: 0.78rem; color: var(--sub); margin-left: auto; white-space: nowrap; flex-shrink: 0; }
 .filter-bar input, .filter-bar select {
   background: var(--surface2); color: var(--text);
   border: 1px solid #444; border-radius: 20px;
@@ -1044,7 +1070,10 @@ body.modal-open { overflow: hidden; }
 .track-info { flex: 1 1 0; min-width: 0; }
 .track-title {
   font-size: 0.92rem; font-weight: 500;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; overflow: hidden; gap: 4px;
+}
+.track-title-text {
+  flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .track-artist {
   font-size: 0.8rem; color: var(--sub); margin-top: 2px;
@@ -1065,13 +1094,33 @@ body.modal-open { overflow: hidden; }
   font-size: 0.7rem; color: #e57373; font-style: italic; margin-top: 2px;
 }
 /* hidden-shown: normally filtered by MIN_RATING, visible via toggle */
-.track-item--hidden-shown { opacity: 0.5; }
-.track-item--hidden-shown:hover { opacity: 0.75; }
+.track-item--hidden-shown {
+  opacity: 0.4; background: rgba(110,110,110,0.05); cursor: default;
+  filter: saturate(0.2);
+}
+.track-item--hidden-shown:hover { opacity: 0.58; filter: saturate(0.35); }
+.track-item--hidden-shown .track-title-text { color: var(--sub); }
+.track-item--hidden-shown .track-artist { color: #555; }
+.track-item--hidden-shown .track-info { pointer-events: none; }
+/* Keep the "ausgeblendet" indicator even in active/playing state */
+.track-item--hidden-shown.active { background: rgba(24,51,32,0.55); opacity: 0.5; }
+/* filter-hidden chip: stable width so click target doesn't shift */
+#filter-hidden { min-width: 8.5rem; justify-content: flex-start; }
+/* moved ghost: file was moved this session — shown dimmed with target hint */
+.track-item--moved { opacity: 0.32; cursor: default; pointer-events: none; }
+.track-item--moved:hover { opacity: 0.42; }
+.moved-hint {
+  display: inline-flex; align-items: center; font-size: 0.6rem;
+  color: #fff; background: rgba(60,120,220,0.55);
+  padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+  vertical-align: middle; font-weight: 500; white-space: nowrap; letter-spacing: 0.01em;
+}
 .hidden-badge {
   display: inline-flex; align-items: center; font-size: 0.6rem;
-  color: #fff; background: rgba(120,120,120,0.55);
-  padding: 1px 5px; border-radius: 8px; margin-left: 6px;
-  vertical-align: middle; font-weight: 500; letter-spacing: 0.02em; white-space: nowrap;
+  color: #fff; background: rgba(120,120,120,0.7);
+  padding: 1px 5px; border-radius: 8px; margin-left: 2px;
+  vertical-align: middle; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+  flex-shrink: 0;
 }
 /* refresh-info label in the header */
 .refresh-info {
@@ -1521,6 +1570,7 @@ body.playlist-dragging .track-list { overflow: visible; }
 }
 .view-toggle svg { width: 16px; height: 16px; fill: currentColor; }
 .view-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.view-toggle.view-toggle-locked { opacity: 0.45; cursor: default; pointer-events: none; }
 .audit-btn {
   background: none; border: 1px solid #333; color: var(--sub);
   border-radius: 4px; padding: 0.25rem 0.4rem; cursor: pointer;
@@ -2097,6 +2147,10 @@ def render_player_js(
   var MIN_RATING_THRESHOLD = """
         + str(min_rating)
         + """;
+  /* When ratings are enabled but no explicit threshold is configured,
+     treat 1-star tracks as "ausgeblendet" (threshold=1, used with <= comparison).
+     Setting min_rating=0 explicitly disables the feature entirely. */
+  var _effectiveThreshold = MIN_RATING_THRESHOLD > 0 ? MIN_RATING_THRESHOLD : (RATING_WRITE_ENABLED ? 1 : 0);
   var DEBUG_FILTER = """
         + ("true" if debug_filter else "false")
         + """;
@@ -2256,7 +2310,7 @@ def render_player_js(
   var filterRating = parseInt(localStorage.getItem('ht-filter-rating') || '0', 10) || 0;
   var filterFav    = localStorage.getItem('ht-filter-fav') === '1';
   var filterGenre  = localStorage.getItem('ht-filter-genre') || '';
-  var showHidden   = localStorage.getItem('ht-show-hidden') === '1';
+  var showHidden   = localStorage.getItem('ht-show-hidden') !== '0'; /* default true = ausgeblendet werden ausgegraut angezeigt */
   var folderGrid   = document.getElementById('folder-grid');
   var folderFilterBar = document.getElementById('folder-filter-bar');
   var trackView    = document.getElementById('track-view');
@@ -2300,7 +2354,7 @@ def render_player_js(
   var breadcrumb  = document.getElementById('breadcrumb');
   var viewToggle  = document.getElementById('view-toggle');
   var _savedViewMode = localStorage.getItem('ht-view-mode');
-  var viewMode    = (_savedViewMode === 'list' || _savedViewMode === 'grid' || _savedViewMode === 'filenames') ? _savedViewMode : 'list';
+  var viewMode    = (_savedViewMode === 'list' || _savedViewMode === 'grid') ? _savedViewMode : 'list';
   var currentStreamUrl = '';
   var currentOfflineUrl = null;
 """
@@ -3713,22 +3767,26 @@ def render_player_js(
   var IC_LIST = '<svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="3" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
   var IC_FILENAMES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="14" y2="6"/><line x1="3" y1="12" x2="18" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><polyline points="17,15 20,18 17,21" stroke-linejoin="round"/></svg>';
   function applyViewMode() {
-    if (viewMode === 'list') {
+    if (_anyToolActive()) {
+      /* Tools mode: force list view with raw filenames, toggle locked */
+      folderGrid.classList.add('list-mode');
+      folderGrid.classList.add('filenames-mode');
+      viewToggle.innerHTML = IC_LIST;
+      viewToggle.title = 'Tools aktiv \u2014 Listenansicht mit Dateinamen';
+      viewToggle.classList.add('view-toggle-locked');
+    } else if (viewMode === 'list') {
       folderGrid.classList.add('list-mode');
       folderGrid.classList.remove('filenames-mode');
       viewToggle.innerHTML = IC_GRID;
       viewToggle.title = 'Listenansicht \u2014 Klick f\u00fcr Kachelansicht';
-    } else if (viewMode === 'grid') {
+      viewToggle.classList.remove('view-toggle-locked');
+    } else {
+      /* 'grid' */
       folderGrid.classList.remove('list-mode');
       folderGrid.classList.remove('filenames-mode');
-      viewToggle.innerHTML = IC_FILENAMES;
-      viewToggle.title = 'Kachelansicht \u2014 Klick f\u00fcr Dateinamen';
-    } else {
-      /* 'filenames' */
-      folderGrid.classList.add('list-mode');
-      folderGrid.classList.add('filenames-mode');
       viewToggle.innerHTML = IC_LIST;
-      viewToggle.title = 'Dateinamen \u2014 Klick f\u00fcr Listenansicht';
+      viewToggle.title = 'Kachelansicht \u2014 Klick f\u00fcr Listenansicht';
+      viewToggle.classList.remove('view-toggle-locked');
     }
   }
 
@@ -3745,13 +3803,13 @@ def render_player_js(
     if (rInfo) rInfo.textContent = '';
     var c = contentsAt(currentPath);
     var isRoot = !currentPath;
-    var showOrigNames = (viewMode === 'filenames');
+    var showOrigNames = _anyToolActive();
 
-    /* Global search bar — only on root when catalog loaded */
-    if (isRoot && allItems.length > 0) {
+    /* Global search bar — always visible when catalog loaded */
+    if (allItems.length > 0) {
       initGlobalSearch();
     } else {
-      if (folderFilterBar) folderFilterBar.hidden = true;
+      _hideGlobalSearch();
     }
 
     /* empty library */
@@ -4133,13 +4191,15 @@ def render_player_js(
 
   /* ── global search (root view) ── */
   var _globalSearchDebounce = null;
+  var _globalSearchListenersInit = false;
   function initGlobalSearch() {
-    if (!folderFilterBar) return;
-    folderFilterBar.innerHTML =
-      '<input id="global-search-input" type="search" placeholder="Bibliothek durchsuchen\u2026" autocomplete="off" />';
-    folderFilterBar.hidden = false;
     var inp = document.getElementById('global-search-input');
     if (!inp) return;
+    /* Show in header */
+    inp.classList.remove('view-hidden');
+    /* Wire events only once */
+    if (_globalSearchListenersInit) return;
+    _globalSearchListenersInit = true;
     inp.addEventListener('input', function() {
       clearTimeout(_globalSearchDebounce);
       var val = inp.value.trim();
@@ -4158,12 +4218,38 @@ def render_player_js(
     });
   }
 
+  function _hideGlobalSearch() {
+    var inp = document.getElementById('global-search-input');
+    if (inp) { inp.classList.add('view-hidden'); inp.value = ''; }
+    if (folderFilterBar) folderFilterBar.hidden = true;
+  }
+
+  /* ── Filter bar scroll-reveal ── */
+  var _fbScrollInitDone = false;
+  var _fbLastScrollY = 0;
+  function _initFilterBarScrollReveal() {
+    if (_fbScrollInitDone) return;
+    _fbScrollInitDone = true;
+    var wrap = document.getElementById('track-view');
+    if (!wrap) return;
+    wrap.addEventListener('scroll', function() {
+      var y = wrap.scrollTop;
+      /* Reveal when near top (y < 10) or scrolling upward */
+      if (y < 10 || y < _fbLastScrollY - 2) {
+        filterBar.classList.remove('fb-scroll-hidden');
+      } else if (y > _fbLastScrollY + 8) {
+        filterBar.classList.add('fb-scroll-hidden');
+      }
+      _fbLastScrollY = y;
+    });
+  }
+
   function globalSearch(needle) {
     needle = needle.toLowerCase();
-    /* Filter allItems by needle — respect MIN_RATING */
+    /* Filter allItems by needle — respect effective hidden threshold */
     var results = allItems.filter(function(t) {
       var r = t.rating || 0;
-      if (MIN_RATING_THRESHOLD > 0 && r > 0 && r < MIN_RATING_THRESHOLD) return false;
+      if (_effectiveThreshold > 0 && !showHidden && r > 0 && r <= _effectiveThreshold) return false;
       return (t.title || '').toLowerCase().indexOf(needle) >= 0 ||
              (t.artist || '').toLowerCase().indexOf(needle) >= 0 ||
              (t.relative_path || '').toLowerCase().indexOf(needle) >= 0;
@@ -4228,7 +4314,6 @@ def render_player_js(
     _globalSearchActive = false;
     var inp = document.getElementById('global-search-input');
     if (inp) inp.value = '';
-    currentPath = '';
     showFolderView();
   }
 
@@ -4283,13 +4368,18 @@ def render_player_js(
       }
     }
     if (filterHiddenBtn) {
-      if (MIN_RATING_THRESHOLD > 0) {
+      if (_effectiveThreshold > 0) {
+        var _hiddenCount = playlistItems.filter(function(t) {
+          var r = t.rating || 0; return r > 0 && r <= _effectiveThreshold;
+        }).length;
+        var _totalCount = playlistItems.length;
         filterHiddenBtn.style.display = '';
-        filterHiddenBtn.innerHTML = IC_EYE + ' Ausgeblendet';
-        filterHiddenBtn.classList.toggle('active', showHidden);
+        /* Always render "(N/M)" so the button width stays stable — prevents layout shift on click */
+        filterHiddenBtn.innerHTML = IC_EYE + ' Ausgeblendet (' + _hiddenCount + '/' + _totalCount + ')';
+        filterHiddenBtn.classList.toggle('active', !showHidden);
         filterHiddenBtn.title = showHidden
-          ? 'Ausgeblendete Songs sichtbar — klicken zum Ausblenden'
-          : 'Ausgeblendete Songs anzeigen';
+          ? 'Ausgeblendete Songs sichtbar \u2014 klicken zum Verstecken'
+          : 'Ausgeblendete Songs einblenden';
       } else {
         filterHiddenBtn.style.display = 'none';
       }
@@ -4302,13 +4392,24 @@ def render_player_js(
     var items = playlistItems;
 
     if (DEBUG_FILTER) {
-      /* ── Debug mode: annotate items with reasons instead of removing ── */
+      /* ── Debug mode: annotate items with reasons instead of removing ──
+         showHidden=true  → rating-below-threshold items get _hiddenShown (grayed, same UX as normal mode)
+         showHidden=false → rating-below-threshold items get _debugReason (visible with filter-reason overlay) */
       items = items.map(function(t) {
-        var reasons = [];
         var r = t.rating || 0;
-        if (MIN_RATING_THRESHOLD > 0 && r > 0 && r < MIN_RATING_THRESHOLD) {
-          reasons.push('Rating ' + r + '\\u2605 < Schwelle ' + MIN_RATING_THRESHOLD);
+        /* Rating threshold: when showHidden=true, gray items in-place (don't annotate as debug-filtered) */
+        if (_effectiveThreshold > 0 && r > 0 && r <= _effectiveThreshold) {
+          var hClone = {}; for (var k in t) { if (t.hasOwnProperty(k)) hClone[k] = t[k]; }
+          if (showHidden) {
+            hClone._hiddenShown = true;
+            hClone._hiddenReason = 'Bewertung: ' + r + '\u2605';
+            return hClone;
+          } else {
+            hClone._debugReason = 'Rating ' + r + '\\u2605 \u2264 Schwelle ' + _effectiveThreshold;
+            return hClone;
+          }
         }
+        var reasons = [];
         if (filterRating > 0 && (r < filterRating)) {
           reasons.push('Quick-Filter: Rating < ' + filterRating + '\\u2605');
         }
@@ -4336,26 +4437,28 @@ def render_player_js(
         });
       }
     } else {
-      /* ── Normal mode: filter items out ── */
-      /* Global min-rating threshold: hide tracks that have been rated at or below the threshold.
-         Unrated tracks (rating 0) are always shown. */
-      if (MIN_RATING_THRESHOLD > 0) {
-        if (showHidden) {
-          /* Annotate normally-hidden items instead of removing them */
+      /* ── Normal mode ── */
+      /* Effective threshold: tracks with rating <= threshold are "ausgeblendet".
+         Unrated tracks (rating 0) are always shown regardless of threshold.
+         showHidden=false  → hidden songs filtered out entirely.
+         showHidden=true   → hidden songs kept at their natural position, grayed
+                             out with a reason label so the full list is visible. */
+      if (_effectiveThreshold > 0) {
+        if (!showHidden) {
+          items = items.filter(function(t) {
+            var r = t.rating || 0; return r === 0 || r > _effectiveThreshold;
+          });
+        } else {
+          /* Mark hidden items in-place — they stay at their sorted position */
           items = items.map(function(t) {
             var r = t.rating || 0;
-            if (r > 0 && r < MIN_RATING_THRESHOLD) {
-              var clone = {};
-              for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
-              clone._hiddenItem = true;
+            if (r > 0 && r <= _effectiveThreshold) {
+              var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
+              clone._hiddenShown = true;
+              clone._hiddenReason = 'Bewertung: ' + r + '\u2605';
               return clone;
             }
             return t;
-          });
-        } else {
-          items = items.filter(function(t) {
-            var r = t.rating || 0;
-            return r === 0 || r >= MIN_RATING_THRESHOLD;
           });
         }
       }
@@ -4366,15 +4469,15 @@ def render_player_js(
                  t.relative_path.toLowerCase().indexOf(needle) >= 0;
         });
       }
-      /* Quick-filters */
+      /* Quick-filters (never affect hidden-shown items — they are already grayed) */
       if (filterRating > 0) {
-        items = items.filter(function(t) { return (t.rating || 0) >= filterRating; });
+        items = items.filter(function(t) { return t._hiddenShown || (t.rating || 0) >= filterRating; });
       }
       if (filterFav) {
-        items = items.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
+        items = items.filter(function(t) { return t._hiddenShown || !!_savedFavorites[t.relative_path]; });
       }
       if (filterGenre) {
-        items = items.filter(function(t) { return t.genre === filterGenre; });
+        items = items.filter(function(t) { return t._hiddenShown || t.genre === filterGenre; });
       }
     }
     items = items.slice().sort(function(a, b) {
@@ -4464,23 +4567,58 @@ def render_player_js(
   function renderTracks(tracks) {
     /* Ensure dupe data is available when the dupe tool is active */
     if (_toolState.duplicates) _ensureDupeMap();
-    /* Separate real items from debug-dimmed items for filteredItems / shuffle */
-    var realTracks = DEBUG_FILTER ? tracks.filter(function(t) { return !t._debugReason; }) : tracks;
-    var debugCount = tracks.length - realTracks.length;
-    var hiddenShownCount = realTracks.filter(function(t) { return !!t._hiddenItem; }).length;
+    /* Separate real items from debug-dimmed items and moved ghosts for filteredItems / shuffle */
+    var realTracks = DEBUG_FILTER
+      ? tracks.filter(function(t) { return !t._debugReason && !t._movedTo; })
+      : tracks.filter(function(t) { return !t._movedTo; });
+    var debugCount = tracks.filter(function(t) { return !!t._debugReason; }).length;
+    var movedCount = tracks.filter(function(t) { return !!t._movedTo; }).length;
     filteredItems = realTracks;
     /* Rebuild shuffle queue whenever the filtered set changes */
     if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
-    var noun = realTracks.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
-    trackCount.textContent = realTracks.length + ' ' + noun +
-      (debugCount > 0 ? ' (+ ' + debugCount + ' ausgeblendet)' : '') +
-      (hiddenShownCount > 0 ? ' (' + hiddenShownCount + ' ausgebl. sichtbar)' : '');
+    var hiddenShownCount = realTracks.filter(function(t) { return !!t._hiddenShown; }).length;
+    var visibleCount = realTracks.length - hiddenShownCount;
+    var noun = visibleCount !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
+    /* "ausgeblendet" count shown in filter-hidden chip; debug count omitted here to keep track-count width stable */
+    trackCount.textContent = visibleCount + ' ' + noun +
+      (movedCount > 0 ? ' (' + movedCount + ' verschoben)' : '');
     if (!tracks.length) {
       trackList.innerHTML = '<li class="empty-hint">No matching items.</li>';
       return;
     }
-    var showOrig = (viewMode === 'filenames');
-    var displayTracks = withMissingEpisodes(tracks);
+    var showOrig = _anyToolActive();
+    /* Pass realTracks to withMissingEpisodes so ghost items don't confuse ep-gap detection */
+    var displayTracks = withMissingEpisodes(realTracks);
+    /* Re-inject ghost items at their original positions */
+    if (movedCount > 0) {
+      var _ghostInserted = [];
+      var _realOffset = 0;
+      for (var _gi = 0; _gi < tracks.length; _gi++) {
+        if (tracks[_gi]._movedTo) {
+          /* Insert ghost at this position in the display list (after adjusting for gaps already inserted) */
+          _ghostInserted.push(_gi);
+        }
+      }
+      /* Rebuild displayTracks with ghosts inserted at their original index in tracks[] */
+      var _dt2 = [];
+      var _ri2 = 0; /* index into realTracks */
+      var _di2 = 0; /* index into displayTracks (includes missing-episode placeholders) */
+      for (var _ti = 0; _ti < tracks.length; _ti++) {
+        if (tracks[_ti]._movedTo) {
+          _dt2.push(tracks[_ti]);
+        } else {
+          /* copy the corresponding entry from displayTracks, which may include preceding gap placeholders */
+          while (_di2 < displayTracks.length && displayTracks[_di2]._missing) {
+            _dt2.push(displayTracks[_di2++]);
+          }
+          if (_di2 < displayTracks.length) _dt2.push(displayTracks[_di2++]);
+          _ri2++;
+        }
+      }
+      /* Append any remaining gap placeholders at the end */
+      while (_di2 < displayTracks.length) { _dt2.push(displayTracks[_di2++]); }
+      displayTracks = _dt2;
+    }
     var realIdx = 0;
     trackList.innerHTML = displayTracks.map(function(t) {
       /* missing episode placeholder */
@@ -4489,6 +4627,23 @@ def render_player_js(
         return '<li class="track-item missing-episode">' +
           '<span class="track-num"><span class="num-text">' + seLabel + '</span></span>' +
           '<div class="track-info"><div class="track-title">\u2014</div></div></li>';
+      }
+      /* moved ghost: file was moved this session — shown dimmed with target hint, not playable */
+      if (t._movedTo) {
+        var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
+        var subtitle = t.artist || t.relative_path;
+        var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
+        var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
+        return '<li class="track-item track-item--moved">' +
+          '<span class="track-num"><span class="num-text">\u2192</span></span>' +
+          '<div class="thumb-wrap track-thumb-wrap">' +
+          '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
+          ratingBar + '</div>' +
+          '<div class="track-info">' +
+            '<div class="track-title"><span class="track-title-text">' + escHtml(displayTitle) + '</span>' +
+              '<span class="moved-hint">\u2192\u00a0' + escHtml(t._movedTo) + '</span></div>' +
+            '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
+          '</div></li>';
       }
       /* debug-filtered placeholder: dimmed, not playable */
       if (t._debugReason) {
@@ -4514,8 +4669,8 @@ def render_player_js(
         : String(idx + 1);
       var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
       var subtitle = t.artist || t.relative_path;
-      var extraCls = (idx === currentIndex ? ' active' : '') + (t._hiddenItem ? ' track-item--hidden-shown' : '');
-      var hiddenBadge = t._hiddenItem ? '<span class="hidden-badge" title="Ausgeblendet durch Min-Rating">ausgeblendet</span>' : '';
+      var extraCls = (idx === currentIndex ? ' active' : '') + (t._hiddenShown ? ' track-item--hidden-shown' : '');
+      var hiddenBadge = t._hiddenShown ? '<span class="hidden-badge">' + escHtml(t._hiddenReason || 'ausgeblendet') + '</span>' : '';
       var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
       var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
       var convertBadge = needsConversion(t.relative_path) ? '<span class="convert-badge" title="Wird on-the-fly konvertiert">\\u26A1</span>' : '';
@@ -4528,7 +4683,7 @@ def render_player_js(
         '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         ratingBar + '</div>' +
         '<div class="track-info">' +
-          '<div class="track-title">' + escHtml(displayTitle) + convertBadge + dupeBadge + hiddenBadge + '</div>' +
+          '<div class="track-title"><span class="track-title-text">' + escHtml(displayTitle) + convertBadge + dupeBadge + '</span>' + hiddenBadge + '</div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
         '</div>' +
         '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
@@ -4547,7 +4702,7 @@ def render_player_js(
         renderMoveWidget(t, idx) +
         '</li>';
     }).join('');
-    document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered)').forEach(function(el) {
+    document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered):not(.track-item--hidden-shown)').forEach(function(el) {
       el.addEventListener('click', function(e) { if (!wasDrag(e)) playTrack(Number(el.dataset.index)); });
     });
     /* Wire up inline rating star clicks */
@@ -4604,7 +4759,7 @@ def render_player_js(
           loadUserPlaylists().then(function() { openPlaylistModal(btn.dataset.relativePath); });
         });
       });
-      if (inPlaylist && _currentPlaylistId && (viewMode === 'filenames' || viewMode === 'list')) initPlaylistDragDrop();
+      if (inPlaylist && _currentPlaylistId && viewMode === 'list') initPlaylistDragDrop();
     }
     updateFavoriteButtons();
     updateAllDownloadButtons();
@@ -5334,7 +5489,38 @@ def render_player_js(
   /* Load saved tool states from localStorage */
   var _toolState = JSON.parse(localStorage.getItem('ht-tools') || '{}');
 
+  function _anyToolActive() {
+    return !!_toolState.active && (!!_toolState.inlineRatings || !!_toolState.duplicates || !!_toolState.fileMover);
+  }
+
+  function _updateActivateBtn() {
+    if (!_toolsActivateAll) return;
+    var isOn = !!_toolState.active;
+    _toolsActivateAll.textContent = isOn ? 'Tool-Modus deaktivieren' : 'Tool-Modus aktivieren';
+    _toolsActivateAll.classList.toggle('tools-activate-all--active', isOn);
+    _toolsActivateAll.title = isOn ? 'Tool-Modus ausschalten' : 'Tool-Modus mit den konfigurierten Einstellungen aktivieren';
+  }
+
   function _applyToolState() {
+    _updateActivateBtn();
+    if (!_toolState.active) {
+      /* Tool mode is off: hide all tool UI without changing saved preferences */
+      document.body.classList.remove('tool-inline-ratings');
+      document.body.classList.remove('tool-hide-downloads');
+      document.body.classList.remove('tool-hide-playlists');
+      document.body.classList.remove('tool-show-duplicates');
+      document.body.classList.remove('tool-show-file-mover');
+      if (_dupeShowLink) _dupeShowLink.style.display = 'none';
+      if (toolsPill) toolsPill.classList.remove('has-active');
+      /* Re-render to remove tool widgets from track list */
+      if (folderGrid && !folderGrid.classList.contains('view-hidden')) {
+        showFolderView();
+      } else if (inPlaylist) {
+        applyViewMode();
+        renderTracks(filteredItems);
+      }
+      return;
+    }
     if (_toolState.inlineRatings) {
       document.body.classList.add('tool-inline-ratings');
       if (_toolInlineRatings) _toolInlineRatings.checked = true;
@@ -5378,8 +5564,15 @@ def render_player_js(
       if (_toolFileMover) _toolFileMover.checked = false;
     }
     /* Update pill highlight */
-    var anyActive = !!_toolState.inlineRatings || !!_toolState.duplicates || !!_toolState.fileMover;
+    var anyActive = _anyToolActive();
     if (toolsPill) toolsPill.classList.toggle('has-active', anyActive);
+    /* Re-render current view so folder names / view mode reflect new tool state */
+    if (folderGrid && !folderGrid.classList.contains('view-hidden')) {
+      showFolderView();
+    } else if (inPlaylist) {
+      applyViewMode();
+      renderTracks(filteredItems);
+    }
   }
 
   function _saveToolState() {
@@ -5453,6 +5646,18 @@ def render_player_js(
       _toolState.fileMover = _toolFileMover.checked;
       _saveToolState();
       /* Re-render to show/hide move widgets */
+      if (inPlaylist) applyFilter();
+    });
+  }
+  var _toolsActivateAll = document.getElementById('tools-activate-all');
+  if (_toolsActivateAll) {
+    _toolsActivateAll.addEventListener('click', function() {
+      _toolState.active = !_toolState.active;
+      /* When activating: if duplicates tool is configured, ensure dupe map is ready */
+      if (_toolState.active && _toolState.duplicates) _ensureDupeMap();
+      /* When deactivating: invalidate dupe map to release memory */
+      if (!_toolState.active) _invalidateDupeMap();
+      _saveToolState();
       if (inPlaylist) applyFilter();
     });
   }
@@ -5710,7 +5915,10 @@ def render_player_js(
     folderGrid.classList.add('view-hidden');
     trackView.classList.remove('view-hidden');
     filterBar.classList.remove('view-hidden');
+    filterBar.classList.add('fb-scroll-hidden');
     playerBar.classList.remove('view-hidden');
+    _hideGlobalSearch();
+    _initFilterBarScrollReveal();
     searchInput.value = '';
     currentIndex = -1;
     renderBreadcrumb();
@@ -5904,12 +6112,13 @@ def render_player_js(
       }
       _invalidateDupeMap();
       _invalidateFolderCache();
-      /* Re-render current view */
-      if (inPlaylist) {
-        var items = itemsUnder(currentPath);
-        if (items.length) { playlistItems = items; applyFilter(); }
-        else { showFolderView(); }
-      } else { showFolderView(); }
+      /* Show a ghost at the item's current position: dimmed + target hint.
+         The ghost stays visible until the user navigates away or changes filters.
+         This lets the user verify and—if needed—correct a wrong move before
+         the list refreshes. */
+      var ghostItems = filteredItems.slice();
+      ghostItems[idx] = Object.assign({}, t, { _movedTo: targetFolder });
+      renderTracks(ghostItems);
       showToast('Verschoben nach ' + targetFolder);
     })
     .catch(function(err) { showToast('Fehler: ' + (err.message || 'Verschieben fehlgeschlagen')); });
@@ -6252,6 +6461,7 @@ def render_player_js(
 
   function playTrack(index) {
     if (index < 0 || index >= filteredItems.length) return;
+    if (filteredItems[index] && filteredItems[index]._hiddenShown) return; /* ausgeblendet — nicht abspielbar */
     playItem(filteredItems[index], index);
   }
 
@@ -6336,10 +6546,19 @@ def render_player_js(
   /* Rebuild shuffle queue — called whenever filteredItems or shuffleMode changes */
   function rebuildShuffleQueue(startIndex) {
     if (!shuffleMode || !filteredItems.length) { shuffleQueue = []; shufflePos = -1; return; }
-    shuffleQueue = shuffleMode === 'weighted'
-      ? buildWeightedQueue(filteredItems)
-      : buildNormalQueue(filteredItems);
-    /* Put startIndex first so current track leads */
+    /* Only include playable (non-hidden) items in the shuffle queue */
+    var playableItems = [];
+    var playableOffset = []; /* maps playableItems index → filteredItems index */
+    filteredItems.forEach(function(t, i) {
+      if (!t._hiddenShown) { playableOffset.push(i); playableItems.push(t); }
+    });
+    if (!playableItems.length) { shuffleQueue = []; shufflePos = -1; return; }
+    var rawQueue = shuffleMode === 'weighted'
+      ? buildWeightedQueue(playableItems)
+      : buildNormalQueue(playableItems);
+    /* Map back to filteredItems indices */
+    shuffleQueue = rawQueue.map(function(qi) { return playableOffset[qi]; });
+    /* Put startIndex first so current track leads (if it's playable) */
     if (typeof startIndex === 'number' && startIndex >= 0) {
       var pos = shuffleQueue.indexOf(startIndex);
       if (pos > 0) {
@@ -6356,13 +6575,26 @@ def render_player_js(
       shufflePos = (shufflePos + 1) % shuffleQueue.length;
       /* Replenish weighted queue when exhausted */
       if (shufflePos === 0 && shuffleMode === 'weighted') {
-        shuffleQueue = buildWeightedQueue(filteredItems);
+        var playableItems2 = filteredItems.filter(function(t) { return !t._hiddenShown; });
+        var playableOffset2 = [];
+        filteredItems.forEach(function(t, i) { if (!t._hiddenShown) playableOffset2.push(i); });
+        shuffleQueue = buildWeightedQueue(playableItems2).map(function(qi) { return playableOffset2[qi]; });
       }
       return shuffleQueue[shufflePos];
     }
-    if (currentIndex < filteredItems.length - 1) return currentIndex + 1;
-    /* End of list: repeat-all wraps, otherwise return -1 (stop) */
-    return repeatMode === 'all' ? 0 : -1;
+    /* Sequential: skip hidden items */
+    var ni = currentIndex + 1;
+    while (ni < filteredItems.length && filteredItems[ni] && filteredItems[ni]._hiddenShown) ni++;
+    if (ni >= filteredItems.length) return repeatMode === 'all' ? _firstPlayableIndex() : -1;
+    return ni;
+  }
+
+  /* First playable index (non-hidden) */
+  function _firstPlayableIndex() {
+    for (var i = 0; i < filteredItems.length; i++) {
+      if (!filteredItems[i]._hiddenShown) return i;
+    }
+    return 0;
   }
 
   /* Prev index respecting shuffle state */
@@ -6371,8 +6603,18 @@ def render_player_js(
       shufflePos = (shufflePos - 1 + shuffleQueue.length) % shuffleQueue.length;
       return shuffleQueue[shufflePos];
     }
-    if (currentIndex > 0) return currentIndex - 1;
-    return repeatMode === 'all' ? filteredItems.length - 1 : 0;
+    /* Sequential: skip hidden items */
+    var pi = currentIndex - 1;
+    while (pi >= 0 && filteredItems[pi] && filteredItems[pi]._hiddenShown) pi--;
+    if (pi < 0) {
+      if (repeatMode === 'all') {
+        pi = filteredItems.length - 1;
+        while (pi >= 0 && filteredItems[pi] && filteredItems[pi]._hiddenShown) pi--;
+        return pi >= 0 ? pi : 0;
+      }
+      return 0;
+    }
+    return pi;
   }
 
   /* Toggle shuffle mode: off → normal → weighted → off */
@@ -7009,8 +7251,8 @@ def render_player_js(
   }
 
   viewToggle.addEventListener('click', function() {
+    if (_anyToolActive()) return; /* locked while tools are active */
     if (viewMode === 'list') viewMode = 'grid';
-    else if (viewMode === 'grid') viewMode = 'filenames';
     else viewMode = 'list';
     localStorage.setItem('ht-view-mode', viewMode);
     if (inPlaylist) {
@@ -7318,7 +7560,10 @@ def render_player_js(
       folderGrid.classList.add('view-hidden');
       trackView.classList.remove('view-hidden');
       filterBar.classList.remove('view-hidden');
+      filterBar.classList.add('fb-scroll-hidden');
       playerBar.classList.remove('view-hidden');
+      _hideGlobalSearch();
+      _initFilterBarScrollReveal();
       searchInput.value = '';
       renderBreadcrumb();
       applyFilter();
@@ -7345,7 +7590,10 @@ def render_player_js(
     folderGrid.classList.add('view-hidden');
     trackView.classList.remove('view-hidden');
     filterBar.classList.remove('view-hidden');
+    filterBar.classList.add('fb-scroll-hidden');
     playerBar.classList.remove('view-hidden');
+    _hideGlobalSearch();
+    _initFilterBarScrollReveal();
     searchInput.value = '';
     renderBreadcrumb();
     applyFilter();
@@ -7663,9 +7911,9 @@ def render_player_js(
       var g = document.createElement('div');
       g.className = 'playlist-drag-ghost';
       var img = item.querySelector('.track-thumb');
-      var title = item.querySelector('.track-title');
+      var titleEl = item.querySelector('.track-title-text') || item.querySelector('.track-title');
       if (img && img.src) g.innerHTML = '<img src="' + img.src + '">';
-      g.innerHTML += '<span>' + (title ? title.textContent : '') + '</span>';
+      g.innerHTML += '<span>' + (titleEl ? titleEl.textContent : '') + '</span>';
       g.style.left = (x - 20) + 'px';
       g.style.top = (y - 20) + 'px';
       document.body.appendChild(g);
@@ -8327,6 +8575,7 @@ def render_media_page(
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
     <div class="tools-panel">
       <div class="tools-panel-title">Tools &amp; Einstellungen</div>
+      <button class="tools-activate-all" id="tools-activate-all" title="Tool-Modus mit den konfigurierten Einstellungen aktivieren">Tool-Modus aktivieren</button>
       <div class="tools-item">
         <div>
           <div class="tools-item-label">Inline-Ratings</div>
@@ -8349,7 +8598,7 @@ def render_media_page(
       </div>
       <div class="tools-item">
         <div>
-          <div class="tools-item-label">Zur Playlist hinzuf\\u00fcgen</div>
+          <div class="tools-item-label">Zur Playlist hinzufügen</div>
           <div class="tools-item-desc">Playlist-Buttons pro Track anzeigen</div>
         </div>
         <label class="tools-toggle">
@@ -8378,7 +8627,7 @@ def render_media_page(
           <span class="tools-toggle-track"></span>
         </label>
       </div>
-      <button class="tools-panel-close" id="tools-panel-close">Schlie\\u00dfen</button>
+      <button class="tools-panel-close" id="tools-panel-close">Schließen</button>
     </div>
   </div>
   <div class="dupe-panel-backdrop" id="dupe-panel-backdrop" hidden>
@@ -8387,7 +8636,7 @@ def render_media_page(
       <div class="dupe-panel-subtitle" id="dupe-panel-subtitle"></div>
       <div id="dupe-panel-body"></div>
       <button class="dupe-panel-play-all" id="dupe-panel-play-all">Alle Duplikate abspielen</button>
-      <button class="dupe-panel-close" id="dupe-panel-close">Schlie\\u00dfen</button>
+      <button class="dupe-panel-close" id="dupe-panel-close">Schließen</button>
     </div>
   </div>"""
     offline_library_html = (
@@ -8637,14 +8886,14 @@ def render_media_page(
     <a class="audit-btn" href="/audit" title="Änderungsverlauf">{SVG_HISTORY}</a>
     {mode_controls_html}
     {playlist_pill_html}
-    <span class="track-count" id="track-count"></span>
     <span class="refresh-info" id="refresh-info"></span>
+    <input id="global-search-input" class="header-search view-hidden" type="search" placeholder="Bibliothek durchsuchen\u2026" autocomplete="off" />
   </header>
 
   <!-- breadcrumb navigation -->
   <nav class="breadcrumb" id="breadcrumb"></nav>
 
-  <!-- folder filter bar (visible on start screen, hidden when empty) -->
+  <!-- folder filter bar (kept for test compatibility, always hidden) -->
   <div class="folder-filter-bar" id="folder-filter-bar" hidden></div>
 
   <!-- recently played (root view only, hidden until JS populates) -->
@@ -8655,7 +8904,7 @@ def render_media_page(
 
   <!-- filter bar (visible inside a folder) -->
   <div class="filter-bar view-hidden">
-    <input id="search-input" type="search" placeholder="Search…" autocomplete="off" />
+    <input id="search-input" type="search" placeholder="Suche\u2026" autocomplete="off" />
     <select id="sort-field">
       <option value="custom">Liste &#x21C5;</option>
       <option value="title">Title &#x21C5;</option>
@@ -8667,6 +8916,7 @@ def render_media_page(
     <button class="filter-chip" id="filter-fav" title="Nur Favoriten anzeigen"></button>
     <button class="filter-chip" id="filter-genre" title="Nach Genre filtern"></button>
     <button class="filter-chip" id="filter-hidden" title="Ausgeblendete Songs anzeigen" style="display:none"></button>
+    <span class="track-count" id="track-count"></span>
   </div>
 
   <!-- track list (visible inside a folder) -->

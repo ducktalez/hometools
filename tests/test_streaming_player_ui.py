@@ -10,7 +10,7 @@ from hometools.streaming.core.server_utils import render_base_css, render_media_
 def _page(media="audio", style="classic"):
     return render_media_page(
         title="Test",
-        emoji="🎵" if media == "audio" else "🎬",
+        emoji="",
         items_json="[]",
         media_element_tag=media,
         api_path="/api/test",
@@ -86,7 +86,7 @@ def test_queue_drag_handle_html_present():
     """Queue panel HTML must contain the drag-handle element."""
     page = render_media_page(
         title="Test",
-        emoji="🎵",
+        emoji="",
         items_json="[]",
         media_element_tag="audio",
         api_path="/api/test",
@@ -566,7 +566,7 @@ def _audio_page_with_shuffle():
     """Audio page with shuffle enabled (as the audio server enables it)."""
     return render_media_page(
         title="Test",
-        emoji="🎵",
+        emoji="",
         items_json="[]",
         media_element_tag="audio",
         api_path="/api/audio/tracks",
@@ -665,7 +665,7 @@ def test_shuffle_btn_in_both_player_bar_styles():
     for style in ("classic", "waveform"):
         page = render_media_page(
             title="Test",
-            emoji="🎵",
+            emoji="",
             items_json="[]",
             media_element_tag="audio",
             api_path="/api/audio/tracks",
@@ -709,7 +709,7 @@ def test_repeat_btn_present_when_enabled():
     """Repeat button must appear in the HTML when enable_repeat=True."""
     page = render_media_page(
         title="Test",
-        emoji="🎵",
+        emoji="",
         items_json="[]",
         media_element_tag="audio",
         api_path="/api/test",
@@ -765,7 +765,7 @@ def test_repeat_btn_in_both_player_bar_styles():
     for style in ("classic", "waveform"):
         page = render_media_page(
             title="Test",
-            emoji="🎵",
+            emoji="",
             items_json="[]",
             media_element_tag="audio",
             api_path="/api/audio/tracks",
@@ -815,8 +815,8 @@ def test_repeat_nextindex_returns_minus_one_when_off():
     """nextIndex must contain logic to return -1 (stop) when repeat is off at end of list."""
     js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
     assert "repeat" in js.lower()
-    # When repeat is 'all' → wrap to 0; when off → return -1
-    assert "return repeatMode === 'all' ? 0 : -1" in js
+    # When repeat is 'all' → wrap to first playable; when off → return -1
+    assert "return repeatMode === 'all' ? _firstPlayableIndex() : -1" in js
 
 
 def test_play_next_item_handles_repeat_one():
@@ -861,7 +861,7 @@ def test_queue_panel_outside_player_bar():
     for style in ("classic", "waveform"):
         page = render_media_page(
             title="Test",
-            emoji="🎵",
+            emoji="",
             items_json="[]",
             media_element_tag="audio",
             api_path="/api/test",
@@ -882,7 +882,7 @@ def test_queue_panel_outside_player_bar():
 def _audio_page_with_rating():
     return render_media_page(
         title="Test",
-        emoji="🎵",
+        emoji="",
         items_json="[]",
         media_element_tag="audio",
         api_path="/api/audio/tracks",
@@ -1068,7 +1068,7 @@ def test_rating_in_both_player_bar_styles():
     for style in ("classic", "waveform"):
         page = render_media_page(
             title="Test",
-            emoji="🎵",
+            emoji="",
             items_json="[]",
             media_element_tag="audio",
             api_path="/api/audio/tracks",
@@ -1321,13 +1321,20 @@ def test_min_rating_threshold_custom_injected():
 
 
 def test_min_rating_filter_logic_in_apply_filter():
-    """applyFilter must contain the MIN_RATING_THRESHOLD filter logic."""
+    """applyFilter must use _effectiveThreshold (derived from MIN_RATING_THRESHOLD) to filter tracks.
+
+    Semantics (2026-05): filter is opt-in via showHidden toggle, uses <= comparison (inclusive).
+    Tracks with rating > threshold are always kept.  Unrated (0) are always kept.
+    Example: threshold=1 → hide only 1★, keep 2★ 3★ 4★ 5★ and unrated.
+             threshold=3 → hide 1★ 2★ 3★, keep 4★ 5★ and unrated.
+    """
     from hometools.streaming.core.server_utils import render_player_js
 
     js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
     # Must contain the filter that hides rated-but-low tracks while keeping unrated
     assert "MIN_RATING_THRESHOLD" in js
-    assert "r === 0 || r >= MIN_RATING_THRESHOLD" in js
+    # Semantics: inclusive <= comparison, so threshold-star songs ARE hidden
+    assert "r === 0 || r > _effectiveThreshold" in js
 
 
 # ---------------------------------------------------------------------------
@@ -1408,11 +1415,14 @@ def test_global_search_function_exists():
 
 
 def test_global_search_respects_min_rating():
-    """globalSearch must respect MIN_RATING_THRESHOLD."""
+    """globalSearch must respect the effective hidden threshold (_effectiveThreshold).
+
+    Only filters when !showHidden (opt-in), using <= comparison.
+    """
     js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
     assert "MIN_RATING_THRESHOLD" in js
-    # The globalSearch function filters by min rating
-    assert "r < MIN_RATING_THRESHOLD" in js
+    # The globalSearch function filters via _effectiveThreshold with <= semantics
+    assert "r <= _effectiveThreshold" in js
 
 
 def test_folder_filter_bar_in_html():
