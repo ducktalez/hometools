@@ -1064,6 +1064,15 @@ body.modal-open { overflow: hidden; }
 .debug-reason {
   font-size: 0.7rem; color: #e57373; font-style: italic; margin-top: 2px;
 }
+/* hidden-shown: normally filtered by MIN_RATING, visible via toggle */
+.track-item--hidden-shown { opacity: 0.5; }
+.track-item--hidden-shown:hover { opacity: 0.75; }
+.hidden-badge {
+  display: inline-flex; align-items: center; font-size: 0.6rem;
+  color: #fff; background: rgba(120,120,120,0.55);
+  padding: 1px 5px; border-radius: 8px; margin-left: 6px;
+  vertical-align: middle; font-weight: 500; letter-spacing: 0.02em; white-space: nowrap;
+}
 /* refresh-info label in the header */
 .refresh-info {
   font-size: 0.68rem; color: var(--sub); margin-left: 0.5rem; white-space: nowrap;
@@ -2074,6 +2083,8 @@ def render_player_js(
   var IC_REPEAT_ONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17,1 21,5 17,9"/><path d="M3,11V9a4,4,0,0,1,4-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21,13v2a4,4,0,0,1-4,4H3"/><text x="12" y="15.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="7" font-weight="bold">1</text></svg>';
   var IC_STAR_FILLED = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>';
   var IC_STAR_EMPTY  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>';
+  var IC_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var IC_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
   var SHUFFLE_ENABLED = """
         + ("true" if enable_shuffle else "false")
         + """;
@@ -2240,10 +2251,12 @@ def render_player_js(
   var filterRatingBtn = document.getElementById('filter-rating');
   var filterFavBtn    = document.getElementById('filter-fav');
   var filterGenreBtn  = document.getElementById('filter-genre');
+  var filterHiddenBtn = document.getElementById('filter-hidden');
   /* Persisted quick-filter state */
   var filterRating = parseInt(localStorage.getItem('ht-filter-rating') || '0', 10) || 0;
   var filterFav    = localStorage.getItem('ht-filter-fav') === '1';
   var filterGenre  = localStorage.getItem('ht-filter-genre') || '';
+  var showHidden   = localStorage.getItem('ht-show-hidden') === '1';
   var folderGrid   = document.getElementById('folder-grid');
   var folderFilterBar = document.getElementById('folder-filter-bar');
   var trackView    = document.getElementById('track-view');
@@ -4264,9 +4277,21 @@ def render_player_js(
           filterGenreBtn.title = 'Genre: ' + filterGenre + ' — klicken zum Weiterschalten';
         } else {
           filterGenreBtn.textContent = 'Genre';
-          filterGenreBtn.classList.remove('active');
-          filterGenreBtn.title = 'Nach Genre filtern';
+        filterGenreBtn.classList.remove('active');
+        filterGenreBtn.title = 'Nach Genre filtern';
         }
+      }
+    }
+    if (filterHiddenBtn) {
+      if (MIN_RATING_THRESHOLD > 0) {
+        filterHiddenBtn.style.display = '';
+        filterHiddenBtn.innerHTML = IC_EYE + ' Ausgeblendet';
+        filterHiddenBtn.classList.toggle('active', showHidden);
+        filterHiddenBtn.title = showHidden
+          ? 'Ausgeblendete Songs sichtbar — klicken zum Ausblenden'
+          : 'Ausgeblendete Songs anzeigen';
+      } else {
+        filterHiddenBtn.style.display = 'none';
       }
     }
   }
@@ -4315,10 +4340,24 @@ def render_player_js(
       /* Global min-rating threshold: hide tracks that have been rated at or below the threshold.
          Unrated tracks (rating 0) are always shown. */
       if (MIN_RATING_THRESHOLD > 0) {
-        items = items.filter(function(t) {
-          var r = t.rating || 0;
-          return r === 0 || r >= MIN_RATING_THRESHOLD;
-        });
+        if (showHidden) {
+          /* Annotate normally-hidden items instead of removing them */
+          items = items.map(function(t) {
+            var r = t.rating || 0;
+            if (r > 0 && r < MIN_RATING_THRESHOLD) {
+              var clone = {};
+              for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
+              clone._hiddenItem = true;
+              return clone;
+            }
+            return t;
+          });
+        } else {
+          items = items.filter(function(t) {
+            var r = t.rating || 0;
+            return r === 0 || r >= MIN_RATING_THRESHOLD;
+          });
+        }
       }
       if (needle) {
         items = items.filter(function(t) {
@@ -4428,12 +4467,14 @@ def render_player_js(
     /* Separate real items from debug-dimmed items for filteredItems / shuffle */
     var realTracks = DEBUG_FILTER ? tracks.filter(function(t) { return !t._debugReason; }) : tracks;
     var debugCount = tracks.length - realTracks.length;
+    var hiddenShownCount = realTracks.filter(function(t) { return !!t._hiddenItem; }).length;
     filteredItems = realTracks;
     /* Rebuild shuffle queue whenever the filtered set changes */
     if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
     var noun = realTracks.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
     trackCount.textContent = realTracks.length + ' ' + noun +
-      (debugCount > 0 ? ' (+ ' + debugCount + ' ausgeblendet)' : '');
+      (debugCount > 0 ? ' (+ ' + debugCount + ' ausgeblendet)' : '') +
+      (hiddenShownCount > 0 ? ' (' + hiddenShownCount + ' ausgebl. sichtbar)' : '');
     if (!tracks.length) {
       trackList.innerHTML = '<li class="empty-hint">No matching items.</li>';
       return;
@@ -4473,8 +4514,9 @@ def render_player_js(
         : String(idx + 1);
       var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
       var subtitle = t.artist || t.relative_path;
+      var extraCls = (idx === currentIndex ? ' active' : '') + (t._hiddenItem ? ' track-item--hidden-shown' : '');
+      var hiddenBadge = t._hiddenItem ? '<span class="hidden-badge" title="Ausgeblendet durch Min-Rating">ausgeblendet</span>' : '';
       var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
-      var extraCls = idx === currentIndex ? ' active' : '';
       var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
       var convertBadge = needsConversion(t.relative_path) ? '<span class="convert-badge" title="Wird on-the-fly konvertiert">\\u26A1</span>' : '';
       var isDupe = _dupePaths && _dupePaths.has(t.relative_path);
@@ -4486,7 +4528,7 @@ def render_player_js(
         '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         ratingBar + '</div>' +
         '<div class="track-info">' +
-          '<div class="track-title">' + escHtml(displayTitle) + convertBadge + dupeBadge + '</div>' +
+          '<div class="track-title">' + escHtml(displayTitle) + convertBadge + dupeBadge + hiddenBadge + '</div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
         '</div>' +
         '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
@@ -7013,6 +7055,14 @@ def render_player_js(
       applyFilter();
     });
   }
+  if (filterHiddenBtn) {
+    filterHiddenBtn.addEventListener('click', function() {
+      showHidden = !showHidden;
+      localStorage.setItem('ht-show-hidden', showHidden ? '1' : '0');
+      updateFilterChips();
+      applyFilter();
+    });
+  }
   updateFilterChips();
 
   /* ── init ── */
@@ -8616,6 +8666,7 @@ def render_media_page(
     <button class="filter-chip" id="filter-rating" title="Nach Bewertung filtern"></button>
     <button class="filter-chip" id="filter-fav" title="Nur Favoriten anzeigen"></button>
     <button class="filter-chip" id="filter-genre" title="Nach Genre filtern"></button>
+    <button class="filter-chip" id="filter-hidden" title="Ausgeblendete Songs anzeigen" style="display:none"></button>
   </div>
 
   <!-- track list (visible inside a folder) -->
