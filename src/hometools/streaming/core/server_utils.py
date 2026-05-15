@@ -1026,7 +1026,14 @@ body.modal-open { overflow: hidden; }
 }
 .header-search:focus { border-color: var(--accent); }
 .header-search::placeholder { color: var(--sub); }
-.track-count { font-size: 0.78rem; color: var(--sub); margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+/* search-wrap: stretchy input with embedded count label on the right */
+.search-wrap { position: relative; flex: 1 1 0; min-width: 0; }
+.search-wrap #search-input { width: 100%; box-sizing: border-box; padding-right: 4.5rem; }
+.track-count {
+  position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
+  font-size: 0.75rem; color: var(--sub); white-space: nowrap; pointer-events: none;
+  max-width: 4rem; overflow: hidden; text-overflow: ellipsis;
+}
 .filter-bar input, .filter-bar select {
   background: var(--surface2); color: var(--text);
   border: 1px solid #444; border-radius: 20px;
@@ -8904,7 +8911,10 @@ def render_media_page(
 
   <!-- filter bar (visible inside a folder) -->
   <div class="filter-bar view-hidden">
-    <input id="search-input" type="search" placeholder="Suche\u2026" autocomplete="off" />
+    <div class="search-wrap">
+      <input id="search-input" type="search" placeholder="Suche\u2026" autocomplete="off" />
+      <span class="track-count" id="track-count"></span>
+    </div>
     <select id="sort-field">
       <option value="custom">Liste &#x21C5;</option>
       <option value="title">Title &#x21C5;</option>
@@ -8916,7 +8926,6 @@ def render_media_page(
     <button class="filter-chip" id="filter-fav" title="Nur Favoriten anzeigen"></button>
     <button class="filter-chip" id="filter-genre" title="Nach Genre filtern"></button>
     <button class="filter-chip" id="filter-hidden" title="Ausgeblendete Songs anzeigen" style="display:none"></button>
-    <span class="track-count" id="track-count"></span>
   </div>
 
   <!-- track list (visible inside a folder) -->
