@@ -95,6 +95,7 @@ def create_app(
     *,
     safe_mode: bool | None = None,
     cache_dir: Path | None = None,
+    audit_dir: Path | None = None,
 ) -> Any:
     """Create the FastAPI application for local video streaming."""
     from fastapi import FastAPI, HTTPException
@@ -102,7 +103,7 @@ def create_app(
 
     resolved_library_dir = (library_dir or get_video_library_dir()).expanduser()
     resolved_cache_dir = cache_dir or get_cache_dir()
-    resolved_audit_dir = get_audit_dir()
+    resolved_audit_dir = audit_dir or get_audit_dir()
     resolved_safe_mode = get_stream_safe_mode() if safe_mode is None else safe_mode
 
     # Language group mapping for multi-language linking.

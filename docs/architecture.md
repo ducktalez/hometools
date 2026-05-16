@@ -668,6 +668,31 @@ Nach erfolgreichem Rating-Write gibt der Endpoint `entry_id` zurück. Das JS zei
 - Beide Server lesen **denselben** JSONL (shared `audit_dir`) — Audio-Ratings sind im Video-Control-Panel sichtbar.
 - **⚠️ Escaping-Pitfall:** In Python-Triple-Quoted-Strings (`"""..."""`) werden `\'`-Escape-Sequenzen zu `'` verarbeitet. Niemals `onclick="..."` mit `\'`-Escaping in Python-Strings erzeugen — führt zu kaputtem JS (`''` statt `\'`) und einem Komplettausfall des `<script>`-Tags. Stattdessen **immer `createElement` + `addEventListener`** für DOM-Interaktionen aus Python-generierten Strings verwenden.
 
+### Service-Worker-Routing (Bugfix 2026-05-16)
+
+**Problem:** Die SW-Fetch-Handler-Reihenfolge war falsch:
+```
+streaming-check (includes('/audio/'))  ← kam zuerst, fing /api/audio/audit ab
+api-check (startsWith('/api/'))         ← wurde nie erreicht für audio/video-API-Pfade
+```
+Der Streaming-Handler hat keinen `503`-Fallback — Netzfehler des Servers propagierten direkt, lösten `.catch` im Audit-JS aus → Toast "Fehler beim Laden der Einträge".
+
+**Fix:** API-Check (`startsWith('/api/')`) kommt jetzt **vor** dem Streaming-Check. Zusätzlich verwendet der Streaming-Check jetzt `startsWith('/audio/')` statt `includes('/audio/')` (präziser). SW-Cache-Version auf `hometools-v8` erhöht.
+
+**Fehlerbehandlungsverbesserung:** Audit-JS-`loadEntries` gibt jetzt auch bei non-OK HTTP-Antworten (z.B. `503`) den HTTP-Statuscode im Toast aus und zeigt einen "Erneut versuchen"-Button in der Tabelle.
+
+### Exception-Safety in `audit_log.py` (Bugfix 2026-05-16)
+
+**Problem:** `_audit_path(audit_dir)` wurde in `load_entries()`, `get_entry()` und `append_entry()` **außerhalb** des `try/except` aufgerufen. `_audit_path` versucht `audit_dir.mkdir(parents=True, exist_ok=True)` — schlägt das fehl (z.B. Berechtigungsfehler, Read-only-FS), propagiert der `OSError` durch den FastAPI-Endpoint und erzeugt eine `500`-Antwort. Im Browser: "Fehler beim Laden der Einträge".
+
+**Fix:** In allen drei Funktionen wird `_audit_path` jetzt in einem eigenen `try/except`-Block aufgerufen. Bei Fehler: `load_entries` → `[]`, `get_entry` → `None`, `append_entry` → silent return (mit Logging). Alle drei Funktionen sind nun ausnahmslos exception-safe.
+
+### `audit_dir`-Parameter in `create_app()` (Refactor 2026-05-16)
+
+**Motivation:** Tests, die `create_app()` ohne `audit_dir` aufrufen, verwendeten die **echte** `.hometools-audit/` des Repos. Wiederholte Testläufe und Debug-Sessions erzeugten dadurch hunderte Test-Einträge im echten Audit-Log.
+
+**Änderung:** `create_app(audit_dir=None)` in `audio/server.py` und `video/server.py` — wenn `None`, fällt `get_audit_dir()` zurück (Standardverhalten unverändert). Tests übergeben `audit_dir=tmp_path / "audit"` direkt, ohne Monkeypatching. Neuer Test: `test_audio_audit_endpoint_inaccessible_dir_returns_empty` verifiziert die exception-safe Behavior.
+
 ## Songwertung Schreiben (POPM-Write, Audio-only)
 
 **Module:** `streaming/audio/server.py` (Endpoint), `audio/metadata.py` (`set_rating_stars`), `streaming/core/server_utils.py` (UI + JS)

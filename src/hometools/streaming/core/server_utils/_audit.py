@@ -137,9 +137,17 @@ function loadEntries() {
   if (path) url += '&path_filter=' + encodeURIComponent(path);
   if (action) url += '&action_filter=' + encodeURIComponent(action);
   fetch(url)
-    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(r) {
+      if (!r.ok) return Promise.reject(new Error('HTTP ' + r.status));
+      return r.json();
+    })
     .then(function(d) { if (d) renderTable(d.items || []); })
-    .catch(function() { showToast('Fehler beim Laden der Einträge'); });
+    .catch(function(err) {
+      var msg = err && err.message ? err.message : '';
+      showToast('Fehler beim Laden der Einträge' + (msg ? ' (' + msg + ')' : ''));
+      var tbody = document.querySelector('#log-table tbody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty">Einträge konnten nicht geladen werden. <button class="undo-btn" onclick="loadEntries()" style="margin-left:.5rem">Erneut versuchen</button></td></tr>';
+    });
 }
 
 function doUndo(btn) {

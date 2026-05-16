@@ -330,12 +330,12 @@ def test_log_rating_write_undo_payload_contains_old_values(tmp_cache):
 # ---------------------------------------------------------------------------
 
 
-def test_audio_audit_endpoint_exists():
+def test_audio_audit_endpoint_exists(tmp_path):
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.get("/api/audio/audit")
     assert resp.status_code == 200
     data = resp.json()
@@ -344,48 +344,121 @@ def test_audio_audit_endpoint_exists():
     assert isinstance(data["items"], list)
 
 
-def test_audio_audit_undo_endpoint_missing_id():
+def test_audio_audit_endpoint_inaccessible_dir_returns_empty(tmp_path):
+    """If the audit dir cannot be created (simulated by read-only parent), the
+    endpoint must still return 200 with empty items — not 500."""
+    import stat
+
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
 
-    client = TestClient(create_app())
+    # Point to a sub-path that can never be created: audit_dir inside a
+    # non-existent parent that we'll make read-only AFTER creating it.
+    readonly_parent = tmp_path / "ro"
+    readonly_parent.mkdir()
+    readonly_parent.chmod(stat.S_IRUSR | stat.S_IXUSR)  # remove write bit
+    bad_audit_dir = readonly_parent / "sub" / "audit"
+
+    try:
+        client = TestClient(create_app(audit_dir=bad_audit_dir))
+        resp = client.get("/api/audio/audit")
+        assert resp.status_code == 200, f"Expected 200 not 500: {resp.text}"
+        assert resp.json()["items"] == []
+    finally:
+        # Restore so tmp_path cleanup can remove the directory
+        readonly_parent.chmod(stat.S_IRWXU)
+
+
+def test_audio_audit_undo_endpoint_missing_id(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.post("/api/audio/audit/undo", json={})
     assert resp.status_code == 400
 
 
-def test_audio_audit_undo_endpoint_not_found():
+def test_audio_audit_undo_endpoint_not_found(tmp_path):
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.post("/api/audio/audit/undo", json={"entry_id": "no-such-id"})
     assert resp.status_code == 404
 
 
-def test_audio_audit_panel_route():
+def test_audio_audit_panel_route(tmp_path):
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.get("/audit")
     assert resp.status_code == 200
     assert "Audit-Log" in resp.text
     assert "hometools audio" in resp.text
 
 
-def test_audio_rating_returns_entry_id():
+def test_audio_rating_returns_entry_id(tmp_path):
     """POST /api/audio/rating for non-existent file returns 404 (not 500/200)."""
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.post("/api/audio/rating", json={"path": "ghost.mp3", "rating": 4.0})
     # File not found → 404 (entry_id would be in 200 response for existing file)
     assert resp.status_code == 404
+
+
+def test_audio_rating_write_creates_audit_entry(tmp_path):
+    """End-to-end: POST /api/audio/rating must create an audit entry visible in GET /api/audio/audit."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
+
+    # Isolated library and audit directories
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    audio_file = lib / "Artist - Song.mp3"
+    audio_file.write_bytes(b"\x00" * 128)  # stub file — just needs to exist on disk
+
+    audit_dir = tmp_path / "audit"
+
+    # Mock the actual file-write functions so we don't need a valid audio container.
+    # The endpoint logic under test is: file exists → call log_rating_write → entry visible in API.
+    with (
+        patch("hometools.audio.metadata.get_rating_stars", return_value=0.0),
+        patch("hometools.audio.metadata.set_rating_stars", return_value=True),
+        patch("hometools.audio.metadata.stars_to_popm_raw", return_value=0),
+    ):
+        client = TestClient(create_app(library_dir=lib, audit_dir=audit_dir))
+
+        # Write rating
+        resp = client.post("/api/audio/rating", json={"path": "Artist - Song.mp3", "rating": 4.0})
+        assert resp.status_code == 200, resp.text
+        rating_data = resp.json()
+        assert rating_data["ok"] is True
+        assert rating_data["entry_id"], "entry_id must be non-empty on successful write"
+
+        # Verify entry is visible in audit log API
+        resp2 = client.get("/api/audio/audit")
+        assert resp2.status_code == 200
+        items = resp2.json()["items"]
+        assert len(items) >= 1, "Audit log must contain at least one entry after rating write"
+
+        entry = items[0]  # newest-first ordering
+        assert entry["action"] == "rating_write"
+        assert entry["path"] == "Artist - Song.mp3"
+        assert entry["new_value"] == 4.0
+        assert entry["entry_id"] == rating_data["entry_id"]
+        assert entry["server"] == "audio"
+        assert entry["field"] == "rating"
 
 
 # ---------------------------------------------------------------------------
@@ -393,35 +466,35 @@ def test_audio_rating_returns_entry_id():
 # ---------------------------------------------------------------------------
 
 
-def test_video_audit_endpoint_exists():
+def test_video_audit_endpoint_exists(tmp_path):
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.get("/api/video/audit")
     assert resp.status_code == 200
     data = resp.json()
     assert "items" in data
 
 
-def test_video_audit_undo_returns_422():
+def test_video_audit_undo_returns_422(tmp_path):
     """Video server has no write ops, so undo must return 422."""
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.post("/api/video/audit/undo", json={"entry_id": "any"})
     assert resp.status_code == 422
 
 
-def test_video_audit_panel_route():
+def test_video_audit_panel_route(tmp_path):
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(audit_dir=tmp_path / "audit"))
     resp = client.get("/audit")
     assert resp.status_code == 200
     assert "Audit-Log" in resp.text

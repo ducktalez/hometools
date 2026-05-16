@@ -143,7 +143,11 @@ def append_entry(audit_dir: Path, entry: AuditEntry) -> None:
     Never raises — failures are logged but silently swallowed so they don't
     interrupt the caller's primary operation.
     """
-    audit_path = _audit_path(audit_dir)
+    try:
+        audit_path = _audit_path(audit_dir)
+    except Exception:
+        logger.exception("audit_log: failed to resolve audit path for entry %s", entry.path)
+        return
     line = json.dumps(asdict(entry), ensure_ascii=False)
     with _LOCK:
         try:
@@ -178,8 +182,14 @@ def load_entries(
         Exact match on ``action`` (e.g. ``"rating_write"``).
     include_undone:
         When *False*, entries that have already been undone are excluded.
+
+    Never raises — returns ``[]`` on any error (permission, I/O, parse).
     """
-    audit_path = _audit_path(audit_dir)
+    try:
+        audit_path = _audit_path(audit_dir)
+    except Exception:
+        logger.exception("audit_log: failed to resolve audit path for %s", audit_dir)
+        return []
     if not audit_path.exists():
         return []
     try:
@@ -211,8 +221,15 @@ def load_entries(
 
 
 def get_entry(audit_dir: Path, entry_id: str) -> dict | None:
-    """Return a single entry by its UUID, or *None* if not found."""
-    audit_path = _audit_path(audit_dir)
+    """Return a single entry by its UUID, or *None* if not found.
+
+    Never raises — returns ``None`` on any error (permission, I/O, parse).
+    """
+    try:
+        audit_path = _audit_path(audit_dir)
+    except Exception:
+        logger.exception("audit_log: failed to resolve audit path for %s", audit_dir)
+        return None
     if not audit_path.exists():
         return None
     try:
