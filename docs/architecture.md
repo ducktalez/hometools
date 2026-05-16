@@ -1516,7 +1516,9 @@ Rein client-seitige Erkennung von Duplikaten über die bereits geladene `allItem
 **UI-Elemente:**
 - **`.dupe-badge`** — kleines orangenes Pill-Badge neben dem Track-Titel; via CSS `body.tool-show-duplicates .dupe-badge { display:inline-flex }` gesteuert. Enthält den Text „Duplikat" und bei Duplikaten den Trash-Button (`.track-delete-btn`).
 - **Dupe-Show-Link** — Link unter dem Toggle im Tools-Panel (`"N Duplikat-Gruppen gefunden — anzeigen"`), öffnet das Duplikat-Panel.
-- **Duplikat-Panel** — Modal-Dialog (`.dupe-panel-backdrop` + `.dupe-panel`) mit Gruppenübersicht: pro Gruppe Header (Titel + Anzahl), pro Item Thumbnail, Titel, Ordner-Pfad. Click navigiert zum Ordner und spielt den Track ab.
+- **Duplikat-Panel** — Modal-Dialog (`.dupe-panel-backdrop` + `.dupe-panel`) mit Gruppenübersicht: pro Gruppe Header (Titel + Anzahl), pro Item Thumbnail, Titel, Ordner-Pfad, **Metadaten-Zeile** (Länge · kbps · Dateigröße · Datum). Click navigiert zum Ordner und spielt den Track ab.
+- **Metadaten im Dupe-Panel** — Jedes Duplikat-Item zeigt eine `.dupe-group-item-meta`-Zeile mit formatierter Wiedergabelänge (`_fmtDuration`), Bitrate in kbps, Dateigröße (`_fmtFileSize`) und Änderungsdatum (`_fmtDate`). Alle Werte werden aus den neuen `MediaItem`-Feldern `duration`, `bitrate`, `file_size`, `mtime` gelesen. Fehlende Werte (0) werden ausgeblendet.
+- **`MediaItem` neue Felder** — `file_size: int = 0` (Bytes), `duration: float = 0.0` (Sekunden), `bitrate: int = 0` (kbps). Werden in Audio- und Video-Catalog befüllt (Audio: mutagen `info.length`/`info.bitrate` via `get_audio_file_info()`; Video: `_read_media_info_fast()` incl. Metadata-Cache). Vorbereitung für konfigurierbare Anzeige in der normalen Ansicht (spätere Erweiterung).
 - **"Alle Duplikate abspielen"** — `.dupe-panel-play-all` Button im Panel. `playDuplicates()` sammelt alle Items aus `_dupeMap`-Gruppen, schließt das Panel und zeigt sie als virtuelle Playlist (`_currentPlaylistId = '__duplicates__'`). Header zeigt "Duplikate (N Gruppen)". Items sind nach Dupe-Gruppen geordnet, sodass zusammengehörige Duplikate nacheinander gespielt werden.
 - **Trash-Button (Panel)** — Pro Duplikat-Item ein `.dupe-trash-btn` (Mülleimer-Icon `IC_TRASH`/`SVG_TRASH`), nur im Duplikat-Panel sichtbar. Click öffnet `confirm()`-Dialog, bei Bestätigung wird die Datei per Soft-Delete in den Papierkorb verschoben.
 - **Inline-Delete-Button** — `.track-delete-btn` (kleines Mülleimer-Icon `IC_TRASH`) sitzt direkt innerhalb der `.dupe-badge`-Pill in `renderTracks()`. Da die Badge nur bei `body.tool-show-duplicates` sichtbar ist, braucht der Button keine eigene Visibility-Regel. Click löst `_deleteTrackFromList(filteredIdx)` aus.
@@ -1703,3 +1705,6 @@ funktionieren **unverändert** — kein Aufruferkode wurde angepasst.
 - Architecture-Doku-Verweise auf `server_utils.py` bleiben gültig (das Paket
   trägt denselben Namen wie die alte Datei) und werden nicht massenhaft
   umgeschrieben.
+
+
+

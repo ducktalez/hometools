@@ -228,6 +228,7 @@ body.tool-show-duplicates .dupe-badge { display: inline-flex; }
 .dupe-group-item-info { flex: 1; min-width: 0; }
 .dupe-group-item-title { font-size: 0.82rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dupe-group-item-path { font-size: 0.65rem; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dupe-group-item-meta { font-size: 0.6rem; color: #666; margin-top: 2px; letter-spacing: 0.01em; }
 .dupe-trash-btn {
   background: none; border: none; color: var(--sub); cursor: pointer; padding: 0.3rem;
   flex-shrink: 0; border-radius: 4px; transition: color 0.12s, background 0.12s;

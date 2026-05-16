@@ -1,5 +1,7 @@
 """Tests for the configurable player bar (classic and waveform modes)."""
 
+import re as _re
+
 from hometools.streaming.core.server_utils import render_base_css, render_media_page, render_player_js
 
 # ---------------------------------------------------------------------------
@@ -1653,3 +1655,192 @@ def test_video_server_passes_default_language():
     client = TestClient(create_app())
     html = client.get("/").text
     assert "DEFAULT_LANG" in html
+
+
+# ---------------------------------------------------------------------------
+# Duplicate detection: _dupeKey / _normalizeStem
+# ---------------------------------------------------------------------------
+
+
+def _normalize_stem(s: str) -> str:
+    """Python port of the JS _normalizeStem function for unit-testing."""
+    if not s:
+        return ""
+    s = s.replace("&amp;", "&")
+    s = _re.sub(r"\(\d{1,3}kbit_[A-Za-z]+\)", "", s, flags=_re.IGNORECASE)
+    # All (Official ...) blocks
+    s = _re.sub(r"\(Official[^)]*\)", "", s, flags=_re.IGNORECASE)
+    # Common platform/promo tags
+    s = _re.sub(
+        r"\((?:Audio|Video|Music\s+Video|Lyric\s+Video|Lyrics|Lyric|Visualizer|Topic|HD|HQ)\)",
+        "",
+        s,
+        flags=_re.IGNORECASE,
+    )
+    s = _re.sub(r"\(\w*\.[a-zA-Z]{2,5}\)", "", s, flags=_re.IGNORECASE)
+    s = _re.sub(r"\w*\.(?:com|net|org|co\.uk|de|vu|ru|pl)", "", s, flags=_re.IGNORECASE)
+    # Normalize feat/prod/vs shortcuts (simplified — no lookbehind needed for test)
+    s = _re.sub(r"(?<!\w)(?:featuring|feat\.|feat)(?!\w)", "feat. ", s, flags=_re.IGNORECASE)
+    s = _re.sub(r"\(\s*\)|\[\s*\]", "", s)
+    s = _re.sub(r" {2,}", " ", s)
+    return s.strip().lower()
+
+
+def _dupe_key(title: str, artist: str = "") -> str:
+    """Python port of the JS _dupeKey function for unit-testing."""
+    raw = title or ""
+    cleaned = _normalize_stem(raw)
+    # Strip download-duplicate suffixes
+    cleaned = _re.sub(r"[\s_-]*\(?(?:copy|kopie)\)?\s*$", "", cleaned, flags=_re.IGNORECASE)
+    cleaned = _re.sub(r"[\s_-]+\d{1,2}\s*$", "", cleaned)
+    cleaned = _re.sub(r"\s*\(\d{1,2}\)\s*$", "", cleaned)
+    cleaned = _re.sub(r"\s*\[\d{1,2}\]\s*$", "", cleaned)
+    # Split on common separators
+    parts = _re.split(r"feat\.|prod\.|vs\.|\(|\[| - |, | & |\)|\]", cleaned, flags=_re.IGNORECASE)
+    # Strip ONLY purely promotional/label markers (NOT version differentiators)
+    parts = [_re.sub(r"\bofficial\b|\bexplicit\b|\bclean\b", "", p, flags=_re.IGNORECASE) for p in parts]
+    # Strip non-word chars
+    parts = [_re.sub(r"[^a-z0-9]", "", p, flags=_re.IGNORECASE) for p in parts]
+    # Filter short remnants
+    parts = [p for p in parts if len(p) > 2]
+    # Deduplicate + sort for stable key
+    seen: set[str] = set()
+    unique = []
+    for p in parts:
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    unique.sort()
+    title_key = "|".join(unique)
+    artist_raw = _re.sub(r"[^a-z0-9]", "", artist.lower(), flags=_re.IGNORECASE)
+    if len(artist_raw) > 2:
+        title_key = artist_raw + "::" + title_key
+    return title_key
+
+
+class TestDupeKeyVersionsAreDifferent:
+    """Version/mix descriptors must produce different keys → no false-positive duplicates."""
+
+    BASE_ARTIST = "$ONO$ CLIQ, Drunken Masters, Jonko2x, Radrik Gee"
+
+    def test_original_vs_remix_not_duplicate(self):
+        key1 = _dupe_key("Bauchnabelpiercing", self.BASE_ARTIST)
+        key2 = _dupe_key("Bauchnabelpiercing - Remix", self.BASE_ARTIST)
+        assert key1 != key2, f"Remix must not equal original: {key1!r} == {key2!r}"
+
+    def test_title_with_remix_suffix_has_remix_in_key(self):
+        key = _dupe_key("Song - Remix")
+        assert "remix" in key, f"'remix' expected in key, got: {key!r}"
+
+    def test_extended_mix_not_duplicate_of_original(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Extended Mix)")
+        assert key1 != key2
+
+    def test_live_version_not_duplicate_of_original(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Live)")
+        assert key1 != key2
+
+    def test_acoustic_version_not_duplicate_of_original(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Acoustic)")
+        assert key1 != key2
+
+    def test_instrumental_not_duplicate_of_original(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Instrumental)")
+        assert key1 != key2
+
+    def test_radio_edit_not_duplicate_of_original(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Radio Edit)")
+        assert key1 != key2
+
+    def test_remaster_not_duplicate_of_original(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (2020 Remaster)")
+        assert key1 != key2
+
+    def test_different_remix_versions_not_duplicate(self):
+        key1 = _dupe_key("Song Title - Remix")
+        key2 = _dupe_key("Song Title - Extended Remix")
+        assert key1 != key2
+
+
+class TestDupeKeyTrueDuplicatesDetected:
+    """Genuine download duplicates must share the same key."""
+
+    def test_copy_suffix_is_duplicate(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title - Copy")
+        assert key1 == key2, f"'- Copy' suffix must collapse to same key: {key1!r} vs {key2!r}"
+
+    def test_numbered_suffix_is_duplicate(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title_2")
+        assert key1 == key2
+
+    def test_parenthesised_number_is_duplicate(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (2)")
+        assert key1 == key2
+
+    def test_official_video_suffix_is_duplicate(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Official Video)")
+        assert key1 == key2, f"(Official Video) must not change key: {key1!r} vs {key2!r}"
+
+    def test_official_audio_suffix_is_duplicate(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Official Audio)")
+        assert key1 == key2, f"(Official Audio) must not change key: {key1!r} vs {key2!r}"
+
+    def test_official_music_video_suffix_is_duplicate(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (Official Music Video)")
+        assert key1 == key2
+
+    def test_hd_suffix_is_duplicate(self):
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (HD)")
+        assert key1 == key2
+
+    def test_different_artists_not_duplicate(self):
+        key1 = _dupe_key("Nur Geträumt", "Blümchen")
+        key2 = _dupe_key("Nur Geträumt", "Nena")
+        assert key1 != key2
+
+    def test_domain_in_filename_is_stripped(self):
+        # Simple (domain.com) parenthesised form is handled by _normalizeStem
+        key1 = _dupe_key("Song Title")
+        key2 = _dupe_key("Song Title (example.com)")
+        assert key1 == key2
+
+
+class TestDupeKeyGeneratedJsIntegrity:
+    """Sanity-check the generated JS string itself."""
+
+    def test_js_does_not_strip_remix_aggressively(self):
+        """The old aggressive strip list must be gone from the generated JS."""
+        js = render_player_js(api_path="/api/test", item_noun="track")
+        # The new code must NOT strip 'remix' or 'live' or 'extended' from parts
+        assert "remix|mix|version" not in js and "extended|radio|vocal|edit|remix" not in js, (
+            "Old aggressive version-strip regex still present in generated JS"
+        )
+
+    def test_js_strips_only_promo_markers(self):
+        """New strip regex must target only official/explicit/clean."""
+        js = render_player_js(api_path="/api/test", item_noun="track")
+        assert r"\bofficial\b|\bexplicit\b|\bclean\b" in js
+
+    def test_js_normalizestem_has_broad_official_pattern(self):
+        """normalizeStem must strip ALL (Official ...) blocks, not only (Official*Video)."""
+        js = render_player_js(api_path="/api/test", item_noun="track")
+        # In the generated JS the regex appears as /\(Official[^)]*\)/gi
+        assert r"\(Official[^)]*\)" in js
+
+    def test_js_normalizestem_strips_audio_video_tags(self):
+        """normalizeStem must strip standalone (Audio) and (Video) platform tags."""
+        js = render_player_js(api_path="/api/test", item_noun="track")
+        assert "Audio|Video|Music" in js  # part of the new promo-tag pattern

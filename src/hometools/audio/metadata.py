@@ -711,6 +711,25 @@ def read_embedded_metadata(p: Path) -> dict[str, str] | None:
     return _read_metadata_ffprobe(p)
 
 
+def get_audio_file_info(p: Path) -> tuple[float, int]:
+    """Return ``(duration_seconds, bitrate_kbps)`` from an audio file.
+
+    Uses mutagen to read playback length and average bitrate.
+    Bitrate is converted from bps → kbps and rounded.
+    Returns ``(0.0, 0)`` for unsupported formats or on any error.
+    Never raises.
+    """
+    try:
+        audio = File(p)
+        if audio is not None and hasattr(audio, "info"):
+            duration = float(getattr(audio.info, "length", 0.0) or 0.0)
+            bitrate_bps = int(getattr(audio.info, "bitrate", 0) or 0)
+            return duration, bitrate_bps // 1000
+    except Exception as exc:
+        logger.debug("get_audio_file_info %s: %s", p.name, exc)
+    return 0.0, 0
+
+
 def get_genre(p: Path) -> str:
     """Read the genre tag from an audio file.
 

@@ -20,7 +20,7 @@ import logging
 import time
 from pathlib import Path
 
-from hometools.audio.metadata import audiofile_assume_artist_title, get_genre, get_rating_stars
+from hometools.audio.metadata import audiofile_assume_artist_title, get_audio_file_info, get_genre, get_rating_stars
 from hometools.streaming.core.catalog import list_artists
 from hometools.streaming.core.catalog import query_items as query_tracks
 from hometools.streaming.core.catalog import sort_items as sort_tracks
@@ -91,10 +91,16 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         # Genre tag
         genre = get_genre(audio_file)
 
+        # Duration and bitrate (best-effort via mutagen)
+        duration, bitrate = get_audio_file_info(audio_file)
+
         try:
-            file_mtime = audio_file.stat().st_mtime
+            stat = audio_file.stat()
+            file_mtime = stat.st_mtime
+            file_size = stat.st_size
         except OSError:
             file_mtime = 0.0
+            file_size = 0
 
         tracks.append(
             MediaItem(
@@ -108,6 +114,9 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 mtime=file_mtime,
                 thumbnail_lg_url=thumbnail_lg_url,
                 genre=genre,
+                file_size=file_size,
+                duration=duration,
+                bitrate=bitrate,
             )
         )
 

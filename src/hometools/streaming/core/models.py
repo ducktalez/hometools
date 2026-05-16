@@ -36,6 +36,9 @@ class MediaItem:
     genre: str = ""  # music genre tag (empty = unset; audio only)
     language: str = ""  # ISO 639-1 language code from folder tag (empty = unset)
     subtitle_language: str = ""  # ISO 639-1 subtitle language from folder tag (empty = none)
+    file_size: int = 0  # file size in bytes (0 = unknown)
+    duration: float = 0.0  # playback duration in seconds (0.0 = unknown)
+    bitrate: int = 0  # average bitrate in kbps (0 = unknown / lossless)
 
     def to_dict(self) -> dict[str, str]:
         """Return a JSON-serializable representation."""

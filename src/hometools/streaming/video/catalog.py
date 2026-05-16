@@ -120,6 +120,25 @@ def _read_metadata_fast(p: Path) -> dict[str, str] | None:
     return None
 
 
+def _read_media_info_fast(p: Path) -> tuple[float, int]:
+    """Return ``(duration_seconds, bitrate_kbps)`` from a media file via mutagen.
+
+    Works reliably for MP4/M4A/MP3; returns ``(0.0, 0)`` for containers
+    that mutagen cannot read (e.g. MKV, AVI).  Never raises.
+    """
+    from mutagen import File
+
+    try:
+        audio = File(p)
+        if audio is not None and hasattr(audio, "info"):
+            duration = float(getattr(audio.info, "length", 0.0) or 0.0)
+            bitrate_bps = int(getattr(audio.info, "bitrate", 0) or 0)
+            return duration, bitrate_bps // 1000
+    except Exception:
+        pass
+    return 0.0, 0
+
+
 def _metadata_cache_path(cache_dir: Path) -> Path:
     """Return the on-disk metadata cache path inside the shadow cache."""
     return cache_dir / _METADATA_CACHE_FILE
@@ -205,34 +224,47 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
 
         meta = None
         file_mtime = 0.0
+        file_size = 0
+        duration = 0.0
+        bitrate = 0
         if cache_dir is not None:
             sig_mtime_ns, sig_size = _file_signature(video_file)
             file_mtime = sig_mtime_ns / 1e9
+            file_size = sig_size
             cached = metadata_cache.get(relative_path)
             if isinstance(cached, dict) and cached.get("mtime_ns") == sig_mtime_ns and cached.get("size") == sig_size:
                 metadata_cache_hits += 1
                 cached_title = str(cached.get("title") or "")
                 cached_artist = str(cached.get("artist") or "")
+                duration = float(cached.get("duration") or 0.0)
+                bitrate = int(cached.get("bitrate") or 0)
                 if cached_title or cached_artist:
                     meta = {"title": cached_title, "artist": cached_artist}
             else:
                 metadata_cache_misses += 1
                 mutagen_reads += 1
                 meta = _read_metadata_fast(video_file)
+                duration, bitrate = _read_media_info_fast(video_file)
                 metadata_cache[relative_path] = {
                     "mtime_ns": sig_mtime_ns,
                     "size": sig_size,
                     "title": meta.get("title", "") if meta else "",
                     "artist": meta.get("artist", "") if meta else "",
+                    "duration": duration,
+                    "bitrate": bitrate,
                 }
                 metadata_cache_dirty = True
         else:
             mutagen_reads += 1
             meta = _read_metadata_fast(video_file)
+            duration, bitrate = _read_media_info_fast(video_file)
             try:
-                file_mtime = video_file.stat().st_mtime
+                stat = video_file.stat()
+                file_mtime = stat.st_mtime
+                file_size = stat.st_size
             except OSError:
                 file_mtime = 0.0
+                file_size = 0
 
         meta_title = str(meta.get("title") or "") if meta else ""
         if meta_title.strip():
@@ -278,6 +310,9 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 thumbnail_lg_url=thumbnail_lg_url,
                 language=lang_code,
                 subtitle_language=sub_lang_code,
+                file_size=file_size,
+                duration=duration,
+                bitrate=bitrate,
             )
         )
 

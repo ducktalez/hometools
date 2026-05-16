@@ -3927,11 +3927,37 @@ def render_player_js(
   var _dupeMap = null;   /* Map<key, [itemIndex, ...]> — only groups with 2+ items */
   var _dupePaths = null;  /* Set<relative_path> — all paths that belong to a dupe group */
 
+  /* ── Dupe-panel metadata formatters ── */
+  function _fmtDuration(secs) {
+    if (!secs) return '';
+    var s = Math.round(secs);
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    var sec = s % 60;
+    if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+  function _fmtFileSize(bytes) {
+    if (!bytes) return '';
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + '\u00a0GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + '\u00a0MB';
+    if (bytes >= 1024) return Math.round(bytes / 1024) + '\u00a0KB';
+    return bytes + '\u00a0B';
+  }
+  function _fmtDate(ts) {
+    if (!ts) return '';
+    var d = new Date(ts * 1000);
+    return d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
+  }
+
   function _normalizeStem(s) {
     if (!s) return '';
     s = s.replace(/&amp;/g, '&');
     s = s.replace(/\\(\\d{1,3}kbit_[A-Za-z]+\\)/gi, '');
-    s = s.replace(/\\(Official.{0,8}Video\\)/gi, '');
+    /* Strip ALL parenthesised Official-... blocks, not just "Official * Video" */
+    s = s.replace(/\\(Official[^)]*\\)/gi, '');
+    /* Strip common platform/promo tags that don't identify the song version */
+    s = s.replace(/\\((?:Audio|Video|Music\\s+Video|Lyric\\s+Video|Lyrics|Lyric|Visualizer|Topic|HD|HQ)\\)/gi, '');
     s = s.replace(/\\(\\w*\\.[a-zA-Z]{2,5}\\)/gi, '');
     s = s.replace(/\\w*\\.(?:com|net|org|co\\.uk|de|vu|ru|pl)/gi, '');
     s = s.replace(/(?<=\\W)(?:featuring|feat\\.|feat)\\W/gi, 'feat. ');
@@ -3943,9 +3969,12 @@ def render_player_js(
   }
 
   function _dupeKey(item) {
-    /* Build a stable key from artist + title — strip remix/version keywords, remove non-word chars.
+    /* Build a stable key from artist + title.
+       Version/mix descriptors (Remix, Extended, Live, Acoustic, etc.) are kept in the key
+       so that different versions are NOT flagged as duplicates.
+       Only strip markers that are purely promotional and don't identify a song version.
        Artist is included so that "Blümchen - Nur Geträumt" and "Nena - Nur Geträumt"
-       are NOT considered duplicates. Duplicates must match artist, title AND remix version. */
+       are NOT considered duplicates. */
     var raw = item.title || '';
     if (!raw) {
       var rp = item.relative_path || '';
@@ -3962,9 +3991,11 @@ def render_player_js(
     cleaned = cleaned.replace(/\\s*\\[\\d{1,2}\\]\\s*$/, '');
     /* Split on common separators */
     var parts = cleaned.split(/feat\\.|prod\\.|vs\\.|\\(|\\[| - |, | & |\\)|\\]/i);
-    /* Remove music keywords aggressively */
+    /* Strip ONLY purely promotional/label markers that don't differentiate song versions.
+       Version keywords (remix, mix, extended, live, acoustic, instrumental, remaster, etc.)
+       are intentionally kept so that e.g. "Song" and "Song - Remix" get different keys. */
     parts = parts.map(function(p) {
-      return p.replace(/original|official|extended|radio|vocal|edit|remix|mix|version|release|remaster|remastered|live|acoustic|instrumental|explicit|clean/gi, '');
+      return p.replace(/\\bofficial\\b|\\bexplicit\\b|\\bclean\\b/gi, '');
     });
     /* Strip non-word characters and filter short parts */
     parts = parts.map(function(p) { return p.replace(/[^a-z0-9]/gi, ''); });
@@ -4043,11 +4074,21 @@ def render_player_js(
           var folder = '';
           var sl = (t.relative_path || '').lastIndexOf('/');
           if (sl > 0) folder = t.relative_path.substring(0, sl);
+          /* Build metadata line: duration · kbps · size · date */
+          var metaParts = [];
+          if (t.duration) metaParts.push(_fmtDuration(t.duration));
+          if (t.bitrate) metaParts.push(t.bitrate + '\u00a0kbps');
+          if (t.file_size) metaParts.push(_fmtFileSize(t.file_size));
+          if (t.mtime) metaParts.push(_fmtDate(t.mtime));
+          var metaHtml = metaParts.length
+            ? '<div class="dupe-group-item-meta">' + metaParts.join(' \u00b7 ') + '</div>'
+            : '';
           html += '<div class="dupe-group-item" data-all-index="' + idx + '">' +
             '<img src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
             '<div class="dupe-group-item-info">' +
               '<div class="dupe-group-item-title">' + escHtml(t.title || t.relative_path) + '</div>' +
               '<div class="dupe-group-item-path">' + escHtml(folder || t.relative_path) + '</div>' +
+              metaHtml +
             '</div>' +
             '<button class="dupe-trash-btn" data-all-index="' + idx + '" title="In den Papierkorb verschieben">' + IC_TRASH + '</button>' +
             '</div>';
