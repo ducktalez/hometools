@@ -68,13 +68,14 @@ header {
 /* Inline reload-button inside the tools-pill (when "Ordnerdaten erneuern" set to "tools-pill") */
 .tools-pill-refresh {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; padding: 0; margin-right: 0.35rem;
-  background: none; border: none; color: var(--sub); cursor: pointer;
-  vertical-align: -2px;
+  width: 18px; height: 18px; padding: 2px; margin-left: 0.4rem;
+  background: none; border: 1px solid #3a3a3a; border-radius: 4px;
+  color: var(--sub); cursor: pointer; vertical-align: -3px;
+  transition: color 0.15s, border-color 0.15s;
 }
 .tools-pill-refresh[hidden] { display: none; }
-.tools-pill-refresh svg { width: 14px; height: 14px; }
-.tools-pill-refresh:hover { color: var(--accent); }
+.tools-pill-refresh svg { width: 12px; height: 12px; }
+.tools-pill-refresh:hover { color: var(--accent); border-color: var(--accent); }
 .tools-pill-refresh.is-spinning svg { animation: tools-pill-refresh-spin 1s linear infinite; }
 @keyframes tools-pill-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 /* Header-element visibility toggles driven from tools panel */

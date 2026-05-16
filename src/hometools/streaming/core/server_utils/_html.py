@@ -114,16 +114,16 @@ def render_media_page(
     )
     mode_controls_html = (
         '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
-        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">'
+        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
         '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>'
         + SVG_REFRESH +
-        '</button>Tools</span>'
+        '</button></span>'
         if safe_mode
         else '<span class="downloaded-pill" id="downloaded-pill" title="Offline-Downloads anzeigen">Downloaded (0)</span>'
-        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">'
+        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
         '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>'
         + SVG_REFRESH +
-        '</button>Tools</span>'
+        '</button></span>'
     )
     tools_panel_html = """
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
