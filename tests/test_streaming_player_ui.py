@@ -1323,18 +1323,18 @@ def test_min_rating_threshold_custom_injected():
 def test_min_rating_filter_logic_in_apply_filter():
     """applyFilter must use _effectiveThreshold (derived from MIN_RATING_THRESHOLD) to filter tracks.
 
-    Semantics (2026-05): filter is opt-in via showHidden toggle, uses <= comparison (inclusive).
-    Tracks with rating > threshold are always kept.  Unrated (0) are always kept.
-    Example: threshold=1 → hide only 1★, keep 2★ 3★ 4★ 5★ and unrated.
-             threshold=3 → hide 1★ 2★ 3★, keep 4★ 5★ and unrated.
+    Semantics (2026-05): filter is opt-in via showHidden toggle, uses < comparison (exclusive).
+    Tracks with rating >= threshold are always kept.  Unrated (0) are always kept.
+    Example: threshold=2 → hide only 1★, keep 2★ 3★ 4★ 5★ and unrated.
+             threshold=3 → hide 1★ 2★, keep 3★ 4★ 5★ and unrated.
     """
     from hometools.streaming.core.server_utils import render_player_js
 
     js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
     # Must contain the filter that hides rated-but-low tracks while keeping unrated
     assert "MIN_RATING_THRESHOLD" in js
-    # Semantics: inclusive <= comparison, so threshold-star songs ARE hidden
-    assert "r === 0 || r > _effectiveThreshold" in js
+    # Semantics: exclusive < comparison, so threshold-star songs are NOT hidden
+    assert "r === 0 || r >= _effectiveThreshold" in js
 
 
 # ---------------------------------------------------------------------------
@@ -1417,12 +1417,12 @@ def test_global_search_function_exists():
 def test_global_search_respects_min_rating():
     """globalSearch must respect the effective hidden threshold (_effectiveThreshold).
 
-    Only filters when !showHidden (opt-in), using <= comparison.
+    Only filters when !showHidden (opt-in), using < comparison (exclusive).
     """
     js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
     assert "MIN_RATING_THRESHOLD" in js
-    # The globalSearch function filters via _effectiveThreshold with <= semantics
-    assert "r <= _effectiveThreshold" in js
+    # The globalSearch function filters via _effectiveThreshold with < semantics
+    assert "r < _effectiveThreshold" in js
 
 
 def test_folder_filter_bar_in_html():

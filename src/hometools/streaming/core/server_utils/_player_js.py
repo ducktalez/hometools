@@ -286,9 +286,9 @@ def render_player_js(
         + str(min_rating)
         + """;
   /* When ratings are enabled but no explicit threshold is configured,
-     treat 1-star tracks as "ausgeblendet" (threshold=1, used with <= comparison).
+     treat 1-star tracks as "ausgeblendet" (threshold=2, used with < comparison: r < 2 hides 1★).
      Setting min_rating=0 explicitly disables the feature entirely. */
-  var _effectiveThreshold = MIN_RATING_THRESHOLD > 0 ? MIN_RATING_THRESHOLD : (RATING_WRITE_ENABLED ? 1 : 0);
+  var _effectiveThreshold = MIN_RATING_THRESHOLD > 0 ? MIN_RATING_THRESHOLD : (RATING_WRITE_ENABLED ? 2 : 0);
   var DEBUG_FILTER = """
         + ("true" if debug_filter else "false")
         + """;
@@ -2387,7 +2387,7 @@ def render_player_js(
     /* Filter allItems by needle — respect effective hidden threshold */
     var results = allItems.filter(function(t) {
       var r = t.rating || 0;
-      if (_effectiveThreshold > 0 && !showHidden && r > 0 && r <= _effectiveThreshold) return false;
+      if (_effectiveThreshold > 0 && !showHidden && r > 0 && r < _effectiveThreshold) return false;
       return (t.title || '').toLowerCase().indexOf(needle) >= 0 ||
              (t.artist || '').toLowerCase().indexOf(needle) >= 0 ||
              (t.relative_path || '').toLowerCase().indexOf(needle) >= 0;
@@ -2508,7 +2508,7 @@ def render_player_js(
     if (filterHiddenBtn) {
       if (_effectiveThreshold > 0) {
         var _hiddenCount = playlistItems.filter(function(t) {
-          var r = t.rating || 0; return r > 0 && r <= _effectiveThreshold;
+          var r = t.rating || 0; return r > 0 && r < _effectiveThreshold;
         }).length;
         var _totalCount = playlistItems.length;
         filterHiddenBtn.style.display = '';
@@ -2536,14 +2536,14 @@ def render_player_js(
       items = items.map(function(t) {
         var r = t.rating || 0;
         /* Rating threshold: when showHidden=true, gray items in-place (don't annotate as debug-filtered) */
-        if (_effectiveThreshold > 0 && r > 0 && r <= _effectiveThreshold) {
+        if (_effectiveThreshold > 0 && r > 0 && r < _effectiveThreshold) {
           var hClone = {}; for (var k in t) { if (t.hasOwnProperty(k)) hClone[k] = t[k]; }
           if (showHidden) {
             hClone._hiddenShown = true;
             hClone._hiddenReason = 'Bewertung: ' + r + '\u2605';
             return hClone;
           } else {
-            hClone._debugReason = 'Rating ' + r + '\\u2605 \u2264 Schwelle ' + _effectiveThreshold;
+            hClone._debugReason = 'Rating ' + r + '\\u2605 < Schwelle ' + _effectiveThreshold;
             return hClone;
           }
         }
@@ -2576,7 +2576,7 @@ def render_player_js(
       }
     } else {
       /* ── Normal mode ── */
-      /* Effective threshold: tracks with rating <= threshold are "ausgeblendet".
+      /* Effective threshold: tracks with rating < threshold are "ausgeblendet".
          Unrated tracks (rating 0) are always shown regardless of threshold.
          showHidden=false  → hidden songs filtered out entirely.
          showHidden=true   → hidden songs kept at their natural position, grayed
@@ -2584,13 +2584,13 @@ def render_player_js(
       if (_effectiveThreshold > 0) {
         if (!showHidden) {
           items = items.filter(function(t) {
-            var r = t.rating || 0; return r === 0 || r > _effectiveThreshold;
+            var r = t.rating || 0; return r === 0 || r >= _effectiveThreshold;
           });
         } else {
           /* Mark hidden items in-place — they stay at their sorted position */
           items = items.map(function(t) {
             var r = t.rating || 0;
-            if (r > 0 && r <= _effectiveThreshold) {
+            if (r > 0 && r < _effectiveThreshold) {
               var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
               clone._hiddenShown = true;
               clone._hiddenReason = 'Bewertung: ' + r + '\u2605';
