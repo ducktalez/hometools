@@ -3625,6 +3625,10 @@ def render_player_js(
   var _toolDuplicates = document.getElementById('tool-duplicates');
   var _dupeShowLink = document.getElementById('dupe-show-link');
   var _toolFileMover = document.getElementById('tool-file-mover');
+  var _toolDownloadedPill = document.getElementById('tool-downloaded-pill');
+  var _toolAuditBtn = document.getElementById('tool-audit-btn');
+  var _toolRefreshGroup = document.getElementById('tool-refresh-position');
+  var _toolsPillRefresh = document.getElementById('tools-pill-refresh');
 
   /* Load saved tool states from localStorage */
   var _toolState = JSON.parse(localStorage.getItem('ht-tools') || '{}');
@@ -3641,8 +3645,36 @@ def render_player_js(
     _toolsActivateAll.title = isOn ? 'Tool-Modus ausschalten' : 'Tool-Modus mit den konfigurierten Einstellungen aktivieren';
   }
 
+  function _applyHeaderUiState() {
+    /* Header-element visibility — applied regardless of tool-mode active flag.
+       These are persistent UI preferences, not "tool features". */
+    /* Downloaded pill */
+    var hideDownloaded = _toolState.downloadedPill === false;
+    document.body.classList.toggle('tool-hide-downloaded', hideDownloaded);
+    if (_toolDownloadedPill) _toolDownloadedPill.checked = !hideDownloaded;
+    /* Audit (Änderungsverlauf) */
+    var hideAudit = _toolState.auditBtn === false;
+    document.body.classList.toggle('tool-hide-audit', hideAudit);
+    if (_toolAuditBtn) _toolAuditBtn.checked = !hideAudit;
+    /* Refresh-button position: 'header' (default) | 'tools-pill' | 'off' */
+    var refreshPos = _toolState.refreshPosition || 'header';
+    document.body.classList.toggle('tool-refresh-in-pill', refreshPos === 'tools-pill');
+    document.body.classList.toggle('tool-refresh-off', refreshPos === 'off');
+    if (_toolsPillRefresh) {
+      if (refreshPos === 'tools-pill') _toolsPillRefresh.removeAttribute('hidden');
+      else _toolsPillRefresh.setAttribute('hidden', '');
+    }
+    if (_toolRefreshGroup) {
+      var btns = _toolRefreshGroup.querySelectorAll('.tools-buttongroup-btn');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('is-active', btns[i].dataset.value === refreshPos);
+      }
+    }
+  }
+
   function _applyToolState() {
     _updateActivateBtn();
+    _applyHeaderUiState();
     if (!_toolState.active) {
       /* Tool mode is off: hide all tool UI without changing saved preferences */
       document.body.classList.remove('tool-inline-ratings');
@@ -3788,6 +3820,44 @@ def render_player_js(
       _saveToolState();
       /* Re-render to show/hide move widgets */
       if (inPlaylist) applyFilter();
+    });
+  }
+  if (_toolDownloadedPill) {
+    _toolDownloadedPill.addEventListener('change', function() {
+      _toolState.downloadedPill = _toolDownloadedPill.checked;
+      _saveToolState();
+    });
+  }
+  if (_toolAuditBtn) {
+    _toolAuditBtn.addEventListener('change', function() {
+      _toolState.auditBtn = _toolAuditBtn.checked;
+      _saveToolState();
+    });
+  }
+  if (_toolRefreshGroup) {
+    _toolRefreshGroup.addEventListener('click', function(e) {
+      var btn = e.target.closest('.tools-buttongroup-btn');
+      if (!btn) return;
+      _toolState.refreshPosition = btn.dataset.value;
+      _saveToolState();
+    });
+  }
+  if (_toolsPillRefresh) {
+    /* Click-handler delegates to the regular refresh-btn flow but preserves
+       the tools-pill click (don't open the panel). */
+    _toolsPillRefresh.addEventListener('click', function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      _toolsPillRefresh.classList.add('is-spinning');
+      var realRefresh = document.getElementById('refresh-btn');
+      if (realRefresh) {
+        realRefresh.click();
+      } else if (typeof refreshCatalog === 'function') {
+        refreshCatalog();
+      }
+      setTimeout(function() {
+        if (_toolsPillRefresh) _toolsPillRefresh.classList.remove('is-spinning');
+      }, 1200);
     });
   }
   var _toolsActivateAll = document.getElementById('tools-activate-all');

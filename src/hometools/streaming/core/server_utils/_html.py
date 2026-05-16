@@ -114,10 +114,16 @@ def render_media_page(
     )
     mode_controls_html = (
         '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
-        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
+        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">'
+        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>'
+        + SVG_REFRESH +
+        '</button>Tools</span>'
         if safe_mode
         else '<span class="downloaded-pill" id="downloaded-pill" title="Offline-Downloads anzeigen">Downloaded (0)</span>'
-        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
+        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">'
+        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>'
+        + SVG_REFRESH +
+        '</button>Tools</span>'
     )
     tools_panel_html = """
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
@@ -164,6 +170,37 @@ def render_media_page(
           <input type="checkbox" id="tool-duplicates">
           <span class="tools-toggle-track"></span>
         </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Downloaded-Pille</div>
+          <div class="tools-item-desc">Pille &quot;Downloaded (N)&quot; in der Kopfleiste anzeigen</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-downloaded-pill" checked>
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">&Auml;nderungsverlauf</div>
+          <div class="tools-item-desc">Verlaufs-Symbol in der Kopfleiste anzeigen</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-audit-btn" checked>
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Ordnerdaten erneuern</div>
+          <div class="tools-item-desc">Position des Buttons &quot;Katalog neu laden&quot;</div>
+          <div class="tools-buttongroup" id="tool-refresh-position" role="group">
+            <button type="button" class="tools-buttongroup-btn" data-value="header">Kopfleiste</button>
+            <button type="button" class="tools-buttongroup-btn" data-value="tools-pill">Im Tools-Button</button>
+            <button type="button" class="tools-buttongroup-btn" data-value="off">Aus</button>
+          </div>
+        </div>
       </div>
       <div class="tools-item">
         <div>

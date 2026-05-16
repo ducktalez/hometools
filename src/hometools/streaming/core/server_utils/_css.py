@@ -65,6 +65,39 @@ header {
   transition: color 0.15s, border-color 0.15s;
 }
 .tools-pill:hover, .tools-pill.has-active { color: var(--accent); border-color: var(--accent); }
+/* Inline reload-button inside the tools-pill (when "Ordnerdaten erneuern" set to "tools-pill") */
+.tools-pill-refresh {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0; margin-right: 0.35rem;
+  background: none; border: none; color: var(--sub); cursor: pointer;
+  vertical-align: -2px;
+}
+.tools-pill-refresh[hidden] { display: none; }
+.tools-pill-refresh svg { width: 14px; height: 14px; }
+.tools-pill-refresh:hover { color: var(--accent); }
+.tools-pill-refresh.is-spinning svg { animation: tools-pill-refresh-spin 1s linear infinite; }
+@keyframes tools-pill-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* Header-element visibility toggles driven from tools panel */
+body.tool-hide-downloaded #downloaded-pill { display: none; }
+body.tool-hide-audit .audit-btn { display: none; }
+body.tool-refresh-off #refresh-btn,
+body.tool-refresh-in-pill #refresh-btn { display: none; }
+/* Buttongroup (segmented selector) */
+.tools-buttongroup {
+  display: inline-flex; margin-top: 6px; border: 1px solid #3a3a3a;
+  border-radius: 6px; overflow: hidden;
+}
+.tools-buttongroup-btn {
+  background: none; border: none; color: var(--sub);
+  padding: 0.32rem 0.6rem; font-size: 0.72rem; cursor: pointer;
+  border-right: 1px solid #3a3a3a;
+  transition: background 0.12s, color 0.12s;
+}
+.tools-buttongroup-btn:last-child { border-right: none; }
+.tools-buttongroup-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.tools-buttongroup-btn.is-active {
+  background: var(--accent); color: #000; font-weight: 600;
+}
 .tools-panel-backdrop {
   position: fixed; inset: 0; z-index: 300;
   background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
