@@ -448,14 +448,13 @@ def render_media_page(
   <header>
     <button class="back-btn" id="back-btn" title="Back to folders">{SVG_BACK}</button>
     <button class="logo-home-btn" id="header-logo" title="Zurück zur Startseite">{emoji}</button>
-    <span class="logo-title" id="header-title">{html.escape(title)}</span>
+    <span class="logo-title" id="header-title"></span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
     <button class="refresh-btn" id="refresh-btn" title="Katalog neu laden">{SVG_REFRESH}</button>
     {mode_controls_html}
     {playlist_pill_html}
-    <span class="refresh-info" id="refresh-info"></span>
-    <input id="global-search-input" class="header-search view-hidden" type="search" placeholder="Bibliothek durchsuchen\u2026" autocomplete="off" />
+    <input id="global-search-input" class="header-search view-hidden" type="search" autocomplete="off" />
   </header>
 
   <!-- breadcrumb navigation -->

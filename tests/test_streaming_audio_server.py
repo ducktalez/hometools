@@ -575,7 +575,7 @@ def test_refresh_log_endpoint_returns_empty_when_no_log(tmp_path):
     assert resp.json() == {}
 
 
-def test_refresh_info_element_present_in_html(tmp_path):
-    """The HTML must contain the refresh-info span element."""
+def test_refresh_info_element_not_in_html(tmp_path):
+    """The refresh-info span has been removed from the header to save space."""
     html = render_audio_index_html([])
-    assert 'id="refresh-info"' in html
+    assert 'id="refresh-info"' not in html
