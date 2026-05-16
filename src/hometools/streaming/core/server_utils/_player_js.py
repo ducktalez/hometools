@@ -2821,7 +2821,7 @@ def render_player_js(
         '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         ratingBar + '</div>' +
         '<div class="track-info">' +
-          '<div class="track-title"><span class="track-title-text">' + hiddenBadge + escHtml(displayTitle) + convertBadge + dupeBadge + '</span></div>' +
+          '<div class="track-title"><span class="track-title-text">' + escHtml(displayTitle) + convertBadge + dupeBadge + hiddenBadge + '</span></div>' +
           '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
         '</div>' +
         '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +

@@ -547,7 +547,7 @@ body.modal-open { overflow: hidden; }
 .hidden-badge {
   display: inline-flex; align-items: center; font-size: 0.6rem;
   color: #fff; background: rgba(120,120,120,0.7);
-  padding: 1px 5px; border-radius: 8px; margin-right: 5px;
+  padding: 1px 5px; border-radius: 8px; margin-left: 5px;
   vertical-align: middle; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
   flex-shrink: 0;
 }
