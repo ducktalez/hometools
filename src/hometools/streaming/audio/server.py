@@ -48,6 +48,12 @@ from hometools.streaming.core.server_utils import (
     safe_resolve,
 )
 from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
+from hometools.streaming.core.waveform import (
+    check_waveform_cached,
+    ensure_waveform,
+    load_waveform,
+    start_background_waveform_generation,
+)
 
 _audio_index_cache = IndexCache(build_audio_index, ttl=float(get_stream_index_cache_ttl()), label="audio-index")
 
@@ -199,6 +205,20 @@ def create_app(
                     logger.debug("Failed to start background audio thumbnail generation", exc_info=True)
 
             threading.Thread(target=_prepare_thumbnails, daemon=True, name="audio-thumb-bootstrap").start()
+
+            def _prepare_waveforms() -> None:
+                try:
+                    work = collect_thumbnail_work(resolved_library_dir, resolved_cache_dir)
+                    started = start_background_waveform_generation(work)
+                    logger.info(
+                        "Audio startup waveform work prepared: %d items (started=%s)",
+                        len(work),
+                        started,
+                    )
+                except Exception:
+                    logger.debug("Failed to start background audio waveform generation", exc_info=True)
+
+            threading.Thread(target=_prepare_waveforms, daemon=True, name="audio-waveform-bootstrap").start()
         else:
             logger.warning("Audio server running in SAFE MODE — caches, PWA and thumbnail warmups are disabled")
 
@@ -932,6 +952,41 @@ def create_app(
         if not thumb_path.exists():
             raise HTTPException(status_code=404, detail="Thumbnail not found")
         return FileResponse(thumb_path, media_type="image/jpeg")
+
+    @app.get("/api/audio/waveform")
+    def audio_waveform(path: str) -> dict[str, object]:
+        """Return cached waveform peaks (128 segments, 0.0–1.0) for an audio file.
+
+        Tries the shadow cache first.  Falls back to on-demand generation so the
+        first request per track always succeeds (takes < 5 s for typical songs).
+        Returns ``{"peaks": [...], "segments": 128}`` or 404 if unavailable.
+        """
+        from urllib.parse import unquote
+
+        relative_path = unquote(path)
+        if not relative_path:
+            raise HTTPException(status_code=400, detail="path is required")
+
+        # Fast path: already cached
+        cached = check_waveform_cached(resolved_cache_dir, "audio", relative_path)
+        if cached:
+            data = load_waveform(cached)
+            if data:
+                return data
+
+        # On-demand: resolve the source file and generate
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, relative_path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        wf_path = ensure_waveform(file_path, resolved_cache_dir, "audio", relative_path)
+        if wf_path:
+            data = load_waveform(wf_path)
+            if data:
+                return data
+
+        raise HTTPException(status_code=404, detail="Waveform not available")
 
     # --- Playlists API ---
 

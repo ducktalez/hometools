@@ -114,18 +114,19 @@ def render_media_page(
     )
     mode_controls_html = (
         '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
-        '<a class="audit-btn" id="audit-btn" href="/audit" title="\u00c4nderungsverlauf">' + SVG_HISTORY + "</a>"
         '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
         '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>' + SVG_REFRESH + "</button></span>"
         if safe_mode
-        else '<a class="audit-btn" id="audit-btn" href="/audit" title="\u00c4nderungsverlauf">' + SVG_HISTORY + "</a>"
-        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
+        else '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
         '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>' + SVG_REFRESH + "</button></span>"
     )
-    tools_panel_html = """
+    tools_panel_html = f"""
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
     <div class="tools-panel">
-      <div class="tools-panel-title">Tools &amp; Einstellungen</div>
+      <div class="tools-panel-header">
+        <div class="tools-panel-title">Tools &amp; Einstellungen</div>
+        <a class="audit-btn" id="audit-btn" href="/audit" title="\u00c4nderungsverlauf">{SVG_HISTORY}</a>
+      </div>
       <button class="tools-activate-all" id="tools-activate-all" title="Tool-Modus mit den konfigurierten Einstellungen aktivieren">Tool-Modus aktivieren</button>
 
       <div class="tools-section-heading">Titelbearbeitung</div>
@@ -387,6 +388,7 @@ def render_media_page(
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>
       <div class="progress-track" id="progress-track">
+        <canvas id="waveform-canvas" class="waveform-canvas"></canvas>
         <input type="range" id="progress-bar" min="0" step="0.1" value="0" />
         <div class="thumb-preview" id="thumb-preview">
           <canvas id="thumb-canvas" width="160" height="90"></canvas>

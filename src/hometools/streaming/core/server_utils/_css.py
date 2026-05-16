@@ -108,7 +108,12 @@ body.tool-refresh-in-pill #refresh-btn { display: none; }
   padding: 1.2rem 1.4rem; width: min(360px, 92vw);
   max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
-.tools-panel-title { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 1rem; }
+.tools-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.tools-panel-header .audit-btn { flex-shrink: 0; }
+.tools-panel-title { font-size: 1rem; font-weight: 600; color: var(--text); }
 .tools-section-heading {
   font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--sub); margin: 0.9rem 0 0.25rem; opacity: 0.7;
@@ -553,6 +558,10 @@ body.modal-open { overflow: hidden; }
   font-size: 0.8rem; color: var(--sub); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.track-meta {
+  font-size: 0.68rem; color: #666;
+  white-space: nowrap; flex-shrink: 0;
+}
 /* missing episode placeholder */
 .track-item.missing-episode {
   opacity: 0.35; pointer-events: none; min-height: 32px;
@@ -588,6 +597,19 @@ body.modal-open { overflow: hidden; }
   padding: 1px 6px; border-radius: 8px; margin-left: 6px;
   vertical-align: middle; font-weight: 500; white-space: nowrap; letter-spacing: 0.01em;
 }
+/* deleted ghost: file was soft-deleted this session — shown dimmed with strikethrough */
+.track-item--deleted { opacity: 0.35; cursor: default; pointer-events: none; }
+.track-item--deleted .track-title-text { text-decoration: line-through; color: var(--sub); }
+.deleted-badge {
+  display: inline-flex; align-items: center; font-size: 0.6rem;
+  color: #fff; background: rgba(180,60,60,0.65);
+  padding: 1px 5px; border-radius: 8px; margin-left: 5px;
+  vertical-align: middle; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Deleted item in dupe panel */
+.dupe-group-item--deleted { opacity: 0.35; cursor: default; pointer-events: none; }
+.dupe-group-item--deleted .dupe-group-item-title { text-decoration: line-through; }
 .hidden-badge {
   display: inline-flex; align-items: center; font-size: 0.6rem;
   color: #fff; background: rgba(120,120,120,0.7);
@@ -897,19 +919,26 @@ body.playlist-dragging .track-list { overflow: visible; }
   flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.4rem;
 }
 .player-bar.classic .progress-track {
-  flex: 1 1 0; position: relative; min-width: 0; height: auto;
+  flex: 1 1 0; position: relative; min-width: 0;
+  height: 28px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid #282828;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.player-bar.classic .waveform-canvas {
+  display: block; width: 100%; height: 100%; border-radius: 5px;
 }
 .player-bar.classic input[type=range] {
   -webkit-appearance: none; appearance: none;
-  width: 100%; height: 4px; background: #555;
-  border-radius: 2px; outline: none; cursor: pointer;
-  position: static; opacity: 1;
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%; opacity: 0;
+  cursor: pointer; margin: 0; z-index: 2;
+  background: transparent;
 }
 .player-bar.classic input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 12px; height: 12px;
-  background: var(--text); border-radius: 50%;
+  -webkit-appearance: none; width: 1px; height: 1px; background: transparent;
 }
-.player-bar.classic input[type=range]:hover::-webkit-slider-thumb { background: var(--accent); }
 
 /* ── Waveform player bar — two rows ── */
 .player-bar.waveform {

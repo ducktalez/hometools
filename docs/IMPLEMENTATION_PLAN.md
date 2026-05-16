@@ -1,50 +1,5 @@
 # Implementation Plan
 
-## Current Sprint
-
-### Restrukturierung `server_utils.py` → `server_utils/`-Package
-
-Die Datei `streaming/core/server_utils.py` ist auf **7298 Zeilen** angewachsen und soll in ein Python-Package mit fokussierten Sub-Modulen aufgeteilt werden. Ziel: ≤1500 Zeilen pro Modul, 100% backward-kompatible Imports.
-
-**Zielstruktur:**
-```
-streaming/core/server_utils/
-├── __init__.py          (~60 Zeilen)   Re-exports aller Public-Symbole
-├── _icons.py            (~45 Zeilen)   SVG_* Konstanten
-├── _library.py          (~120 Zeilen)  check_library_accessible, render_error_page, build_index_status_payload
-├── _paths.py            (~50 Zeilen)   safe_resolve, resolve_media_path
-├── _pwa.py              (~340 Zeilen)  render_pwa_manifest, render_pwa_service_worker, Icons, Head-Tags
-├── _css.py              (~970 Zeilen)  render_base_css
-├── _js_player.py        (~1400 Zeilen) render_player_js — Orchestrator + Config/Variablen-Preamble
-├── _js_helpers.py       (~800 Zeilen)  JS-Sektionen: Hilfsfunktionen, Progress, Click-Guard, Lyrics, Queue
-├── _js_navigation.py    (~1200 Zeilen) JS-Sektionen: Catalog-Refresh, Folder-View, Language-Picker, Globale Suche
-├── _js_rendering.py     (~1000 Zeilen) JS-Sektionen: renderTracks, Offline-Downloads, Playback, Rating, Shuffle
-├── _js_events.py        (~1300 Zeilen) JS-Sektionen: Event-Wiring, Playlist-DnD, MediaSession, Startup
-├── _audit.py            (~240 Zeilen)  Audit-Panel CSS + HTML
-└── _html.py             (~360 Zeilen)  render_media_page
-```
-
-**Ausführungsschritte:**
-1. `server_utils.py` → `server_utils/__init__.py` umwandeln (Package-Konversion, Zero-Change-Test)
-2. Nicht-JS-Module extrahieren (`_icons`, `_library`, `_paths`, `_pwa`, `_css`, `_audit`, `_html`) — einzeln, Test nach jedem Schritt
-3. `render_player_js()` in Orchestrator + JS-Section-Builder aufspalten (Shared IIFE-Scope bleibt erhalten durch String-Konkatenation)
-4. JS-Builder in eigene `_js_*.py`-Dateien verschieben
-5. Re-Export-Vollständigkeit validieren, Validation Checklist durchlaufen
-6. Dokumentation aktualisieren
-
-**Risikobewertung:**
-- Schritte 1–2: **Niedrig** — klare Funktionsgrenzen, kein geteilter mutable State
-- Schritt 3: **Mittel-Hoch** — JS teilt `var`-Scope innerhalb einer IIFE; Split nur an `/* ── section ── */` Kommentargrenzen
-- Schritte 4–6: **Niedrig** — reine Code-Verschiebung nach bestandenen Tests
-
-**Empfehlung:** `@dataclass PlayerJSConfig` (frozen) für die ~15 Feature-Flags, statt 15+ Parameter durch jede Sub-Funktion zu reichen.
-
-## Backlog — High
-
-
-### Filesystem-Ordner-Verschieben (Audio-Files + Ordner)
-- **TODO (noch nicht umzusetzen, zu diskutieren):** Audio-Dateien und Ordner im Filesystem verschieben können (z.B. „in Ordner verschieben"-Funktion). Potenziell problematisch wegen: NAS-Sync, Index-Invalidierung, Audit-Log für echte Filesystem-Änderungen. Auf unbestimmte Zeit zurückgestellt.
-
 ## Backlog — Medium
 
 ### Streaming UI (Audio + Video)
@@ -80,6 +35,10 @@ streaming/core/server_utils/
 
 ## Done
 
+- **Waveform-Peak-Caching + Stereo-Visualisierung (Classic-Modus)** (2026-05-16) — **256 Segmente, Stereo-Split (L oben / R unten):** (1) **`streaming/core/waveform.py`:** `WAVEFORM_SEGMENTS = 256`. `extract_waveform_peaks()` dekodiert via ffmpeg stereo (`-ac 2`, 1 kHz f32le), deinterleaved L/R, berechnet Peak-Absolutwert pro Segment-Block, normalisiert L+R **gemeinsam** (relative Lautstärke bleibt erhalten). Rückgabetyp jetzt `tuple[list[float], list[float]] | None`. `ensure_waveform()` speichert `{"peaks_l": [...256], "peaks_r": [...256], "segments": 256}`. Backward-kompatibel: alte Caches mit nur `"peaks"` werden vom Client automatisch als Mono behandelt. `start_background_waveform_generation()` unveränderter Worker. (2) **`GET /api/audio/waveform`:** Endpunkt unverändert — serviert einfach das gecachte JSON, das jetzt `peaks_l`/`peaks_r` enthält. (3) **Classic-Mode JS:** `var waveformDataR = null` (neue Variable für rechten Kanal). `generateWaveform(url, relativePath)` liest `data.peaks_l` → `waveformData`, `data.peaks_r` → `waveformDataR` (Fallback auf `data.peaks` für Mono-Legacy-Cache). `drawWaveform(progress)` unterscheidet drei Zustände: **Stereo** (L-Kanal wächst von Mitte nach oben, R-Kanal von Mitte nach unten; gespielt = Akzentfarbe `alpha 0.72`, ungespielt = `#999` `alpha 0.28`; Layer 1 = dünne 1px Mittellinie); **Mono** (zentrierte Balken, semi-transparente weiß-Overlay wie bisher); **Leer** (5px Standard-Progressbar). (4) Test für Waveform-Server-Endpunkt auf 256 Segmente + `peaks_l`/`peaks_r`-Keys aktualisiert.
+- **Duplikat-Ghost-Zeilen nach Löschung** (2026-05-16) — Nach dem Löschen eines Duplikats bleiben beide Tracks (gelöschter und überlebender) in der Liste sichtbar. `._deleted = true`-Marker statt `splice`: `_deleteDuplicateFile()` und `_deleteTrackFromList()` setzen diesen Marker. `applyFilter()` lässt `_deleted`-Items alle Filter passieren. `renderTracks()`: `_deleted`-Items werden aus `filteredItems` ausgeschlossen, danach als Ghost-Rows mit Klasse `.track-item--deleted` (Strikethrough, `opacity: 0.35`, `pointer-events: none`) an der ursprünglichen Position in `displayTracks` eingefügt (gleiches Muster wie `._movedTo`-Ghosts). Roter „Gelöscht"-Badge (`.deleted-badge`). Duplikat-Panel: gelöschte Items bekommen Klasse `.dupe-group-item--deleted` (kein Trash-Button, kein Click-to-Play). `markActive()` und Click-Handler schließen `.track-item--deleted` aus. Track-Counter zeigt `(N gelöscht)`-Suffix. CSS: `.track-item--deleted`, `.deleted-badge`, `.dupe-group-item--deleted`.
+- **Classic-Mode Progress-Bar verbreitert (UI-Vorbereitung für Waveform)** (2026-05-16) — `.progress-track` in Classic-Modus: `height: 28px`, Box-Hintergrund + Border + Border-Radius als dezenter Container. Canvas-Element als visuelle Ebene, Range-Input transparent als Klick-Overlay. Implementiert gemeinsam mit Waveform-Caching (siehe oben).
+- **Audit-Button in Tools-Panel-Header (oben rechts)** (2026-05-16) — „Änderungsverlauf"-Button aus dem Haupt-Header entfernt und als SVG-Icon-Button rechts im `.tools-panel-header`-Div (neben dem Panel-Titel) platziert. Neues `.tools-panel-header`-CSS (flexbox, space-between, margin-bottom). Der Audit-Button ist damit weniger prominent (selten genutzt) und trotzdem von jedem Tools-Panel-Aufruf direkt erreichbar.
 - **Tools-Panel Überarbeitung: Audit-Button, Sektionsüberschriften, kein Downloaded-Pill** (2026-05-16) — Vier zusammenhängende UI-Bereinigungen: (1) **Änderungsverlauf-Button:** Aus dem Tools-Panel-Toggle-Bereich entfernt und als immer sichtbaren grauen Pill-Button direkt links neben „Tools & Einstellungen" in den Header verschoben. `body.tool-hide-audit`-CSS-Klasse + zugehörige JS-Logik (`_toolAuditBtn`, `_toolState.auditBtn`) entfernt. (2) **Downloaded-Pille entfernt:** Kein `<span id="downloaded-pill">` mehr im Normal-Mode-Header (nur noch bei `safe_mode` als „Safe Mode"-Indikator). Toggle-Option aus Tools-Panel und alle zugehörigen JS-Stellen (`_toolDownloadedPill`, `_toolState.downloadedPill`, `body.tool-hide-downloaded`) entfernt. `downloadedPill`-JS-Variable bleibt (null in Normal-Mode, wird via `if`-Guard abgesichert). (3) **Sektionsüberschriften im Tools-Panel:** Drei Abschnitte mit `.tools-section-heading`-Labels: „Titelbearbeitung" (Inline-Ratings, Dateien verschieben), „Bibliothek" (Downloads, Zur Playlist hinzufügen, Duplikate suchen), „Ansicht" (Ordnerdaten erneuern). CSS: klein, uppercase, `letter-spacing`, gedämpft. (4) **Buttongroup „Ordnerdaten erneuern" kein Wrap mehr:** Altes `tools-item` mit verschachteltem `div > buttongroup` durch `.tools-item--full` (block-Layout, full-width) ersetzt. Buttongroup auf `display: flex; width: 100%`, Buttons auf `flex: 1; text-align: center` — kein Zeilenumbruch mehr bei schmalem Panel. Tests: 2 Assertions auf `id="downloaded-pill"` aus `test_feature_parity.py` und `test_offline_downloads.py` entfernt (je mit Kommentar). Alle 1116 Tests grün.
 - **URL-Routing erweitert: Sort/Filter/View-Mode/Tools-Panel in der URL** (2026-05-16) — Das bestehende `_router` (view/path/id/track/q) wurde um sechs zusätzliche Query-Parameter erweitert: `sort`, `fr` (Filter Rating), `ff` (Filter Favoriten), `fg` (Filter Genre), `fh` (Hidden ausblenden), `vm` (View-Mode grid/list), `panel=tools` (Tools-Panel-Modal). Neue Hilfsfunktionen `_collectUiState()`, `_applyUiStateFromUrl()`, `_applyPanelFromUrl()` in `_player_js.py`. `_applyUiStateFromUrl()` wird in `restore()` **vor** dem ersten Render aufgerufen — sodass z.B. `?fr=4` die Rating-Schwelle direkt setzt und die Liste schon gefiltert gerendert wird. URL gewinnt über `localStorage` und persistiert die übernommenen Werte zurück. Push-vs-Replace-Schlüssel bleibt `view|path|id|q`, d.h. Filter-/Sort-/View-Mode-/Panel-Änderungen erzeugen keine neuen History-Einträge (`replaceState`). Alle fünf UI-Handler (Search-Input, Sort-Field, Rating-/Fav-/Genre-/Hidden-Filter, View-Toggle, Tools-Panel open/close) rufen jetzt `_router.update()`. Audit-Panel ist eine eigene Route (`/audit`) und kein Modal — daher kein `panel=audit`. `docs/architecture.md` Tabelle und Regeln entsprechend aktualisiert. Alle 1116 Tests grün.
 - **Audit-Panel SVG-Sterne + Rating-Undo-Fix** (2026-04-14) — Zwei Fixes: (1) **Visuelle Konsistenz:** Audit-Panel (`/audit`) verwendet jetzt identische SVG-Sterne (`IC_STAR_FILLED`/`IC_STAR_EMPTY`) wie Player-Bar, Inline-Ratings und Edit-Modal — statt Unicode `★☆` (Regel 13). History-Link-Emoji `` durch SVG-Clipboard-Icon ersetzt. Header-Emoji `` durch SVG-Notepad-Icon ersetzt. Neue CSS: `.audit-star`, `.audit-star.active`, `.star-value`. `.stars` auf `inline-flex` umgestellt. (2) **Format-bewusstes Rating-Undo:** `audio_audit_undo()` nutzt jetzt `set_rating_stars()` (format-bewusst: MP3/M4A/FLAC/OGG) statt `set_popm_rating()` (MP3-only). Zusätzlich `patch_items()` für sofortiges UI-Update. Bugfix: `old_raw=0` war in `audio_set_rating()` hardcodiert → jetzt `stars_to_popm_raw(old_stars)` — Undo stellt den tatsächlichen vorherigen Rating-Wert wieder her statt immer auf 0 zurückzusetzen. `architecture.md` aktualisiert.

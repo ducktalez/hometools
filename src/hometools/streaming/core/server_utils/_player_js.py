@@ -86,13 +86,19 @@ def render_player_js(
   var isAudioMode    = player.tagName === 'AUDIO';
   var isVideoMode    = player.tagName === 'VIDEO';
   var waveformData   = null;
+  var waveformDataR  = null;   /* peaks_r — null when mono or not yet loaded */
   var waveformAbort  = null;
 """
     else:
         waveform_js = """
   var progressTrack  = document.getElementById('progress-track');
+  var waveformCanvas = document.getElementById('waveform-canvas');
+  var waveformCtx    = waveformCanvas ? waveformCanvas.getContext('2d') : null;
   var isAudioMode    = player.tagName === 'AUDIO';
   var isVideoMode    = player.tagName === 'VIDEO';
+  var waveformData   = null;   /* peaks_l (or legacy mono peaks) */
+  var waveformDataR  = null;   /* peaks_r — null when mono or not yet loaded */
+  var waveformAbort  = null;
 """
 
     # -- sprite sheet preview (always available for video, both modes) ----------
@@ -231,10 +237,122 @@ def render_player_js(
   }
 """
     else:
-        waveform_setup_js = """
-  function generateWaveform() {}
-  function drawWaveform() {}
+        waveform_setup_js = (
+            """
+  /* ── classic mode: cached stereo waveform overlay ── */
+  var WAVEFORM_API_PATH = '"""
+            + api_path.rsplit("/", 1)[0]
+            + """/waveform';
+
+  function generateWaveform(url, relativePath) {
+    if (!isAudioMode || !waveformCanvas) return;
+    if (waveformAbort) { waveformAbort.abort(); }
+    waveformAbort = new AbortController();
+    waveformData  = null;
+    waveformDataR = null;
+    drawWaveform(0);
+    if (!relativePath) return;
+    fetch(WAVEFORM_API_PATH + '?path=' + encodeURIComponent(relativePath), { signal: waveformAbort.signal })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        if (Array.isArray(data.peaks_l) && data.peaks_l.length) {
+          /* Stereo format */
+          waveformData  = data.peaks_l;
+          waveformDataR = Array.isArray(data.peaks_r) && data.peaks_r.length ? data.peaks_r : null;
+        } else if (Array.isArray(data.peaks) && data.peaks.length) {
+          /* Legacy mono cache */
+          waveformData  = data.peaks;
+          waveformDataR = null;
+        } else {
+          return;
+        }
+        var prog = player.duration > 0 ? player.currentTime / player.duration : 0;
+        drawWaveform(prog);
+      })
+      .catch(function(e) {
+        if (!e || e.name !== 'AbortError') { waveformData = null; waveformDataR = null; }
+      });
+  }
+
+  function drawWaveform(progress) {
+    if (!waveformCanvas || !waveformCtx) return;
+    var W = waveformCanvas.offsetWidth || 600;
+    var H = waveformCanvas.offsetHeight || 28;
+    waveformCanvas.width = W;
+    waveformCanvas.height = H;
+    waveformCtx.clearRect(0, 0, W, H);
+    var accent = getComputedStyle(document.documentElement)
+      .getPropertyValue('--accent').trim() || '#1db954';
+    var prog    = progress || 0;
+    var cy      = H / 2;
+    var playedW = W * prog;
+
+    var hasStereo = waveformData && waveformDataR && isAudioMode;
+    var hasMono   = waveformData && !waveformDataR && isAudioMode;
+
+    /* Layer 1: base progress indicator */
+    if (hasStereo) {
+      /* Thin centre line — coloured bars carry the progress info */
+      waveformCtx.fillStyle = 'rgba(255,255,255,0.12)';
+      waveformCtx.fillRect(0, cy - 0.5, W, 1);
+    } else {
+      waveformCtx.fillStyle = '#333';
+      waveformCtx.fillRect(0, cy - 2.5, W, 5);
+      if (playedW > 0) {
+        waveformCtx.fillStyle = accent;
+        waveformCtx.fillRect(0, cy - 2.5, playedW, 5);
+      }
+    }
+
+    /* Layer 2: waveform amplitude bars */
+    if (hasStereo || hasMono) {
+      var SEGS  = waveformData.length;
+      var slotW = W / SEGS;
+      var gapW  = Math.max(0.5, slotW * 0.15);
+      var bW    = Math.max(1, slotW - gapW);
+      if (hasStereo) {
+        var maxH = cy - 1;
+        for (var i = 0; i < SEGS; i++) {
+          var x      = i * slotW;
+          var played = i < prog * SEGS;
+          waveformCtx.globalAlpha = played ? 0.72 : 0.28;
+          waveformCtx.fillStyle   = played ? accent : '#999';
+          var lh = Math.max(1, waveformData[i]  * maxH);
+          waveformCtx.fillRect(x, cy - lh, bW, lh);
+          var rh = Math.max(1, waveformDataR[i] * maxH);
+          waveformCtx.fillRect(x, cy, bW, rh);
+        }
+      } else {
+        var maxBH = H * 0.88;
+        for (var i = 0; i < SEGS; i++) {
+          var bh = Math.max(2, waveformData[i] * maxBH);
+          var x  = i * slotW;
+          var y  = cy - bh / 2;
+          waveformCtx.globalAlpha = i < prog * SEGS ? 0.38 : 0.22;
+          waveformCtx.fillStyle   = '#fff';
+          waveformCtx.fillRect(x, y, bW, bh);
+        }
+      }
+      waveformCtx.globalAlpha = 1;
+    }
+
+    /* Layer 3: playhead dot */
+    var px = Math.max(6, Math.min(W - 6, playedW));
+    waveformCtx.fillStyle = prog > 0 ? '#fff' : 'transparent';
+    waveformCtx.beginPath();
+    waveformCtx.arc(px, cy, 6, 0, Math.PI * 2);
+    waveformCtx.fill();
+  }
+
+  /* Initial draw + redraw on resize */
+  drawWaveform(0);
+  window.addEventListener('resize', function() {
+    var p = progressBar && progressBar.max > 0 ? progressBar.value / progressBar.max : 0;
+    drawWaveform(p);
+  });
 """
+        )
 
     return (
         """
@@ -4660,7 +4778,7 @@ def render_player_js(
         console.warn('playTrack play() failed, waiting for canplay:', err);
         retryAfterCanPlay();
       });
-      generateWaveform(playback.url);
+      generateWaveform(playback.url, t.relative_path);
     }
 
     playerTitle.textContent = t.title;

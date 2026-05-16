@@ -86,7 +86,7 @@ episodes:
 
 Das Shadow-Cache-Verzeichnis (Default: `.hometools-cache/` im Repo-Root, überschreibbar via `HOMETOOLS_CACHE_DIR`) speichert alle generierten Artefakte:
 
-- `audio/` — Audio-Thumbnails (Cover-Art, 120px + 480px)
+- `audio/` — Audio-Thumbnails (Cover-Art, 120px + 480px) **und Waveform-Caches** (`*.waveform.json`)
 - `video/` — Video-Thumbnails (Frame-Extraktion via ffmpeg, 120px + 480px)
 - `indexes/` — Persisted Index-Snapshots (JSON, library-dir-spezifisch via MD5-Hash)
 - `progress/` — Wiedergabe-Fortschritt (JSON)
@@ -115,6 +115,38 @@ Zwei Größen pro Mediendatei:
 - **Groß** (480px, `.thumb-lg.jpg`) — für Serien-Vorschauen und Detail-Ansichten, nachladend
 
 Beide werden im Hintergrund-Thread generiert (`start_background_thumbnail_generation`). MTime-basierte Invalidierung: Thumbnails werden regeneriert wenn die Quelldatei neuer ist.
+
+### Waveform-Cache (Audio)
+
+**Modul:** `streaming/core/waveform.py`
+
+Für jede Audio-Datei werden 128 normalisierte Peak-Werte (0.0–1.0) im Shadow Cache gespeichert:
+
+```
+<cache_dir>/audio/<relative_path>.waveform.json
+→ {"peaks": [0.0, ..., 1.0], "segments": 128}
+```
+
+**Extraktion:** ffmpeg dekodiert die Audiodatei bei 1 kHz Mono (`-ar 1000 -ac 1 -f f32le`) und schreibt rohes Float32-PCM auf stdout. Python liest es via `struct.unpack`, teilt in 128 gleichgroße Blöcke auf und berechnet pro Block den Peak-Wert (`max(abs(sample))`). Anschließend wird auf [0, 1] normalisiert.
+
+**API-Endpunkt:** `GET /api/audio/waveform?path=<relative_path>`
+- Prüft zuerst den Shadow Cache (schnell).
+- Generiert bei Cache-Miss on-demand (dauert < 5 s für typische Songs).
+- Gibt `{"peaks": [...128 floats...], "segments": 128}` zurück oder 404 bei Fehler.
+
+**Hintergrund-Warmup:** Audio-Server-Startup startet neben dem Thumbnail-Thread auch einen `waveform-bg`-Thread, der alle Waveform-Caches vorab befüllt (`start_background_waveform_generation`). Gleicher Work-Item-Typ wie Thumbnails: `(media_path, cache_dir, media_type, relative_path)`.
+
+**Classic-Mode-UI (Waveform-Overlay):**
+Im classic Player-Bar (28 px hoch, `<canvas id="waveform-canvas">`) werden die gecacheten Peaks als semi-transparente Amplituden-Streifen über den Fortschrittsbalken gelegt:
+- **Layer 1:** Basis-Fortschrittsbalken (5 px hoch, `#333` / Akzentfarbe je gespielt/ungespielt)
+- **Layer 2:** 128 Waveform-Balken zentriert auf der Canvas-Mittellinie (`globalAlpha 0.38` gespielt / `0.22` ungespielt, Farbe `#fff`)
+- **Layer 3:** Playhead-Dot (weißer Kreis r=6 an der aktuellen Position)
+
+Die JS-Variable `WAVEFORM_API_PATH = '/api/audio/waveform'` wird in `_player_js.py` beim Rendern injiziert. Ist kein Waveform verfügbar oder `!isAudioMode`, fällt `drawWaveform` auf den reinen Fortschrittsbalken zurück.
+
+**MTime-Invalidierung:** Shadow-Cache wird regeneriert wenn `source.st_mtime > waveform.st_mtime`.
+
+**Exception Safety:** Alle Public-Funktionen in `waveform.py` geben im Fehlerfall `None`/`False` zurück, nie eine Exception.
 
 ## On-the-fly Remux & FastStart
 
@@ -881,20 +913,19 @@ updateRepeatBtn()   ← CSS-Klassen .repeat-active / .repeat-one, innerHTML ← 
 
 ## Header-Navigation
 
-Der Header besteht aus vier Elementen:
+Der Header besteht aus drei Elementen (Audit-Button ist jetzt im Tools-Panel):
 
 | Element | ID/Klasse | Funktion |
 |---|---|---|
 | `<button class="logo-home-btn" id="header-logo">` | Emoji (🎬 / 🎵) | Klick → **immer** zurück zur Startseite (`currentPath = ''; showFolderView()`) |
 | `<span class="logo-title" id="header-title">` | App-Titel | Reiner Text, **kein Link** — zeigt Ordner-Tiefe oder App-Titel |
 | `<button class="back-btn" id="back-btn">` | SVG-Pfeil | Zurück eine Ebene |
-| `<a class="audit-btn" href="/audit">` | `SVG_HISTORY` (Uhr-Icon) | Öffnet das Audit/Control-Panel in derselben Registerkarte |
 
 **Design-Regeln:**
 - Emoji-Button (`logo-home-btn`) navigiert immer zur Root-Ansicht — auch wenn man bereits dort ist.
 - `headerTitle` im JS zeigt den aktuellen Pfad-Leaf-Name oder `originalTitle` (App-Titel). Der Titel-Span hat keinen eigenen Click-Handler.
 - `originalTitle` wird aus `headerTitle.textContent` gelesen — enthält nur den Titel-Text ohne Emoji.
-- Der Audit-Button ist ein `<a>`-Tag (kein `<button>`) — ermöglicht normales Browser-Navigationsverhalten (Back-Button funktioniert). CSS-Klasse `.audit-btn` hat denselben Stil wie `.view-toggle`.
+- Der Audit-Button (`<a class="audit-btn" id="audit-btn" href="/audit">`) ist **im Tools-Panel** oben rechts platziert (`.tools-panel-header`), nicht im Header. Er ist ein `<a>`-Tag — ermöglicht normales Browser-Navigationsverhalten.
 
 ## Player-Sichtbarkeit (Bug-Fix: currentSrc statt currentIndex)
 
@@ -1535,17 +1566,25 @@ Ermöglicht das Löschen einzelner Duplikat-Dateien direkt aus dem Duplikat-Pane
 **Frontend (JS in `server_utils.py`):**
 - **`IC_TRASH`** — JS-Variable mit SVG-Trash-Icon (aus `SVG_TRASH`).
 - **`DELETE_API_PATH`** — JS-Variable abgeleitet aus `api_path` (Pattern wie `MOVE_API_PATH`).
-- **`_deleteDuplicateFile(allIndex)`** — `confirm()`-Dialog, dann `fetch(DELETE_API_PATH, {method:'POST', body: {path}})`. Bei Erfolg: `allItems.splice()`, `_invalidateDupeMap()`, `_invalidateFolderCache()`, `showToast()`, Panel neu rendern via `openDupePanel()`. Playback-aware: erkennt ob der gelöschte Track der aktuell spielende ist und springt ggf. zum nächsten Track; adjustiert `currentIndex` wenn ein Track davor gelöscht wird.
-- **`_deleteTrackFromList(filteredIdx)`** — Wie `_deleteDuplicateFile`, aber nutzt `filteredItems[idx]`. Bei Erfolg: `allItems.filter()`, Cache invalidieren, View neu rendern (Playlist/Folder). Playback-aware: speichert vor dem Delete, ob der Track aktuell spielt oder vor dem aktuellen Index liegt, passt `currentIndex` nach dem Re-Render an und ruft `playTrack()` auf, wenn der spielende Track gelöscht wurde.
-- **`.dupe-trash-btn`** — Icon-Button mit `stopPropagation()` (verhindert Click-to-Play des Parent-Items). CSS: transparent, rot-auf-hover (`#ef4444`).
-- **`.track-delete-btn`** — Inline-Delete-Button in der Track-Liste, nur für Duplikate gerendert und via CSS-Klasse sichtbar.
+- **`_deleteDuplicateFile(allIndex)`** — `confirm()`-Dialog, dann `fetch(DELETE_API_PATH, {method:'POST', body: {path}})`. Bei Erfolg: `allItems[allIndex]._deleted = true` (kein `splice`!), `_invalidateDupeMap()`, `_invalidateFolderCache()`, `showToast()`, `applyFilter()` + `openDupePanel()`. Item bleibt in `allItems`, Dupe-Gruppe bleibt sichtbar. Playback-aware: erkennt ob der gelöschte Track aktuell spielt und springt ggf. zum nächsten.
+- **`_deleteTrackFromList(filteredIdx)`** — Wie `_deleteDuplicateFile`, aber nutzt `filteredItems[idx]`. Findet das Item per `relative_path` in `allItems` und setzt `._deleted = true`. Re-render via `applyFilter()`.
+- **`.dupe-trash-btn`** — Icon-Button mit `stopPropagation()` (verhindert Click-to-Play des Parent-Items). Nur für nicht-gelöschte Items gerendert (`._deleted` → Badge statt Button). CSS: transparent, rot-auf-hover.
+- **`.track-delete-btn`** — Inline-Delete-Button in der Track-Liste, nur für Duplikate gerendert.
+
+**Ghost-Anzeige nach Löschung:**
+- Gelöschte Items bleiben mit `._deleted = true` in `allItems` und fließen durch `applyFilter()`.
+- `renderTracks()`: `_deleted`-Items gehören NICHT zu `filteredItems` (= nicht abspielbar). Sie werden als separate Ghost-Zeile in `displayTracks` re-injiziert (identisches Muster wie `_movedTo`-Ghosts).
+- Ghost-Zeile hat Klasse `.track-item--deleted`: ausgegraut (`opacity: 0.35`), `pointer-events: none`, Titel durchgestrichen, **× statt Numbering**, rotes "Gelöscht"-Badge.
+- Der Track-Zähler zeigt `(N gelöscht)` wenn gelöschte Items vorhanden sind.
+- `applyFilter()`: `_deleted`-Items werden durch alle Filter (Threshold, Quick-Filter, Text) durchgelassen, damit sie immer sichtbar bleiben.
+- Im Duplikat-Panel: gelöschte Items haben Klasse `.dupe-group-item--deleted` (ausgegraut, `pointer-events: none`, Titel durchgestrichen, rotes Badge im Titel). Kein Trash-Button, kein Click-to-Play. Die Gruppe bleibt sichtbar (beide Items: gelöschtes + überlebendes), bis die Seite neu geladen wird.
 
 **Design-Prinzipien:**
 1. **Nur Duplikate löschbar** — Kein allgemeiner Delete-Button in der UI. Trash im Duplikat-Panel und als Inline-Button (`.track-delete-btn`) in der Track-Liste, nur für als Duplikat erkannte Items gerendert. Soft-Delete via `attention_delete_files()`, Bestätigung via `confirm()`.
 2. **Soft-Delete** — Datei wird verschoben, nie gelöscht. Trash-Verzeichnis konfigurierbar.
 3. **Bestätigung erforderlich** — `confirm()`-Dialog vor jeder Löschung.
 4. **Feature-Parity** — Beide Server (Audio + Video) haben den Endpoint.
-5. **Playback-Awareness** — Löschung während der Wiedergabe ist sicher: wird der aktuell spielende Track gelöscht, springt der Player automatisch zum nächsten Track. Wird ein Track vor dem aktuellen gelöscht, wird `currentIndex` korrigiert.
+5. **Session-Sichtbarkeit** — Gelöschte Items bleiben bis zum nächsten Page-Reload sichtbar (Ghost-Zeile). Nach Reload ist das Item weg (Backend hat es aus dem Index entfernt).
 
 ### Dateien verschieben (File Mover)
 
@@ -1657,6 +1696,60 @@ Die Listen-Suchleiste (`.filter-bar`) ist standardmäßig verborgen, wenn eine P
 ```
 
 **Alle Eintrittspunkte** (die die Filter-Bar sichtbar machen) rufen jetzt auch `_hideGlobalSearch()` auf und setzen `fb-scroll-hidden`, damit der Zustand konsistent ist.
+
+---
+
+## Waveform-Peak-Caching (Shadow Cache)
+
+**Module:** `streaming/core/waveform.py`, `streaming/audio/server.py` (Endpunkt)
+
+### Zweck
+
+256 normalisierte Amplitude-Peak-Werte pro Kanal (L + R) werden via ffmpeg aus Audio-Dateien extrahiert und im Shadow-Cache gespeichert. Das ermöglicht eine stereo-bewusste Wellenform-Visualisierung im Classic-Mode Progress-Bar ohne client-seitiges Audio-Decoding.
+
+### Pfad-Konvention
+
+`<cache_dir>/audio/<relative_path>.waveform.json` — spiegelt die Library-Struktur exakt wider, analog zu Thumbnails (`.thumb.jpg`).
+
+### Extraction (Stereo)
+
+`extract_waveform_peaks(media_path, segments=256)` dekodiert via ffmpeg (`-ac 2 -f f32le -ar 1000 pipe:1`), deinterleaved die L/R-Samples (`all_samples[0::2]` / `all_samples[1::2]`), berechnet Peak-Absolutwert pro Segment-Block, normalisiert **gemeinsam** (relative Lautstärke zwischen Kanälen bleibt erhalten). Mono-Quellen werden von ffmpeg automatisch auf Stereo hochgemischt (beide Kanäle identisch). Gibt `(peaks_l, peaks_r) | None` zurück.
+
+### Cache-Format
+
+```json
+{"peaks_l": [...256 floats 0.0–1.0...], "peaks_r": [...256 floats...], "segments": 256}
+```
+
+Backward-Kompatibilität: alte Caches mit nur `"peaks"`-Key → Client rendert Mono-Fallback.
+
+### Cache-Lebenszyklus
+
+- **MTime-Invalidierung:** Nur regenerieren wenn `source.mtime > cache.mtime`.
+- **Background-Only:** `start_background_waveform_generation(items)` → Daemon-Thread `waveform-bg`.
+- **On-Demand-Fallback:** `GET /api/audio/waveform?path=...` generiert synchron wenn Cache kalt ist.
+
+### API-Endpunkt
+
+`GET /api/audio/waveform?path=<relative_path>`
+- Response: `{"peaks_l": [...], "peaks_r": [...], "segments": 256}`
+- 404: Datei nicht im Cache + Generierung fehlgeschlagen
+- 400: leerer `path`-Parameter
+
+### Frontend-Integration (Classic-Modus)
+
+- `var waveformData = null` (L-Kanal oder Legacy-Mono-Peaks)
+- `var waveformDataR = null` (R-Kanal; `null` = Mono-Modus)
+- `generateWaveform(url, relativePath)` fetcht `/api/audio/waveform`, befüllt beide Variablen
+- `drawWaveform(progress)` zeichnet drei Zustände:
+
+| Zustand | Layer 1 | Layer 2 |
+|---------|---------|---------|
+| **Stereo** | 1px weisse Mittellinie | L wächst nach oben, R nach unten; gespielt = Akzentfarbe α0.72, ungespielt = #999 α0.28 |
+| **Mono** | 5px Progressbar (grau/Akzent) | Zentrierte Balken, weiss semi-transparent |
+| **Leer** | 5px Progressbar | — |
+
+Layer 3 (immer): weißer Playhead-Dot am aktuellen Fortschritt.
 
 ---
 

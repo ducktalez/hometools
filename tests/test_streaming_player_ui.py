@@ -134,7 +134,8 @@ def test_classic_html_has_classic_class():
 def test_classic_html_has_inline_range():
     page = _page(style="classic")
     assert 'id="progress-bar"' in page
-    assert 'id="waveform-canvas"' not in page
+    # Classic mode now has waveform-canvas for canvas-based progress drawing (pre-waveform placeholder)
+    assert 'id="waveform-canvas"' in page
     # Classic mode now has progress-track for sprite sheet preview support
     assert 'id="progress-track"' in page
 
@@ -215,8 +216,12 @@ def test_waveform_html_video_page():
 
 def test_classic_js_has_no_waveform_data():
     js = _js(style="classic")
-    assert "waveformData" not in js
+    # Classic mode uses server-side cached waveform (no client-side AudioContext decoding)
     assert "decodeAudioData" not in js
+    # Classic mode DOES use waveformAbort to cancel in-flight waveform fetches
+    assert "waveformAbort" in js
+    # Classic mode fetches waveform from the server API, not the audio file itself
+    assert "WAVEFORM_API_PATH" in js
 
 
 def test_classic_js_has_no_thumb_video():
@@ -286,7 +291,8 @@ def test_waveform_js_has_video_mode_class():
 
 def test_waveform_js_calls_generate_on_play():
     js = _js(style="waveform")
-    assert "generateWaveform(playback.url)" in js
+    # generateWaveform now accepts (url, relativePath) — url used in waveform mode
+    assert "generateWaveform(playback.url, t.relative_path)" in js
 
 
 # ---------------------------------------------------------------------------

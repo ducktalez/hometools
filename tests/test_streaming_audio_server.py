@@ -269,8 +269,52 @@ def test_thumb_serves_cached_thumbnail_from_shadow_cache(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Playback progress endpoints
+# Waveform endpoint
 # ---------------------------------------------------------------------------
+
+
+def test_waveform_returns_404_when_not_cached_and_file_missing(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/api/audio/waveform", params={"path": "nonexistent/Song.mp3"})
+
+    assert response.status_code == 404
+
+
+def test_waveform_serves_cached_json_from_shadow_cache(tmp_path):
+    import json as _json
+
+    from hometools.streaming.core.waveform import get_waveform_path
+
+    cache_dir = tmp_path / "cache"
+    wf_path = get_waveform_path(cache_dir, "audio", "Artist/Song.mp3")
+    wf_path.parent.mkdir(parents=True, exist_ok=True)
+    peaks_l = [float(i) / 255 for i in range(256)]
+    peaks_r = [float(255 - i) / 255 for i in range(256)]
+    wf_path.write_text(
+        _json.dumps({"peaks_l": peaks_l, "peaks_r": peaks_r, "segments": 256}),
+        encoding="utf-8",
+    )
+
+    with patch.dict(os.environ, {"HOMETOOLS_CACHE_DIR": str(cache_dir)}):
+        client = TestClient(create_app(tmp_path))
+        response = client.get("/api/audio/waveform", params={"path": "Artist/Song.mp3"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "peaks_l" in data
+    assert "peaks_r" in data
+    assert len(data["peaks_l"]) == 256
+    assert len(data["peaks_r"]) == 256
+    assert data["segments"] == 256
+
+
+def test_waveform_empty_path_returns_400(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/api/audio/waveform", params={"path": ""})
+
+    assert response.status_code == 400
 
 
 def test_audio_progress_save_and_load(tmp_path):
