@@ -46,6 +46,15 @@ def test_css_classic_is_single_row():
     assert "align-items: center" in css
 
 
+def test_css_classic_progress_wraps_on_small_screens():
+    """progress-wrap must use flex-wrap and a non-zero flex-basis so it wraps below
+    controls when the screen is too narrow to fit everything in one row."""
+    css = render_base_css()
+    assert "flex-wrap: wrap" in css  # bar allows wrapping
+    assert "1 1 160px" in css  # progress-wrap basis triggers wrap threshold
+    assert "min-height" in css  # bar grows instead of clipping
+
+
 def test_css_waveform_is_column_layout():
     css = render_base_css()
     assert "flex-direction: column" in css

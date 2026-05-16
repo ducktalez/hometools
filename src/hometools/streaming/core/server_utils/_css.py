@@ -908,15 +908,17 @@ body.playlist-dragging .track-list { overflow: visible; }
 .time-label { font-size: 0.68rem; color: var(--sub); flex-shrink: 0; min-width: 2.2rem; }
 .time-label.end { text-align: left; }
 
-/* ── Classic player bar — single row ── */
+/* ── Classic player bar — single row, wraps progress below controls on small screens ── */
 .player-bar.classic {
-  display: flex; align-items: center;
-  height: calc(var(--player-h) + var(--sab));
-  padding-left: max(0.75rem, var(--sal)); padding-right: max(0.75rem, var(--sar)); gap: 0.65rem;
+  display: flex; flex-wrap: wrap; align-items: center;
+  min-height: calc(var(--player-h) + var(--sab));
+  padding-left: max(0.75rem, var(--sal)); padding-right: max(0.75rem, var(--sar));
+  padding-bottom: max(0.4rem, var(--sab));
+  gap: 0.65rem;
 }
 .player-bar.classic .player-info { flex: 0 0 150px; }
 .player-bar.classic .progress-wrap {
-  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.4rem;
+  flex: 1 1 160px; min-width: 0; display: flex; align-items: center; gap: 0.4rem;
 }
 .player-bar.classic .progress-track {
   flex: 1 1 0; position: relative; min-width: 0;
