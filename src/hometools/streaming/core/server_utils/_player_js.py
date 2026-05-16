@@ -3650,7 +3650,6 @@ def render_player_js(
       document.body.classList.remove('tool-hide-playlists');
       document.body.classList.remove('tool-show-duplicates');
       document.body.classList.remove('tool-show-file-mover');
-      if (_dupeShowLink) _dupeShowLink.style.display = 'none';
       if (toolsPill) toolsPill.classList.remove('has-active');
       /* Re-render to remove tool widgets from track list */
       if (folderGrid && !folderGrid.classList.contains('view-hidden')) {
@@ -3685,16 +3684,9 @@ def render_player_js(
     if (_toolState.duplicates) {
       document.body.classList.add('tool-show-duplicates');
       if (_toolDuplicates) _toolDuplicates.checked = true;
-      _ensureDupeMap();
-      var dc = _getDupeCount();
-      if (_dupeShowLink) {
-        _dupeShowLink.textContent = dc > 0 ? dc + ' Duplikat-Gruppe' + (dc !== 1 ? 'n' : '') + ' gefunden \\u2014 anzeigen' : 'Keine Duplikate gefunden';
-        _dupeShowLink.style.display = 'inline-block';
-      }
     } else {
       document.body.classList.remove('tool-show-duplicates');
       if (_toolDuplicates) _toolDuplicates.checked = false;
-      if (_dupeShowLink) _dupeShowLink.style.display = 'none';
     }
     if (_toolState.fileMover) {
       document.body.classList.add('tool-show-file-mover');
@@ -3722,6 +3714,15 @@ def render_player_js(
 
   function openToolsPanel() {
     if (toolsBackdrop) toolsBackdrop.removeAttribute('hidden');
+    /* Always show dupe count when panel opens — show even if toggle is off */
+    if (_dupeShowLink && allItems.length > 0) {
+      _ensureDupeMap();
+      var dc = _getDupeCount();
+      _dupeShowLink.textContent = dc > 0
+        ? dc + ' Duplikat-Gruppe' + (dc !== 1 ? 'n' : '') + ' \u2014 Liste anzeigen'
+        : 'Keine Duplikate gefunden';
+      _dupeShowLink.style.display = 'inline-block';
+    }
   }
   function closeToolsPanel() {
     if (toolsBackdrop) toolsBackdrop.setAttribute('hidden', '');
@@ -3778,7 +3779,7 @@ def render_player_js(
     _dupeShowLink.addEventListener('click', function(e) {
       e.preventDefault();
       closeToolsPanel();
-      openDupePanel();
+      playDuplicates();
     });
   }
   if (_toolFileMover) {
@@ -4213,9 +4214,9 @@ def render_player_js(
     html += '</span>';
     /* Dropdown with all folders */
     html += '<select class="move-folder-select" data-index="' + idx + '">';
-    html += '<option value="">Ordner\u2026</option>';
+    html += '<option value="" disabled' + (curFolder ? '' : ' selected') + '>Ordner w\u00e4hlen\u2026</option>';
     allF.forEach(function(f) {
-      html += '<option value="' + escHtml(f) + '"' + (f === curFolder ? ' disabled' : '') + '>' + escHtml(f) + '</option>';
+      html += '<option value="' + escHtml(f) + '"' + (f === curFolder ? ' selected' : '') + '>' + escHtml(f) + '</option>';
     });
     html += '</select>';
     html += '</span>';
