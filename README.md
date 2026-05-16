@@ -10,6 +10,8 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
+- Die Musik-scrollbar ist schwer zu klicken, weil man genau den dünnen Strich treffen muss. Das Design gefällt mir aber so. Ist es möglich, die Klickfläche der progressbar zu vergrößern, ohne das Design zu verändern? (z.B. durch ein unsichtbares Element, das die Klickfläche erweitert?)
+- Füge in den Tools-einstellungen eine buttongroup ein, welche einen Lösch-button bei Titeln einfügt zum löschen einer Datei. Optionen: (Löschen (mit Warnung)/Löschen (direkt)/ausblenden). Dateien werden immer in den delete_me Ordner verschoben. Die Warnung könnte z.B. ein Pop-up sein, das den Benutzer auffordert, die Aktion zu bestätigen, bevor die Datei endgültig gelöscht wird.
 - Im tools-modus sollen die anderen Metadaten wysiwig geändert werden können (z.B. Album, Interpret, Genre, Jahr, etc.). Das ist teilweise schon möglich, aber noch nicht vollständig umgesetzt.
 - Es soll eine Listenansicht für Titel geben, in der (wie im windows ordner) die Metadaten Spaltenmäßig angezeigt werden. Die Spalten sollen auch ausgewählt werden können.
 - Ich will für die Anwendung urls/routes haben, sodass man listen/titel/etc. via Link schicken kann. Kannst du dafür einen plan erstellen/umsetzen?

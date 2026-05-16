@@ -114,22 +114,21 @@ def render_media_page(
     )
     mode_controls_html = (
         '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
+        '<a class="audit-btn" id="audit-btn" href="/audit" title="\u00c4nderungsverlauf">' + SVG_HISTORY + "</a>"
         '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
-        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>'
-        + SVG_REFRESH +
-        '</button></span>'
+        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>' + SVG_REFRESH + "</button></span>"
         if safe_mode
-        else '<span class="downloaded-pill" id="downloaded-pill" title="Offline-Downloads anzeigen">Downloaded (0)</span>'
+        else '<a class="audit-btn" id="audit-btn" href="/audit" title="\u00c4nderungsverlauf">' + SVG_HISTORY + "</a>"
         '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
-        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>'
-        + SVG_REFRESH +
-        '</button></span>'
+        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>' + SVG_REFRESH + "</button></span>"
     )
     tools_panel_html = """
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
     <div class="tools-panel">
       <div class="tools-panel-title">Tools &amp; Einstellungen</div>
       <button class="tools-activate-all" id="tools-activate-all" title="Tool-Modus mit den konfigurierten Einstellungen aktivieren">Tool-Modus aktivieren</button>
+
+      <div class="tools-section-heading">Titelbearbeitung</div>
       <div class="tools-item">
         <div>
           <div class="tools-item-label">Inline-Ratings</div>
@@ -142,6 +141,18 @@ def render_media_page(
       </div>
       <div class="tools-item">
         <div>
+          <div class="tools-item-label">Dateien verschieben</div>
+          <div class="tools-item-desc">Songs in andere Ordner verschieben (2x2 Schnellwahl + Dropdown)</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-file-mover">
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+
+      <div class="tools-section-heading">Bibliothek</div>
+      <div class="tools-item">
+        <div>
           <div class="tools-item-label">Downloads</div>
           <div class="tools-item-desc">Download-Buttons pro Track anzeigen</div>
         </div>
@@ -152,7 +163,7 @@ def render_media_page(
       </div>
       <div class="tools-item">
         <div>
-          <div class="tools-item-label">Zur Playlist hinzufügen</div>
+          <div class="tools-item-label">Zur Playlist hinzuf&uuml;gen</div>
           <div class="tools-item-desc">Playlist-Buttons pro Track anzeigen</div>
         </div>
         <label class="tools-toggle">
@@ -171,48 +182,19 @@ def render_media_page(
           <span class="tools-toggle-track"></span>
         </label>
       </div>
-      <div class="tools-item">
-        <div>
-          <div class="tools-item-label">Downloaded-Pille</div>
-          <div class="tools-item-desc">Pille &quot;Downloaded (N)&quot; in der Kopfleiste anzeigen</div>
-        </div>
-        <label class="tools-toggle">
-          <input type="checkbox" id="tool-downloaded-pill" checked>
-          <span class="tools-toggle-track"></span>
-        </label>
-      </div>
-      <div class="tools-item">
-        <div>
-          <div class="tools-item-label">&Auml;nderungsverlauf</div>
-          <div class="tools-item-desc">Verlaufs-Symbol in der Kopfleiste anzeigen</div>
-        </div>
-        <label class="tools-toggle">
-          <input type="checkbox" id="tool-audit-btn" checked>
-          <span class="tools-toggle-track"></span>
-        </label>
-      </div>
-      <div class="tools-item">
-        <div>
-          <div class="tools-item-label">Ordnerdaten erneuern</div>
-          <div class="tools-item-desc">Position des Buttons &quot;Katalog neu laden&quot;</div>
-          <div class="tools-buttongroup" id="tool-refresh-position" role="group">
-            <button type="button" class="tools-buttongroup-btn" data-value="header">Kopfleiste</button>
-            <button type="button" class="tools-buttongroup-btn" data-value="tools-pill">Im Tools-Button</button>
-            <button type="button" class="tools-buttongroup-btn" data-value="off">Aus</button>
-          </div>
+
+      <div class="tools-section-heading">Ansicht</div>
+      <div class="tools-item tools-item--full">
+        <div class="tools-item-label">Ordnerdaten erneuern</div>
+        <div class="tools-item-desc">Position des Buttons &bdquo;Katalog neu laden&ldquo;</div>
+        <div class="tools-buttongroup" id="tool-refresh-position" role="group">
+          <button type="button" class="tools-buttongroup-btn" data-value="header">Kopfleiste</button>
+          <button type="button" class="tools-buttongroup-btn" data-value="tools-pill">Im Tools-Button</button>
+          <button type="button" class="tools-buttongroup-btn" data-value="off">Aus</button>
         </div>
       </div>
-      <div class="tools-item">
-        <div>
-          <div class="tools-item-label">Dateien verschieben</div>
-          <div class="tools-item-desc">Songs in andere Ordner verschieben (2x2 Schnellwahl + Dropdown)</div>
-        </div>
-        <label class="tools-toggle">
-          <input type="checkbox" id="tool-file-mover">
-          <span class="tools-toggle-track"></span>
-        </label>
-      </div>
-      <button class="tools-panel-close" id="tools-panel-close">Schließen</button>
+
+      <button class="tools-panel-close" id="tools-panel-close">Schlie&szlig;en</button>
     </div>
   </div>
   <div class="dupe-panel-backdrop" id="dupe-panel-backdrop" hidden>
@@ -468,7 +450,6 @@ def render_media_page(
     <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
     <button class="refresh-btn" id="refresh-btn" title="Katalog neu laden">{SVG_REFRESH}</button>
-    <a class="audit-btn" href="/audit" title="Änderungsverlauf">{SVG_HISTORY}</a>
     {mode_controls_html}
     {playlist_pill_html}
     <span class="refresh-info" id="refresh-info"></span>

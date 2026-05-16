@@ -188,7 +188,41 @@ Benutzer können einzelne Medien-Items als Favoriten „pinnen" und auf den Home
 
 ### Deep Linking
 
-URL-Parameter `?id=<relative_path>` auf der Root-Route (`/`) beider Server. Das JS liest den Parameter nach dem Catalog-Load, navigiert automatisch zum Ordner des Items und startet die Wiedergabe. Die URL wird danach via `history.replaceState` bereinigt.
+URL-Parameter `?id=<relative_path>` auf der Root-Route (`/`) beider Server (Legacy-Form). Das JS liest den Parameter nach dem Catalog-Load, navigiert automatisch zum Ordner des Items und startet die Wiedergabe. Diese Form bleibt für externe Bookmarks/Shortcut-Manifeste erhalten und wird vom Router (siehe unten) als Sonderfall behandelt.
+
+### URL-Routing / View-State (`_router`)
+
+**Modul:** `streaming/core/server_utils/_player_js.py` (IIFE `_router`)
+
+Der gesamte Navigationszustand wird in der Browser-URL gespiegelt, sodass Reload, Bookmark und „Link teilen" exakt zur gleichen Ansicht zurückführen. Schema (Query-Parameter auf `/`):
+
+| Parameter            | Bedeutung                                                   |
+| -------------------- | ----------------------------------------------------------- |
+| `view=folder&path=…` | Ordner-Grid (Default, `path=""` = Root)                     |
+| `view=playlist&path=…` | Leaf-Ordner-Playlist (Tracklist)                          |
+| `view=userplaylist&id=…` | Benutzer-Playlist                                       |
+| `view=favorites`     | Favoriten-Playlist                                          |
+| `view=offline`       | Offline-Downloads-Bibliothek                                |
+| `view=search&q=…`    | Globale Suchergebnisse                                      |
+| `track=<rel>`        | (optional) markierter / zuletzt gespielter Titel in der Liste |
+| `sort=<field>`       | Sortier-Auswahl (überschreibt `localStorage.ht-sort` für diesen Reload) |
+| `fr=<1..5>`          | Rating-Filter (mindestens N Sterne)                         |
+| `ff=1`               | Favoriten-Filter aktiv                                      |
+| `fg=<genre>`         | Genre-Filter                                                |
+| `fh=0`               | Ausgeblendete Titel verstecken (Default = anzeigen/grau)    |
+| `vm=grid` \| `vm=list` | View-Mode (Default = `list`)                              |
+| `panel=tools`        | Tools-Panel-Modal beim Restore öffnen                       |
+
+**Regeln:**
+
+- Zustand wird automatisch nach jedem View-Wechsel via `pushState` geschrieben (`showFolderView`, `showPlaylist`, `showUserPlaylistView`, `openOfflineLibrary`, `playItem`).
+- Nur `track`/Sort/Filter/View-Mode/Panel ändert sich → `replaceState` (kein zusätzlicher History-Eintrag). Schlüssel für die push-vs-replace-Entscheidung ist nur `view|path|id|q`.
+- `popstate` (Browser-Vor/Zurück) ruft `_router.restore()` auf und rendert die Ansicht neu, ohne neue History-Einträge zu erzeugen.
+- Beim Initial-Load läuft `_router.restore()` erst, nachdem Catalog **und** User-Playlists geladen sind — sonst würde eine `userplaylist`-URL ins Leere zeigen.
+- `_suppress = true` während `restore()` verhindert, dass die internen `showFolderView`/`showPlaylist`-Aufrufe ihrerseits URL-Updates schreiben.
+- Globale Suche ist routebar (`view=search&q=…`); Track-Marker funktioniert auch in Suchergebnissen.
+- UI-State (Sort/Filter/View-Mode) wird in `_applyUiStateFromUrl` **vor** dem Rendern angewandt; die URL gewinnt über `localStorage` und persistiert die übernommenen Werte zurück in `localStorage`.
+- Audit ist eine eigene Route (`/audit`), kein Modal — daher kein `panel=audit`.
 
 ### Shortcuts API
 

@@ -79,19 +79,18 @@ header {
 .tools-pill-refresh.is-spinning svg { animation: tools-pill-refresh-spin 1s linear infinite; }
 @keyframes tools-pill-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 /* Header-element visibility toggles driven from tools panel */
-body.tool-hide-downloaded #downloaded-pill { display: none; }
-body.tool-hide-audit .audit-btn { display: none; }
 body.tool-refresh-off #refresh-btn,
 body.tool-refresh-in-pill #refresh-btn { display: none; }
 /* Buttongroup (segmented selector) */
 .tools-buttongroup {
-  display: inline-flex; margin-top: 6px; border: 1px solid #3a3a3a;
-  border-radius: 6px; overflow: hidden;
+  display: flex; margin-top: 6px; border: 1px solid #3a3a3a;
+  border-radius: 6px; overflow: hidden; width: 100%;
 }
 .tools-buttongroup-btn {
   background: none; border: none; color: var(--sub);
-  padding: 0.32rem 0.6rem; font-size: 0.72rem; cursor: pointer;
+  padding: 0.32rem 0; font-size: 0.72rem; cursor: pointer;
   border-right: 1px solid #3a3a3a;
+  flex: 1; text-align: center;
   transition: background 0.12s, color 0.12s;
 }
 .tools-buttongroup-btn:last-child { border-right: none; }
@@ -110,11 +109,21 @@ body.tool-refresh-in-pill #refresh-btn { display: none; }
   max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 .tools-panel-title { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 1rem; }
+.tools-section-heading {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--sub); margin: 0.9rem 0 0.25rem; opacity: 0.7;
+}
+.tools-section-heading:first-of-type { margin-top: 0.2rem; }
 .tools-item {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0.6rem 0; border-bottom: 1px solid #222;
 }
-.tools-item:last-child { border-bottom: none; }
+/* Full-width tools-item: no toggle on right, block layout with buttongroup below */
+.tools-item--full {
+  display: block; align-items: unset; justify-content: unset;
+  padding: 0.6rem 0; border-bottom: 1px solid #222;
+}
+.tools-item:last-child, .tools-item--full:last-child { border-bottom: none; }
 .tools-item-label { font-size: 0.85rem; color: var(--text); }
 .tools-item-desc { font-size: 0.7rem; color: var(--sub); margin-top: 2px; }
 .tools-toggle {

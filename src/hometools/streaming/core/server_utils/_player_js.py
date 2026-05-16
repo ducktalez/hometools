@@ -408,6 +408,10 @@ def render_player_js(
   var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
   var playlistItems = [];
+  /* Tracks moved this session: relative_path → targetFolder.
+     Accumulated across multiple moves; cleared on navigation.
+     Applied in applyFilter() so ghosts survive all re-renders. */
+  var _moveGhosts = {};
   var filteredItems = [];
   var currentIndex = -1;
   var inPlaylist = false;
@@ -1936,6 +1940,7 @@ def render_player_js(
     inPlaylist = false;
     _currentPlaylistId = '';
     _globalSearchActive = false;
+    _moveGhosts = {};  /* clear move ghosts when leaving playlist */
     /* Clear refresh-info when leaving playlist view */
     var rInfo = document.getElementById('refresh-info');
     if (rInfo) rInfo.textContent = '';
@@ -1963,6 +1968,7 @@ def render_player_js(
       trackCount.textContent = '';
       renderBreadcrumb();
       applyViewMode();
+      if (typeof _router !== 'undefined') _router.update();
       return;
     }
 
@@ -2199,6 +2205,7 @@ def render_player_js(
 
     renderBreadcrumb();
     applyViewMode();
+    if (typeof _router !== 'undefined') _router.update();
   }
 
   /* ── Language picker for multi-language folders ── */
@@ -2275,6 +2282,7 @@ def render_player_js(
     destroyPlaylistDragDrop();
     inPlaylist = true;
     _currentPlaylistId = '__folder__';
+    _moveGhosts = {};  /* clear move ghosts when entering a new playlist */
     playlistItems = _sortByFolderOrder(currentPath, items);
 
     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
@@ -2309,6 +2317,7 @@ def render_player_js(
       playlistItems = _sortByFolderOrder(_showPlaylistPath, items);
       applyFilter();
     });
+    if (typeof _router !== 'undefined') _router.update();
   }
 
   /* ── back ── */
@@ -2651,6 +2660,13 @@ def render_player_js(
       if (ea !== eb) return ea - eb;
       return a.title.localeCompare(b.title);
     });
+    /* Re-apply any pending move ghosts so they survive filter/sort re-renders */
+    if (Object.keys(_moveGhosts).length > 0) {
+      items = items.map(function(item) {
+        var movedTo = _moveGhosts[item.relative_path];
+        return movedTo ? Object.assign({}, item, { _movedTo: movedTo }) : item;
+      });
+    }
     renderTracks(items);
   }
 
@@ -3253,6 +3269,7 @@ def render_player_js(
       showPlaylist(items, false);
       headerTitle.textContent = 'Downloaded';
       backBtn.style.display = 'inline-block';
+      if (typeof _router !== 'undefined') _router.update();
       estimateOfflineStorage(ready).then(function(info) {
         if (info && info.appUsage > 0) {
           trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +
@@ -3625,8 +3642,6 @@ def render_player_js(
   var _toolDuplicates = document.getElementById('tool-duplicates');
   var _dupeShowLink = document.getElementById('dupe-show-link');
   var _toolFileMover = document.getElementById('tool-file-mover');
-  var _toolDownloadedPill = document.getElementById('tool-downloaded-pill');
-  var _toolAuditBtn = document.getElementById('tool-audit-btn');
   var _toolRefreshGroup = document.getElementById('tool-refresh-position');
   var _toolsPillRefresh = document.getElementById('tools-pill-refresh');
 
@@ -3648,14 +3663,6 @@ def render_player_js(
   function _applyHeaderUiState() {
     /* Header-element visibility — applied regardless of tool-mode active flag.
        These are persistent UI preferences, not "tool features". */
-    /* Downloaded pill */
-    var hideDownloaded = _toolState.downloadedPill === false;
-    document.body.classList.toggle('tool-hide-downloaded', hideDownloaded);
-    if (_toolDownloadedPill) _toolDownloadedPill.checked = !hideDownloaded;
-    /* Audit (Änderungsverlauf) */
-    var hideAudit = _toolState.auditBtn === false;
-    document.body.classList.toggle('tool-hide-audit', hideAudit);
-    if (_toolAuditBtn) _toolAuditBtn.checked = !hideAudit;
     /* Refresh-button position: 'header' (default) | 'tools-pill' | 'off' */
     var refreshPos = _toolState.refreshPosition || 'header';
     document.body.classList.toggle('tool-refresh-in-pill', refreshPos === 'tools-pill');
@@ -3688,7 +3695,7 @@ def render_player_js(
         showFolderView();
       } else if (inPlaylist) {
         applyViewMode();
-        renderTracks(filteredItems);
+        applyFilter();
       }
       return;
     }
@@ -3735,7 +3742,7 @@ def render_player_js(
       showFolderView();
     } else if (inPlaylist) {
       applyViewMode();
-      renderTracks(filteredItems);
+      applyFilter();
     }
   }
 
@@ -3755,9 +3762,11 @@ def render_player_js(
         : 'Keine Duplikate gefunden';
       _dupeShowLink.style.display = 'inline-block';
     }
+    if (typeof _router !== 'undefined') _router.update();
   }
   function closeToolsPanel() {
     if (toolsBackdrop) toolsBackdrop.setAttribute('hidden', '');
+    if (typeof _router !== 'undefined') _router.update();
   }
 
   if (toolsPill) toolsPill.addEventListener('click', openToolsPanel);
@@ -3820,18 +3829,6 @@ def render_player_js(
       _saveToolState();
       /* Re-render to show/hide move widgets */
       if (inPlaylist) applyFilter();
-    });
-  }
-  if (_toolDownloadedPill) {
-    _toolDownloadedPill.addEventListener('change', function() {
-      _toolState.downloadedPill = _toolDownloadedPill.checked;
-      _saveToolState();
-    });
-  }
-  if (_toolAuditBtn) {
-    _toolAuditBtn.addEventListener('change', function() {
-      _toolState.auditBtn = _toolAuditBtn.checked;
-      _saveToolState();
     });
   }
   if (_toolRefreshGroup) {
@@ -4323,13 +4320,10 @@ def render_player_js(
       }
       _invalidateDupeMap();
       _invalidateFolderCache();
-      /* Show a ghost at the item's current position: dimmed + target hint.
-         The ghost stays visible until the user navigates away or changes filters.
-         This lets the user verify and—if needed—correct a wrong move before
-         the list refreshes. */
-      var ghostItems = filteredItems.slice();
-      ghostItems[idx] = Object.assign({}, t, { _movedTo: targetFolder });
-      renderTracks(ghostItems);
+      /* Register ghost so all subsequent re-renders (applyFilter, refreshFolderRatings, etc.)
+         keep showing the dimmed hint until the user navigates away. */
+      _moveGhosts[t.relative_path] = targetFolder;
+      applyFilter();
       showToast('Verschoben nach ' + targetFolder);
     })
     .catch(function(err) { showToast('Fehler: ' + (err.message || 'Verschieben fehlgeschlagen')); });
@@ -4668,6 +4662,7 @@ def render_player_js(
       .catch(function() {
         beginPlayback({ url: t.stream_url, offline: false, fallbackUrl: t.stream_url });
       });
+    if (typeof _router !== 'undefined') _router.update();
   }
 
   function playTrack(index) {
@@ -4699,7 +4694,7 @@ def render_player_js(
         }
         if (changed) {
           updateMediaSession(t);
-          renderTracks(filteredItems);
+          applyFilter();
           markActive();
         }
       })
@@ -5356,7 +5351,7 @@ def render_player_js(
             }
           }
           closeEditModal();
-          renderTracks(filteredItems);
+          applyFilter();
           /* Update player display if this is the currently playing track */
           if (idx === currentIndex) {
             if (playerTitle) playerTitle.textContent = title;
@@ -5445,13 +5440,14 @@ def render_player_js(
     localStorage.setItem('ht-view-mode', viewMode);
     if (inPlaylist) {
       applyViewMode();
-      renderTracks(filteredItems);
+      applyFilter();
     } else {
       showFolderView();
     }
+    if (typeof _router !== 'undefined') _router.update();
   });
-  searchInput.addEventListener('input', applyFilter);
-  sortField.addEventListener('change', applyFilter);
+  searchInput.addEventListener('input', function() { applyFilter(); if (typeof _router !== 'undefined') _router.update(); });
+  sortField.addEventListener('change', function() { applyFilter(); if (typeof _router !== 'undefined') _router.update(); });
   if (filterRatingBtn) {
     filterRatingBtn.addEventListener('click', function() {
       /* cycle 0 → 1 → 2 → 3 → 4 → 5 → 0 */
@@ -5459,6 +5455,7 @@ def render_player_js(
       localStorage.setItem('ht-filter-rating', String(filterRating));
       updateFilterChips();
       applyFilter();
+      if (typeof _router !== 'undefined') _router.update();
     });
   }
   if (filterFavBtn) {
@@ -5467,6 +5464,7 @@ def render_player_js(
       localStorage.setItem('ht-filter-fav', filterFav ? '1' : '0');
       updateFilterChips();
       applyFilter();
+      if (typeof _router !== 'undefined') _router.update();
     });
   }
   if (filterGenreBtn) {
@@ -5483,6 +5481,7 @@ def render_player_js(
       localStorage.setItem('ht-filter-genre', filterGenre);
       updateFilterChips();
       applyFilter();
+      if (typeof _router !== 'undefined') _router.update();
     });
   }
   if (filterHiddenBtn) {
@@ -5491,6 +5490,7 @@ def render_player_js(
       localStorage.setItem('ht-show-hidden', showHidden ? '1' : '0');
       updateFilterChips();
       applyFilter();
+      if (typeof _router !== 'undefined') _router.update();
     });
   }
   updateFilterChips();
@@ -5534,27 +5534,268 @@ def render_player_js(
   }
   applyViewMode();
 
-  /* ── Deep Linking: ?id=relative/path auto-navigates & plays ── */
-  var _deepLinkId = (new URLSearchParams(window.location.search)).get('id');
+  /* ── URL routing / deep linking ──
+     The browser URL mirrors the current view so reload / bookmarks /
+     share-links restore navigation state.
 
-  function handleDeepLink() {
-    if (!_deepLinkId || !allItems.length) return;
-    var target = allItems.find(function(it) { return it.relative_path === _deepLinkId; });
-    if (!target) { _deepLinkId = null; return; }
-    /* Navigate to the item's parent folder */
-    var slash = _deepLinkId.lastIndexOf('/');
-    currentPath = slash > 0 ? _deepLinkId.substring(0, slash) : '';
-    /* Gather siblings in that folder */
-    var c = contentsAt(currentPath);
-    var siblings = c.files.length ? c.files : itemsUnder(currentPath);
-    var idx = siblings.findIndex(function(it) { return it.relative_path === _deepLinkId; });
-    if (idx < 0) { idx = 0; }
-    showPlaylist(siblings, true, idx);
-    /* Clean the URL so reload doesn't re-trigger deep link */
-    var cleanUrl = window.location.pathname;
-    history.replaceState(null, '', cleanUrl);
-    _deepLinkId = null;
-  }
+     Query schema (all parameters optional):
+       ?view=folder       &path=<rel>                 → folder grid
+       ?view=playlist     &path=<rel>     [&track=<rel>]   → folder-playlist
+       ?view=userplaylist &id=<id>        [&track=<rel>]   → user playlist
+       ?view=favorites                    [&track=<rel>]   → favorites
+       ?view=offline                      [&track=<rel>]   → offline downloads
+       ?view=search       &q=<needle>     [&track=<rel>]   → global search results
+
+     Legacy ?id=<rel> (auto-play deep link) is still honoured. */
+  var _router = (function() {
+    var _suppress = true;      /* stays true until restore() runs — otherwise the initial
+                                  showFolderView() from loadInitialCatalog would overwrite
+                                  the deep-link URL the user reloaded with */
+    var _lastKey = '';         /* "view|path|id" of last pushed entry; track-only change → replace */
+
+    function _readUrl() {
+      var p = new URLSearchParams(window.location.search);
+      return {
+        view: p.get('view') || '',
+        path: p.get('path') || '',
+        id: p.get('id') || '',
+        track: p.get('track') || '',
+        q: p.get('q') || '',
+        sort: p.get('sort') || '',
+        fr: p.get('fr') || '',
+        ff: p.get('ff') || '',
+        fg: p.get('fg') || '',
+        fh: p.get('fh') || '',
+        vm: p.get('vm') || '',
+        panel: p.get('panel') || ''
+      };
+    }
+
+    function _buildUrl(s) {
+      var p = new URLSearchParams();
+      if (s.view) p.set('view', s.view);
+      if (s.path) p.set('path', s.path);
+      if (s.id) p.set('id', s.id);
+      if (s.track) p.set('track', s.track);
+      if (s.q) p.set('q', s.q);
+      if (s.sort) p.set('sort', s.sort);
+      if (s.fr) p.set('fr', s.fr);
+      if (s.ff) p.set('ff', s.ff);
+      if (s.fg) p.set('fg', s.fg);
+      if (s.fh) p.set('fh', s.fh);
+      if (s.vm) p.set('vm', s.vm);
+      if (s.panel) p.set('panel', s.panel);
+      var qs = p.toString();
+      return window.location.pathname + (qs ? '?' + qs : '');
+    }
+
+    function _collectUiState(s) {
+      /* Sort/filter/view-mode are always meaningful — encode whenever they differ from defaults. */
+      try {
+        if (sortField && sortField.value && sortField.value !== 'custom') s.sort = sortField.value;
+      } catch (e) { /* ignore */ }
+      if (typeof filterRating === 'number' && filterRating > 0) s.fr = String(filterRating);
+      if (filterFav) s.ff = '1';
+      if (filterGenre) s.fg = filterGenre;
+      /* showHidden default = true → only encode when explicitly disabled */
+      if (typeof showHidden === 'boolean' && !showHidden) s.fh = '0';
+      if (viewMode && viewMode !== 'list') s.vm = viewMode;
+      /* Tools-panel open? (audit is its own page, not a modal) */
+      try {
+        if (toolsBackdrop && !toolsBackdrop.hasAttribute('hidden')) s.panel = 'tools';
+      } catch (e) { /* ignore */ }
+      return s;
+    }
+
+    function _currentState() {
+      var s = { view: '', path: '', id: '', track: '', q: '',
+                sort: '', fr: '', ff: '', fg: '', fh: '', vm: '', panel: '' };
+      /* Active selection only meaningful inside a list view */
+      if (inPlaylist && filteredItems && currentIndex >= 0 && currentIndex < filteredItems.length) {
+        var t = filteredItems[currentIndex];
+        if (t && t.relative_path) s.track = t.relative_path;
+      }
+      if (_globalSearchActive) {
+        s.view = 'search';
+        var inp = document.getElementById('global-search-input');
+        if (inp && inp.value) s.q = inp.value.trim();
+        return _collectUiState(s);
+      }
+      if (currentPath === '__offline__') { s.view = 'offline'; return _collectUiState(s); }
+      if (_currentPlaylistId === '__favorites__') { s.view = 'favorites'; return _collectUiState(s); }
+      if (_currentPlaylistId && _currentPlaylistId !== '__folder__') {
+        s.view = 'userplaylist'; s.id = _currentPlaylistId; return _collectUiState(s);
+      }
+      if (inPlaylist) { s.view = 'playlist'; s.path = currentPath || ''; return _collectUiState(s); }
+      /* Default = folder grid (incl. root) */
+      s.view = 'folder'; s.path = currentPath || '';
+      return _collectUiState(s);
+    }
+
+    /* Key drives pushState vs replaceState: filter/sort/vm/panel changes share the
+       same key as the current view → no new history entry. */
+    function _key(s) { return (s.view || '') + '|' + (s.path || '') + '|' + (s.id || '') + '|' + (s.q || ''); }
+
+    function update() {
+      if (_suppress) return;
+      var s = _currentState();
+      var url = _buildUrl(s);
+      var cur = window.location.pathname + window.location.search;
+      if (url === cur) { _lastKey = _key(s); return; }
+      var k = _key(s);
+      try {
+        if (k === _lastKey) {
+          /* Same list/view, only track changed → replace (no extra history entry) */
+          history.replaceState(s, '', url);
+        } else {
+          history.pushState(s, '', url);
+        }
+      } catch (e) { /* ignore */ }
+      _lastKey = k;
+    }
+
+    function _markTrack(trackRp) {
+      if (!trackRp || !filteredItems || !filteredItems.length) return;
+      var i = filteredItems.findIndex(function(it) { return it && it.relative_path === trackRp; });
+      if (i >= 0) {
+        currentIndex = i;
+        if (typeof markActive === 'function') markActive();
+      }
+    }
+
+    function _applyUiStateFromUrl(st) {
+      /* URL wins over localStorage: explicit param overrides the saved value;
+         absence of param leaves localStorage default untouched. */
+      if (st.sort && sortField) {
+        try { sortField.value = st.sort; } catch (e) { /* unknown option */ }
+      }
+      if (st.fr !== '') {
+        var fr = parseInt(st.fr, 10);
+        if (!isNaN(fr) && fr >= 0 && fr <= 5) {
+          filterRating = fr;
+          try { localStorage.setItem('ht-filter-rating', String(fr)); } catch (e) { /* ignore */ }
+        }
+      }
+      if (st.ff !== '') {
+        filterFav = (st.ff === '1');
+        try { localStorage.setItem('ht-filter-fav', filterFav ? '1' : '0'); } catch (e) { /* ignore */ }
+      }
+      if (st.fg !== '') {
+        filterGenre = st.fg;
+        try { localStorage.setItem('ht-filter-genre', filterGenre); } catch (e) { /* ignore */ }
+      }
+      if (st.fh !== '') {
+        showHidden = (st.fh !== '0');
+        try { localStorage.setItem('ht-show-hidden', showHidden ? '1' : '0'); } catch (e) { /* ignore */ }
+      }
+      if (st.vm === 'grid' || st.vm === 'list') {
+        viewMode = st.vm;
+        try { localStorage.setItem('ht-view-mode', viewMode); } catch (e) { /* ignore */ }
+      }
+      try { if (typeof updateFilterChips === 'function') updateFilterChips(); } catch (e) { /* ignore */ }
+    }
+
+    function _applyPanelFromUrl(st) {
+      /* Run after the view has been rendered so DOM is in place. */
+      if (st.panel === 'tools' && typeof openToolsPanel === 'function') {
+        try { openToolsPanel(); } catch (e) { /* ignore */ }
+      }
+    }
+
+    function restore() {
+      var st = _readUrl();
+
+      /* Apply UI state (sort/filter/view-mode) BEFORE rendering — they affect what's shown. */
+      _applyUiStateFromUrl(st);
+
+      /* Legacy ?id= deep link → auto-play */
+      if (!st.view && st.id && allItems.length) {
+        var target = allItems.find(function(it) { return it.relative_path === st.id; });
+        if (target) {
+          var slash = st.id.lastIndexOf('/');
+          var parent = slash > 0 ? st.id.substring(0, slash) : '';
+          _suppress = true;
+          try {
+            currentPath = parent;
+            var c = contentsAt(parent);
+            var siblings = c.files.length ? c.files : itemsUnder(parent);
+            var idx = siblings.findIndex(function(it) { return it.relative_path === st.id; });
+            showPlaylist(siblings, true, idx >= 0 ? idx : 0);
+          } finally { _suppress = false; }
+          _applyPanelFromUrl(st);
+          update();
+          return;
+        }
+        _suppress = false;
+        return;
+      }
+
+      if (!st.view) {
+        _suppress = false;
+        _applyPanelFromUrl(st);
+        return;
+      } /* root — nothing to do */
+
+      _suppress = true;
+      try {
+        if (st.view === 'offline') {
+          openOfflineLibrary();
+          /* offline list is loaded async — defer track marker */
+          if (st.track) setTimeout(function() { _markTrack(st.track); }, 200);
+        } else if (st.view === 'favorites') {
+          showUserPlaylistView('__favorites__');
+          _markTrack(st.track);
+        } else if (st.view === 'userplaylist' && st.id) {
+          showUserPlaylistView(st.id);
+          _markTrack(st.track);
+        } else if (st.view === 'playlist') {
+          currentPath = st.path || '';
+          var pc = contentsAt(currentPath);
+          var pItems = pc.files.length ? pc.files : itemsUnder(currentPath);
+          if (pItems.length) {
+            var pStart = 0;
+            if (st.track) {
+              var pi = pItems.findIndex(function(it) { return it.relative_path === st.track; });
+              if (pi >= 0) pStart = pi;
+            }
+            showPlaylist(pItems, false, pStart);
+            _markTrack(st.track);
+          } else {
+            showFolderView();
+          }
+        } else if (st.view === 'search' && st.q) {
+          currentPath = '';
+          showFolderView();
+          var inp = document.getElementById('global-search-input');
+          if (inp) inp.value = st.q;
+          if (typeof globalSearch === 'function') globalSearch(st.q);
+          _markTrack(st.track);
+        } else {
+          /* folder (default) */
+          currentPath = st.path || '';
+          showFolderView();
+        }
+      } finally {
+        _suppress = false;
+      }
+      _applyPanelFromUrl(st);
+      /* Reflect the actually-restored state back to the URL (e.g. fallback to folder view) */
+      update();
+    }
+
+    function init() {
+      window.addEventListener('popstate', function() {
+        /* Browser back/forward → re-render. restore() handles its own suppression
+           and the final update() is a no-op because the URL already matches. */
+        restore();
+      });
+    }
+
+    return { update: update, restore: restore, init: init };
+  }());
+
+  /* Backwards-compat shim so any leftover call sites keep working. */
+  function handleDeepLink() { _router.restore(); }
 
   /* ── User Playlists ── */
   var _userPlaylists = [];
@@ -5764,6 +6005,7 @@ def render_player_js(
         playlistItems = _sortFavoritesByOrder(favItems);
         applyFilter();
       });
+      if (typeof _router !== 'undefined') _router.update();
       return;
     }
     var data = _resolvePlaylistItems(plId);
@@ -5785,6 +6027,7 @@ def render_player_js(
     searchInput.value = '';
     renderBreadcrumb();
     applyFilter();
+    if (typeof _router !== 'undefined') _router.update();
   }
 
   function playUserPlaylist(plId) {
@@ -6406,10 +6649,12 @@ def render_player_js(
   }());
 
   loadInitialCatalog().then(function() {
-    handleDeepLink();
+    _router.init();
     loadFavorites();
     loadUserPlaylists().then(function() {
-      /* Re-render root folder view to show playlist pseudo-folder cards */
+      /* Restore view from URL once both catalog and user playlists are ready */
+      _router.restore();
+      /* Default: render root folder view (router was a no-op for clean URLs) */
       if (!currentPath && !inPlaylist) showFolderView();
       _startPlaylistSync();
     });
