@@ -2841,7 +2841,9 @@ def render_player_js(
         '</li>';
     }).join('');
     document.querySelectorAll('.track-item:not(.missing-episode):not(.debug-filtered)').forEach(function(el) {
-      el.addEventListener('click', function(e) { if (!wasDrag(e)) playTrack(Number(el.dataset.index)); });
+      el.addEventListener('click', function(e) {
+        if (!wasDrag(e) && !window.getSelection().toString()) playTrack(Number(el.dataset.index));
+      });
     });
     /* Wire up inline rating star clicks */
     document.querySelectorAll('.track-inline-rating-star').forEach(function(btn) {
@@ -6158,7 +6160,7 @@ def render_player_js(
     /* --- Named handlers for proper cleanup --- */
     function onMouseDown(e) {
       if (e.button !== 0) return;
-      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn,.track-inline-rating-star')) return;
+      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn,.track-inline-rating-star,.track-title-text,.track-artist')) return;
       var item = getTrackItem(e.target);
       if (!item) return;
       _pendingDrag = { item: item, x: e.clientX, y: e.clientY };
@@ -6187,7 +6189,7 @@ def render_player_js(
 
     function onTouchStart(e) {
       if (e.touches.length !== 1) return;
-      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn,.track-inline-rating-star')) return;
+      if (e.target.closest('.track-dl-btn,.track-pin-btn,.track-edit-btn,.track-playlist-btn,.track-queue-btn,.track-inline-rating-star,.track-title-text,.track-artist')) return;
       var item = getTrackItem(e.target);
       if (!item) return;
       _touchStartX = e.touches[0].clientX;

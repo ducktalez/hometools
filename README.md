@@ -10,6 +10,8 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
+- Im tools-modus sollen die anderen Metadaten wysiwig geändert werden können (z.B. Album, Interpret, Genre, Jahr, etc.). Das ist teilweise schon möglich, aber noch nicht vollständig umgesetzt.
+- Es soll eine Listenansicht für Titel geben, in der (wie im windows ordner) die Metadaten Spaltenmäßig angezeigt werden. Die Spalten sollen auch ausgewählt werden können.
 - Ich will für die Anwendung urls/routes haben, sodass man listen/titel/etc. via Link schicken kann. Kannst du dafür einen plan erstellen/umsetzen?
 - wav/mp3 Organisation für DJs.
 - Deleted files landen in delete_me statt in den Papierkorb

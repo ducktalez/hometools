@@ -503,6 +503,7 @@ body.modal-open { overflow: hidden; }
 }
 .track-title-text {
   flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: text;
 }
 .track-artist {
   font-size: 0.8rem; color: var(--sub); margin-top: 2px;
