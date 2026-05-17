@@ -13,6 +13,15 @@ File format
    # Optional: override the folder display name (shown as "artist" in the UI)
    series_title: "Avatar: Der Herr der Elemente"
 
+   # Optional: audio language override (ISO 639-1) for folders without a
+   # recognizable language tag (e.g. "(engl)") in their name.  Only applied
+   # when no tag was detected automatically.
+   language: "en"
+
+   # Optional: subtitle language override (ISO 639-1).  Only applied when no
+   # subtitle hint was detected automatically.
+   subtitle_language: "de"
+
    # Per-file overrides keyed by filename (not full path)
    episodes:
      "Avatar S01E01 German 2005 DVDRiP REPACK XviD-SiMPTY.avi":
@@ -52,6 +61,8 @@ class FolderOverrides:
     series_title: str  # empty string → no override
     episodes: dict[str, EpisodeOverride]  # filename → overrides
     language_group: str = ""  # group id for multi-language linking (empty = auto)
+    language: str = ""  # ISO 639-1 audio language override (empty = no override)
+    subtitle_language: str = ""  # ISO 639-1 subtitle language override (empty = no override)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,8 +99,16 @@ def _parse_overrides(raw: dict) -> FolderOverrides:
             )
 
     language_group = str(raw.get("language_group") or "")
+    language = str(raw.get("language") or "").strip().lower()
+    subtitle_language = str(raw.get("subtitle_language") or "").strip().lower()
 
-    return FolderOverrides(series_title=series_title, episodes=episodes, language_group=language_group)
+    return FolderOverrides(
+        series_title=series_title,
+        episodes=episodes,
+        language_group=language_group,
+        language=language,
+        subtitle_language=subtitle_language,
+    )
 
 
 def load_overrides(folder: Path) -> FolderOverrides | None:
@@ -223,6 +242,13 @@ def apply_overrides(
         # Apply series_title as artist override
         new_artist = folder_ov.series_title if folder_ov.series_title else item.artist
 
+        # Apply language overrides only when the item has no auto-detected value
+        # (folder override fills the gap for folders without a recognizable tag).
+        new_language = folder_ov.language if (folder_ov.language and not item.language) else item.language
+        new_subtitle_language = (
+            folder_ov.subtitle_language if (folder_ov.subtitle_language and not item.subtitle_language) else item.subtitle_language
+        )
+
         # Apply per-episode override
         ep_ov = folder_ov.episodes.get(filename)
         if ep_ov is not None:
@@ -236,7 +262,14 @@ def apply_overrides(
             new_episode = item.episode
 
         # Only create a new instance if something actually changed
-        if new_artist == item.artist and new_title == item.title and new_season == item.season and new_episode == item.episode:
+        if (
+            new_artist == item.artist
+            and new_title == item.title
+            and new_season == item.season
+            and new_episode == item.episode
+            and new_language == item.language
+            and new_subtitle_language == item.subtitle_language
+        ):
             result.append(item)
         else:
             result.append(
@@ -252,6 +285,12 @@ def apply_overrides(
                     episode=new_episode,
                     mtime=item.mtime,
                     thumbnail_lg_url=item.thumbnail_lg_url,
+                    genre=item.genre,
+                    language=new_language,
+                    subtitle_language=new_subtitle_language,
+                    file_size=item.file_size,
+                    duration=item.duration,
+                    bitrate=item.bitrate,
                 )
             )
 

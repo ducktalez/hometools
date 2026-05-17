@@ -523,6 +523,8 @@ Ordnernamen wie `Malcolm in the Middle (engl)` oder `Narcos (engl, gersub)` werd
 
 **`get_default_language()`** — Config-Funktion (`HOMETOOLS_DEFAULT_LANGUAGE`, Default `"de"`). Bestimmt welche Sprachvariante bei Klick auf eine Multi-Language-Karte standardmäßig navigiert wird.
 
+**`FolderOverrides.language` / `subtitle_language`** — Optionale Felder in `hometools_overrides.yaml` (siehe `streaming/core/media_overrides.py`). Für Ordner **ohne** erkennbaren Sprach-Tag im Namen (z.B. `Malcolm Mittendrin`) kann manuell `language: "de"` und/oder `subtitle_language: "en"` gesetzt werden. `apply_overrides()` füllt diese Felder **nur** dann ein, wenn das Item keinen automatisch erkannten Wert hat — der via `parse_language_tag()` ermittelte Wert hat immer Vorrang (Auto-Detection ist die Wahrheit, Override ist Fallback). Strings werden beim Laden normalisiert (`strip().lower()`).
+
 **Snapshot-Version** auf v7 gebumpt (neues Feld `subtitle_language`).
 
 ### Frontend (JS)
@@ -1446,8 +1448,22 @@ Thread-sicher via `threading.Lock`. Atomare Schreibvorgänge (NamedTemporaryFile
 3. `IC_PLAYLIST` — SVG-Icon als JS-Variable
 4. Playlist-Button (`.track-playlist-btn`) pro Track in der Liste
 5. Playlist-Pseudo-Ordner-Karten auf der Root-Startseite (`.playlist-folder-card`)
-6. „Neue Playlist…"-Karte (`.playlist-new-card`)
+6. „Neue Playlist…"-Karte (`.playlist-new-card`) — gemeinsam mit „Downloaded" und „Titel" in der kompakten **Tools-Row** (`.playlist-tools-row`)
 7. „Zur Playlist hinzufügen"-Modal (`#playlist-modal-backdrop`)
+
+### Tools-Row (Root-Startseite, seit 2026-05-17)
+
+Drei spezielle Aktionen sind oberhalb des Folder-Grids in einer kompakten horizontalen Leiste zusammengefasst (`.playlist-tools-row`, `grid-column: 1 / -1`):
+
+| Element | ID | Aktion |
+|---|---|---|
+| **Downloaded** | `#offline-folder-card` | Öffnet die Offline-Library (`openOfflineLibrary()`). Count = Anzahl ready-Downloads. |
+| **Neue Playlist…** | `#playlist-new-card` | `prompt()` → `POST /api/<media>/playlists` |
+| **Titel** | `#all-titles-card` (`data-playlist-id="__alltitles__"`) | Pseudo-Playlist: zeigt alle Titel aus **allen** User-Playlists in einer deduplizierten Liste (`showUserPlaylistView('__alltitles__')`). Nur sichtbar wenn ≥ 1 Titel in irgendeiner Playlist. **Read-only** — Reorder/Remove sind blockiert. |
+
+Helper-Funktionen: `_collectAllPlaylistRelPaths()`, `_countAllPlaylistTitles()`, `_resolveAllPlaylistItems()`.
+
+Die alten großen `folder-card`-Quadrate für „Downloaded" und „Neue Playlist…" wurden ersetzt; die Klassennamen `.offline-folder-card`, `.playlist-new-card`, `.playlist-folder-card` bleiben für Selektor-Kompatibilität (Click-Handler, Feature-Parity-Tests) erhalten.
 
 ### UI-Elemente (Redesign 2026-04-02)
 
