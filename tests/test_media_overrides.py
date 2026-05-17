@@ -344,6 +344,112 @@ class TestLanguageOverrides:
 
 
 # ---------------------------------------------------------------------------
+# Per-episode language overrides
+# ---------------------------------------------------------------------------
+
+
+class TestEpisodeLanguageOverrides:
+    def test_load_episode_language_fields(self, tmp_path):
+        data = {
+            "episodes": {
+                "ep.mp4": {"language": "en", "subtitle_language": "de"},
+            },
+        }
+        (tmp_path / OVERRIDE_FILENAME).write_text(yaml.dump(data), encoding="utf-8")
+        ov = load_overrides(tmp_path)
+        assert ov is not None
+        ep = ov.episodes["ep.mp4"]
+        assert ep.language == "en"
+        assert ep.subtitle_language == "de"
+
+    def test_load_episode_language_defaults_none(self, tmp_path):
+        data = {"episodes": {"ep.mp4": {"title": "Foo"}}}
+        (tmp_path / OVERRIDE_FILENAME).write_text(yaml.dump(data), encoding="utf-8")
+        ov = load_overrides(tmp_path)
+        assert ov is not None
+        ep = ov.episodes["ep.mp4"]
+        assert ep.language is None
+        assert ep.subtitle_language is None
+
+    def test_load_episode_language_normalised_lowercase(self, tmp_path):
+        data = {"episodes": {"ep.mp4": {"language": " DE ", "subtitle_language": "EN"}}}
+        (tmp_path / OVERRIDE_FILENAME).write_text(yaml.dump(data), encoding="utf-8")
+        ov = load_overrides(tmp_path)
+        assert ov is not None
+        ep = ov.episodes["ep.mp4"]
+        assert ep.language == "de"
+        assert ep.subtitle_language == "en"
+
+    def test_episode_language_wins_over_folder(self, tmp_path):
+        lib = tmp_path / "lib"
+        show = lib / "Show"
+        show.mkdir(parents=True)
+        data = {
+            "language": "de",  # folder-level fallback
+            "episodes": {
+                "english_dub.mp4": {"language": "en"},
+            },
+        }
+        (show / OVERRIDE_FILENAME).write_text(yaml.dump(data), encoding="utf-8")
+
+        items = [
+            MediaItem("Show/english_dub.mp4", "Ep", "Show", "/s?x", "video", language=""),
+            MediaItem("Show/normal.mp4", "Ep2", "Show", "/s?y", "video", language=""),
+        ]
+        result = apply_overrides(items, lib)
+        eng = next(i for i in result if i.relative_path.endswith("english_dub.mp4"))
+        normal = next(i for i in result if i.relative_path.endswith("normal.mp4"))
+        assert eng.language == "en"  # per-episode wins
+        assert normal.language == "de"  # folder fallback applies
+
+    def test_episode_language_wins_over_auto_detection(self, tmp_path):
+        """Explicit per-episode override beats even auto-detected language."""
+        lib = tmp_path / "lib"
+        show = lib / "Show"
+        show.mkdir(parents=True)
+        data = {"episodes": {"ep.mp4": {"language": "fr"}}}
+        (show / OVERRIDE_FILENAME).write_text(yaml.dump(data), encoding="utf-8")
+
+        items = [
+            MediaItem("Show/ep.mp4", "Ep", "Show", "/s?x", "video", language="en"),
+        ]
+        result = apply_overrides(items, lib)
+        assert result[0].language == "fr"
+
+    def test_episode_subtitle_language_override(self, tmp_path):
+        lib = tmp_path / "lib"
+        show = lib / "Show"
+        show.mkdir(parents=True)
+        data = {"episodes": {"ep.mp4": {"subtitle_language": "ja"}}}
+        (show / OVERRIDE_FILENAME).write_text(yaml.dump(data), encoding="utf-8")
+
+        items = [
+            MediaItem("Show/ep.mp4", "Ep", "Show", "/s?x", "video", language="en"),
+        ]
+        result = apply_overrides(items, lib)
+        assert result[0].subtitle_language == "ja"
+        assert result[0].language == "en"  # untouched
+
+    def test_episode_language_only_changes_when_explicit(self, tmp_path):
+        """Episode override without language fields must not clobber existing/folder values."""
+        lib = tmp_path / "lib"
+        show = lib / "Show"
+        show.mkdir(parents=True)
+        data = {
+            "language": "de",
+            "episodes": {"ep.mp4": {"title": "Just a Title"}},  # no language field
+        }
+        (show / OVERRIDE_FILENAME).write_text(yaml.dump(data), encoding="utf-8")
+
+        items = [
+            MediaItem("Show/ep.mp4", "Ep", "Show", "/s?x", "video", language=""),
+        ]
+        result = apply_overrides(items, lib)
+        assert result[0].title == "Just a Title"
+        assert result[0].language == "de"  # folder fallback intact
+
+
+# ---------------------------------------------------------------------------
 # build_video_index integration
 # ---------------------------------------------------------------------------
 

@@ -525,6 +525,8 @@ Ordnernamen wie `Malcolm in the Middle (engl)` oder `Narcos (engl, gersub)` werd
 
 **`FolderOverrides.language` / `subtitle_language`** — Optionale Felder in `hometools_overrides.yaml` (siehe `streaming/core/media_overrides.py`). Für Ordner **ohne** erkennbaren Sprach-Tag im Namen (z.B. `Malcolm Mittendrin`) kann manuell `language: "de"` und/oder `subtitle_language: "en"` gesetzt werden. `apply_overrides()` füllt diese Felder **nur** dann ein, wenn das Item keinen automatisch erkannten Wert hat — der via `parse_language_tag()` ermittelte Wert hat immer Vorrang (Auto-Detection ist die Wahrheit, Override ist Fallback). Strings werden beim Laden normalisiert (`strip().lower()`).
 
+**`EpisodeOverride.language` / `subtitle_language`** — Per-Episode-Verfeinerung im `episodes:`-Block. Im Gegensatz zum Folder-Fallback gewinnt der Episoden-Override **explizit** über Folder-Wert *und* Auto-Detection (konsistent mit `title`/`season`/`episode`). Anwendungsfall: Ordner mit gemischtsprachigen Episoden (z.B. eine einzelne englische Folge in einer deutschen Serie).
+
 **Snapshot-Version** auf v7 gebumpt (neues Feld `subtitle_language`).
 
 ### Frontend (JS)

@@ -30,6 +30,11 @@ File format
        title: "Die Verfolgungsjagd"
        season: 2
        episode: 8
+     # Per-episode language overrides (win over folder-level language).
+     # Useful for folders with mixed-language episodes.
+     "Avatar S03E05 English Dub.mp4":
+       language: "en"
+       subtitle_language: "de"
 
 Any field that is *not* listed in an override keeps its auto-detected value
 (from embedded metadata, filename parsing, or folder structure).
@@ -72,6 +77,8 @@ class EpisodeOverride:
     title: str | None = None
     season: int | None = None
     episode: int | None = None
+    language: str | None = None  # ISO 639-1; explicit per-episode override (wins over folder)
+    subtitle_language: str | None = None  # ISO 639-1; explicit per-episode override
 
 
 # ---------------------------------------------------------------------------
@@ -92,10 +99,14 @@ def _parse_overrides(raw: dict) -> FolderOverrides:
             title = entry.get("title")
             season = entry.get("season")
             episode = entry.get("episode")
+            ep_language = entry.get("language")
+            ep_sub_language = entry.get("subtitle_language")
             episodes[str(filename)] = EpisodeOverride(
                 title=str(title) if title is not None else None,
                 season=int(season) if season is not None else None,
                 episode=int(episode) if episode is not None else None,
+                language=str(ep_language).strip().lower() if ep_language is not None else None,
+                subtitle_language=str(ep_sub_language).strip().lower() if ep_sub_language is not None else None,
             )
 
     language_group = str(raw.get("language_group") or "")
@@ -255,6 +266,11 @@ def apply_overrides(
             new_title = ep_ov.title if ep_ov.title is not None else item.title
             new_season = ep_ov.season if ep_ov.season is not None else item.season
             new_episode = ep_ov.episode if ep_ov.episode is not None else item.episode
+            # Per-episode language explicitly overrides folder + auto-detection.
+            if ep_ov.language is not None:
+                new_language = ep_ov.language
+            if ep_ov.subtitle_language is not None:
+                new_subtitle_language = ep_ov.subtitle_language
             applied += 1
         else:
             new_title = item.title
