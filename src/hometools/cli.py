@@ -211,6 +211,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     gen_overrides.set_defaults(func=run_generate_overrides)
 
+    validate_overrides_p = subparsers.add_parser(
+        "validate-overrides",
+        help="Lint hometools_overrides.yaml files in a media library (typos, unknown languages, stale episode keys).",
+    )
+    validate_overrides_p.add_argument(
+        "--library-dir",
+        type=Path,
+        default=None,
+        help="Library directory to scan (default: video library dir).",
+    )
+    validate_overrides_p.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    validate_overrides_p.add_argument(
+        "--fail-on-warning",
+        action="store_true",
+        help="Return exit code 1 also on warnings (default: only errors fail).",
+    )
+    validate_overrides_p.set_defaults(func=run_validate_overrides)
+
     return parser
 
 
@@ -688,6 +706,60 @@ def run_generate_overrides(args: argparse.Namespace) -> int:
     _console_print(f"✓ Override-Vorlage geschrieben: {output_path}")
     _console_print(f"  {len(data.get('episodes', {}))} Episode(n), Serientitel: {data.get('series_title', '?')}")
     _console_print("  Bitte prüfen und bei Bedarf anpassen.")
+    return 0
+
+
+def run_validate_overrides(args: argparse.Namespace) -> int:
+    """Lint all hometools_overrides.yaml files in a media library."""
+    from hometools.streaming.core.overrides_validator import (
+        SEVERITY_ERROR,
+        SEVERITY_INFO,
+        SEVERITY_WARNING,
+        validate_overrides,
+    )
+
+    # In --json mode keep stdout machine-parseable: don't add console log handlers.
+    if not args.json:
+        setup_logging(log_file=None)
+    else:
+        import logging as _logging
+
+        _logging.getLogger().setLevel(_logging.CRITICAL)
+    library_dir: Path = (args.library_dir or get_video_library_dir()).resolve()
+    if not library_dir.is_dir():
+        _console_print(f"Fehler: {library_dir} ist kein Verzeichnis.")
+        return 2
+
+    report = validate_overrides(library_dir)
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+    else:
+        _console_print(f"Library: {library_dir}")
+        _console_print(
+            f"Gescannt: {report.scanned_folders} Ordner, "
+            f"{report.parsed_files} Override-Datei(en) geladen, "
+            f"{len(report.issues)} Befund(e) "
+            f"({len(report.errors)} Fehler, {len(report.warnings)} Warnungen).\n"
+        )
+        if not report.issues:
+            _console_print("Keine Befunde — alle Override-Dateien sehen sauber aus.")
+        else:
+            icons = {
+                SEVERITY_ERROR: "✗",
+                SEVERITY_WARNING: "!",
+                SEVERITY_INFO: "i",
+            }
+            for issue in report.issues:
+                icon = icons.get(issue.severity, "?")
+                folder_display = issue.folder if issue.folder else "<root>"
+                _console_print(f"  {icon} [{issue.code}] {folder_display}")
+                _console_print(f"      {issue.message}")
+
+    if report.has_errors:
+        return 1
+    if args.fail_on_warning and report.warnings:
+        return 1
     return 0
 
 

@@ -527,6 +527,10 @@ Ordnernamen wie `Malcolm in the Middle (engl)` oder `Narcos (engl, gersub)` werd
 
 **`EpisodeOverride.language` / `subtitle_language`** — Per-Episode-Verfeinerung im `episodes:`-Block. Im Gegensatz zum Folder-Fallback gewinnt der Episoden-Override **explizit** über Folder-Wert *und* Auto-Detection (konsistent mit `title`/`season`/`episode`). Anwendungsfall: Ordner mit gemischtsprachigen Episoden (z.B. eine einzelne englische Folge in einer deutschen Serie).
 
+**Override-Validator (`overrides_validator.py`)** — Linter für `hometools_overrides.yaml`-Dateien. CLI: `hometools validate-overrides [--library-dir PATH] [--json] [--fail-on-warning]`. Prüft pro Override-Datei: (1) Parse-Fehler (`error`), (2) unbekannte ISO 639-1 Codes gegen `KNOWN_LANGUAGE_CODES` aus `language.py` (`warning`), (3) Episode-Keys ohne passende Datei im Ordner (`warning`, fängt Tippfehler und Stale-Einträge nach Renames), (4) unbekannte Top-Level- und Per-Episode-Felder (`warning`, fängt Tippfehler wie `series_titel`), (5) leere Override-Dateien (`info`), (6) Episode-Keys mit Nicht-Media-Extensions (`info`), (7) Cross-Folder: `language_group` mit nur einem Mitglied (`info`). Rückgabetyp `ValidationReport` mit `to_dict()` für JSON-Output. Issues haben stabile `code`-Strings (`parse_error`, `unknown_language`, `unknown_episode_key`, `unknown_field`, `empty_override`, `non_media_extension`, `lonely_language_group`) für programmatische Suppression. Exit-Code: `0` clean, `1` bei Errors (oder Warnungen mit `--fail-on-warning`). Schreibt nichts — rein read-only.
+
+**`KNOWN_LANGUAGE_CODES`** — Frozen-Set in `language.py` als Single Source of Truth für die unterstützten ISO 639-1 Codes (`en`, `de`, `fr`, `es`, `it`, `ja`, `ko`, `zh`, `pt`, `ru`). Neue Sprache hinzufügen = hier eintragen + SVG-Flag in `_svg.py` + JS-Flag-Mapping in `_player_js.py`.
+
 **Snapshot-Version** auf v7 gebumpt (neues Feld `subtitle_language`).
 
 ### Frontend (JS)

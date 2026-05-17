@@ -21,6 +21,20 @@ from __future__ import annotations
 import re
 
 # ---------------------------------------------------------------------------
+# Known language codes — ISO 639-1 codes the UI supports (flag SVGs etc.).
+# Single source of truth shared by parse_language_tag, the UI flag mapping
+# and validators (e.g. hometools_overrides.yaml linter).
+# ---------------------------------------------------------------------------
+
+KNOWN_LANGUAGE_CODES: frozenset[str] = frozenset({"en", "de", "fr", "es", "it", "ja", "ko", "zh", "pt", "ru"})
+
+
+def is_known_language_code(code: str) -> bool:
+    """Return ``True`` if *code* is a supported ISO 639-1 language code."""
+    return code.strip().lower() in KNOWN_LANGUAGE_CODES
+
+
+# ---------------------------------------------------------------------------
 # Language patterns — (tag) → ISO 639-1 code
 # Ordered by specificity; first match wins.
 # ---------------------------------------------------------------------------
