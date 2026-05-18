@@ -2132,6 +2132,20 @@ def render_player_js(
         '</button>'
       );
     }
+    /* "Alle Titel" pseudo-playlist: all tracks from all user playlists, deduplicated.
+       Shown right after "Downloaded" when at least one playlist contains items. */
+    if (isRoot && PLAYLISTS_ENABLED) {
+      var _allTitlesCount = _countAllPlaylistTitles();
+      if (_allTitlesCount > 0) {
+        _toolsRowParts.push(
+          '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card" data-playlist-id="__alltitles__">' +
+            '<span class="tools-row-icon">' + IC_PLAYLIST + '</span>' +
+            '<span class="tools-row-label">Alle Titel</span>' +
+            '<span class="tools-row-count">' + _allTitlesCount + '</span>' +
+          '</button>'
+        );
+      }
+    }
     if (isRoot && PLAYLISTS_ENABLED) {
       _toolsRowParts.push(
         '<button type="button" class="tools-row-item playlist-new-card" id="playlist-new-card">' +
@@ -2142,25 +2156,12 @@ def render_player_js(
           '<span class="tools-row-count"></span>' +
         '</button>'
       );
-      /* "Titel" pseudo-playlist: all tracks from all user playlists, deduplicated.
-         Only shown when at least one playlist contains items. */
-      var _allTitlesCount = _countAllPlaylistTitles();
-      if (_allTitlesCount > 0) {
-        _toolsRowParts.push(
-          '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card" data-playlist-id="__alltitles__">' +
-            '<span class="tools-row-icon">' + IC_PLAYLIST + '</span>' +
-            '<span class="tools-row-label">Titel</span>' +
-            '<span class="tools-row-count">' + _allTitlesCount + '</span>' +
-          '</button>'
-        );
-      }
     }
-    /* "Katalog neu laden" — always visible on root, right-most card */
+    /* "Neu laden" icon-only square button — always visible on root, right-most */
     if (isRoot) {
       _toolsRowParts.push(
-        '<button type="button" class="tools-row-item refresh-catalog-card" id="refresh-catalog-card" title="Katalog neu laden">' +
+        '<button type="button" class="tools-row-item refresh-catalog-card" id="refresh-catalog-card" title="Neu laden">' +
           '<span class="tools-row-icon">' + IC_REFRESH + '</span>' +
-          '<span class="tools-row-label">Katalog neu laden</span>' +
         '</button>'
       );
     }

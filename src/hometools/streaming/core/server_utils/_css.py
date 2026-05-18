@@ -1100,7 +1100,12 @@ body.playlist-dragging .track-list { overflow: visible; }
 .audit-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ── Refresh catalog card in tools-row ── */
-.refresh-catalog-card { opacity: 0.75; border: 1px dashed #444; background: transparent; }
+.refresh-catalog-card {
+  flex: 0 0 auto; min-width: unset;
+  width: 40px; height: 40px;
+  padding: 0; justify-content: center;
+  opacity: 0.75; border: 1px dashed #444; background: transparent;
+}
 .refresh-catalog-card:hover { opacity: 1; border-color: var(--accent); background: var(--surface2); }
 .refresh-catalog-card.spinning .tools-row-icon svg { animation: spin 0.8s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
