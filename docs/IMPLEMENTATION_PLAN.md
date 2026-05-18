@@ -6,17 +6,15 @@
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB) (zurückstellen)
 
 ### Video-spezifisch
-- Multi-Language-Linking — Phase 2: Fuzzy-Name-Matching oder manuelles Mapping in `hometools_overrides.yaml` (Phase 1b — Inline-Flaggen-Buttons + Untertitelsprache — ist abgeschlossen)
+- Multi-Language-Linking — Phase 2: Fuzzy-Name-Matching (Phase 1b + manuelles YAML-Mapping via `language_group` sind abgeschlossen)
 - Englische Serien: Metadaten + Titel in Englisch laden
 - „Intro überspringen" (TMDB-Daten oder manuelle Markierung)
-- Scan-Hinweise: Filesystem-Organisation ausreichend?
 - Untertitelfiles + TMDB-Integration bei Umbenennungen
 - `hometools_overrides.yaml` Erweiterung: weitere Override-Felder bei Bedarf (z.B. `tmdb_id`, `imdb_id`)
 
 ### Infrastruktur
 - Tools-Code restrukturieren + umfassende Tests (Edge Cases, Dummy-Dateien)
 - Optionales HTTPS
-- Geräteübergreifende Fortschritts-Synchronisation
 - iOS Background Video Playback → [plans/background_video_playback.md](plans/background_video_playback.md)
 
 ## Backlog — Low / Experimental
@@ -34,6 +32,10 @@
 - **Phase 3: Native iOS Apps** — Hybrid WebView Wrapper für Video + Audio → [plans/native_app_plan.md](plans/native_app_plan.md)
 
 ## Done
+
+- **`hometools scan-library` — Bibliotheks-Struktur-Analyse** (2026-05-18) — Neuer CLI-Befehl `hometools scan-library [--media video|audio] [--library-dir PATH] [--json] [--fail-on-warning]`. Neues Modul `streaming/core/library_scan.py` scannt die Medienbibliothek rein dateisystembasiert (kein ffprobe, kein TMDB) auf drei häufige Organisationsprobleme. **Checks (Video):** `episode_naming` (warning) — Ordner mit ≥ 4 Videodateien, bei denen weniger als 50 % einen S##E##-Pattern enthalten → Hinweis auf `hometools generate-overrides`; `oversized_folder` (info) — Ordner mit > 30 direkten Videodateien ohne Unterordner-Struktur; `untagged_language` (info) — Top-Level-Ordner ohne Sprach-Tag im Namen UND ohne `language`/`language_group`-Override in `hometools_overrides.yaml`. **Checks (Audio):** `oversized_folder` (info, Schwelle > 100 Audiodateien). `ScanReport.to_dict()` für JSON-Output. `--fail-on-warning` gibt Exit-Code 1. Schwellen sind keyword-only Parameter für testbare Konfigurierbarkeit. Exception Safety: alle Public-Funktionen liefern leere `ScanReport`-Instanz bei Fehler. 36 neue Tests (`test_library_scan.py`). Alle 1228 Tests grün. Gleichzeitig Backlog bereinigt: „Geräteübergreifende Fortschritts-Synchronisation" als erledigt markiert (seit Tag 1 server-seitig via `progress.py`), „Multi-Language-Linking Phase 2 manuelles Mapping" als erledigt markiert (`language_group`-Feld in `hometools_overrides.yaml` seit April implementiert).
+
+- **Tools-Row Reihenfolge: Neue Playlist | Titel | Downloaded | reload** (2026-05-18) — Reihenfolge der Karten in `.playlist-tools-row` auf der Root-Startseite angepasst. Vorher: Downloaded → Titel → Neue Playlist → reload. Jetzt: Neue Playlist → Titel → Downloaded → reload. Beide `PLAYLISTS_ENABLED`-Karten werden in einem `if`-Block zusammengefasst (kein Doppelung). Alle 1192 Tests grün.
 
 - **Bugfix: Stern-Rating sofort in Liste sichtbar + 0-Sterne-Toggle** (2026-05-18) — Zwei zusammenhängende Rating-UX-Bugs behoben. **(1) Listensync:** Nach einem Rating-Setzen (Player-Bar oder Inline-Sterne) war die `.rating-bar` im Listenitem bis zum nächsten Reload veraltet. Ursache: `setRating` / `setInlineRating` aktualisierten nur `filteredItems[idx].rating` (in-place-Mutation) und die sichtbaren Sterne, aber nicht (a) `allItems[i]` (der re-render nach `applyFilter` las stale Daten) und nicht (b) die `.rating-bar`-DOM-Element im `<li>`. Fix: Neue Hilfsfunktion `_patchAllItemsRating(relativePath, rating)` aktualisiert `allItems` sofort via `Object.assign` (konsistent mit dem bestehenden `refresh-ratings`-Pattern). Neue Hilfsfunktion `_updateTrackRatingBar(idx, rating)` patcht `.rating-bar` (erstellt/entfernt bei 0) und Inline-Sterne im `<li>` ohne Full-Re-Render. Beide Helpers werden in `setRating`, `setInlineRating` und `undoRating` aufgerufen. **(2) 0-Sterne-Toggle:** Bisher war kein Weg vorgesehen, eine Bewertung auf 0 zurückzusetzen. Toggle-Logik ergänzt: Klick auf den bereits aktiven Stern (d.h. `clicked === current`) ruft `setRating(0)` / `setInlineRating(idx, 0)` auf, statt die gleiche Zahl erneut zu setzen. Das Edit-Modal hatte dieses Pattern bereits (`n === _editModalRating ? 0 : n`) — Player-Bar und Inline-Sterne sind jetzt konsistent. `renderPlayerRating` setzt zudem ein Tooltip-Hint am aktiven Stern: *"Bewertung entfernen (nochmals klicken)"*. Toast-Text bei 0 Sternen zeigt *"Bewertung entfernt"* statt *"0 Sterne vergeben"*. 8 neue Tests, alle 1192 Tests grün.
 

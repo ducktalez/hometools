@@ -1863,5 +1863,52 @@ funktionieren **unverändert** — kein Aufruferkode wurde angepasst.
   trägt denselben Namen wie die alte Datei) und werden nicht massenhaft
   umgeschrieben.
 
+## Library-Scan (`streaming/core/library_scan.py`)
+
+Read-only Bibliotheks-Analyse für den CLI-Befehl `hometools scan-library`.
+
+### Zweck
+
+Kein ffprobe, keine External-APIs — rein dateisystembasiert. Hilft beim Erkennen
+von Organisations-Problemen in der Videobibliothek, die durch `hometools_overrides.yaml`
+oder Ordnerumbenennung gelöst werden könnten.
+
+### Checks (Video)
+
+| Check-Code          | Schwere     | Beschreibung |
+|---------------------|-------------|--------------|
+| `episode_naming`    | `warning`   | Ordner mit ≥ 4 Videodateien, aber < 50 % enthalten S##E##-Muster. Hinweis auf `generate-overrides`. |
+| `oversized_folder`  | `info`      | Direktordner mit > 30 Videodateien ohne Unterordner-Struktur. |
+| `untagged_language` | `info`      | Top-Level-Ordner ohne Sprach-Tag im Namen UND ohne `language`/`language_group`-Override. |
+
+### Checks (Audio)
+
+| Check-Code          | Schwere     | Beschreibung |
+|---------------------|-------------|--------------|
+| `oversized_folder`  | `info`      | Direktordner mit > 100 Audiodateien ohne Unterordner-Struktur. |
+
+### API
+
+```python
+report = scan_video_library(library_dir, overrides=None)
+report = scan_audio_library(library_dir)
+```
+
+`ScanReport.to_dict()` liefert JSON-serialisierbares Dict. `--fail-on-warning` gibt Exit-Code 1.
+
+### CLI
+
+```bash
+hometools scan-library [--media video|audio] [--library-dir PATH] [--json] [--fail-on-warning]
+```
+
+### Designregeln
+
+- Niemals originale Mediendateien modifizieren.
+- Exception Safety: alle Public-Funktionen geben bei Fehler leere `ScanReport`-Instanz zurück.
+- Overrides können pre-geladen übergeben werden (Effizienz-Optimierung für Tests und Batches).
+- Schwellen (`oversized_threshold`, `min_files`, `min_ratio`) sind keyword-only Parameter
+  für testbare Konfigurierbarkeit.
+
 
 

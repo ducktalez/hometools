@@ -229,6 +229,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_overrides_p.set_defaults(func=run_validate_overrides)
 
+    scan_lib_p = subparsers.add_parser(
+        "scan-library",
+        help="Analyse media library structure and report organisation hints (oversized folders, episode naming, language tags).",
+    )
+    scan_lib_p.add_argument(
+        "--library-dir",
+        type=Path,
+        default=None,
+        help="Library directory to analyse (default: video library dir).",
+    )
+    scan_lib_p.add_argument(
+        "--media",
+        choices=["video", "audio"],
+        default="video",
+        help="Media type to scan (default: video).",
+    )
+    scan_lib_p.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    scan_lib_p.add_argument(
+        "--fail-on-warning",
+        action="store_true",
+        help="Return exit code 1 when warnings are found.",
+    )
+    scan_lib_p.set_defaults(func=run_scan_library)
+
     return parser
 
 
@@ -759,6 +783,49 @@ def run_validate_overrides(args: argparse.Namespace) -> int:
     if report.has_errors:
         return 1
     if args.fail_on_warning and report.warnings:
+        return 1
+    return 0
+
+
+def run_scan_library(args: argparse.Namespace) -> int:
+    """Analyse media library structure and print organisation hints."""
+    from hometools.streaming.core.library_scan import scan_audio_library, scan_video_library
+
+    setup_logging(log_file=None)
+    media_type: str = args.media
+    default_dir = get_video_library_dir() if media_type == "video" else get_audio_library_dir()
+    library_dir: Path = (args.library_dir or default_dir).resolve()
+
+    if not library_dir.is_dir():
+        _console_print(f"Fehler: {library_dir} ist kein Verzeichnis.")
+        return 2
+
+    if media_type == "video":
+        report = scan_video_library(library_dir)
+    else:
+        report = scan_audio_library(library_dir)
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+    else:
+        _console_print(f"Library ({media_type}): {library_dir}")
+        _console_print(
+            f"Gescannt: {report.scanned_folders} Ordner, {report.checked_files} Datei(en) — "
+            f"{len(report.issues)} Befund(e) ({len(report.warnings)} Warnungen).\n"
+        )
+        if not report.issues:
+            _console_print("Keine Hinweise — Bibliotheksstruktur sieht gut aus.")
+        else:
+            icons = {"warning": "!", "info": "i"}
+            for issue in report.issues:
+                icon = icons.get(issue.severity, "?")
+                _console_print(f"  {icon} [{issue.check}] {issue.folder}")
+                _console_print(f"      {issue.message}")
+                if issue.hint:
+                    _console_print(f"      → {issue.hint}")
+                _console_print("")
+
+    if args.fail_on_warning and report.has_warnings:
         return 1
     return 0
 
