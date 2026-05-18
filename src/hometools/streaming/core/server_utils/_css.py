@@ -1104,6 +1104,7 @@ body.playlist-dragging .track-list { overflow: visible; }
   flex: 0 0 auto; min-width: unset;
   width: 40px; height: 40px;
   padding: 0; justify-content: center;
+  margin-right: 6px;
   opacity: 0.75; border: 1px dashed #444; background: transparent;
 }
 .refresh-catalog-card:hover { opacity: 1; border-color: var(--accent); background: var(--surface2); }
