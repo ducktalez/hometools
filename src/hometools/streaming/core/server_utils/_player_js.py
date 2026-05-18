@@ -3808,11 +3808,21 @@ def render_player_js(
   }
 
   function _updateActivateBtn() {
-    if (!_toolsActivateAll) return;
     var isOn = !!_toolState.active;
-    _toolsActivateAll.textContent = isOn ? 'Tool-Modus deaktivieren' : 'Tool-Modus aktivieren';
-    _toolsActivateAll.classList.toggle('tools-activate-all--active', isOn);
-    _toolsActivateAll.title = isOn ? 'Tool-Modus ausschalten' : 'Tool-Modus mit den konfigurierten Einstellungen aktivieren';
+    if (_toolsActivateAll) {
+      _toolsActivateAll.textContent = isOn ? 'Tool-Modus deaktivieren' : 'Tool-Modus aktivieren';
+      _toolsActivateAll.classList.toggle('tools-activate-all--active', isOn);
+      _toolsActivateAll.title = isOn ? 'Tool-Modus ausschalten' : 'Tool-Modus mit den konfigurierten Einstellungen aktivieren';
+    }
+    /* Sync the header split-pill toggle button */
+    var _pillToggle = document.getElementById('tools-pill-toggle');
+    if (_pillToggle) {
+      _pillToggle.classList.toggle('active', isOn);
+      _pillToggle.title = isOn ? 'Tool-Modus deaktivieren' : 'Tool-Modus aktivieren';
+    }
+    /* Sync the wrap border highlight */
+    var _pillWrap = document.getElementById('tools-pill-wrap');
+    if (_pillWrap) _pillWrap.classList.toggle('has-active', _anyToolActive());
   }
 
   function _applyHeaderUiState() {
@@ -3875,9 +3885,11 @@ def render_player_js(
       document.body.classList.remove('tool-show-file-mover');
       if (_toolFileMover) _toolFileMover.checked = false;
     }
-    /* Update pill highlight */
+    /* Update pill highlight (now on the wrap container) */
     var anyActive = _anyToolActive();
-    if (toolsPill) toolsPill.classList.toggle('has-active', anyActive);
+    var _pillWrapEl = document.getElementById('tools-pill-wrap');
+    if (_pillWrapEl) _pillWrapEl.classList.toggle('has-active', anyActive);
+    if (toolsPill) toolsPill.classList.toggle('has-active', anyActive); /* legacy compat */
     /* Re-render current view so folder names / view mode reflect new tool state */
     if (folderGrid && !folderGrid.classList.contains('view-hidden')) {
       showFolderView();
@@ -3911,6 +3923,18 @@ def render_player_js(
   }
 
   if (toolsPill) toolsPill.addEventListener('click', openToolsPanel);
+  /* Split-pill toggle: directly activates/deactivates tool mode without opening the panel */
+  var _toolsPillToggle = document.getElementById('tools-pill-toggle');
+  if (_toolsPillToggle) {
+    _toolsPillToggle.addEventListener('click', function(e) {
+      e.stopPropagation(); /* prevent bubbling to tools-pill-wrap / toolsPill */
+      _toolState.active = !_toolState.active;
+      if (_toolState.active && _toolState.duplicates) _ensureDupeMap();
+      if (!_toolState.active) _invalidateDupeMap();
+      _saveToolState();
+      if (inPlaylist) applyFilter();
+    });
+  }
   if (toolsClose) toolsClose.addEventListener('click', closeToolsPanel);
   if (toolsBackdrop) {
     toolsBackdrop.addEventListener('click', function(e) {

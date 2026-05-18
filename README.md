@@ -10,7 +10,7 @@ A collection of Python tools for managing personal media libraries — music fil
 
 ## Plan/TODOs
 
-- Intelligente Wiedergabelisten: Kombinieren verschiedene Regeln/Filter automatisch (wie bei iTunes).
+- 
 - Füge in den Tools-einstellungen eine buttongroup ein, welche einen Lösch-button bei Titeln einfügt zum löschen einer Datei. Optionen: (Löschen (mit Warnung)/Löschen (direkt)/ausblenden). Dateien werden immer in den delete_me Ordner verschoben. Die Warnung könnte z.B. ein Pop-up sein, das den Benutzer auffordert, die Aktion zu bestätigen, bevor die Datei endgültig gelöscht wird.
 - Im tools-modus sollen die anderen Metadaten wysiwig geändert werden können (z.B. Album, Interpret, Genre, Jahr, etc.). Das ist teilweise schon möglich, aber noch nicht vollständig umgesetzt.
 - Es soll eine Listenansicht für Titel geben, in der (wie im windows ordner) die Metadaten Spaltenmäßig angezeigt werden. Die Spalten sollen auch ausgewählt werden können.
@@ -19,7 +19,6 @@ A collection of Python tools for managing personal media libraries — music fil
 - Deleted files landen in delete_me statt in den Papierkorb
 - original-downloadname vs. syntaktisch korrekter Name
 - podcast & Musik gleichzeitig laufen lassen
-- Intelligente Wiedergabelisten: Kombinieren verschiedene Regeln/Filter automatisch (wie bei iTunes).
 - TV-Idee: Stream der Wer wird Millionär Show aus dem Quiz Repository. Hier kann eine zufällige Person online teilnehmen. 
 - Check if audiobook from metadata is possible too 
 - Option zur Erweiterung/Anreicherung mit YouTube Downloads. 

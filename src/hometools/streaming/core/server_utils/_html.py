@@ -111,11 +111,18 @@ def render_media_page(
     }
   </script>"""
     )
+    _tools_toggle_btn = '<button type="button" class="tools-pill-toggle" id="tools-pill-toggle" title="Tool-Modus aktivieren"></button>'
     mode_controls_html = (
         '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
-        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
+        f'<span class="tools-pill-wrap" id="tools-pill-wrap">'
+        f'<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen \u00f6ffnen">Tools</span>'
+        f"{_tools_toggle_btn}</span>"
         if safe_mode
-        else '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
+        else (
+            f'<span class="tools-pill-wrap" id="tools-pill-wrap">'
+            f'<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen \u00f6ffnen">Tools</span>'
+            f"{_tools_toggle_btn}</span>"
+        )
     )
     tools_panel_html = f"""
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>

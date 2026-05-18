@@ -1587,7 +1587,20 @@ Der "Katalog neu laden"-Button **wurde aus dem Header entfernt** und ist jetzt g
 - **Rendering:** Wird in `showFolderView()` immer wenn `isRoot` zum `_toolsRowParts`-Array hinzugefügt
 - **Spinner:** `_getRefreshBtn()` (dynamische DOM-Abfrage bei Bedarf) + `.spinning`-Klasse; CSS: `.refresh-catalog-card.spinning .tools-row-icon svg { animation: spin ... }`
 - **Click:** Event-Delegation auf `folderGrid` via `.refresh-catalog-card`-Selektor → `refreshCatalog()`
-- **Styling:** Gleiche Größe wie "Neue Playlist…"-Karte; gedämpfte Optik analog zu `playlist-new-card` (gestrichelte Border, transparent)
+- **Styling:** Gedämpfte Optik (gestrichelte Border, transparent); Square 40×40px, `margin-right: 6px`
+
+### Split-Pill im Header (Tools-Modus-Toggle)
+
+Die `tools-pill` im Seiten-`<header>` ist jetzt ein **zweiteiliger Split-Pill** (`#tools-pill-wrap`):
+
+- **Linker Teil** `#tools-pill` (.tools-pill): "Tools"-Text → öffnet das Tools-Panel (unverändertes Verhalten)
+- **Rechter Teil** `#tools-pill-toggle` (.tools-pill-toggle): Kleiner Dot-Indicator-Button → togglet den Tool-Modus **direkt, ohne das Panel zu öffnen**
+  - Inaktiv: hohler Kreis (CSS `::before`)
+  - Aktiv (`.active`): gefüllter Kreis in Akzentfarbe
+  - `e.stopPropagation()` verhindert Bubbling zum linken Tools-Text
+- **Wrap** `#tools-pill-wrap` (.tools-pill-wrap): Gemeinsame Border + Hover/`has-active`-Hervorhebung
+- **Sync:** `_updateActivateBtn()` aktualisiert sowohl `#tools-activate-all` (Panel) als auch `#tools-pill-toggle` (Header-Split-Pill) — beide zeigen immer denselben Zustand
+- **Click-Handler:** `_toolsPillToggle.addEventListener('click', ...)` — identische Toggle-Logik wie `#tools-activate-all`
 
 ### Inline-Ratings
 

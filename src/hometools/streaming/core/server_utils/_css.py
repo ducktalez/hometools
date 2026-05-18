@@ -58,13 +58,36 @@ header {
 .downloaded-pill:hover, .downloaded-pill.has-downloads { color: var(--accent); border-color: var(--accent); }
 .downloaded-pill.is-offline { color: #ffcc00; border-color: #ffcc00; }
 /* ── Tools pill + panel ── */
-.tools-pill {
-  font-size: 0.72rem; color: var(--sub); border: 1px solid #3a3a3a;
-  border-radius: 999px; padding: 0.28rem 0.55rem; margin-left: 0.35rem;
-  cursor: pointer; -webkit-tap-highlight-color: transparent;
-  transition: color 0.15s, border-color 0.15s;
+.tools-pill-wrap {
+  display: inline-flex; align-items: stretch;
+  border: 1px solid #3a3a3a; border-radius: 999px;
+  margin-left: 0.35rem; overflow: hidden;
+  transition: border-color 0.15s;
 }
-.tools-pill:hover, .tools-pill.has-active { color: var(--accent); border-color: var(--accent); }
+.tools-pill-wrap:hover, .tools-pill-wrap.has-active { border-color: var(--accent); }
+.tools-pill-wrap.has-active .tools-pill { color: var(--accent); }
+.tools-pill {
+  font-size: 0.72rem; color: var(--sub);
+  padding: 0.28rem 0.45rem 0.28rem 0.55rem;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s;
+}
+.tools-pill:hover { color: var(--accent); }
+.tools-pill-toggle {
+  background: none; border: none; border-left: 1px solid #3a3a3a;
+  padding: 0.28rem 0.5rem; cursor: pointer; color: var(--sub);
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tools-pill-toggle::before {
+  content: ''; display: block; width: 8px; height: 8px;
+  border-radius: 50%; border: 1.5px solid currentColor;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tools-pill-toggle:hover { color: var(--accent); background: rgba(79,172,255,0.08); }
+.tools-pill-toggle.active::before { background: var(--accent); border-color: var(--accent); }
+.tools-pill-toggle.active { color: var(--accent); }
 /* Buttongroup (segmented selector) — inline, flex-shrink, no forced width */
 .tools-buttongroup {
   display: flex; border: 1px solid #3a3a3a;
