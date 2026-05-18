@@ -2120,21 +2120,19 @@ def render_player_js(
 
     var html = '';
 
-    /* Compact tools row — only on root: groups Downloads, Neue Playlist, Titel
-       into a single horizontal strip spanning the full folder-grid width. */
+    /* Compact tools row — only on root: Neue Playlist | Titel | Downloaded | reload */
     var _toolsRowParts = [];
-    if (isRoot && OFFLINE_ENABLED) {
+    if (isRoot && PLAYLISTS_ENABLED) {
       _toolsRowParts.push(
-        '<button type="button" class="tools-row-item offline-folder-card" id="offline-folder-card">' +
-          '<span class="tools-row-icon">' + IC_DL + '</span>' +
-          '<span class="tools-row-label">Downloaded</span>' +
-          '<span class="tools-row-count" id="offline-folder-count">0</span>' +
+        '<button type="button" class="tools-row-item playlist-new-card" id="playlist-new-card">' +
+          '<span class="tools-row-icon">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+          '</span>' +
+          '<span class="tools-row-label">Neue Playlist\u2026</span>' +
+          '<span class="tools-row-count"></span>' +
         '</button>'
       );
-    }
-    /* "Titel" — flat list of all library tracks (allItems).
-       Always shown when playlists are enabled; count pill only when > 0. */
-    if (isRoot && PLAYLISTS_ENABLED) {
+      /* "Titel" — flat list of all library tracks (allItems). */
       _toolsRowParts.push(
         '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card"' +
           ' data-playlist-id="__alltitles__" title="Zeigt alle Titel der Ordner als Liste an">' +
@@ -2144,14 +2142,12 @@ def render_player_js(
         '</button>'
       );
     }
-    if (isRoot && PLAYLISTS_ENABLED) {
+    if (isRoot && OFFLINE_ENABLED) {
       _toolsRowParts.push(
-        '<button type="button" class="tools-row-item playlist-new-card" id="playlist-new-card">' +
-          '<span class="tools-row-icon">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-          '</span>' +
-          '<span class="tools-row-label">Neue Playlist\u2026</span>' +
-          '<span class="tools-row-count"></span>' +
+        '<button type="button" class="tools-row-item offline-folder-card" id="offline-folder-card">' +
+          '<span class="tools-row-icon">' + IC_DL + '</span>' +
+          '<span class="tools-row-label">Downloaded</span>' +
+          '<span class="tools-row-count" id="offline-folder-count">0</span>' +
         '</button>'
       );
     }
