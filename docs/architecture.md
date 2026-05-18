@@ -207,8 +207,8 @@ Thread-sicherer, atomarer JSON-Storage im Shadow-Cache (`progress/playback_progr
 Alle Player-Buttons und UI-Controls verwenden **inline SVGs** statt Unicode-Zeichen. iOS rendert Unicode-Steuerzeichen (▶ ◄ ► ⏸ ⊞ ↓) als farbige Emojis, was das Layout zerstört.
 
 **Konvention:**
-- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST`, `SVG_QUEUE`, `SVG_REFRESH`, `SVG_DUPLICATE` in `server_utils.py`
-- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST`, `IC_QUEUE`, `IC_REMOVE`, `IC_REFRESH` — über `innerHTML` gesetzt (nicht `textContent`)
+- Python-Konstanten: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_PLAYLIST`, `SVG_SMART_PLAYLIST`, `SVG_QUEUE`, `SVG_REFRESH`, `SVG_DUPLICATE` in `server_utils.py`
+- JS-Variablen: `IC_PLAY`, `IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_GRID`, `IC_LIST`, `IC_PIN`, `IC_STAR`, `IC_FOLDER_PLAY`, `IC_PLAYLIST`, `IC_SMART_PLAYLIST`, `IC_QUEUE`, `IC_REMOVE`, `IC_REFRESH` — über `innerHTML` gesetzt (nicht `textContent`)
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität
 - **Nie** Unicode-Zeichen oder HTML-Entities (`&#9733;`, `&#9654;` etc.) — iOS rendert sie als Emoji
 
@@ -1395,7 +1395,7 @@ Swipe wird **nicht** ausgelöst auf:
 
 ## Wiedergabelisten (User Playlists)
 
-**Module:** `streaming/core/playlists.py`, `streaming/audio/server.py`, `streaming/video/server.py`, `streaming/core/server_utils.py`
+**Module:** `streaming/core/playlists.py`, `streaming/core/smart_playlists.py`, `streaming/audio/server.py`, `streaming/video/server.py`, `streaming/core/server_utils.py`
 
 ### Übersicht
 
@@ -1548,6 +1548,90 @@ Neue Sort-Option `<option value="custom">Liste ⇅</option>` im Sort-Dropdown. *
 - **In Filesystem-Ordner:** Sortiert nach benutzerdefinierter Reihenfolge (server-seitig gespeichert, localStorage als Offline-Fallback).
 
 ---
+
+## Intelligente Wiedergabelisten (Smart Playlists)
+
+**Module:** `streaming/core/smart_playlists.py`, `streaming/core/playlists.py`, `streaming/audio/server.py`, `streaming/video/server.py`, `streaming/core/server_utils/_player_js.py`, `streaming/core/server_utils/_css.py`
+
+### Konzept
+
+Eine intelligente Playlist speichert anstelle einer Item-Liste eine **Regelgruppe**.  Beim Anzeigen wird die Playlist clientseitig gegen `allItems` ausgewertet — die `items`-Liste der Playlist bleibt auf dem Server permanent leer.  Beispiele aus iTunes: „Zuletzt hinzugefügt" (`added_at within_days 60`), „Best of Rock" (`in_playlist any_of [Rock, Rock-Alt]` UND `rating >= 4`).
+
+### Storage (v2 Envelope, neues optionales Feld)
+
+```jsonc
+{
+  "id": "abc123",
+  "name": "Best of Rock",
+  "created": "…",
+  "updated_at": "…",
+  "items": [],            // immer leer bei Smart Playlists
+  "smart": {
+    "match": "all" | "any",
+    "rules": [
+      {"field": "rating",      "op": "gte",         "value": 4},
+      {"field": "in_playlist", "op": "any_of",      "value": ["p1", "p2"]},
+      {"field": "added_at",    "op": "within_days", "value": 60},
+      {"field": "genre",       "op": "matches",     "value": "^Rock"}
+    ],
+    "limit": 100,          // optional
+    "sort": "rating_desc"  // optional
+  }
+}
+```
+
+Reguläre Playlists haben **kein** `smart`-Feld — die beiden Typen koexistieren in derselben Datei.  `playlists.py` schützt Smart Playlists: `add_item` / `remove_item` / `move_item` / `reorder_item` sind No-Ops (kein Revision-Bump, Warn-Log).
+
+### Operatoren
+
+| Field-Typ | Operatoren |
+|---|---|
+| Strings (`title`, `artist`, `genre`, `relative_path`, `language`) | `eq`, `contains`, `starts_with`, `matches` (Regex, case-insensitive, ≤ 256 Zeichen) |
+| Zahlen (`rating`, `duration`, `season`, `episode`, `bitrate`, `file_size`) | `eq`, `gte`, `lte`, `between` (Liste `[lo, hi]`), `in` |
+| `added_at` (Proxy: `MediaItem.mtime`) | `within_days`, `before`, `after` |
+| `in_playlist` (Cross-Playlist-Referenz) | `any_of` (OR), `all_of` (AND), `none_of` |
+| `is_favorite` (audio-spezifisch) | `eq` (bool) |
+| `in_folder` (abgeleitet aus `relative_path`-Prefix) | `eq`, `starts_with` |
+
+`match: "all"` = UND über alle Top-Level-Regeln, `match: "any"` = ODER.  Innerhalb einer Regel realisieren `any_of`/`all_of`/`none_of` (für `in_playlist`) sowie `in` (für Werte-Listen) eine eingebaute Sub-OR-/AND-Semantik — dies reicht für die Phase-1-Use-Cases ohne echtes Sub-Group-Nesting.
+
+### API-Endpoints
+
+| Methode + Pfad | Body | Wirkung |
+|---|---|---|
+| `POST /api/<media>/playlists/smart` | `{name, smart}` | Neue Smart Playlist anlegen |
+| `PUT /api/<media>/playlists/smart` | `{playlist_id, smart}` | `smart`-Block einer (auch regulären) Playlist ersetzen → promotet sie ggf. zur Smart Playlist |
+
+Validierung: `validate_smart_rules()` lehnt fehlende `match`/`rules`/`field`/`op`/`value`-Felder oder eine `limit > 10_000` ab (HTTP 400).
+
+### Auswertung (Client-seitig)
+
+`_evaluateSmartPlaylist(pl)` in [`_player_js.py`](../src/hometools/streaming/core/server_utils/_player_js.py) ist der JS-Mirror von `evaluate_smart()` in `smart_playlists.py`.  Beide:
+
+1. Bauen einen Index `pl_id → set(relative_path)` aus allen **nicht-smarten** User-Playlists (zur Auflösung von `in_playlist`).  Smart-Playlists werden hier übersprungen — siehe Phase-2-Diskussion in `IMPLEMENTATION_PLAN.md`.
+2. Iterieren über `allItems` und werten jede Regel via Operator-Dispatch aus.
+3. Wenden optional `sort` (`title`, `rating`, `added_at`, `duration`, jeweils auch `_desc`, plus `random`) und `limit` an.
+4. Geben eine Liste von `relative_path`-Strings zurück (Python) bzw. `MediaItem`-Objekten (JS).
+
+`_resolvePlaylistItems(plId)` erkennt anhand von `pl.smart` automatisch eine Smart Playlist und füllt `playlistItems` aus der Live-Auswertung — bestehende Track-Render-/Play-/Browse-Pfade brauchen keine Änderung.
+
+### UI-Elemente
+
+| Element | Selektor | Funktion |
+|---|---|---|
+| **Smart-Playlist-Karte** | `.playlist-folder-card.smart-playlist-card` | Normale Playlist-Karte, plus Lightning-Bolt-Badge (`.smart-pl-badge` mit `SVG_SMART_PLAYLIST`) in der rechten unteren Ecke des Logos |
+| **Refresh-Button** | `.playlist-folder-refresh` | Kleiner Button oben links auf Smart-Karten; ruft `refreshSmartPlaylist()` auf (Re-Evaluation + In-Place-Re-Render falls aktuell sichtbar) |
+| **Neue-Smart-Playlist-Karte** | `#smart-playlist-new-card` (Klasse `.smart-new-card`) | Zweite „Neu…"-Karte rechts neben „Neue Playlist…" in `.playlist-tools-row`, öffnet den Editor-Modal |
+| **Editor-Modal** | `#smart-editor-backdrop`, `.smart-editor-modal` | Reine JS-DOM-Injektion via `openSmartPlaylistEditor(pl?)`.  Name-Feld, AND/OR-Radio, Regelzeilen (`<select field>` + `<select op>` + Wert-Input), „+ Regel"-Button, optionales Limit-Feld, Speichern → `POST` oder `PUT` auf `PLAYLISTS_SMART_PATH` |
+| **Wertinput-Varianten** | `.smart-rule-value` | Text/Zahl/`<select multiple>` (für `in_playlist`) / Boolean-Select (für `is_favorite`) / zwei Inputs (für `between`) — automatisch passend zum gewählten Feld+Op |
+
+### Designregeln
+
+- **Keine Server-seitige Re-Evaluation.**  Server speichert nur Regeln; Auswertung lebt 1:1 im Client.  Refresh = lokal neu auswerten.  Bei Wiedergabe-Start auf einer Smart-Karte wird vorher implizit re-evaluiert (kein expliziter API-Call).
+- **Kaskaden vermieden in Phase 1.**  `in_playlist`-Referenzen auf Smart Playlists werden beim Index-Bau übersprungen → keine Zyklen, keine Tiefen-Probleme.  Phase 2 plant DAG-Auflösung (siehe Implementation-Plan).
+- **`added_at`-Proxy.**  Da kein dediziertes „added_at"-Feld auf `MediaItem` existiert, wird `mtime` (File-Modification-Time) verwendet.  Konsequenz: Tag-Edits oder NAS-Resync können die Zuordnung verschieben.  Phase-2-Verbesserung (persistentes `first_seen_at` im Index-Cache) ist im Implementation-Plan dokumentiert.
+- **Regex-Sicherheit.**  Patterns sind auf ≤ 256 Zeichen begrenzt; ungültige Patterns matchen nichts (statt zu crashen).  Compile-Cache pro Pattern.
+- **Smart Playlists sind read-only**, was Item-Listen-Mutationen angeht — sowohl an der Storage-Schicht (Guards in `playlists.py`) als auch im Client (kein Add-to-Playlist-Modal-Eintrag für Smart Playlists).
 
 ## Tools-Panel (UI-Einstellungen)
 

@@ -228,8 +228,13 @@ def create_playlist(
     server: str,
     *,
     name: str,
+    smart: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create a new empty playlist and return it.
+    """Create a new (optionally smart) playlist and return it.
+
+    If *smart* is given, the playlist is stored as a smart playlist: its
+    ``items`` field stays empty on disk and is dynamically resolved at
+    read time from the rules (see ``smart_playlists.evaluate_smart``).
 
     Returns the newly created playlist dict.  If there are already
     ``_MAX_PLAYLISTS`` playlists, the oldest one is silently removed.
@@ -244,6 +249,8 @@ def create_playlist(
         "updated_at": now,
         "items": [],
     }
+    if smart is not None:
+        new_pl["smart"] = smart
 
     with _lock:
         playlists, revision = _read_raw(path)
@@ -253,8 +260,40 @@ def create_playlist(
         revision += 1
         _write_raw(path, playlists, revision)
 
-    _append_changelog(cache_dir, server, action="create", playlist_id=new_pl["id"], detail=name.strip())
+    action = "create_smart" if smart is not None else "create"
+    _append_changelog(cache_dir, server, action=action, playlist_id=new_pl["id"], detail=name.strip())
     return new_pl
+
+
+def update_smart_rules(
+    cache_dir: Path,
+    server: str,
+    playlist_id: str,
+    *,
+    smart: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Replace the ``smart`` rule block of an existing playlist.
+
+    Promotes a regular playlist to a smart one if it did not have a
+    ``smart`` block before.  Returns the updated playlist or ``None`` if
+    the playlist does not exist.
+    """
+    path = _playlists_path(cache_dir, server)
+    with _lock:
+        playlists, revision = _read_raw(path)
+        target = None
+        for pl in playlists:
+            if pl.get("id") == playlist_id:
+                pl["smart"] = smart
+                pl["items"] = []  # smart playlists never persist resolved items
+                pl["updated_at"] = _now_iso()
+                target = pl
+                break
+        if target is not None:
+            revision += 1
+            _write_raw(path, playlists, revision)
+            _append_changelog(cache_dir, server, action="update_smart", playlist_id=playlist_id)
+        return target
 
 
 def delete_playlist(
@@ -318,6 +357,8 @@ def add_item(
     ``"top"`` — inserted at index 0.
 
     Duplicates within the same playlist are silently ignored.
+    Smart playlists are read-only: this is a no-op (returns the playlist
+    unchanged, no revision bump).
     Returns ``None`` if the playlist does not exist.
     """
     path = _playlists_path(cache_dir, server)
@@ -326,6 +367,9 @@ def add_item(
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
+                if "smart" in pl:
+                    logger.debug("add_item ignored: playlist %s is smart", playlist_id)
+                    return pl
                 items = pl.get("items", [])
                 if relative_path not in items:
                     if len(items) >= _MAX_ITEMS_PER_PLAYLIST:
@@ -363,6 +407,9 @@ def remove_item(
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
+                if "smart" in pl:
+                    logger.debug("remove_item ignored: playlist %s is smart", playlist_id)
+                    return pl
                 items = pl.get("items", [])
                 pl["items"] = [p for p in items if p != relative_path]
                 pl["updated_at"] = _now_iso()
@@ -397,6 +444,9 @@ def move_item(
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
+                if "smart" in pl:
+                    logger.debug("move_item ignored: playlist %s is smart", playlist_id)
+                    return pl
                 items = pl.get("items", [])
                 try:
                     idx = items.index(relative_path)
@@ -436,6 +486,9 @@ def reorder_item(
         target = None
         for pl in playlists:
             if pl.get("id") == playlist_id:
+                if "smart" in pl:
+                    logger.debug("reorder_item ignored: playlist %s is smart", playlist_id)
+                    return pl
                 items = pl.get("items", [])
                 try:
                     old_idx = items.index(relative_path)

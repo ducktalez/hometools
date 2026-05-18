@@ -37,6 +37,7 @@ from ._svg import (  # noqa: F401
     SVG_REFRESH,
     SVG_REPEAT,
     SVG_SHUFFLE,
+    SVG_SMART_PLAYLIST,
     SVG_STAR,
     SVG_STAR_EMPTY,
     SVG_TRASH,
@@ -451,6 +452,9 @@ def render_player_js(
   var PLAYLISTS_VERSION_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/playlists/version';
+  var PLAYLISTS_SMART_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/playlists/smart';
   var FOLDER_ORDER_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/folder-order';
@@ -465,6 +469,9 @@ def render_player_js(
         + """/folders';
   var IC_PLAYLIST = '"""
         + SVG_PLAYLIST.replace("'", "\\'")
+        + """';
+  var IC_SMART_PLAYLIST = '"""
+        + SVG_SMART_PLAYLIST.replace("'", "\\'")
         + """';
   var IC_QUEUE = '"""
         + SVG_QUEUE.replace("'", "\\'")
@@ -2132,6 +2139,14 @@ def render_player_js(
           '<span class="tools-row-count"></span>' +
         '</button>'
       );
+      _toolsRowParts.push(
+        '<button type="button" class="tools-row-item playlist-new-card smart-new-card" id="smart-playlist-new-card"' +
+          ' title="Intelligente Playlist erstellen">' +
+          '<span class="tools-row-icon">' + IC_SMART_PLAYLIST + '</span>' +
+          '<span class="tools-row-label">Intelligente Playlist\u2026</span>' +
+          '<span class="tools-row-count"></span>' +
+        '</button>'
+      );
       /* "Titel" — flat list of all library tracks (allItems). */
       _toolsRowParts.push(
         '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card"' +
@@ -2181,12 +2196,21 @@ def render_player_js(
     if (isRoot && PLAYLISTS_ENABLED) {
       _playlistCardsRendered = true;
       _userPlaylists.forEach(function(pl) {
-        var cnt = (pl.items || []).length;
-        html += '<div class="folder-card playlist-folder-card" data-playlist-id="' + escHtml(pl.id) + '">' +
-          '<div class="folder-thumb playlist-folder-icon">' + IC_PLAYLIST + '</div>' +
+        var isSmart = !!(pl.smart && pl.smart.rules);
+        var cnt = isSmart ? _evaluateSmartPlaylist(pl).length : (pl.items || []).length;
+        var iconHtml = IC_PLAYLIST +
+          (isSmart ? '<span class="smart-pl-badge" title="Intelligente Playlist">' + IC_SMART_PLAYLIST + '</span>' : '');
+        var refreshBtn = isSmart
+          ? '<button class="playlist-folder-refresh" title="Aktualisieren">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>' +
+            '</button>'
+          : '';
+        html += '<div class="folder-card playlist-folder-card' + (isSmart ? ' smart-playlist-card' : '') + '" data-playlist-id="' + escHtml(pl.id) + '">' +
+          '<div class="folder-thumb playlist-folder-icon">' + iconHtml + '</div>' +
           '<div class="folder-name">' + escHtml(pl.name) + '</div>' +
           '<div class="folder-count">' + cnt + ' Titel</div>' +
           '<button class="folder-play-btn playlist-folder-play" title="Abspielen">' + IC_FOLDER_PLAY + '</button>' +
+          refreshBtn +
           '<button class="playlist-folder-del" title="L\u00f6schen">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
           '</button>' +
@@ -2266,9 +2290,12 @@ def render_player_js(
       folderGrid.querySelectorAll('.playlist-folder-card').forEach(function(card) {
         var playBtn = card.querySelector('.playlist-folder-play');
         var delBtn = card.querySelector('.playlist-folder-del');
+        var refreshBtn = card.querySelector('.playlist-folder-refresh');
         card.addEventListener('click', function(e) {
           if (wasDrag(e)) return;
-          if (e.target.closest('.playlist-folder-play') || e.target.closest('.playlist-folder-del')) return;
+          if (e.target.closest('.playlist-folder-play') ||
+              e.target.closest('.playlist-folder-del') ||
+              e.target.closest('.playlist-folder-refresh')) return;
           showUserPlaylistView(card.dataset.playlistId);
         });
         if (playBtn) playBtn.addEventListener('click', function(e) {
@@ -2280,6 +2307,11 @@ def render_player_js(
           e.stopPropagation();
           if (wasDrag(e)) return;
           deleteUserPlaylist(card.dataset.playlistId);
+        });
+        if (refreshBtn) refreshBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (wasDrag(e)) return;
+          refreshSmartPlaylist(card.dataset.playlistId);
         });
       });
       var newCard = document.getElementById('playlist-new-card');
@@ -2298,6 +2330,10 @@ def render_player_js(
               showToast('Playlist "' + d.playlist.name + '" erstellt');
             }
           }).catch(function() { showToast('Fehler beim Erstellen'); });
+      });
+      var smartNewCard = document.getElementById('smart-playlist-new-card');
+      if (smartNewCard) smartNewCard.addEventListener('click', function() {
+        openSmartPlaylistEditor(null);
       });
     }
 
@@ -6205,7 +6241,14 @@ def render_player_js(
 
   function _resolvePlaylistItems(plId) {
     var pl = _userPlaylists.find(function(p) { return p.id === plId; });
-    if (!pl || !pl.items || pl.items.length === 0) return null;
+    if (!pl) return null;
+    /* Smart playlist: evaluate rules against allItems. */
+    if (pl.smart && pl.smart.rules) {
+      var resolvedSmart = _evaluateSmartPlaylist(pl);
+      if (!resolvedSmart || resolvedSmart.length === 0) return null;
+      return { pl: pl, resolved: resolvedSmart };
+    }
+    if (!pl.items || pl.items.length === 0) return null;
     var resolved = [];
     pl.items.forEach(function(rp) {
       var match = allItems.find(function(it) { return it.relative_path === rp; });
@@ -6213,6 +6256,431 @@ def render_player_js(
     });
     if (resolved.length === 0) return null;
     return { pl: pl, resolved: resolved };
+  }
+
+  /* ── Smart playlist evaluator (mirror of Python smart_playlists.py) ── */
+  var _smartRegexCache = Object.create(null);
+  function _smartCompile(pat) {
+    if (typeof pat !== 'string' || pat.length > 256) return null;
+    if (pat in _smartRegexCache) return _smartRegexCache[pat];
+    var rx = null;
+    try { rx = new RegExp(pat, 'i'); } catch (e) { rx = null; }
+    _smartRegexCache[pat] = rx;
+    return rx;
+  }
+  function _smartGetField(it, field) {
+    if (field === 'added_at') return Number(it.mtime || 0);
+    if (field === 'is_favorite') {
+      return !!(_savedFavorites && _savedFavorites[it.relative_path]);
+    }
+    if (field === 'in_folder') {
+      var rp = String(it.relative_path || '');
+      var i = rp.lastIndexOf('/');
+      return i >= 0 ? rp.substring(0, i) : '';
+    }
+    return it[field];
+  }
+  function _smartEvalRule(rule, it, plIndex) {
+    try {
+      var field = String(rule.field || '');
+      var op = String(rule.op || '');
+      var value = rule.value;
+      if (field === 'in_playlist') {
+        var rp = String(it.relative_path || '');
+        var ids = Array.isArray(value) ? value : [value];
+        var hits = ids.map(function(pid) {
+          var set = plIndex[String(pid)];
+          return !!(set && set[rp]);
+        });
+        if (op === 'any_of') return hits.some(function(h) { return h; });
+        if (op === 'all_of') return hits.length > 0 && hits.every(function(h) { return h; });
+        if (op === 'none_of') return !hits.some(function(h) { return h; });
+        return false;
+      }
+      var actual = _smartGetField(it, field);
+      if (field === 'added_at') {
+        var ts = Number(actual);
+        var v = Number(value);
+        if (!isFinite(ts) || !isFinite(v) || ts <= 0) return false;
+        if (op === 'within_days') return (Date.now() / 1000 - ts) <= v * 86400;
+        if (op === 'before')      return ts < v;
+        if (op === 'after')       return ts > v;
+        return false;
+      }
+      var na, nv;
+      switch (op) {
+        case 'eq':
+          if (typeof actual === 'string' && typeof value === 'string') {
+            return actual.toLowerCase() === value.toLowerCase();
+          }
+          return actual === value;
+        case 'contains':
+          if (actual == null || value == null) return false;
+          return String(actual).toLowerCase().indexOf(String(value).toLowerCase()) >= 0;
+        case 'starts_with':
+          if (actual == null || value == null) return false;
+          return String(actual).toLowerCase().indexOf(String(value).toLowerCase()) === 0;
+        case 'matches':
+          var rx = _smartCompile(String(value || ''));
+          return !!(rx && rx.test(String(actual == null ? '' : actual)));
+        case 'gte':
+          na = Number(actual); nv = Number(value);
+          return isFinite(na) && isFinite(nv) && na >= nv;
+        case 'lte':
+          na = Number(actual); nv = Number(value);
+          return isFinite(na) && isFinite(nv) && na <= nv;
+        case 'between':
+          if (!Array.isArray(value) || value.length !== 2) return false;
+          var lo = Number(value[0]), hi = Number(value[1]);
+          if (lo > hi) { var t = lo; lo = hi; hi = t; }
+          na = Number(actual);
+          return isFinite(na) && lo <= na && na <= hi;
+        case 'in':
+          if (!Array.isArray(value)) return false;
+          return value.some(function(v) {
+            if (typeof actual === 'string' && typeof v === 'string') {
+              return actual.toLowerCase() === v.toLowerCase();
+            }
+            return actual === v;
+          });
+        default:
+          return false;
+      }
+    } catch (e) { return false; }
+  }
+  function _buildSmartPlIndex() {
+    var idx = Object.create(null);
+    _userPlaylists.forEach(function(pl) {
+      if (pl.smart && pl.smart.rules) return; /* skip smart, no cascades */
+      var pid = String(pl.id || '');
+      if (!pid) return;
+      var set = Object.create(null);
+      (pl.items || []).forEach(function(rp) { set[String(rp)] = true; });
+      idx[pid] = set;
+    });
+    return idx;
+  }
+  function _smartApplySort(items, sortKey) {
+    if (!sortKey) return items;
+    var arr = items.slice();
+    if (sortKey === 'random') {
+      for (var i = arr.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+      }
+      return arr;
+    }
+    var desc = sortKey.indexOf('_desc') === sortKey.length - 5 && sortKey.length > 5;
+    var base = desc ? sortKey.substring(0, sortKey.length - 5) : sortKey;
+    var keyFn = null;
+    if (base === 'title')    keyFn = function(x) { return String(x.title || '').toLowerCase(); };
+    if (base === 'rating')   keyFn = function(x) { return Number(x.rating || 0); };
+    if (base === 'added_at') keyFn = function(x) { return Number(x.mtime || 0); };
+    if (base === 'duration') keyFn = function(x) { return Number(x.duration || 0); };
+    if (!keyFn) return items;
+    arr.sort(function(a, b) {
+      var ka = keyFn(a), kb = keyFn(b);
+      if (ka < kb) return desc ?  1 : -1;
+      if (ka > kb) return desc ? -1 :  1;
+      return 0;
+    });
+    return arr;
+  }
+  function _evaluateSmartPlaylist(pl) {
+    try {
+      var smart = pl && pl.smart;
+      if (!smart || !Array.isArray(smart.rules) || smart.rules.length === 0) return [];
+      var match = (smart.match === 'any') ? 'any' : 'all';
+      var idx = _buildSmartPlIndex();
+      var matched = [];
+      allItems.forEach(function(it) {
+        var results = smart.rules.map(function(r) {
+          return _smartEvalRule(r, it, idx);
+        });
+        var keep = (match === 'all')
+          ? results.every(function(v) { return v; })
+          : results.some(function(v) { return v; });
+        if (keep) matched.push(it);
+      });
+      if (smart.sort) matched = _smartApplySort(matched, String(smart.sort));
+      if (typeof smart.limit === 'number' && smart.limit > 0) {
+        matched = matched.slice(0, smart.limit);
+      }
+      return matched;
+    } catch (e) { return []; }
+  }
+
+  /* Refresh smart playlist: re-evaluate locally and re-render. */
+  function refreshSmartPlaylist(plId) {
+    var pl = _userPlaylists.find(function(p) { return p.id === plId; });
+    if (!pl || !pl.smart) return;
+    /* If currently viewing this playlist, re-render in place. */
+    if (typeof inPlaylist !== 'undefined' && inPlaylist && _currentPlaylistId === plId) {
+      var resolved = _evaluateSmartPlaylist(pl);
+      playlistItems = resolved;
+      applyFilter();
+      showToast('Aktualisiert: ' + resolved.length + ' Titel');
+    } else {
+      /* Just refresh the root view to update the count. */
+      showFolderView();
+      showToast('Intelligente Playlist aktualisiert');
+    }
+  }
+
+  /* ── Smart Playlist Editor Modal ────────────────────────────────────── */
+  var SMART_FIELDS = [
+    { value: 'rating',        label: 'Bewertung',     type: 'number' },
+    { value: 'genre',         label: 'Genre',         type: 'text'   },
+    { value: 'artist',        label: 'Artist',        type: 'text'   },
+    { value: 'title',         label: 'Titel',         type: 'text'   },
+    { value: 'relative_path', label: 'Dateipfad',     type: 'text'   },
+    { value: 'language',      label: 'Sprache',       type: 'text'   },
+    { value: 'added_at',      label: 'Hinzugefügt',   type: 'number' },
+    { value: 'duration',      label: 'Dauer (Sek.)',  type: 'number' },
+    { value: 'in_playlist',   label: 'In Playlist',   type: 'playlist' },
+    { value: 'is_favorite',   label: 'Favorit',       type: 'bool'   }
+  ];
+  var SMART_OPS_BY_TYPE = {
+    'number':   [['gte','≥'], ['lte','≤'], ['eq','='], ['between','zwischen']],
+    'text':     [['contains','enthält'], ['eq','='], ['starts_with','beginnt mit'], ['matches','regex']],
+    'bool':     [['eq','=']],
+    'playlist': [['any_of','in einer von'], ['all_of','in allen von'], ['none_of','in keiner von']]
+  };
+  /* added_at gets its own op set (overrides number defaults) */
+  var SMART_OPS_ADDED_AT = [['within_days','letzte N Tage']];
+
+  function _smartFieldType(field) {
+    var f = SMART_FIELDS.find(function(x) { return x.value === field; });
+    return f ? f.type : 'text';
+  }
+  function _smartOpsFor(field) {
+    if (field === 'added_at') return SMART_OPS_ADDED_AT;
+    return SMART_OPS_BY_TYPE[_smartFieldType(field)] || SMART_OPS_BY_TYPE['text'];
+  }
+
+  function _smartRenderRuleRow(rule, idx) {
+    var fieldOpts = SMART_FIELDS.map(function(f) {
+      return '<option value="' + f.value + '"' + (rule.field === f.value ? ' selected' : '') + '>' + escHtml(f.label) + '</option>';
+    }).join('');
+    var ops = _smartOpsFor(rule.field || 'rating');
+    var opOpts = ops.map(function(o) {
+      return '<option value="' + o[0] + '"' + (rule.op === o[0] ? ' selected' : '') + '>' + escHtml(o[1]) + '</option>';
+    }).join('');
+    var valueInput;
+    if (_smartFieldType(rule.field) === 'playlist') {
+      var available = _userPlaylists.filter(function(p) { return !(p.smart && p.smart.rules); });
+      if (available.length === 0) {
+        valueInput = '<span class="smart-rule-empty">Keine regulären Playlists vorhanden</span>';
+      } else {
+        var plOpts = available.map(function(p) {
+          var sel = Array.isArray(rule.value) && rule.value.indexOf(p.id) >= 0 ? ' checked' : '';
+          return '<label class="smart-rule-pl-opt">' +
+            '<input type="checkbox" class="smart-rule-value smart-rule-pl-cb" value="' + escHtml(p.id) + '"' + sel + '> ' +
+            escHtml(p.name) +
+            '</label>';
+        }).join('');
+        valueInput = '<div class="smart-rule-pl-list">' + plOpts + '</div>';
+      }
+    } else if (_smartFieldType(rule.field) === 'bool') {
+      valueInput = '<select class="smart-rule-value">' +
+        '<option value="true"' + (rule.value === true ? ' selected' : '') + '>ja</option>' +
+        '<option value="false"' + (rule.value === false ? ' selected' : '') + '>nein</option>' +
+        '</select>';
+    } else if (rule.op === 'between') {
+      var lo = Array.isArray(rule.value) ? rule.value[0] : '';
+      var hi = Array.isArray(rule.value) ? rule.value[1] : '';
+      valueInput = '<input type="number" class="smart-rule-value smart-rule-value-lo" value="' + escHtml(String(lo)) + '" placeholder="von">' +
+                   '<input type="number" class="smart-rule-value smart-rule-value-hi" value="' + escHtml(String(hi)) + '" placeholder="bis">';
+    } else {
+      var t = _smartFieldType(rule.field) === 'number' ? 'number' : 'text';
+      valueInput = '<input type="' + t + '" class="smart-rule-value" value="' + escHtml(String(rule.value == null ? '' : rule.value)) + '">';
+    }
+    return '<div class="smart-rule-row" data-idx="' + idx + '">' +
+      '<select class="smart-rule-field">' + fieldOpts + '</select>' +
+      '<select class="smart-rule-op">' + opOpts + '</select>' +
+      valueInput +
+      '<button type="button" class="smart-rule-del" title="Regel entfernen">×</button>' +
+    '</div>';
+  }
+
+  var _smartEditorState = null;
+
+  function openSmartPlaylistEditor(existingPl) {
+    /* Build state copy (deep clone) */
+    if (existingPl && existingPl.smart) {
+      _smartEditorState = {
+        id: existingPl.id,
+        name: existingPl.name,
+        match: existingPl.smart.match || 'all',
+        rules: JSON.parse(JSON.stringify(existingPl.smart.rules || [])),
+        limit: existingPl.smart.limit || ''
+      };
+    } else {
+      _smartEditorState = {
+        id: null,
+        name: '',
+        match: 'all',
+        rules: [{ field: 'rating', op: 'gte', value: 4 }],
+        limit: ''
+      };
+    }
+    _smartRenderEditor();
+  }
+
+  function _smartRenderEditor() {
+    var s = _smartEditorState;
+    var rulesHtml = s.rules.map(function(r, i) { return _smartRenderRuleRow(r, i); }).join('');
+    var html =
+      '<div class="smart-editor-backdrop" id="smart-editor-backdrop">' +
+        '<div class="smart-editor-modal" role="dialog" aria-modal="true">' +
+          '<div class="smart-editor-header">' +
+            '<span>' + IC_SMART_PLAYLIST + ' Intelligente Playlist</span>' +
+            '<button type="button" class="smart-editor-close" id="smart-editor-close" title="Schließen">×</button>' +
+          '</div>' +
+          '<div class="smart-editor-body">' +
+            '<label class="smart-editor-label">Name' +
+              '<input type="text" id="smart-editor-name" value="' + escHtml(s.name) + '" placeholder="Best of Rock">' +
+            '</label>' +
+            '<div class="smart-editor-match">' +
+              '<label><input type="radio" name="smart-match" value="all"' + (s.match === 'all' ? ' checked' : '') + '> Alle Regeln erfüllen (UND)</label>' +
+              '<label><input type="radio" name="smart-match" value="any"' + (s.match === 'any' ? ' checked' : '') + '> Eine Regel erfüllen (ODER)</label>' +
+            '</div>' +
+            '<div class="smart-editor-rules" id="smart-editor-rules">' + rulesHtml + '</div>' +
+            '<button type="button" class="smart-editor-add" id="smart-editor-add-rule">+ Regel hinzufügen</button>' +
+            '<label class="smart-editor-label">Begrenzen auf (optional)' +
+              '<input type="number" id="smart-editor-limit" value="' + escHtml(String(s.limit)) + '" placeholder="0 = unbegrenzt">' +
+            '</label>' +
+          '</div>' +
+          '<div class="smart-editor-footer">' +
+            '<button type="button" class="smart-editor-cancel" id="smart-editor-cancel">Abbrechen</button>' +
+            '<button type="button" class="smart-editor-save" id="smart-editor-save">Speichern</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    var existing = document.getElementById('smart-editor-backdrop');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+    _smartWireEditor();
+  }
+
+  function _smartWireEditor() {
+    var bd = document.getElementById('smart-editor-backdrop');
+    if (!bd) return;
+    function close() { bd.remove(); _smartEditorState = null; }
+    bd.addEventListener('click', function(e) { if (e.target === bd) close(); });
+    document.getElementById('smart-editor-close').addEventListener('click', close);
+    document.getElementById('smart-editor-cancel').addEventListener('click', close);
+    document.getElementById('smart-editor-add-rule').addEventListener('click', function() {
+      _smartCollectFromDom();
+      _smartEditorState.rules.push({ field: 'rating', op: 'gte', value: 4 });
+      _smartRenderEditor();
+    });
+    bd.querySelectorAll('input[name="smart-match"]').forEach(function(r) {
+      r.addEventListener('change', function() {
+        _smartCollectFromDom();
+        _smartEditorState.match = r.value;
+      });
+    });
+    bd.querySelectorAll('.smart-rule-row').forEach(function(row) {
+      var idx = Number(row.dataset.idx);
+      row.querySelector('.smart-rule-field').addEventListener('change', function(e) {
+        _smartCollectFromDom();
+        var rule = _smartEditorState.rules[idx];
+        rule.field = e.target.value;
+        var ops = _smartOpsFor(rule.field);
+        rule.op = ops[0][0];
+        rule.value = _smartFieldType(rule.field) === 'playlist' ? [] :
+                     _smartFieldType(rule.field) === 'bool'     ? true :
+                     _smartFieldType(rule.field) === 'number'   ? 0 : '';
+        _smartRenderEditor();
+      });
+      row.querySelector('.smart-rule-op').addEventListener('change', function(e) {
+        _smartCollectFromDom();
+        _smartEditorState.rules[idx].op = e.target.value;
+        _smartRenderEditor();
+      });
+      row.querySelector('.smart-rule-del').addEventListener('click', function() {
+        _smartCollectFromDom();
+        _smartEditorState.rules.splice(idx, 1);
+        if (_smartEditorState.rules.length === 0) {
+          _smartEditorState.rules.push({ field: 'rating', op: 'gte', value: 4 });
+        }
+        _smartRenderEditor();
+      });
+    });
+    document.getElementById('smart-editor-save').addEventListener('click', function() {
+      _smartCollectFromDom();
+      _smartSubmit(close);
+    });
+  }
+
+  function _smartCollectFromDom() {
+    var s = _smartEditorState;
+    var nameEl = document.getElementById('smart-editor-name');
+    var limitEl = document.getElementById('smart-editor-limit');
+    if (nameEl) s.name = nameEl.value.trim();
+    if (limitEl) s.limit = limitEl.value ? Number(limitEl.value) : '';
+    var matched = document.querySelector('input[name="smart-match"]:checked');
+    if (matched) s.match = matched.value;
+    var rows = document.querySelectorAll('.smart-rule-row');
+    rows.forEach(function(row) {
+      var idx = Number(row.dataset.idx);
+      var rule = s.rules[idx]; if (!rule) return;
+      rule.field = row.querySelector('.smart-rule-field').value;
+      rule.op = row.querySelector('.smart-rule-op').value;
+      var type = _smartFieldType(rule.field);
+      if (type === 'playlist') {
+        var cbs = row.querySelectorAll('.smart-rule-pl-cb');
+        rule.value = Array.from(cbs).filter(function(cb) { return cb.checked; }).map(function(cb) { return cb.value; });
+      } else if (type === 'bool') {
+        rule.value = row.querySelector('.smart-rule-value').value === 'true';
+      } else if (rule.op === 'between') {
+        var lo = row.querySelector('.smart-rule-value-lo');
+        var hi = row.querySelector('.smart-rule-value-hi');
+        rule.value = [Number(lo.value || 0), Number(hi.value || 0)];
+      } else {
+        var v = row.querySelector('.smart-rule-value').value;
+        rule.value = (type === 'number') ? Number(v || 0) : v;
+      }
+    });
+  }
+
+  function _smartSubmit(onSuccess) {
+    var s = _smartEditorState;
+    if (!s.name) { showToast('Bitte einen Namen eingeben'); return; }
+    if (!s.rules.length) { showToast('Mindestens eine Regel erforderlich'); return; }
+    var smart = { match: s.match, rules: s.rules };
+    if (s.limit && Number(s.limit) > 0) smart.limit = Number(s.limit);
+    var payload, method;
+    if (s.id) {
+      payload = { playlist_id: s.id, smart: smart };
+      method = 'PUT';
+    } else {
+      payload = { name: s.name, smart: smart };
+      method = 'POST';
+    }
+    fetch(PLAYLISTS_SMART_PATH, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Fehler'); });
+      return r.json();
+    }).then(function(d) {
+      if (d.playlist) {
+        if (s.id) {
+          var i = _userPlaylists.findIndex(function(p) { return p.id === s.id; });
+          if (i >= 0) _userPlaylists[i] = d.playlist;
+        } else {
+          _userPlaylists.unshift(d.playlist);
+        }
+        if (typeof onSuccess === 'function') onSuccess();
+        showFolderView();
+        showToast('Intelligente Playlist gespeichert');
+      }
+    }).catch(function(err) {
+      showToast(String(err.message || 'Fehler beim Speichern'));
+    });
   }
 
   /* "Titel" pseudo-playlist: union of all user playlist tracks (deduplicated, order-preserving). */

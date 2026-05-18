@@ -1086,6 +1086,42 @@ def create_app(
             raise HTTPException(status_code=404, detail="Playlist or item not found")
         return {"playlist": pl}
 
+    # --- Smart Playlists API ---
+
+    @app.post("/api/audio/playlists/smart")
+    def audio_create_smart_playlist(payload: dict[str, object]) -> dict[str, object]:
+        """Create a new smart playlist defined by ``smart`` rules."""
+        from hometools.streaming.core.playlists import create_playlist
+        from hometools.streaming.core.smart_playlists import validate_smart_rules
+
+        name = str(payload.get("name", "")).strip()
+        smart = payload.get("smart")
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+        ok, reason = validate_smart_rules(smart)
+        if not ok:
+            raise HTTPException(status_code=400, detail=reason)
+        pl = create_playlist(resolved_cache_dir, "audio", name=name, smart=smart)  # type: ignore[arg-type]
+        return {"playlist": pl}
+
+    @app.put("/api/audio/playlists/smart")
+    def audio_update_smart_rules(payload: dict[str, object]) -> dict[str, object]:
+        """Update the smart-rule block of an existing (possibly regular) playlist."""
+        from hometools.streaming.core.playlists import update_smart_rules
+        from hometools.streaming.core.smart_playlists import validate_smart_rules
+
+        playlist_id = str(payload.get("playlist_id", ""))
+        smart = payload.get("smart")
+        if not playlist_id:
+            raise HTTPException(status_code=400, detail="playlist_id is required")
+        ok, reason = validate_smart_rules(smart)
+        if not ok:
+            raise HTTPException(status_code=400, detail=reason)
+        pl = update_smart_rules(resolved_cache_dir, "audio", playlist_id, smart=smart)  # type: ignore[arg-type]
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        return {"playlist": pl}
+
     # --- Custom Order API (server-side folder/favorites reorder) ---
 
     @app.get("/api/audio/folder-order")

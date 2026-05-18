@@ -31,7 +31,37 @@
 
 - **Phase 3: Native iOS Apps** — Hybrid WebView Wrapper für Video + Audio → [plans/native_app_plan.md](plans/native_app_plan.md)
 
+## Design Discussions
+
+### Smart-Playlist-Kaskaden (Phase 2)
+
+**Status:** offen.
+
+In Phase 1 (implementiert 2026-05-18) werden `in_playlist`-Regeln nur gegen *nicht-smarte* Playlists aufgelöst — Verweise auf andere Smart Playlists liefern garantiert `false` und werden im Index-Bau übersprungen.  Damit sind Zyklen ausgeschlossen, ohne dass eine Topologie-Analyse nötig ist.
+
+**Phase-2-Vorschlag** (sobald praktisch benötigt):
+
+1. Vor der Auswertung einen gerichteten Graphen `pl_id → set(referenzierte pl_ids)` aus allen `in_playlist`-Regeln aufbauen.
+2. Per DFS auf Zyklen prüfen.  Bei Zyklus: betroffene Smart Playlists markieren, im UI mit einem Warn-Badge versehen und in der Auswertung wie leer behandeln.
+3. Bei zyklenfreiem DAG topologisch sortieren und Smart Playlists in dieser Reihenfolge auswerten — vorgelagerte Ergebnisse stehen damit nachgelagerten als „virtuelle Playlist-Mitgliedschaft" zur Verfügung.
+4. Tiefen-Limit (z.B. max. 5) als Safety-Net gegen Performance-Spitzen.
+5. Cache der Auswertungsergebnisse pro Refresh-Zyklus (Memoization), damit eine Smart Playlist nicht mehrfach evaluiert wird, wenn sie von mehreren anderen referenziert wird.
+
+**Trade-offs:**  Komplexität + UX-Kosten (Fehlermeldung „Zyklus erkannt") gegen die seltene Nützlichkeit (Power-User-Feature).  Bis ein User-Wunsch existiert, bleibt Phase 1 als bewusst einfache Lösung.
+
+### `added_at`-Feld auf MediaItem (Phase 2)
+
+**Status:** offen.
+
+Smart Playlists nutzen aktuell `MediaItem.mtime` als Proxy für „Datum hinzugefügt".  Problem: Tag-Edits oder NAS-Resync setzen `mtime` zurück, sodass „Zuletzt hinzugefügt" Treffer „verlieren" kann.
+
+**Vorschlag:** Neues Feld `first_seen_at: float` auf `MediaItem`, das beim ersten Build im Index-Cache vermerkt und nie überschrieben wird.  `catalog.py` (Audio + Video) liest den Wert aus dem vorigen Snapshot vor dem Persistieren des neuen.  Bei vollständigem Cache-Wipe fällt der Wert auf `mtime` zurück.  Smart-Playlist-Evaluator bevorzugt `first_seen_at`, fällt auf `mtime` zurück.
+
 ## Done
+
+- **Intelligente Wiedergabelisten (Smart Playlists)** (2026-05-18) — iTunes-artige Smart Playlists für Audio + Video.  Neues Core-Modul `streaming/core/smart_playlists.py` mit Operator-Registry (`eq`, `gte`, `lte`, `between`, `in`, `contains`, `starts_with`, `matches` [Regex, ≤ 256 Zeichen, Compile-Cache], `within_days`/`before`/`after` für `added_at`, `any_of`/`all_of`/`none_of` für `in_playlist`), AND/OR-Match-Modi, optionalem `sort` + `limit`, `is_favorite`-Feld, `in_folder` (Prefix-abgeleitet).  Pure functions, exception-safe, `validate_smart_rules()` für Endpoint-Sanity.  `playlists.py` erweitert um optionales `smart`-Argument in `create_playlist()` und neue Funktion `update_smart_rules()`; `add_item`/`remove_item`/`move_item`/`reorder_item` sind No-Ops auf Smart Playlists (Read-only-Guards).  Zwei neue API-Endpoints pro Server: `POST /api/<media>/playlists/smart` (Create), `PUT /api/<media>/playlists/smart` (Update/Promote).  **Client-seitige Auswertung** (`_evaluateSmartPlaylist()` als JS-Mirror der Python-Implementierung): `_resolvePlaylistItems()` erkennt `pl.smart` automatisch und expandiert Regeln gegen `allItems`, sodass bestehende Render-/Play-Pfade unverändert funktionieren.  Refresh-Button (`.playlist-folder-refresh`) auf jeder Smart-Karte ruft `refreshSmartPlaylist()` für Re-Evaluation auf.  UI: Lightning-Bolt-Badge (`SVG_SMART_PLAYLIST` als `.smart-pl-badge`) in der rechten unteren Ecke des `IC_PLAYLIST`-Logos kennzeichnet Smart Playlists.  Neue „Intelligente Playlist…"-Karte (`#smart-playlist-new-card`) rechts neben „Neue Playlist…" in `.playlist-tools-row` öffnet einen JS-DOM-injizierten Editor-Modal (`#smart-editor-backdrop`, `.smart-editor-modal`) mit Name-Input, AND/OR-Radio, dynamisch typabhängigen Regelzeilen (Text/Number/Multi-Select für Playlists/Boolean-Select/zwei Inputs für `between`), „+ Regel"-Button und optionalem Limit-Feld.  `PLAYLISTS_SMART_PATH` als neue JS-Variable.  `added_at` ist Phase-1-mäßig ein Proxy für `MediaItem.mtime`; ein dediziertes `first_seen_at`-Feld ist als Design Discussion dokumentiert.  Kaskaden (Smart referenziert Smart) sind Phase 1 absichtlich gesperrt — Verweise auf Smart Playlists in `in_playlist`-Regeln werden beim Index-Bau übersprungen.  40 neue Tests (`test_smart_playlists.py`): Operatoren (10), AND/OR (2), `in_playlist` inkl. Best-of-Rock + Cycle-Schutz (4), Sort/Limit (2), Validierung (4), Storage-Roundtrip + Read-only-Guards (4), API Audio (5) + Video (1), JS-Injection (4).  Architektur-Doku aktualisiert; SVG-Konstante `SVG_SMART_PLAYLIST` zu Rule 13 ergänzt.  Alle 1268 Tests grün.
+
+  *Follow-up (gleicher Tag):* `in_playlist`-Wertinput von `<select multiple>` auf eine Checkbox-Liste (`.smart-rule-pl-list` mit `.smart-rule-pl-opt`-Labels) umgestellt — das Multi-Select war auf Touch praktisch unbenutzbar und auf Desktop erforderte es Ctrl+Click.  Empty-State („Keine regulären Playlists vorhanden") wenn der User noch keine nicht-smarte Playlist hat. `_smartCollectFromDom()` liest jetzt `querySelectorAll('.smart-rule-pl-cb')`.
 
 - **`hometools scan-library` — Bibliotheks-Struktur-Analyse** (2026-05-18) — Neuer CLI-Befehl `hometools scan-library [--media video|audio] [--library-dir PATH] [--json] [--fail-on-warning]`. Neues Modul `streaming/core/library_scan.py` scannt die Medienbibliothek rein dateisystembasiert (kein ffprobe, kein TMDB) auf drei häufige Organisationsprobleme. **Checks (Video):** `episode_naming` (warning) — Ordner mit ≥ 4 Videodateien, bei denen weniger als 50 % einen S##E##-Pattern enthalten → Hinweis auf `hometools generate-overrides`; `oversized_folder` (info) — Ordner mit > 30 direkten Videodateien ohne Unterordner-Struktur; `untagged_language` (info) — Top-Level-Ordner ohne Sprach-Tag im Namen UND ohne `language`/`language_group`-Override in `hometools_overrides.yaml`. **Checks (Audio):** `oversized_folder` (info, Schwelle > 100 Audiodateien). `ScanReport.to_dict()` für JSON-Output. `--fail-on-warning` gibt Exit-Code 1. Schwellen sind keyword-only Parameter für testbare Konfigurierbarkeit. Exception Safety: alle Public-Funktionen liefern leere `ScanReport`-Instanz bei Fehler. 36 neue Tests (`test_library_scan.py`). Alle 1228 Tests grün. Gleichzeitig Backlog bereinigt: „Geräteübergreifende Fortschritts-Synchronisation" als erledigt markiert (seit Tag 1 server-seitig via `progress.py`), „Multi-Language-Linking Phase 2 manuelles Mapping" als erledigt markiert (`language_group`-Feld in `hometools_overrides.yaml` seit April implementiert).
 
