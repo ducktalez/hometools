@@ -2132,15 +2132,15 @@ def render_player_js(
         '</button>'
       );
     }
-    /* "Alle Titel" pseudo-playlist: all tracks from all user playlists, deduplicated.
+    /* "Titel" — flat list of all library tracks (allItems).
        Always shown when playlists are enabled; count pill only when > 0. */
     if (isRoot && PLAYLISTS_ENABLED) {
-      var _allTitlesCount = _countAllPlaylistTitles();
       _toolsRowParts.push(
-        '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card" data-playlist-id="__alltitles__">' +
+        '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card"' +
+          ' data-playlist-id="__alltitles__" title="Zeigt alle Titel der Ordner als Liste an">' +
           '<span class="tools-row-icon">' + IC_PLAYLIST + '</span>' +
-          '<span class="tools-row-label">Alle Titel</span>' +
-          (_allTitlesCount > 0 ? '<span class="tools-row-count">' + _allTitlesCount + '</span>' : '') +
+          '<span class="tools-row-label">Titel</span>' +
+          (allItems.length > 0 ? '<span class="tools-row-count">' + allItems.length + '</span>' : '') +
         '</button>'
       );
     }
@@ -6222,10 +6222,9 @@ def render_player_js(
   function showUserPlaylistView(plId) {
     /* Show playlist content without auto-playing (browse mode) */
     if (plId === '__alltitles__') {
-      var allPlItems = _resolveAllPlaylistItems();
-      if (allPlItems.length === 0) { showToast('Keine Titel in Playlists vorhanden'); return; }
+      if (allItems.length === 0) { showToast('Keine Titel in der Bibliothek vorhanden'); return; }
       _currentPlaylistId = '__alltitles__';
-      playlistItems = allPlItems;
+      playlistItems = allItems.slice();
       inPlaylist = true;
       currentPath = '';
       var hdr0 = document.getElementById('header-title');
@@ -6300,16 +6299,15 @@ def render_player_js(
 
   function playUserPlaylist(plId) {
     if (plId === '__alltitles__') {
-      var allPlItems = _resolveAllPlaylistItems();
-      if (allPlItems.length === 0) { showToast('Keine Titel in Playlists vorhanden'); return; }
+      if (allItems.length === 0) { showToast('Keine Titel in der Bibliothek vorhanden'); return; }
       _currentPlaylistId = '__alltitles__';
-      playlistItems = allPlItems;
-      filteredItems = allPlItems;
+      playlistItems = allItems.slice();
+      filteredItems = allItems.slice();
       inPlaylist = true;
       currentPath = '';
       var hdr2 = document.getElementById('header-title');
       if (hdr2) hdr2.textContent = 'Titel';
-      renderTracks(allPlItems, true);
+      renderTracks(filteredItems, true);
       playTrack(0);
       return;
     }
