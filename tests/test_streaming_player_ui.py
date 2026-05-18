@@ -985,6 +985,51 @@ def test_rating_css_has_active_and_hover_states():
     assert ".player-rating-star.hover" in css
 
 
+def test_rating_toggle_to_zero_via_player_bar():
+    """Clicking the already-active star must pass 0 to setRating (toggle off)."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    # The click handler must compute `current` from filteredItems and call setRating(0) on match
+    assert "clicked === current ? 0 : clicked" in js
+
+
+def test_rating_toggle_to_zero_via_inline_stars():
+    """Clicking the already-active inline star must pass 0 to setInlineRating (toggle off)."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "_clicked === _cur ? 0 : _clicked" in js
+
+
+def test_set_rating_patches_all_items():
+    """setRating success callback must call _patchAllItemsRating to keep allItems in sync."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "_patchAllItemsRating" in js
+
+
+def test_set_rating_updates_track_rating_bar():
+    """setRating success callback must call _updateTrackRatingBar to refresh the DOM."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "_updateTrackRatingBar" in js
+
+
+def test_undo_rating_patches_all_items():
+    """undoRating success callback must call _patchAllItemsRating."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    # _patchAllItemsRating called in both setRating and undoRating
+    assert js.count("_patchAllItemsRating") >= 2
+
+
+def test_rating_toast_zero_stars_label():
+    """setRating with 0 stars must produce 'Bewertung entfernt' label (not '0 Sterne vergeben')."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "Bewertung entfernt" in js
+
+
+def test_rating_star_tooltip_hints_toggle():
+    """The currently-set star should show a 'remove' hint in its tooltip."""
+    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    assert "Bewertung entfernen" in js
+    assert "nochmals klicken" in js
+
+
 # ---------------------------------------------------------------------------
 # Edit-modal rating stars
 # ---------------------------------------------------------------------------

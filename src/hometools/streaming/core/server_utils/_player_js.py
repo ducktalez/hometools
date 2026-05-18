@@ -2113,13 +2113,43 @@ def render_player_js(
 
     var html = '';
 
-    /* Offline Downloads folder card — only on root */
+    /* Compact tools row — only on root: groups Downloads, Neue Playlist, Titel
+       into a single horizontal strip spanning the full folder-grid width. */
+    var _toolsRowParts = [];
     if (isRoot && OFFLINE_ENABLED) {
-      html += '<div class="folder-card offline-folder-card" id="offline-folder-card">' +
-        '<div class="folder-thumb offline-folder-icon">' + IC_DL + '</div>' +
-        '<div class="folder-name">Downloaded</div>' +
-        '<div class="folder-count" id="offline-folder-count">0 downloads</div>' +
-      '</div>';
+      _toolsRowParts.push(
+        '<button type="button" class="tools-row-item offline-folder-card" id="offline-folder-card">' +
+          '<span class="tools-row-icon">' + IC_DL + '</span>' +
+          '<span class="tools-row-label">Downloaded</span>' +
+          '<span class="tools-row-count" id="offline-folder-count">0</span>' +
+        '</button>'
+      );
+    }
+    if (isRoot && PLAYLISTS_ENABLED) {
+      _toolsRowParts.push(
+        '<button type="button" class="tools-row-item playlist-new-card" id="playlist-new-card">' +
+          '<span class="tools-row-icon">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+          '</span>' +
+          '<span class="tools-row-label">Neue Playlist\u2026</span>' +
+          '<span class="tools-row-count"></span>' +
+        '</button>'
+      );
+      /* "Titel" pseudo-playlist: all tracks from all user playlists, deduplicated.
+         Only shown when at least one playlist contains items. */
+      var _allTitlesCount = _countAllPlaylistTitles();
+      if (_allTitlesCount > 0) {
+        _toolsRowParts.push(
+          '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card" data-playlist-id="__alltitles__">' +
+            '<span class="tools-row-icon">' + IC_PLAYLIST + '</span>' +
+            '<span class="tools-row-label">Titel</span>' +
+            '<span class="tools-row-count">' + _allTitlesCount + '</span>' +
+          '</button>'
+        );
+      }
+    }
+    if (_toolsRowParts.length > 0) {
+      html += '<div class="playlist-tools-row">' + _toolsRowParts.join('') + '</div>';
     }
 
     /* Auto-Favorites playlist card — only on root when favorites exist */
@@ -2151,14 +2181,7 @@ def render_player_js(
           '</button>' +
         '</div>';
       });
-      /* "+ Neue Playlist" card */
-      html += '<div class="folder-card playlist-new-card" id="playlist-new-card">' +
-        '<div class="folder-thumb playlist-folder-icon">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-        '</div>' +
-        '<div class="folder-name">Neue Playlist\u2026</div>' +
-        '<div class="folder-count"></div>' +
-      '</div>';
+      /* "+ Neue Playlist" and "Titel" are rendered in the compact tools row above. */
     }
 
     c.folders.forEach(function(f) {
@@ -2979,12 +3002,16 @@ def render_player_js(
         if (!wasDrag(e) && !window.getSelection().toString()) playTrack(Number(el.dataset.index));
       });
     });
-    /* Wire up inline rating star clicks */
+    /* Wire up inline rating star clicks — clicking the active star clears the rating (toggle to 0) */
     document.querySelectorAll('.track-inline-rating-star').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
         e.preventDefault();
-        setInlineRating(Number(btn.dataset.index), Number(btn.dataset.star));
+        var _idx = Number(btn.dataset.index);
+        var _t = filteredItems[_idx];
+        var _cur = Math.round((_t && _t.rating) || 0);
+        var _clicked = Number(btn.dataset.star);
+        setInlineRating(_idx, _clicked === _cur ? 0 : _clicked);
       });
     });
     document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
@@ -3409,8 +3436,7 @@ def render_player_js(
       var ready = downloads.filter(function(d) { return d.status === 'ready'; });
       var el = document.getElementById('offline-folder-count');
       if (el) {
-        var n = ready.length;
-        el.textContent = n + ' download' + (n !== 1 ? 's' : '');
+        el.textContent = String(ready.length);
       }
       if (downloadedPill) {
         downloadedPill.textContent = 'Downloaded (' + ready.length + ')';
@@ -4017,24 +4043,19 @@ def render_player_js(
     .then(function(d) {
       if (!d || !d.ok) return;
       t.rating = d.rating;
-      /* Update the inline stars in-place */
-      var container = document.querySelector('.track-inline-rating[data-index="' + idx + '"]');
-      if (container) {
-        var rounded = Math.round(d.rating || 0);
-        container.querySelectorAll('.track-inline-rating-star').forEach(function(btn) {
-          var s = Number(btn.dataset.star);
-          btn.className = 'track-inline-rating-star' + (s <= rounded ? ' active' : '');
-          btn.innerHTML = s <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
-        });
-      }
-      /* Also update player rating if this track is currently playing */
+      _patchAllItemsRating(t.relative_path, d.rating);
+      /* Sync track list item (rating-bar + inline stars) and player bar */
+      _updateTrackRatingBar(idx, d.rating);
       if (currentIndex === idx) renderPlayerRating(d.rating);
       /* rebuild weighted shuffle queue so new rating is reflected */
       if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
+      var toastLabel2 = stars === 0
+        ? 'Bewertung entfernt'
+        : stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
       if (d.entry_id) {
         showRatingToastWithUndo(stars, prevRating, d.entry_id, t);
       } else {
-        showToast(stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben');
+        showToast(toastLabel2);
       }
     })
     .catch(function() {});
@@ -5030,11 +5051,56 @@ def render_player_js(
       btn.className = 'player-rating-star' + (i <= rounded ? ' active' : '');
       btn.innerHTML = i <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
       btn.dataset.star = i;
-      btn.title = i + (i === 1 ? ' Stern' : ' Sterne');
+      /* Tooltip: clicking the currently-set star will clear the rating (toggle to 0) */
+      btn.title = (i === rounded && rounded > 0)
+        ? 'Bewertung entfernen (nochmals klicken)'
+        : i + (i === 1 ? ' Stern' : ' Sterne');
       if (!RATING_WRITE_ENABLED) btn.style.pointerEvents = 'none';
       playerRatingEl.appendChild(btn);
     }
     playerRatingEl.removeAttribute('hidden');
+  }
+
+  /* Patch the matching entry in allItems by relative_path.
+     Uses Object.assign to avoid mutating the frozen data pattern used elsewhere. */
+  function _patchAllItemsRating(relativePath, rating) {
+    for (var i = 0; i < allItems.length; i++) {
+      if (allItems[i].relative_path === relativePath) {
+        allItems[i] = Object.assign({}, allItems[i], { rating: rating });
+        break;
+      }
+    }
+  }
+
+  /* Update the .rating-bar inside a track list item without a full re-render.
+     Also refreshes inline rating stars for the same index when present. */
+  function _updateTrackRatingBar(idx, rating) {
+    var li = document.querySelector('.track-item[data-index="' + idx + '"]');
+    if (!li) return;
+    var wrap = li.querySelector('.track-thumb-wrap');
+    if (wrap) {
+      var bar = wrap.querySelector('.rating-bar');
+      if (rating > 0) {
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.className = 'rating-bar';
+          wrap.appendChild(bar);
+        }
+        bar.style.width = (rating / 5 * 100) + '%';
+      } else if (bar) {
+        bar.remove();
+      }
+    }
+    /* Inline rating stars (if visible) */
+    var container = li.querySelector('.track-inline-rating');
+    if (container) {
+      var rounded = Math.round(rating || 0);
+      container.querySelectorAll('.track-inline-rating-star').forEach(function(b) {
+        var s = Number(b.dataset.star);
+        b.className = 'track-inline-rating-star' + (s <= rounded ? ' active' : '');
+        b.innerHTML = s <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
+      });
+    }
   }
 
   function setRating(stars) {
@@ -5051,14 +5117,22 @@ def render_player_js(
       .then(function(d) {
         if (!d || !d.ok) return;
         t.rating = d.rating;
+        /* Keep allItems in sync so any re-render (applyFilter, scroll) shows
+           the correct rating bar without waiting for a full catalog refresh. */
+        _patchAllItemsRating(t.relative_path, d.rating);
         renderPlayerRating(d.rating);
+        /* Sync the track list item (rating-bar + inline stars) without re-render */
+        _updateTrackRatingBar(currentIndex, d.rating);
         /* rebuild weighted shuffle queue so new rating is reflected immediately */
         if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
         /* show toast with undo option if entry_id was returned */
+        var toastLabel = stars === 0
+          ? 'Bewertung entfernt'
+          : stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
         if (d.entry_id) {
           showRatingToastWithUndo(stars, prevRating, d.entry_id, t);
         } else {
-          showToast(stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben');
+          showToast(toastLabel);
         }
       })
       .catch(function() {});
@@ -5066,8 +5140,10 @@ def render_player_js(
 
   function showRatingToastWithUndo(stars, prevStars, entryId, t) {
     var toast = document.getElementById('toast');
-    if (!toast) { showToast(stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben'); return; }
-    var label = stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
+    var label = stars === 0
+      ? 'Bewertung entfernt'
+      : stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
+    if (!toast) { showToast(label); return; }
     /* build toast via DOM — avoids quote-escaping in onclick attribute */
     toast.innerHTML = '';
     var span = document.createElement('span');
@@ -5096,7 +5172,9 @@ def render_player_js(
         var t2 = filteredItems[currentIndex];
         if (d.ok && t2) {
           t2.rating = prevStars;
+          _patchAllItemsRating(t2.relative_path, prevStars);
           renderPlayerRating(prevStars);
+          _updateTrackRatingBar(currentIndex, prevStars);
           if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
         }
         var toast = document.getElementById('toast');
@@ -5124,11 +5202,13 @@ def render_player_js(
         b.classList.remove('hover');
       });
     });
-    /* click to rate */
+    /* click to rate — clicking the currently-set star clears the rating (toggle to 0) */
     playerRatingEl.addEventListener('click', function(e) {
       var btn = e.target.closest('.player-rating-star');
       if (!btn || !RATING_WRITE_ENABLED) return;
-      setRating(parseInt(btn.dataset.star, 10));
+      var clicked = parseInt(btn.dataset.star, 10);
+      var current = Math.round((filteredItems[currentIndex] && filteredItems[currentIndex].rating) || 0);
+      setRating(clicked === current ? 0 : clicked);
     });
   }
 
@@ -6133,8 +6213,55 @@ def render_player_js(
     return { pl: pl, resolved: resolved };
   }
 
+  /* "Titel" pseudo-playlist: union of all user playlist tracks (deduplicated, order-preserving). */
+  function _collectAllPlaylistRelPaths() {
+    var seen = Object.create(null);
+    var out = [];
+    _userPlaylists.forEach(function(pl) {
+      (pl.items || []).forEach(function(rp) {
+        if (!seen[rp]) { seen[rp] = true; out.push(rp); }
+      });
+    });
+    return out;
+  }
+  function _countAllPlaylistTitles() {
+    return _collectAllPlaylistRelPaths().length;
+  }
+  function _resolveAllPlaylistItems() {
+    var rels = _collectAllPlaylistRelPaths();
+    var resolved = [];
+    rels.forEach(function(rp) {
+      var match = allItems.find(function(it) { return it.relative_path === rp; });
+      if (match) resolved.push(match);
+    });
+    return resolved;
+  }
+
   function showUserPlaylistView(plId) {
     /* Show playlist content without auto-playing (browse mode) */
+    if (plId === '__alltitles__') {
+      var allPlItems = _resolveAllPlaylistItems();
+      if (allPlItems.length === 0) { showToast('Keine Titel in Playlists vorhanden'); return; }
+      _currentPlaylistId = '__alltitles__';
+      playlistItems = allPlItems;
+      inPlaylist = true;
+      currentPath = '';
+      var hdr0 = document.getElementById('header-title');
+      if (hdr0) hdr0.textContent = 'Titel';
+      backBtn.style.display = 'inline-block';
+      folderGrid.classList.add('view-hidden');
+      trackView.classList.remove('view-hidden');
+      filterBar.classList.remove('view-hidden');
+      filterBar.classList.add('fb-scroll-hidden');
+      playerBar.classList.remove('view-hidden');
+      _hideGlobalSearch();
+      _initFilterBarScrollReveal();
+      searchInput.value = '';
+      renderBreadcrumb();
+      applyFilter();
+      if (typeof _router !== 'undefined') _router.update();
+      return;
+    }
     if (plId === '__favorites__') {
       var favItems = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
       if (favItems.length === 0) { showToast('Keine Favoriten vorhanden'); return; }
@@ -6190,6 +6317,20 @@ def render_player_js(
   }
 
   function playUserPlaylist(plId) {
+    if (plId === '__alltitles__') {
+      var allPlItems = _resolveAllPlaylistItems();
+      if (allPlItems.length === 0) { showToast('Keine Titel in Playlists vorhanden'); return; }
+      _currentPlaylistId = '__alltitles__';
+      playlistItems = allPlItems;
+      filteredItems = allPlItems;
+      inPlaylist = true;
+      currentPath = '';
+      var hdr2 = document.getElementById('header-title');
+      if (hdr2) hdr2.textContent = 'Titel';
+      renderTracks(allPlItems, true);
+      playTrack(0);
+      return;
+    }
     if (plId === '__favorites__') {
       var favItems = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
       if (favItems.length === 0) { showToast('Keine Favoriten vorhanden'); return; }
@@ -6324,6 +6465,7 @@ def render_player_js(
 
   function movePlaylistItem(relativePath, direction) {
     if (!_currentPlaylistId) return;
+    if (_currentPlaylistId === '__alltitles__') return; /* read-only union */
     /* Optimistic: swap locally first */
     var snap = _snapshotPlaylists();
     var localPl = _userPlaylists.find(function(p) { return p.id === _currentPlaylistId; });
@@ -6360,6 +6502,8 @@ def render_player_js(
 
   function reorderPlaylistItem(relativePath, toIndex) {
     if (!_currentPlaylistId) return;
+    /* "Titel" pseudo-playlist is a read-only union; reorder is not supported. */
+    if (_currentPlaylistId === '__alltitles__') return;
 
     /* Favorites: client-side reorder via localStorage */
     if (_currentPlaylistId === '__favorites__') {
