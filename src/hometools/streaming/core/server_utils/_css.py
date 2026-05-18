@@ -65,26 +65,10 @@ header {
   transition: color 0.15s, border-color 0.15s;
 }
 .tools-pill:hover, .tools-pill.has-active { color: var(--accent); border-color: var(--accent); }
-/* Inline reload-button inside the tools-pill (when "Ordnerdaten erneuern" set to "tools-pill") */
-.tools-pill-refresh {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; padding: 2px; margin-left: 0.4rem;
-  background: none; border: 1px solid #3a3a3a; border-radius: 4px;
-  color: var(--sub); cursor: pointer; vertical-align: -3px;
-  transition: color 0.15s, border-color 0.15s;
-}
-.tools-pill-refresh[hidden] { display: none; }
-.tools-pill-refresh svg { width: 12px; height: 12px; }
-.tools-pill-refresh:hover { color: var(--accent); border-color: var(--accent); }
-.tools-pill-refresh.is-spinning svg { animation: tools-pill-refresh-spin 1s linear infinite; }
-@keyframes tools-pill-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-/* Header-element visibility toggles driven from tools panel */
-body.tool-refresh-off #refresh-btn,
-body.tool-refresh-in-pill #refresh-btn { display: none; }
-/* Buttongroup (segmented selector) */
+/* Buttongroup (segmented selector) — inline, flex-shrink, no forced width */
 .tools-buttongroup {
-  display: flex; margin-top: 6px; border: 1px solid #3a3a3a;
-  border-radius: 6px; overflow: hidden; width: 100%;
+  display: flex; border: 1px solid #3a3a3a;
+  border-radius: 6px; overflow: hidden; flex-shrink: 0; margin-left: 0.5rem;
 }
 .tools-buttongroup-btn {
   background: none; border: none; color: var(--sub);
@@ -804,6 +788,37 @@ body.playlist-dragging .track-list { overflow: visible; }
 .playlist-folder-icon svg { width: 36px; height: 36px; }
 .playlist-new-card { opacity: 0.65; border: 2px dashed #444; }
 .playlist-new-card:hover { opacity: 1; border-color: var(--accent); }
+/* Compact "tools row" on root: Downloaded + Neue Playlist + Titel.
+   Spans full width of the folder-grid (CSS grid). */
+.playlist-tools-row {
+  grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;
+}
+.tools-row-item {
+  flex: 1 1 0; min-width: 110px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--surface2); border: 1px solid #333; color: var(--text);
+  cursor: pointer; font: inherit; text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+.tools-row-item:hover { border-color: var(--accent); background: var(--surface); }
+.tools-row-item.playlist-new-card { opacity: 0.75; border: 1px dashed #444; background: transparent; }
+.tools-row-item.playlist-new-card:hover { opacity: 1; border-color: var(--accent); background: var(--surface2); }
+.tools-row-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; color: var(--sub); flex-shrink: 0;
+}
+.tools-row-icon svg { width: 18px; height: 18px; }
+.tools-row-label {
+  flex: 1 1 auto; font-size: 0.85rem; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.tools-row-count {
+  font-size: 0.75rem; color: var(--sub); flex-shrink: 0;
+  padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.05);
+}
+.tools-row-count:empty { display: none; }
 .playlist-folder-del {
   position: absolute; top: 6px; right: 6px; z-index: 2;
   background: rgba(0,0,0,0.55); border: 1px solid #555; color: var(--sub);
@@ -1084,17 +1099,20 @@ body.playlist-dragging .track-list { overflow: visible; }
 .audit-btn svg { width: 16px; height: 16px; }
 .audit-btn:hover { color: var(--accent); border-color: var(--accent); }
 
-/* ── Refresh button ── */
-.refresh-btn {
-  background: none; border: 1px solid #444; color: var(--sub);
-  border-radius: 4px; padding: 0.25rem 0.4rem; cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
-  flex-shrink: 0; line-height: 0;
-}
-.refresh-btn svg { width: 16px; height: 16px; }
-.refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
-.refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+/* ── Refresh catalog card in tools-row ── */
+.refresh-catalog-card { opacity: 0.75; border: 1px dashed #444; background: transparent; }
+.refresh-catalog-card:hover { opacity: 1; border-color: var(--accent); background: var(--surface2); }
+.refresh-catalog-card.spinning .tools-row-icon svg { animation: spin 0.8s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* ── Global Tools button in tools panel ── */
+.tools-global-refresh-btn {
+  flex-shrink: 0; margin-left: 0.5rem;
+  background: none; border: 1px solid #3a3a3a; border-radius: 6px;
+  color: var(--sub); font-size: 0.8rem; padding: 0.4rem 0.8rem;
+  cursor: pointer; text-align: center; white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s;
+}
+.tools-global-refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ── Folder list mode ── */
 .folder-grid.list-mode {

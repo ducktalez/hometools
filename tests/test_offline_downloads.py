@@ -74,6 +74,36 @@ class TestServiceWorkerOfflineSupport:
         assert "onupgradeneeded" in sw
         assert "createObjectStore" in sw
 
+    def test_service_worker_api_check_before_streaming_check(self):
+        """API paths (/api/...) must be handled by the API handler, not the
+        streaming handler — even though some API paths contain /audio/ or /video/.
+
+        Bug: In earlier versions the streaming check ran first and caught paths
+        like /api/audio/audit because they contain /audio/.  The API handler has
+        a safe 503-fallback; the streaming handler propagates errors directly,
+        causing the audit page to show a toast error when the server was briefly
+        unreachable.
+        """
+        from hometools.streaming.core.server_utils import render_pwa_service_worker
+
+        sw = render_pwa_service_worker()
+
+        # The API guard must appear before any startsWith('/audio/') or startsWith('/video/') check
+        api_pos = sw.find("startsWith('/api/')")
+        audio_pos = sw.find("startsWith('/audio/')")
+        video_pos = sw.find("startsWith('/video/')")
+
+        assert api_pos != -1, "SW must contain startsWith('/api/') guard"
+        assert audio_pos != -1, "SW must contain startsWith('/audio/') guard for streaming"
+        assert video_pos != -1, "SW must contain startsWith('/video/') guard for streaming"
+
+        assert api_pos < audio_pos, (
+            "API check must come BEFORE /audio/ streaming check — paths like /api/audio/audit must reach the API handler first"
+        )
+        assert api_pos < video_pos, (
+            "API check must come BEFORE /video/ streaming check — paths like /api/video/audit must reach the API handler first"
+        )
+
 
 class TestOfflinePlayback:
     """Service worker offline playback support."""

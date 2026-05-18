@@ -21,7 +21,6 @@ from ._svg import (
     SVG_PLAY,
     SVG_PREV,
     SVG_QUEUE,
-    SVG_REFRESH,
     SVG_REPEAT,
     SVG_SHUFFLE,
 )
@@ -114,11 +113,9 @@ def render_media_page(
     )
     mode_controls_html = (
         '<span class="downloaded-pill is-offline" id="downloaded-pill">Safe Mode</span>'
-        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
-        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>' + SVG_REFRESH + "</button></span>"
+        '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
         if safe_mode
-        else '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools'
-        '<button class="tools-pill-refresh" id="tools-pill-refresh" title="Katalog neu laden" hidden>' + SVG_REFRESH + "</button></span>"
+        else '<span class="tools-pill" id="tools-pill" title="Tools &amp; Einstellungen">Tools</span>'
     )
     tools_panel_html = f"""
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
@@ -184,15 +181,13 @@ def render_media_page(
         </label>
       </div>
 
-      <div class="tools-section-heading">Ansicht</div>
-      <div class="tools-item tools-item--full">
-        <div class="tools-item-label">Ordnerdaten erneuern</div>
-        <div class="tools-item-desc">Position des Buttons &bdquo;Katalog neu laden&ldquo;</div>
-        <div class="tools-buttongroup" id="tool-refresh-position" role="group">
-          <button type="button" class="tools-buttongroup-btn" data-value="header">Kopfleiste</button>
-          <button type="button" class="tools-buttongroup-btn" data-value="tools-pill">Im Tools-Button</button>
-          <button type="button" class="tools-buttongroup-btn" data-value="off">Aus</button>
+      <div class="tools-section-heading">Globale Tools</div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">Ordnerdaten aller Ordner erneuern</div>
+          <div class="tools-item-desc">Katalog komplett neu einlesen und Ordnermetadaten aktualisieren</div>
         </div>
+        <button type="button" class="tools-global-refresh-btn" id="tools-global-refresh-btn">Jetzt erneuern</button>
       </div>
 
       <button class="tools-panel-close" id="tools-panel-close">Schlie&szlig;en</button>
@@ -451,7 +446,6 @@ def render_media_page(
     <span class="logo-title" id="header-title"></span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
-    <button class="refresh-btn" id="refresh-btn" title="Katalog neu laden">{SVG_REFRESH}</button>
     {mode_controls_html}
     {playlist_pill_html}
     <input id="global-search-input" class="header-search view-hidden" type="search" autocomplete="off" />

@@ -734,7 +734,7 @@ class TestRefreshParity:
         assert r2.json()["ok"] is True
 
     def test_both_home_pages_include_refresh_button(self, tmp_path):
-        """Both UIs must have the refresh button in the header."""
+        """Both UIs must have the refresh-catalog-card button (rendered in JS tools-row)."""
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
@@ -743,8 +743,8 @@ class TestRefreshParity:
         audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
         video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
 
-        assert 'id="refresh-btn"' in audio_html
-        assert 'id="refresh-btn"' in video_html
+        assert "refresh-catalog-card" in audio_html
+        assert "refresh-catalog-card" in video_html
 
     def test_both_home_pages_include_refresh_js(self, tmp_path):
         """Both UIs must have the refreshCatalog JS function."""

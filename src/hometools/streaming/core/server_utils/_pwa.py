@@ -44,7 +44,7 @@ def render_pwa_manifest(
 def render_pwa_service_worker() -> str:
     """Return a service worker JS for PWA caching, offline UI, and download support."""
     return """\
-const CACHE_NAME = 'hometools-v7';
+const CACHE_NAME = 'hometools-v8';
 const DOWNLOAD_CACHE = 'hometools-downloads-v1';
 
 self.addEventListener('install', event => {
@@ -62,23 +62,27 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
+  // API calls — network first, with empty-object fallback on server-down.
+  // IMPORTANT: This check must come BEFORE the streaming check below because
+  // paths like /api/audio/audit or /api/audio/rating also contain /audio/ and
+  // would otherwise be misrouted to the streaming handler (which has no fallback).
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(event.request).catch(() => new Response('{}', { status: 503 }))
+    );
+    return;
+  }
+
   // Streaming endpoints — only intercept if we have an offline download cached.
-  // If not cached, bypass the SW entirely (no event.respondWith) so background-tab
-  // throttling of SW fetch handlers cannot interrupt continuous video/audio playback.
-  if (url.pathname.includes('/stream') || url.pathname.includes('/audio/') || url.pathname.includes('/video/')) {
+  // If not cached, pass through to network; errors propagate naturally so that
+  // background-tab SW throttling cannot interrupt continuous media playback.
+  // Streaming paths are /audio/stream and /video/stream (no /api/ prefix).
+  if (url.pathname.includes('/stream') || url.pathname.startsWith('/audio/') || url.pathname.startsWith('/video/')) {
     event.respondWith(
       caches.open(DOWNLOAD_CACHE).then(cache => cache.match(event.request)).then(cached => {
         if (cached) return cached;          // offline download → serve from cache
         return fetch(event.request);        // online → pass through; errors propagate naturally
       })
-    );
-    return;
-  }
-  
-  // API calls — network first
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(event.request).catch(() => new Response('{}', { status: 503 }))
     );
     return;
   }

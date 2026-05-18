@@ -1570,14 +1570,16 @@ def render_player_js(
   }
 
   /* ── Manual catalog refresh (user-triggered) ── */
-  var _refreshBtn = document.getElementById('refresh-btn');
+  /* The refresh button is rendered dynamically in the tools-row (root view only). */
+  function _getRefreshBtn() { return document.getElementById('refresh-catalog-card'); }
 
   function _refreshPoll() {
     fetch(API_PATH, { cache: 'no-store' })
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(data) {
+      var _rb = _getRefreshBtn();
       if (!data) {
-        if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+        if (_rb) _rb.classList.remove('spinning');
         showToast('Refresh fehlgeschlagen');
         return;
       }
@@ -1589,7 +1591,7 @@ def render_player_js(
       allItems = Array.isArray(data.items) ? data.items : [];
       _invalidateDupeMap();
       _invalidateFolderCache();
-      if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+      if (_rb) _rb.classList.remove('spinning');
 
       /* Show refresh timestamp */
       var infoEl = document.getElementById('refresh-info');
@@ -1618,7 +1620,7 @@ def render_player_js(
   }
 
   function refreshCatalog() {
-    if (_refreshBtn) _refreshBtn.classList.add('spinning');
+    var _rb = _getRefreshBtn(); if (_rb) _rb.classList.add('spinning');
     _ratingRefreshPath = null;
 
     var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
@@ -1627,11 +1629,16 @@ def render_player_js(
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function() { _refreshPoll(); })
     .catch(function() {
-      if (_refreshBtn) _refreshBtn.classList.remove('spinning');
+      var _rb2 = _getRefreshBtn(); if (_rb2) _rb2.classList.remove('spinning');
       showToast('Refresh fehlgeschlagen');
     });
   }
-  if (_refreshBtn) _refreshBtn.addEventListener('click', refreshCatalog);
+  /* Delegated click-handler for the dynamically rendered refresh-catalog-card in the tools-row */
+  if (folderGrid) {
+    folderGrid.addEventListener('click', function(e) {
+      if (e.target.closest('.refresh-catalog-card')) refreshCatalog();
+    });
+  }
 
   /* ── Lazy per-folder rating refresh ── */
   var _ratingRefreshPath = null;
@@ -1971,7 +1978,7 @@ def render_player_js(
           var refreshDetail = data.detail || 'Building index in background…';
           console.info('Catalog served from quick scan, index still building:', refreshDetail);
           showIndexingToast(refreshDetail);
-          scheduleBackgroundRefresh();
+          if ((_toolState && _toolState.autoRefresh || 'auto') !== 'off') scheduleBackgroundRefresh();
         } else {
           hideIndexingToast();
         }
@@ -2147,6 +2154,15 @@ def render_player_js(
           '</button>'
         );
       }
+    }
+    /* "Katalog neu laden" — always visible on root, right-most card */
+    if (isRoot) {
+      _toolsRowParts.push(
+        '<button type="button" class="tools-row-item refresh-catalog-card" id="refresh-catalog-card" title="Katalog neu laden">' +
+          '<span class="tools-row-icon">' + IC_REFRESH + '</span>' +
+          '<span class="tools-row-label">Katalog neu laden</span>' +
+        '</button>'
+      );
     }
     if (_toolsRowParts.length > 0) {
       html += '<div class="playlist-tools-row">' + _toolsRowParts.join('') + '</div>';
@@ -3786,8 +3802,8 @@ def render_player_js(
   var _toolDuplicates = document.getElementById('tool-duplicates');
   var _dupeShowLink = document.getElementById('dupe-show-link');
   var _toolFileMover = document.getElementById('tool-file-mover');
-  var _toolRefreshGroup = document.getElementById('tool-refresh-position');
-  var _toolsPillRefresh = document.getElementById('tools-pill-refresh');
+  var _toolAutoRefreshGroup = null; /* removed — auto-refresh feature disabled */
+  var _toolsGlobalRefreshBtn = document.getElementById('tools-global-refresh-btn');
 
   /* Load saved tool states from localStorage */
   var _toolState = JSON.parse(localStorage.getItem('ht-tools') || '{}');
@@ -3805,22 +3821,8 @@ def render_player_js(
   }
 
   function _applyHeaderUiState() {
-    /* Header-element visibility — applied regardless of tool-mode active flag.
-       These are persistent UI preferences, not "tool features". */
-    /* Refresh-button position: 'header' (default) | 'tools-pill' | 'off' */
-    var refreshPos = _toolState.refreshPosition || 'header';
-    document.body.classList.toggle('tool-refresh-in-pill', refreshPos === 'tools-pill');
-    document.body.classList.toggle('tool-refresh-off', refreshPos === 'off');
-    if (_toolsPillRefresh) {
-      if (refreshPos === 'tools-pill') _toolsPillRefresh.removeAttribute('hidden');
-      else _toolsPillRefresh.setAttribute('hidden', '');
-    }
-    if (_toolRefreshGroup) {
-      var btns = _toolRefreshGroup.querySelectorAll('.tools-buttongroup-btn');
-      for (var i = 0; i < btns.length; i++) {
-        btns[i].classList.toggle('is-active', btns[i].dataset.value === refreshPos);
-      }
-    }
+    /* Remove legacy body classes that may have been persisted in older localStorage saves */
+    document.body.classList.remove('tool-refresh-off', 'tool-refresh-in-pill');
   }
 
   function _applyToolState() {
@@ -3975,30 +3977,11 @@ def render_player_js(
       if (inPlaylist) applyFilter();
     });
   }
-  if (_toolRefreshGroup) {
-    _toolRefreshGroup.addEventListener('click', function(e) {
-      var btn = e.target.closest('.tools-buttongroup-btn');
-      if (!btn) return;
-      _toolState.refreshPosition = btn.dataset.value;
-      _saveToolState();
-    });
-  }
-  if (_toolsPillRefresh) {
-    /* Click-handler delegates to the regular refresh-btn flow but preserves
-       the tools-pill click (don't open the panel). */
-    _toolsPillRefresh.addEventListener('click', function(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      _toolsPillRefresh.classList.add('is-spinning');
-      var realRefresh = document.getElementById('refresh-btn');
-      if (realRefresh) {
-        realRefresh.click();
-      } else if (typeof refreshCatalog === 'function') {
-        refreshCatalog();
-      }
-      setTimeout(function() {
-        if (_toolsPillRefresh) _toolsPillRefresh.classList.remove('is-spinning');
-      }, 1200);
+  /* Global Tools: "Ordnerdaten aller Ordner erneuern" button */
+  if (_toolsGlobalRefreshBtn) {
+    _toolsGlobalRefreshBtn.addEventListener('click', function() {
+      closeToolsPanel();
+      refreshCatalog();
     });
   }
   var _toolsActivateAll = document.getElementById('tools-activate-all');
