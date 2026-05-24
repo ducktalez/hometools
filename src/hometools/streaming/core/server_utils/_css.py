@@ -333,6 +333,17 @@ body.tool-show-file-mover .track-queue-btn { display: none; }
   line-height: 0; flex-shrink: 0;
 }
 .lang-badge svg { width: 18px; height: 12px; display: block; }
+/* Fixed-position primary-language flag on video folder cards (top-right corner).
+   Always rendered for mono-lingual folders so the default language is visible. */
+.folder-lang-corner {
+  position: absolute; top: 6px; right: 6px;
+  z-index: 3; pointer-events: none;
+  background: rgba(0,0,0,0.55); border-radius: 3px;
+  padding: 2px; line-height: 0;
+}
+.folder-lang-corner .composite-flag,
+.folder-lang-corner .lang-badge { margin: 0; }
+.folder-grid.list-mode .folder-lang-corner { top: 4px; right: 4px; }
 /* Composite flag: main flag + optional smaller subtitle flag overlay */
 .composite-flag {
   position: relative; display: inline-block; width: 22px; height: 14px;
@@ -1472,6 +1483,17 @@ body.playlist-dragging .track-list { overflow: visible; }
 }
 .video-fs-btn:hover { background: rgba(255,255,255,0.1); }
 .video-fs-btn svg { width: 18px; height: 18px; }
+/* Cast button — mirrors .video-fs-btn shape, accent colour when connected */
+.video-cast-btn {
+  background: none; border: none; color: #fff;
+  border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.video-cast-btn:hover { background: rgba(255,255,255,0.1); }
+.video-cast-btn svg { width: 18px; height: 18px; }
+.video-cast-btn.active { color: var(--accent, #1db954); }
+.video-cast-btn[hidden] { display: none; }
 /* Zone 2: video — fills all remaining space between header and controls */
 .video-wrap {
   flex: 1 1 0; min-height: 0; overflow: hidden;

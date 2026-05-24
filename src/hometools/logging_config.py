@@ -88,3 +88,11 @@ def setup_logging(level=logging.INFO, log_file: str | None = "hometools.log", *,
         handlers=handlers,
         force=True,
     )
+
+    # asyncio emits a WARNING for every "socket.send() raised exception."
+    # whenever a client disconnects mid-stream (browser pauses/skips video,
+    # iOS backgrounds the app, range-request aborts).  These are harmless
+    # — the streaming response just stops writing.  Raise the asyncio
+    # logger to ERROR so the routine disconnect noise is suppressed while
+    # real asyncio errors still surface.
+    logging.getLogger("asyncio").setLevel(logging.ERROR)

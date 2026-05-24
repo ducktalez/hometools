@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ._svg import (  # noqa: F401
     SVG_BACK,
+    SVG_CAST,
     SVG_CHECK,
     SVG_CLOSE_X,
     SVG_DOWNLOAD,
@@ -598,6 +599,7 @@ def render_player_js(
   var miniExpandBtn  = document.getElementById('mini-expand-btn');
   var videoCloseBtn  = document.getElementById('video-close-btn');
   var videoFsBtn     = document.getElementById('video-fs-btn');
+  var videoCastBtn   = document.getElementById('video-cast-btn');
   var videoOverlayTitleText = document.getElementById('video-overlay-title-text');
   var videoFloatContainer = document.getElementById('video-float-container');
   var videoFloatWrap   = document.getElementById('video-float-wrap');
@@ -762,6 +764,58 @@ def render_player_js(
         player.webkitEnterFullscreen(); /* iOS Safari */
       }
     });
+  }
+
+  /* ── Cast button (HTML5 Remote Playback API) ─────────────────────────
+     Streams the playing <video> element to any reachable Chromecast /
+     AirPlay target.  Implementation uses only standard browser APIs —
+     no Cast SDK, no app-id setup.  Visibility is driven by availability
+     callbacks, so the button stays hidden on browsers without support
+     (Firefox desktop, embedded WebViews without media-router). */
+  if (videoCastBtn && player && player.tagName === 'VIDEO') {
+    var _castInitialised = false;
+
+    /* Chromium / Android Chrome / Desktop Chrome — Remote Playback API */
+    if (player.remote && typeof player.remote.watchAvailability === 'function') {
+      _castInitialised = true;
+      try {
+        player.remote.watchAvailability(function(available) {
+          videoCastBtn.hidden = !available;
+        }).catch(function() { /* unsupported / disabled in iframe */ });
+      } catch (_e) { /* ignore */ }
+
+      videoCastBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (player.remote && typeof player.remote.prompt === 'function') {
+          player.remote.prompt().catch(function(err) {
+            console.warn('Cast prompt cancelled or failed:', err);
+          });
+        }
+      });
+
+      try {
+        player.remote.addEventListener('connect', function() {
+          videoCastBtn.classList.add('active');
+        });
+        player.remote.addEventListener('disconnect', function() {
+          videoCastBtn.classList.remove('active');
+        });
+      } catch (_e) { /* ignore */ }
+    }
+
+    /* iOS Safari fallback — AirPlay picker */
+    if (!_castInitialised && window.WebKitPlaybackTargetAvailabilityEvent) {
+      player.addEventListener('webkitplaybacktargetavailabilitychanged', function(ev) {
+        videoCastBtn.hidden = (ev.availability !== 'available');
+      });
+      videoCastBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (typeof player.webkitShowPlaybackTargetPicker === 'function') {
+          player.webkitShowPlaybackTargetPicker();
+        }
+      });
+    }
+    /* If neither API is available the button stays hidden — no regression. */
   }
 
   /* ── Fullscreen exit → float player ── */
@@ -2127,9 +2181,12 @@ def render_player_js(
 
     var html = '';
 
-    /* Compact tools row — only on root: Neue Playlist | Titel | Downloaded | reload */
+    /* Compact tools row — only on root: Neue Playlist | Titel | Downloaded | reload.
+       Video server omits playlist tools (Neue Playlist / Intelligente Playlist / Titel)
+       since playlists are an audio-only feature there. */
     var _toolsRowParts = [];
-    if (isRoot && PLAYLISTS_ENABLED) {
+    var _isVideo = (ITEM_NOUN === 'video');
+    if (isRoot && PLAYLISTS_ENABLED && !_isVideo) {
       _toolsRowParts.push(
         '<button type="button" class="tools-row-item playlist-new-card" id="playlist-new-card">' +
           '<span class="tools-row-icon">' +
@@ -2232,6 +2289,20 @@ def render_player_js(
       var extraClass = (f.isFavorite ? ' fav-folder' : '') + (isAudiobook ? ' audiobook-folder' : '') + (hasVariants ? ' multi-lang-folder' : '');
       var variantsAttr = hasVariants ? ' data-variants="' + escHtml(JSON.stringify(f.variants)) + '"' : '';
 
+      /* Video server: always show a single primary-language flag in a fixed
+         top-right corner — falls back to DEFAULT_LANG when nothing detected.
+         Multi-variant folders skip this corner flag because they already render
+         per-variant flag buttons inside the folder-count area.  Audio keeps the
+         pre-existing inline langBadges next to folder-name. */
+      var cornerFlagHtml = '';
+      if (_isVideo && !showOrigNames && !hasVariants) {
+        var primaryLang = (f.languages && f.languages[0]) || DEFAULT_LANG;
+        var pf = compositeFlagHtml(primaryLang, f.subLang || '');
+        if (pf) cornerFlagHtml = '<span class="folder-lang-corner">' + pf + '</span>';
+        /* On video we suppress the inline name-side badge to avoid duplication */
+        langBadges = '';
+      }
+
       /* Build folder-count content: inline flag buttons for multi-lang, plain count otherwise */
       var countContent;
       if (hasVariants && !showOrigNames) {
@@ -2257,6 +2328,7 @@ def render_player_js(
 
       html += '<div class="folder-card' + extraClass + '" data-folder="' + escHtml(f.name) + '"' + variantsAttr + '>' +
         favBadge +
+        cornerFlagHtml +
         '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
         '<div class="folder-name">' + escHtml(displayLabel) + (langBadges && !hasVariants ? ' ' + langBadges : '') + '</div>' +
         '<div class="folder-count">' + countContent + '</div>' +
@@ -4717,11 +4789,23 @@ def render_player_js(
   document.addEventListener('visibilitychange', function() {
     if (!isVideoPlayer) return;
     if (document.hidden && wasPlaying) {
-      /* App going to background — explicitly pause the video to prevent
-         double audio on desktop (desktop browsers do NOT auto-pause video).
-         On mobile, the browser already paused it so this is a no-op. */
-      player.pause();
-      if (bgAudio && !bgAudio.paused) {
+      /* Detect whether Safari has already pushed the video into system PiP
+         via the `autopictureinpicture` attribute.  On iOS 17+ the transition
+         starts BEFORE visibilitychange fires, so this check is reliable. */
+      var inPiP = (document.pictureInPictureElement === player) ||
+                  (player.webkitPresentationMode === 'picture-in-picture');
+      /* iOS Safari: do NOT pause — `autopictureinpicture` requires the video
+         to keep playing so Safari can hand it off to the OS PiP overlay.
+         Calling pause() here aborts the PiP transition (regression visible
+         since iOS 17). On desktop we still pause to prevent double-audio
+         from the bg-audio mirror. */
+      if (!isIOS && !inPiP) {
+        player.pause();
+      }
+      /* Only activate the bg-audio mirror when PiP did NOT take over —
+         otherwise the unmuted mirror plays simultaneously with the PiP
+         video and produces doubled audio. */
+      if (!inPiP && bgAudio && !bgAudio.paused) {
         bgAudio.currentTime = player.currentTime;
         bgAudio.muted = false;
       }

@@ -9,6 +9,7 @@ from ._player_js import render_player_js
 from ._pwa import render_pwa_head_tags
 from ._svg import (
     SVG_BACK,
+    SVG_CAST,
     SVG_CLOSE_X,
     SVG_EXPAND,
     SVG_FULLSCREEN,
@@ -408,6 +409,7 @@ def render_media_page(
     <div class="video-overlay-header">
       <button class="video-overlay-close" id="video-close-btn" title="Zur\u00fcck zur Liste">{SVG_BACK}</button>
       <span class="video-overlay-title-text" id="video-overlay-title-text"></span>
+      <button class="video-cast-btn" id="video-cast-btn" title="Auf Fernseher streamen" hidden>{SVG_CAST}</button>
       <button class="video-fs-btn" id="video-fs-btn" title="Vollbild">{SVG_FULLSCREEN}</button>
     </div>
     <div class="video-wrap">

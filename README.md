@@ -6,7 +6,19 @@ A collection of Python tools for managing personal media libraries — music fil
 
 - **[docs/plans/](docs/plans/)** — Roadmap, Feature-Pläne (Offline, Native App, Server Refactoring, PWA Shortcuts, ...)
 - **[docs/ios/](docs/ios/)** — iOS/PWA-Entscheidungen, Gerätetests, Test-Runbooks
+- **[docs/docker.md](docs/docker.md)** — Docker-Deployment (Synology + generisch)
 - **[.github/copilot-instructions.md](.github/copilot-instructions.md)** — Coding-Regeln für Copilot/Agents
+
+## Docker (Quickstart)
+
+```bash
+cp docker/.env.example .env
+# in .env: AUDIO_LIBRARY_PATH + VIDEO_LIBRARY_PATH eintragen
+docker compose up -d --build
+```
+
+Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
+[docs/docker.md](docs/docker.md).
 
 ## Plan/TODOs
 

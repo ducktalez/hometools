@@ -1,0 +1,41 @@
+# Version control / IDE
+.git/
+.gitignore
+.github/
+.idea/
+.vscode/
+
+# Python build / venv
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+.venv/
+hometools-env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Tests are not needed in the runtime image
+tests/
+
+# Runtime data — must come from mounted volumes, never baked into the image
+.hometools-cache/
+.hometools-audit/
+
+# Local dev artefacts & secrets
+.env
+.tmp_perf_todo_ui/
+_*.py
+_*.txt
+test_*.txt
+docs/
+wa_data/
+
+# OS junk
+.DS_Store
+Thumbs.db
+

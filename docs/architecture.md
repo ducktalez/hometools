@@ -248,7 +248,7 @@ Der gesamte Navigationszustand wird in der Browser-URL gespiegelt, sodass Reload
 **Regeln:**
 
 - Zustand wird automatisch nach jedem View-Wechsel via `pushState` geschrieben (`showFolderView`, `showPlaylist`, `showUserPlaylistView`, `openOfflineLibrary`, `playItem`).
-- Nur `track`/Sort/Filter/View-Mode/Panel ändert sich → `replaceState` (kein zusätzlicher History-Eintrag). Schlüssel für die push-vs-replace-Entscheidung ist nur `view|path|id|q`.
+- Nur `track`/Sort/Filter/View-Mode/Panel ändert sich → `replaceState` (kein zusätzlicher History-Einträge zu erzeugen).
 - `popstate` (Browser-Vor/Zurück) ruft `_router.restore()` auf und rendert die Ansicht neu, ohne neue History-Einträge zu erzeugen.
 - Beim Initial-Load läuft `_router.restore()` erst, nachdem Catalog **und** User-Playlists geladen sind — sonst würde eine `userplaylist`-URL ins Leere zeigen.
 - `_suppress = true` während `restore()` verhindert, dass die internen `showFolderView`/`showPlaylist`-Aufrufe ihrerseits URL-Updates schreiben.
@@ -482,7 +482,7 @@ Ordner, deren Name mit `#` beginnt, werden als Favoriten behandelt:
 Folder-Favorites sind **nicht** interaktiv toggle-bar aus dem Browser. Änderungen erfordern Umbenennen des Verzeichnisses auf dem NAS (via separatem `rename`-Workflow — Regel 9: „File renames must be proposed, never auto-applied").
 
 **CSS-Konvention für SVG-Icons:**
-- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_PLAYLIST`, `SVG_TRASH`, `SVG_FLAG_DE`, `SVG_FLAG_EN`, `SVG_FLAG_FR`, `SVG_FLAG_ES`, `SVG_FLAG_IT`, `SVG_FLAG_JA`, `SVG_FLAG_KO`, `SVG_FLAG_ZH`, `SVG_FLAG_PT`, `SVG_FLAG_RU`)
+- Python-Konstanten: `SVG_*` in `server_utils.py` (inkl. `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_PLAYLIST`, `SVG_TRASH`, `SVG_CAST`, `SVG_FLAG_DE`, `SVG_FLAG_EN`, `SVG_FLAG_FR`, `SVG_FLAG_ES`, `SVG_FLAG_IT`, `SVG_FLAG_JA`, `SVG_FLAG_KO`, `SVG_FLAG_ZH`, `SVG_FLAG_PT`, `SVG_FLAG_RU`)
 - JS-Variablen: `IC_*` in der generierten JS-Seite (inkl. `IC_STAR`, `IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_PLAYLIST`, `IC_TRASH`); `LANG_TO_FLAG` Mapping-Objekt für Sprach-Flaggen
 - Alle SVGs nutzen `currentColor` für Theme-Kompatibilität (Ausnahme: Flaggen-SVGs verwenden Landesfarben)
 - Kein Unicode/HTML-Entities (`&#9733;`, `&#9654;` etc.) — sie rendern auf iOS als farbige Emojis
@@ -1886,7 +1886,7 @@ Backward-Kompatibilität: alte Caches mit nur `"peaks"`-Key → Client rendert M
 
 ### Cache-Lebenszyklus
 
-- **MTime-Invalidierung:** Nur regenerieren wenn `source.mtime > cache.mtime`.
+- **MTime-Invalidierung:** Nur regeneriert wenn `source.mtime > cache.mtime`.
 - **Background-Only:** `start_background_waveform_generation(items)` → Daemon-Thread `waveform-bg`.
 - **On-Demand-Fallback:** `GET /api/audio/waveform?path=...` generiert synchron wenn Cache kalt ist.
 
@@ -2007,5 +2007,155 @@ hometools scan-library [--media video|audio] [--library-dir PATH] [--json] [--fa
 - Schwellen (`oversized_threshold`, `min_files`, `min_ratio`) sind keyword-only Parameter
   für testbare Konfigurierbarkeit.
 
+## Video-Server UI-Anpassungen
 
+Der Video-Server unterscheidet sich an zwei Stellen bewusst vom Audio-Server.
+Beide Anpassungen erfolgen im gemeinsamen `_player_js.py` über die Laufzeit-
+flag `_isVideo = (ITEM_NOUN === 'video')`, sodass kein duplizierter Code in
+`streaming/video/` entsteht.
+
+### Tools-Row ohne Playlist-Aktionen
+
+Auf dem Root-Screen des Video-Servers werden die Tools-Row-Karten
+„Neue Playlist…", „Intelligente Playlist…" und „Titel" nicht gerendert.
+Begründung: Playlists und Smart Playlists sind im Video-Streaming aktuell
+ohne Mehrwert (keine Queue-Mechanik wie im Audio-Player), und „Titel" als
+flache Liste aller Videos ist redundant zur Ordneransicht.
+
+Die Karten existieren weiterhin im Audio-Server.  Der Block wird über
+`if (isRoot && PLAYLISTS_ENABLED && !_isVideo)` geschützt.  Der „Neu laden"-
+Button und „Downloaded"-Karte bleiben auch auf Video sichtbar.
+
+### Sprachflagge am Folder-Card
+
+Für Video-Folder wird **immer** eine einzelne Sprachflagge gerendert — auch
+für mono-linguale Ordner ohne erkannte Sprache, die dann auf
+`DEFAULT_LANG` zurückfallen.  Position: feste obere rechte Ecke der Karte
+über die neue CSS-Klasse `.folder-lang-corner` (absolute Positionierung,
+halbtransparenter dunkler Background damit die Flagge auf hellen Thumbnails
+lesbar bleibt).
+
+Verhalten:
+
+- **Mono-Lingual** (`!hasVariants`): Flagge = `f.languages[0] || DEFAULT_LANG`,
+  ggf. mit Sub-Sprache als Composite-Flagge.  Der bisherige inline
+  `langBadges`-Span neben dem Folder-Namen wird auf Video unterdrückt, um
+  keine doppelte Anzeige zu erzeugen.
+- **Multi-Variant** (`hasVariants`): keine Eck-Flagge — die Variant-Flag-
+  Buttons im `folder-count`-Bereich übernehmen die Sprachanzeige (jede
+  Variante als klickbarer Button).
+
+Audio-Server bleibt unverändert: die bisherigen kleinen Inline-Badges neben
+dem Folder-Namen werden weiterhin nur bei tatsächlich erkannten Sprachen
+gezeigt.
+
+
+### iOS-Background-Playback (Auto-PiP)
+
+Das `<video>`-Element trägt das Attribut `autopictureinpicture`.  Auf iOS
+Safari (≥ 14) schiebt das System das Video beim Backgrounden der App
+(Home-Button / App-Switcher) automatisch in das System-PiP-Overlay — ohne
+User-Geste, ohne expliziten Aufruf.
+
+**Voraussetzung:** Das Video muss zum Zeitpunkt von `visibilitychange`
+*noch laufen*.  Der `visibilitychange`-Handler in `_player_js.py` darf
+auf iOS daher **nicht** `player.pause()` aufrufen, da Safari die
+PiP-Transition sonst abbricht (Regression sichtbar ab iOS 17).
+
+Implementierung:
+
+- iOS-Detection via UA + `MacIntel + maxTouchPoints>1` (`isIOS`-Flag).
+- Bei `document.hidden && wasPlaying`:
+  - PiP-Status prüfen: `document.pictureInPictureElement === player`
+    bzw. `player.webkitPresentationMode === 'picture-in-picture'`.
+  - `player.pause()` nur auf **Nicht-iOS** und nur wenn **nicht** in PiP.
+  - Background-Audio-Mirror nur aktivieren wenn **nicht** in PiP
+    (sonst Doppel-Ton parallel zum PiP-Video).
+- Beim Zurückkehren in den Vordergrund: PiP explizit beenden,
+  Video-Position aus Mirror synchronisieren, Mirror stummschalten.
+
+Desktop-Verhalten unverändert: pause + bg-audio-mirror verhindert
+Doppel-Ton bei Tab-Wechsel.
+
+
+## Cast-Button (HTML5 Remote Playback API)
+
+Im Video-Overlay-Header rechts neben dem Fullscreen-Button platzierter
+`#video-cast-btn` (Icon `SVG_CAST`).  Erlaubt das Streamen des laufenden
+`<video>` auf jedes erreichbare Cast-Ziel im Netzwerk — auf Philips
+Android TV (Chromecast-built-in) oder Apple TV (AirPlay).
+
+**Implementierung:** ausschließlich Standard-Browser-APIs, kein Google-Cast-
+SDK, keine App-ID, kein zusätzlicher Netzwerk-Code im Server.
+
+| Browser                                  | API                                                      |
+|------------------------------------------|----------------------------------------------------------|
+| Chromium (Android-Chrome, Desktop-Chrome, Edge) | `player.remote.watchAvailability()` + `player.remote.prompt()` |
+| iOS Safari                               | `webkitplaybacktargetavailabilitychanged` + `webkitShowPlaybackTargetPicker()` |
+| Firefox / Safari (macOS) / WebViews ohne Support | Button bleibt `hidden` — keine Regression                 |
+
+**Sichtbarkeit:** Der Button startet `hidden` und wird **nur** entblendet,
+wenn der Browser ein Cast-Ziel im Netzwerk gefunden hat.  Verbindungs-
+status (`connect`/`disconnect`-Events) setzt die CSS-Klasse `.active`
+am Button.
+
+**Designregeln:**
+
+- Cast ist **video-only** — der Button ist nur im Video-Overlay vorhanden,
+  da nur `<video>` die Remote Playback API hat.
+- Server-Container muss für das Cast-Gerät **erreichbar** sein.  Bei VLAN-
+  Trennung scheitert das Casting, auch wenn der Picker das Ziel anbietet.
+  Workaround dokumentiert in `docs/docker.md` (`network_mode: host`).
+- Keine Native-TV-App nötig.  Bedienung bleibt am Handy/Tablet, Wiedergabe
+  läuft am TV.  Falls später erweiterte Steuerung (Queue, Lautstärke)
+  gewünscht ist, kann das Google-Cast-SDK additiv geladen werden, ohne
+  diesen Pfad zu brechen.
+
+
+## Docker-Deployment
+
+Multi-Stage-Image (Python 3.12-slim + ffmpeg + tini, Non-Root-User
+`hometools` mit konfigurierbarer UID/GID via Build-Arg).  `docker-compose.yml`
+startet pro Service einen eigenen Container vom gleichen Image:
+
+| Service | Port | Command         | Library-Mount                                       |
+|---------|------|-----------------|------------------------------------------------------|
+| audio   | 8010 | `serve-audio`   | `${AUDIO_LIBRARY_PATH}:/media/audio:ro`              |
+| video   | 8011 | `serve-video`   | `${VIDEO_LIBRARY_PATH}:/media/video:ro`              |
+| channel | 8012 | `serve-channel` | `${VIDEO_LIBRARY_PATH}:/media/video:ro` + Schedule   |
+
+Gemeinsame Named-Volumes `hometools-cache` und `hometools-audit` halten
+Shadow-Cache (`/data/cache`) und Audit-Log (`/data/audit`) getrennt von
+der Library und überleben Container-Rebuilds.
+
+**Konfigurations-Mapping (`.env`):**
+
+| `.env`-Variable          | Wirkt auf                                | Default          |
+|--------------------------|------------------------------------------|------------------|
+| `PUID`, `PGID`           | Build-Arg, Owner für `/data` und Prozess | `1000` / `1000`  |
+| `AUDIO_LIBRARY_PATH`     | Host-Pfad → `/media/audio`               | **pflicht**      |
+| `VIDEO_LIBRARY_PATH`     | Host-Pfad → `/media/video`               | **pflicht**      |
+| `AUDIO_PORT`/`VIDEO_PORT`/`CHANNEL_PORT` | Port-Mapping auf Host       | `8010/8011/8012` |
+| `HOMETOOLS_*`            | Direkt durchgereichte Server-Env-Vars    | wie im Image     |
+
+**Designregeln:**
+
+1. Mounts standardmäßig `:ro` — Write-Features (Rating-POPM, Tag-Edit,
+   File-Move, Soft-Delete) erfordern bewussten Wechsel auf `rw`.
+2. `HOMETOOLS_STREAM_HOST=0.0.0.0` ist im Image fixiert; Erreichbarkeit
+   regelt das Host-Port-Mapping.
+3. `HOMETOOLS_CACHE_DIR=/data/cache`, `HOMETOOLS_AUDIT_DIR=/data/audit`
+   sind im Image fixiert — die Volumes folgen dieser Konvention.
+4. ffmpeg/ffprobe sind Pflicht-Runtime-Deps (Faststart-Cache,
+   Channel-Transcode, Waveforms, Thumbnails).  Image-Bau ohne ffmpeg
+   würde Features still ausfallen lassen.
+5. `tini` als PID 1 sorgt für saubere SIGTERM-Weiterleitung an uvicorn,
+   damit `docker compose down` nicht in den Kill-Timeout läuft.
+6. Healthcheck nutzt den existierenden `/health`-Endpoint via `HC_PORT`-
+   Env-Variable je Container (audio = 8010, video = 8011, channel = 8012).
+7. Tests werden über `.dockerignore` aus dem Build ausgeschlossen — das
+   Runtime-Image enthält ausschließlich Produktcode.
+8. `serve-all`-Variante steht als auskommentierter `all-in-one`-Service
+   im Compose zur Verfügung, ist aber nicht Default (drei separate
+   Container = sauberere Logs und Restarts).
 
