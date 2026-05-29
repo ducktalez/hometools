@@ -577,6 +577,56 @@ def _generate_sprite_if_needed(
         return False
 
 
+def _prewarm_faststart_if_needed(
+    media_path: Path,
+    cache_dir: Path,
+    relative_path: str,
+) -> None:
+    """Pre-build the faststart cache for MP4 files lacking ``moov`` up-front.
+
+    The video stream endpoint serves such files via a cached
+    ``-c copy -movflags +faststart`` rewrite (so HTTP Range works on iOS
+    Safari).  Building that copy synchronously inside the request handler
+    can take many seconds for large episodes on slow NAS storage, which
+    makes the first playback request feel like a hang.
+
+    Running it here — inside the background thumbnail worker that already
+    walks every video file — means the cache is warm by the time the user
+    presses Play.  Best-effort only; never raises.
+    """
+    try:
+        # Lazy import to keep thumbnailer import-time side-effect-free
+        # and avoid a hard dependency for audio-only servers.
+        from hometools.streaming.core.remux import (
+            ensure_faststart_cache,
+            get_faststart_cache_path,
+            has_faststart,
+            needs_remux,
+        )
+
+        if needs_remux(media_path):
+            return  # MKV/AVI/… → handled by live remux_stream, no cache needed
+        if has_faststart(media_path):
+            return  # already streamable as-is
+        # Cheap mtime check before invoking ffmpeg
+        cached = get_faststart_cache_path(cache_dir, relative_path)
+        if cached.exists():
+            try:
+                if cached.stat().st_mtime >= media_path.stat().st_mtime:
+                    return  # cache fresh
+            except OSError:
+                pass
+        # Skip the heavy rewrite for tiny files (already fast either way).
+        try:
+            if media_path.stat().st_size < 8 * 1024 * 1024:  # 8 MiB
+                return
+        except OSError:
+            return
+        ensure_faststart_cache(media_path, cache_dir, relative_path)
+    except Exception:
+        logger.debug("Faststart pre-warm failed for %s", relative_path, exc_info=True)
+
+
 def _generate_thumbnails_worker(
     items: list[tuple[Path, Path, str, str]],
 ) -> None:
@@ -650,6 +700,12 @@ def _generate_thumbnails_worker(
                     # Generate sprite sheet for video scrubber previews
                     if media_type == "video":
                         _generate_sprite_if_needed(media_path, cache_dir, relative_path, src_mt)
+                        # Pre-warm the faststart cache for MP4 files whose
+                        # moov atom sits at the end of the file.  Without this
+                        # the first playback request blocks for many seconds
+                        # while ffmpeg rewrites the file (especially noticeable
+                        # for series episodes on slow NAS storage).
+                        _prewarm_faststart_if_needed(media_path, cache_dir, relative_path)
                 else:
                     skipped += 1
                     record_failure(

@@ -314,6 +314,14 @@ body.tool-show-file-mover .track-queue-btn { display: none; }
 .global-search-clear:hover { color: var(--text); }
 /* Search results: folder path shown under artist */
 .search-result-folder { font-size: 0.7rem; color: var(--sub); opacity: 0.7; margin-top: 1px; }
+/* Folder/series matches inside the global-search result list */
+.search-folder-item { background: rgba(255,255,255,0.02); }
+.search-folder-item .track-number {
+  color: var(--accent, #1db954); display: flex; align-items: center; justify-content: center;
+}
+.search-folder-item .track-number svg { width: 14px; height: 14px; fill: currentColor; }
+.search-folder-item .track-artist { color: var(--accent, #1db954); font-weight: 500; }
+.search-folder-count { color: var(--sub); font-weight: 400; font-size: 0.85em; }
 .offline-folder-card { cursor: pointer; }
 .offline-folder-icon {
   display: flex; align-items: center; justify-content: center;
@@ -1297,18 +1305,21 @@ body.playlist-dragging .track-list { overflow: visible; }
   max-width: 90vw; text-align: center; word-break: break-word;
 }
 .ht-toast.visible { opacity: 1; }
-/* indexing toast (top-right info notification) */
+/* indexing toast (top-right info notification, click to dismiss) */
 .ht-indexing-toast {
   position: fixed; top: 0.75rem; right: 0.75rem;
   background: rgba(50,50,50,0.92); color: #ccc; padding: 0.45rem 0.9rem;
   border-radius: 6px; font-size: 0.78rem; z-index: 9998;
   box-shadow: 0 2px 8px rgba(0,0,0,0.35); opacity: 0;
-  transition: opacity 0.3s; pointer-events: none;
+  transition: opacity 0.3s; pointer-events: auto; cursor: pointer;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
   max-width: 320px; text-align: left; word-break: break-word;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   border: 1px solid rgba(255,255,255,0.06);
 }
 .ht-indexing-toast.visible { opacity: 1; }
+.ht-indexing-toast:hover { background: rgba(60,60,60,0.96); }
 .ht-indexing-toast .spinner {
   display: inline-block; width: 10px; height: 10px;
   border: 2px solid #666; border-top-color: #ccc;
@@ -1316,6 +1327,14 @@ body.playlist-dragging .track-list { overflow: visible; }
   margin-right: 6px; vertical-align: middle;
 }
 @keyframes ht-spin { to { transform: rotate(360deg); } }
+/* On narrow viewports the toast must not overlap the header search input. */
+@media (max-width: 600px) {
+  .ht-indexing-toast {
+    top: auto; right: 0.5rem;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+    max-width: 72vw; font-size: 0.72rem; padding: 0.35rem 0.7rem;
+  }
+}
 
 /* ── Lyrics panel ── */
 .lyrics-panel {

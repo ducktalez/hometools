@@ -1818,6 +1818,24 @@ Für `.mp4`-Dateien ohne Faststart wird **einmalig eine gecachte Faststart-Kopie
 - `ensure_faststart_cache()` ist idempotent, thread-safe über tmp→rename-Pattern.
 - Fehler (ffmpeg fehlt, Timeout, Disk-Fehler) werden geloggt; die Funktion gibt `None` zurück und der Aufrufer fällt auf den alten Remux-Pfad zurück — kein Absturz.
 
+### Background-Prewarm (2026-05-29)
+
+Der erste Stream-Request einer großen MP4-Datei ohne Faststart blockierte
+mehrere Sekunden im Request-Handler, weil `ensure_faststart_cache()` synchron
+lief (besonders spürbar bei Serien-Episoden auf langsamem NAS-Storage).
+`thumbnailer._prewarm_faststart_if_needed()` läuft jetzt innerhalb des
+Hintergrund-Thumbnail-Workers nach jeder erfolgreich erzeugten Video-Thumbnail
+und baut die Faststart-Kopie proaktiv. Bedingungen für den Lauf:
+
+1. Datei ist Browser-nativ (kein Remux nötig) und besitzt **kein** moov-at-start.
+2. Cache fehlt oder ist älter als die Quelldatei (mtime).
+3. Quelldatei ≥ 8 MiB (kleinere Dateien bauen ohnehin sofort).
+
+Best-Effort, exception-safe, blockiert weder den Server-Start noch den
+Catalog-Scan. Zur Pflege via CLI siehe `make video-prewarm` /
+`hometools stream-prewarm --server video --mode missing` — dort wird der
+gleiche Worker explizit aufgerufen.
+
 ---
 
 ## UI-Layout-Änderungen: Suchleisten-Umstrukturierung (2026-05-15)
@@ -2159,3 +2177,38 @@ der Library und überleben Container-Rebuilds.
    im Compose zur Verfügung, ist aber nicht Default (drei separate
    Container = sauberere Logs und Restarts).
 
+
+## Global Search — Ordner-/Serien-Treffer (2026-05-29)
+
+`globalSearch(needle)` in `streaming/core/server_utils/_player_js.py`
+durchsucht zuerst alle Ordner-Pfade und zeigt passende Ordner (bei Video
+typischerweise Serien-Titel) **vor** den einzelnen Tracks/Episoden an.
+
+**Vorgehen:**
+
+1. Iteriere alle `allItems`, splitte `relative_path` in Segmente, sammle
+   jeden Pfad-Prefix, dessen Leaf-Segment (oder dessen `cleanFolderName()`)
+   den Such-Begriff enthält.
+2. Zähle Items unter jedem Folder-Prefix → `count`.
+3. Sortiere: flache Tiefe zuerst, dann größere Count, dann alphabetisch.
+4. `renderSearchResults(results, folderMatches)` rendert Ordner-Items
+   (CSS-Klasse `.search-folder-item`, Folder-Icon, "Ordner"-Label,
+   Klick → `navigateToSearchFolder(path)` → verlässt Search-Modus und
+   navigiert in den Ordner) **vor** den Track-Items.
+
+Header zeigt z. B. `"3 Ordner · 27 Videos"` statt nur Track-Count.
+
+## Indexing-Toast — antippen zum Ausblenden (2026-05-29)
+
+Die „Building index…"-Benachrichtigung (`.ht-indexing-toast`) verdeckte
+auf schmalen Viewports die Header-Suchleiste. Lösung:
+
+- **Auf Mobile** (`max-width: 600px`) positioniert per Media-Query an
+  `bottom: calc(env(safe-area-inset-bottom) + 84px); right: 0.5rem;`
+  also direkt über der Player-Bar.
+- **Tap-to-dismiss:** `pointer-events: auto; cursor: pointer`, Click
+  setzt `_indexToastDismissed = true`. Solange das Flag steht, ruft
+  `showIndexingToast()` früh `return` — der Hintergrund-Poll
+  (`scheduleBackgroundRefresh`) läuft weiter, zeigt aber nichts.
+- **Reset:** `hideIndexingToast()` (Index ist fertig) setzt das Flag
+  zurück → nächste Indexing-Runde zeigt den Toast wieder an.

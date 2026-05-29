@@ -1032,10 +1032,19 @@ def render_player_js(
 
   var _indexToastEl = null;
   var _indexRefreshTimer = null;
+  /* Per-session dismissal: once the user taps the toast away it stays hidden
+     until the current indexing run finishes (hideIndexingToast() clears it). */
+  var _indexToastDismissed = false;
   function showIndexingToast(msg) {
+    if (_indexToastDismissed) return;
     if (!_indexToastEl) {
       _indexToastEl = document.createElement('div');
       _indexToastEl.className = 'ht-indexing-toast';
+      _indexToastEl.title = 'Antippen zum Ausblenden';
+      _indexToastEl.addEventListener('click', function() {
+        _indexToastDismissed = true;
+        if (_indexToastEl) _indexToastEl.classList.remove('visible');
+      });
       document.body.appendChild(_indexToastEl);
     }
     _indexToastEl.innerHTML = '<span class="spinner"></span>' + escHtml(msg || 'Indexing…');
@@ -1044,6 +1053,7 @@ def render_player_js(
   function hideIndexingToast() {
     if (_indexToastEl) _indexToastEl.classList.remove('visible');
     if (_indexRefreshTimer) { clearTimeout(_indexRefreshTimer); _indexRefreshTimer = null; }
+    _indexToastDismissed = false;
   }
 
   /* ── Lyrics panel ── */
@@ -2653,10 +2663,63 @@ def render_player_js(
 
   function globalSearch(needle) {
     needle = needle.toLowerCase();
-    /* Filter allItems by needle — respect effective hidden threshold */
+    /* ── Phase 1: Folder / series matches ──
+       Walk every relative_path, split into segments, collect each unique
+       folder prefix whose *leaf* segment contains the needle.  For video
+       libraries the top-level folder is the series title, so a search for
+       "avatar" surfaces the series folder before the individual episodes. */
+    var folderSeen = {};
+    var folderMatches = [];
+    var hiddenActive = (_effectiveThreshold > 0 && !showHidden);
+    allItems.forEach(function(t) {
+      if (hiddenActive) {
+        var r = t.rating || 0;
+        if (r > 0 && r < _effectiveThreshold) return;
+      }
+      var rp = t.relative_path || '';
+      if (!rp) return;
+      var parts = rp.split('/');
+      /* Drop the file segment — only directory segments are folders. */
+      parts.pop();
+      var prefix = '';
+      for (var i = 0; i < parts.length; i++) {
+        var seg = parts[i];
+        prefix = prefix ? (prefix + '/' + seg) : seg;
+        if (folderSeen[prefix]) continue;
+        var cleaned = (typeof cleanFolderName === 'function') ? cleanFolderName(seg) : seg;
+        if (seg.toLowerCase().indexOf(needle) < 0 &&
+            (cleaned || '').toLowerCase().indexOf(needle) < 0) continue;
+        folderSeen[prefix] = true;
+        folderMatches.push({
+          path: prefix,
+          name: seg,
+          displayName: cleaned,
+          depth: i,
+          thumbnail_url: t.thumbnail_url || '',
+          thumbnail_lg_url: t.thumbnail_lg_url || ''
+        });
+      }
+    });
+    /* Count items beneath each matched folder + favour top-level matches. */
+    folderMatches.forEach(function(fm) {
+      var p = fm.path + '/';
+      var c = 0;
+      for (var j = 0; j < allItems.length; j++) {
+        var rp2 = allItems[j].relative_path || '';
+        if (rp2.indexOf(p) === 0) c++;
+      }
+      fm.count = c;
+    });
+    folderMatches.sort(function(a, b) {
+      if (a.depth !== b.depth) return a.depth - b.depth;   /* shallow first */
+      if (b.count !== a.count) return b.count - a.count;   /* bigger first */
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+    /* ── Phase 2: Individual item matches ── */
     var results = allItems.filter(function(t) {
       var r = t.rating || 0;
-      if (_effectiveThreshold > 0 && !showHidden && r > 0 && r < _effectiveThreshold) return false;
+      if (hiddenActive && r > 0 && r < _effectiveThreshold) return false;
       return (t.title || '').toLowerCase().indexOf(needle) >= 0 ||
              (t.artist || '').toLowerCase().indexOf(needle) >= 0 ||
              (t.relative_path || '').toLowerCase().indexOf(needle) >= 0;
@@ -2667,10 +2730,15 @@ def render_player_js(
     trackView.classList.remove('view-hidden');
     filterBar.classList.add('view-hidden');
     playerBar.classList.remove('view-hidden');
-    headerTitle.textContent = results.length + ' Ergebnis' + (results.length !== 1 ? 'se' : '');
+    var totalCount = folderMatches.length + results.length;
+    headerTitle.textContent = totalCount + ' Ergebnis' + (totalCount !== 1 ? 'se' : '');
     backBtn.style.display = 'inline-block';
     playAllBtn.style.display = 'none';
-    trackCount.textContent = results.length + ' ' + (results.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
+    var trackCountLabel = results.length + ' ' + (results.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
+    if (folderMatches.length) {
+      trackCountLabel = folderMatches.length + ' Ordner · ' + trackCountLabel;
+    }
+    trackCount.textContent = trackCountLabel;
     /* Hide recently played */
     var rs = document.getElementById('recent-section');
     if (rs) rs.hidden = true;
@@ -2680,15 +2748,33 @@ def render_player_js(
     inPlaylist = true;
     if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
     /* Render search results */
-    renderSearchResults(results);
+    renderSearchResults(results, folderMatches);
   }
 
-  function renderSearchResults(results) {
+  function renderSearchResults(results, folderMatches) {
     trackList.innerHTML = '';
-    if (results.length === 0) {
+    folderMatches = folderMatches || [];
+    if (results.length === 0 && folderMatches.length === 0) {
       trackList.innerHTML = '<li class="track-item" style="opacity:0.5;pointer-events:none"><div class="track-info"><div class="track-title">Keine Ergebnisse</div></div></li>';
       return;
     }
+    /* Folder/series matches first */
+    folderMatches.forEach(function(fm) {
+      var li = document.createElement('li');
+      li.className = 'track-item search-folder-item';
+      var thumbSrc = fm.thumbnail_url || FILE_PLACEHOLDER;
+      var parentDir = fm.path.lastIndexOf('/') > 0 ? fm.path.substring(0, fm.path.lastIndexOf('/')) : '';
+      li.innerHTML = '<div class="track-number">' + IC_FOLDER_PLAY + '</div>' +
+        '<div class="track-thumb-wrap"><img class="track-thumb" src="' + escHtml(thumbSrc) + '" loading="lazy"></div>' +
+        '<div class="track-info">' +
+          '<div class="track-title">' + escHtml(fm.displayName || fm.name) +
+            ' <span class="search-folder-count">(' + fm.count + ')</span></div>' +
+          '<div class="track-artist">Ordner</div>' +
+          (parentDir ? '<div class="search-result-folder">' + escHtml(parentDir) + '</div>' : '') +
+        '</div>';
+      li.addEventListener('click', function() { navigateToSearchFolder(fm.path); });
+      trackList.appendChild(li);
+    });
     results.forEach(function(t, i) {
       var li = document.createElement('li');
       li.className = 'track-item';
@@ -2709,6 +2795,15 @@ def render_player_js(
       li.addEventListener('click', function() { navigateToSearchResult(t, i); });
       trackList.appendChild(li);
     });
+  }
+
+  function navigateToSearchFolder(folderPath) {
+    /* Leave search and open the folder. */
+    _globalSearchActive = false;
+    var inp = document.getElementById('global-search-input');
+    if (inp) inp.value = '';
+    currentPath = folderPath || '';
+    showFolderView();
   }
 
   function navigateToSearchResult(item, idx) {
