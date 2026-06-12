@@ -590,10 +590,14 @@ body.modal-open { overflow: hidden; }
 }
 /* missing episode placeholder */
 .track-item.missing-episode {
-  opacity: 0.35; pointer-events: none; min-height: 32px;
+  opacity: 0.6; pointer-events: none; min-height: 32px;
   border-bottom: 1px solid #1a1a1a;
+  background: repeating-linear-gradient(45deg, transparent, transparent 9px,
+    rgba(207,102,121,0.06) 9px, rgba(207,102,121,0.06) 18px);
 }
-.track-item.missing-episode .track-title { font-style: italic; }
+.track-item.missing-episode .track-num { color: #cf6679; }
+.track-item.missing-episode .track-title { font-style: italic; color: #cf6679; }
+.track-item.missing-episode .track-artist { color: #888; }
 /* debug-filtered items (shown dimmed with filter reason) */
 .track-item.debug-filtered {
   opacity: 0.35; pointer-events: none;
@@ -1089,6 +1093,7 @@ body.playlist-dragging .track-list { overflow: visible; }
   border: 1px solid #282828;
   border-radius: 6px;
   cursor: pointer;
+  touch-action: none;
 }
 .player-bar.classic .waveform-canvas {
   display: block; width: 100%; height: 100%; border-radius: 5px;
@@ -1121,6 +1126,7 @@ body.playlist-dragging .track-list { overflow: visible; }
 }
 .player-bar.waveform .progress-track {
   flex: 1 1 0; position: relative; height: 48px; min-width: 0; cursor: pointer;
+  touch-action: none;
 }
 .player-bar.waveform .progress-track.video-mode { height: 28px; }
 .waveform-canvas {
@@ -1325,6 +1331,15 @@ body.playlist-dragging .track-list { overflow: visible; }
   border: 2px solid #666; border-top-color: #ccc;
   border-radius: 50%; animation: ht-spin 0.8s linear infinite;
   margin-right: 6px; vertical-align: middle;
+}
+.ht-indexing-toast .ht-index-row { display: flex; align-items: center; }
+.ht-indexing-toast .ht-index-progress {
+  margin-top: 6px; height: 4px; width: 100%;
+  background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden;
+}
+.ht-indexing-toast .ht-index-progress-fill {
+  height: 100%; background: var(--accent, #1db954); border-radius: 2px;
+  transition: width 0.4s ease;
 }
 @keyframes ht-spin { to { transform: rotate(360deg); } }
 /* On narrow viewports the toast must not overlap the header search input. */

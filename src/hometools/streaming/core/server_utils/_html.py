@@ -9,6 +9,7 @@ from ._player_js import render_player_js
 from ._pwa import render_pwa_head_tags
 from ._svg import (
     SVG_BACK,
+    SVG_BOARD,
     SVG_CAST,
     SVG_CLOSE_X,
     SVG_EXPAND,
@@ -24,6 +25,7 @@ from ._svg import (
     SVG_QUEUE,
     SVG_REPEAT,
     SVG_SHUFFLE,
+    SVG_SKIP_INTRO,
 )
 
 
@@ -53,6 +55,7 @@ def render_media_page(
     debug_filter: bool = False,
     language_groups_json: str = "{}",
     default_language: str = "de",
+    enable_skip_intro: bool = False,
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -92,6 +95,7 @@ def render_media_page(
         debug_filter=debug_filter,
         language_groups_json=language_groups_json,
         default_language=default_language,
+        enable_skip_intro=enable_skip_intro,
     )
     is_video = media_element_tag == "video"
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
@@ -125,12 +129,15 @@ def render_media_page(
             f"{_tools_toggle_btn}</span>"
         )
     )
+    board_link_html = (
+        f'<a class="audit-btn" id="board-btn" href="/board" title="Aufgaben-Board (fehlende Folgen)">{SVG_BOARD}</a>' if is_video else ""
+    )
     tools_panel_html = f"""
   <div class="tools-panel-backdrop" id="tools-panel-backdrop" hidden>
     <div class="tools-panel">
       <div class="tools-panel-header">
         <div class="tools-panel-title">Tools &amp; Einstellungen</div>
-        <a class="audit-btn" id="audit-btn" href="/audit" title="\u00c4nderungsverlauf">{SVG_HISTORY}</a>
+        {board_link_html}<a class="audit-btn" id="audit-btn" href="/audit" title="\u00c4nderungsverlauf">{SVG_HISTORY}</a>
       </div>
       <button class="tools-activate-all" id="tools-activate-all" title="Tool-Modus mit den konfigurierten Einstellungen aktivieren">Tool-Modus aktivieren</button>
 
@@ -404,6 +411,12 @@ def render_media_page(
 
     # Build the player section: video mode → overlay modal, audio mode → inline bar
     if is_video:
+        skip_intro_html = (
+            '\n    <button class="video-skip-intro-btn" id="video-skip-intro-btn" hidden>'
+            f"{SVG_SKIP_INTRO}<span>Intro \u00fcberspringen</span></button>"
+            if enable_skip_intro
+            else ""
+        )
         player_section_html = f"""  <!-- Video overlay (replaces bottom player bar in video mode) -->
   <div class="video-overlay view-hidden" id="video-overlay">
     <div class="video-overlay-header">
@@ -413,7 +426,7 @@ def render_media_page(
       <button class="video-fs-btn" id="video-fs-btn" title="Vollbild">{SVG_FULLSCREEN}</button>
     </div>
     <div class="video-wrap">
-      <video id="player" preload="auto" playsinline autopictureinpicture></video>
+      <video id="player" preload="auto" playsinline autopictureinpicture></video>{skip_intro_html}
     </div>
 {player_bar_html}
   </div>

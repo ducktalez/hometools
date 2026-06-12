@@ -175,6 +175,27 @@ def create_app(
                     logger.debug("Failed to start background video thumbnail generation", exc_info=True)
 
             threading.Thread(target=_prepare_thumbnails, daemon=True, name="video-thumb-bootstrap").start()
+
+            def _prepare_intro_markers() -> None:
+                from hometools.config import get_intro_autodetect_enabled
+
+                if not get_intro_autodetect_enabled():
+                    return
+                try:
+                    from hometools.streaming.core.intro_markers import start_background_intro_detection
+                    from hometools.streaming.video.catalog import collect_intro_detection_work
+
+                    work = collect_intro_detection_work(resolved_library_dir)
+                    started = start_background_intro_detection(work, resolved_cache_dir, "video")
+                    logger.info(
+                        "Video startup intro auto-detection prepared: %d files (started=%s)",
+                        len(work),
+                        started,
+                    )
+                except Exception:
+                    logger.debug("Failed to start background intro detection", exc_info=True)
+
+            threading.Thread(target=_prepare_intro_markers, daemon=True, name="video-intro-bootstrap").start()
         else:
             logger.warning("Video server running in SAFE MODE — caches, PWA and thumbnail warmups are disabled")
 
@@ -304,6 +325,17 @@ def create_app(
         filtered = query_items(items, q=q, artist=artist, sort_by=sort)
         query_elapsed = time.monotonic() - query_t0
         cache_status = _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        build_detail = (
+            build_index_status_payload(
+                library_dir=resolved_library_dir,
+                item_label="video",
+                library_ok=True,
+                library_message="ok",
+                cache_status=cache_status,
+            )["detail"]
+            if building
+            else ""
+        )
         elapsed = time.monotonic() - t0
         logger.info(
             "GET /api/video/items — %d/%d items in %.1fs (cache=%.2fs, query=%.2fs, refresh_started=%s, building=%s, q=%r, artist=%r, sort=%r)",
@@ -325,6 +357,7 @@ def create_app(
             "artists": list_artists(items),
             "refreshing": building,
             "cache": cache_status,
+            "detail": build_detail,
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
 
@@ -746,6 +779,54 @@ def create_app(
         ok = delete_order(resolved_cache_dir, "video", path)
         return {"deleted": ok}
 
+    # --- Skip-Intro markers API ---
+
+    @app.get("/api/video/intro")
+    def video_get_intro(path: str) -> dict[str, object]:
+        """Return the stored skip-intro marker for a video (or empty)."""
+        from hometools.streaming.core.intro_markers import get_marker
+
+        marker = get_marker(resolved_cache_dir, "video", path)
+        return {"marker": marker}
+
+    @app.post("/api/video/intro")
+    def video_set_intro(payload: dict[str, object]) -> dict[str, object]:
+        """Persist a manual skip-intro marker.
+
+        Body: ``{"path": "Series/S01E01.mp4", "start": 0, "end": 92}``.
+        Patches the in-memory catalog so the marker takes effect immediately.
+        """
+        from hometools.streaming.core.intro_markers import set_marker
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        try:
+            start = float(payload.get("start") or 0.0)
+            end = float(payload.get("end") or 0.0)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="start and end must be numbers") from exc
+
+        marker = set_marker(resolved_cache_dir, "video", path, start=start, end=end, source="manual")
+        if marker is None:
+            raise HTTPException(status_code=400, detail="Could not store marker")
+
+        # Reflect the change in the live catalog without a full rebuild.
+        if not resolved_safe_mode:
+            _video_index_cache.patch_items({path: {"intro_start": marker["start"], "intro_end": marker["end"]}})
+
+        return {"ok": True, "marker": marker}
+
+    @app.delete("/api/video/intro")
+    def video_delete_intro(path: str) -> dict[str, object]:
+        """Delete the stored skip-intro marker for a video."""
+        from hometools.streaming.core.intro_markers import delete_marker
+
+        ok = delete_marker(resolved_cache_dir, "video", path)
+        if ok and not resolved_safe_mode:
+            _video_index_cache.patch_items({path: {"intro_start": 0.0, "intro_end": 0.0}})
+        return {"deleted": ok}
+
     # --- File delete (soft-delete for duplicates) ---
 
     @app.post("/api/video/delete-file")
@@ -923,6 +1004,55 @@ def create_app(
                 server="hometools video",
                 media_type="video",
                 title="Audit-Log — hometools video",
+            )
+        )
+
+    # --- Tasks board (missing episodes + library hints) ---
+
+    @app.get("/api/video/board")
+    def video_board() -> dict[str, object]:
+        """Return board data: missing individual episodes + library hints.
+
+        ``missing_episodes`` is computed from the in-memory catalog (instant).
+        ``issues`` come from a best-effort filesystem scan and are exception-safe.
+        """
+        from hometools.streaming.core.episode_gaps import find_missing_episodes
+
+        if resolved_safe_mode:
+            items = build_video_index(resolved_library_dir, cache_dir=None)
+        else:
+            _video_index_cache.ensure_background_refresh(resolved_library_dir, cache_dir=resolved_cache_dir)
+            items = _video_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
+
+        gaps = find_missing_episodes(items)
+
+        issues: list[dict[str, object]] = []
+        try:
+            from hometools.streaming.core.library_scan import scan_video_library
+
+            report = scan_video_library(resolved_library_dir)
+            issues = report.to_dict().get("issues", [])
+        except Exception:
+            logger.debug("GET /api/video/board — library scan failed", exc_info=True)
+
+        return {
+            "missing_episodes": [g.to_dict() for g in gaps],
+            "missing_count": sum(len(g.missing_episodes) for g in gaps),
+            "issues": issues,
+        }
+
+    @app.get("/board")
+    def video_board_page() -> HTMLResponse:
+        """Serve the dark-theme tasks board HTML page."""
+        from fastapi.responses import HTMLResponse
+
+        from hometools.streaming.core.server_utils import render_board_page_html
+
+        return HTMLResponse(
+            render_board_page_html(
+                server="hometools video",
+                media_type="video",
+                title="Aufgaben-Board — hometools video",
             )
         )
 

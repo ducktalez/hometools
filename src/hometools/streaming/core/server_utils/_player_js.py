@@ -65,8 +65,11 @@ def render_player_js(
     debug_filter: bool = False,
     language_groups_json: str = "{}",
     default_language: str = "de",
+    enable_skip_intro: bool = False,
 ) -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
+
+    Default view is a folder list (configurable via toggle to grid).
 
     Default view is a folder list (configurable via toggle to grid).
     Clicking a folder navigates deeper into the hierarchy.  Leaf folders
@@ -399,6 +402,12 @@ def render_player_js(
   var REPEAT_ENABLED = """
         + ("true" if enable_repeat else "false")
         + """;
+  var SKIP_INTRO_ENABLED = """
+        + ("true" if enable_skip_intro else "false")
+        + """;
+  var INTRO_API_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/intro';
   var RATING_WRITE_ENABLED = """
         + ("true" if enable_rating_write else "false")
         + """;
@@ -600,6 +609,7 @@ def render_player_js(
   var videoCloseBtn  = document.getElementById('video-close-btn');
   var videoFsBtn     = document.getElementById('video-fs-btn');
   var videoCastBtn   = document.getElementById('video-cast-btn');
+  var videoSkipIntroBtn = document.getElementById('video-skip-intro-btn');
   var videoOverlayTitleText = document.getElementById('video-overlay-title-text');
   var videoFloatContainer = document.getElementById('video-float-container');
   var videoFloatWrap   = document.getElementById('video-float-wrap');
@@ -818,6 +828,121 @@ def render_player_js(
     /* If neither API is available the button stays hidden — no regression. */
   }
 
+  /* ── Skip-Intro (Netflix-style) ───────────────────────────────────────
+     Markers come from the item's intro_start/intro_end fields (manual UI
+     markers, YAML overrides or chapter auto-detection — merged server-side).
+     The button has two modes:
+       • "skip"  — a marker exists and playback is inside [start, end]:
+                   tapping seeks to intro_end. Long-press recalibrates the
+                   end to the current position.
+       • "set"   — no marker yet on a *series* episode, early in playback:
+                   tapping stores intro_end = current position so the next
+                   episodes (and this one on replay) get a real skip button. */
+  var _introStart = 0;
+  var _introEnd = 0;
+  var _curIsSeries = false;
+  var _introBtnMode = '';       /* '', 'skip' or 'set' */
+  var _introLongPressTimer = null;
+  var _introLongPressed = false;
+
+  function _setCurrentIntro(t) {
+    _introStart = Math.max(0, parseFloat(t && t.intro_start) || 0);
+    _introEnd = Math.max(0, parseFloat(t && t.intro_end) || 0);
+    _curIsSeries = !!(t && ((parseInt(t.season, 10) || 0) > 0 || (parseInt(t.episode, 10) || 0) > 0));
+    if (videoSkipIntroBtn) { videoSkipIntroBtn.hidden = true; _introBtnMode = ''; }
+  }
+
+  function _updateSkipIntroBtn() {
+    if (!SKIP_INTRO_ENABLED || !videoSkipIntroBtn || !isVideoMode) return;
+    var cur = player.currentTime || 0;
+    var dur = isFinite(player.duration) ? player.duration : 0;
+    var label = videoSkipIntroBtn.querySelector('span');
+    /* skip mode: a marker is set and we're inside the intro window */
+    if (_introEnd > 0 && cur >= _introStart && cur < _introEnd - 0.3) {
+      if (_introBtnMode !== 'skip') {
+        _introBtnMode = 'skip';
+        videoSkipIntroBtn.classList.remove('set-mode');
+        if (label) label.textContent = 'Intro \\u00fcberspringen';
+        videoSkipIntroBtn.hidden = false;
+      }
+      return;
+    }
+    /* set mode: series episode, no marker yet, early in playback */
+    if (_introEnd <= 0 && _curIsSeries && dur > 0) {
+      var maxSet = Math.min(dur * 0.25, 180);
+      if (cur >= 5 && cur <= maxSet) {
+        if (_introBtnMode !== 'set') {
+          _introBtnMode = 'set';
+          videoSkipIntroBtn.classList.add('set-mode');
+          if (label) label.textContent = 'Intro-Ende setzen';
+          videoSkipIntroBtn.hidden = false;
+        }
+        return;
+      }
+    }
+    if (!videoSkipIntroBtn.hidden) { videoSkipIntroBtn.hidden = true; _introBtnMode = ''; }
+  }
+
+  function _patchIntroLocal(relPath, start, end) {
+    if (!relPath) return;
+    function patch(arr) {
+      if (!arr) return;
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].relative_path === relPath) {
+          arr[i].intro_start = start; arr[i].intro_end = end;
+        }
+      }
+    }
+    patch(typeof allItems !== 'undefined' ? allItems : null);
+    patch(typeof filteredItems !== 'undefined' ? filteredItems : null);
+  }
+
+  function _saveIntroMarker(start, end) {
+    var relPath = _progressRelPath || '';
+    if (!relPath) return;
+    _introStart = Math.max(0, start || 0);
+    _introEnd = Math.max(0, end || 0);
+    _patchIntroLocal(relPath, _introStart, _introEnd);
+    try {
+      fetch(INTRO_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: relPath, start: _introStart, end: _introEnd })
+      }).catch(function() {});
+    } catch (e) { /* ignore */ }
+  }
+
+  if (SKIP_INTRO_ENABLED && videoSkipIntroBtn) {
+    videoSkipIntroBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (_introLongPressed) { _introLongPressed = false; return; }
+      if (_introBtnMode === 'skip') {
+        try { player.currentTime = _introEnd; } catch (err) {}
+        if (typeof showToast === 'function') showToast('Intro \\u00fcbersprungen');
+      } else if (_introBtnMode === 'set') {
+        var pos = Math.round((player.currentTime || 0) * 10) / 10;
+        _saveIntroMarker(0, pos);
+        videoSkipIntroBtn.hidden = true; _introBtnMode = '';
+        if (typeof showToast === 'function') showToast('Intro-Ende gesetzt bei ' + fmtTime(pos));
+      }
+    });
+    /* Long-press in skip mode → recalibrate the intro end to the current pos */
+    videoSkipIntroBtn.addEventListener('pointerdown', function() {
+      if (_introBtnMode !== 'skip') return;
+      _introLongPressed = false;
+      _introLongPressTimer = setTimeout(function() {
+        _introLongPressed = true;
+        var pos = Math.round((player.currentTime || 0) * 10) / 10;
+        _saveIntroMarker(_introStart, pos);
+        if (typeof showToast === 'function') showToast('Intro-Ende neu gesetzt bei ' + fmtTime(pos));
+      }, 650);
+    });
+    function _cancelIntroLongPress() { if (_introLongPressTimer) { clearTimeout(_introLongPressTimer); _introLongPressTimer = null; } }
+    videoSkipIntroBtn.addEventListener('pointerup', _cancelIntroLongPress);
+    videoSkipIntroBtn.addEventListener('pointercancel', _cancelIntroLongPress);
+    videoSkipIntroBtn.addEventListener('pointerleave', _cancelIntroLongPress);
+  }
+
   /* ── Fullscreen exit → float player ── */
   function _handleFullscreenChange() {
     var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
@@ -988,10 +1113,20 @@ def render_player_js(
     var dur = player.duration;
     if (!isFinite(pos) || !isFinite(dur)) return;
     if (pos < 5 || pos > dur - 5) return;
+    var payload = JSON.stringify({relative_path: rp, position_seconds: pos, duration: dur});
+    /* Prefer sendBeacon — it survives page unload / app backgrounding on mobile,
+       where a regular fetch() would be cancelled. */
+    if (navigator.sendBeacon) {
+      try {
+        var blob = new Blob([payload], {type: 'application/json'});
+        if (navigator.sendBeacon(_progressApiBase(), blob)) return;
+      } catch (e) {}
+    }
     fetch(_progressApiBase(), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({relative_path: rp, position_seconds: pos, duration: dur})
+      body: payload,
+      keepalive: true
     }).catch(function() {});
   }
   function saveProgressDebounced() {
@@ -1035,7 +1170,7 @@ def render_player_js(
   /* Per-session dismissal: once the user taps the toast away it stays hidden
      until the current indexing run finishes (hideIndexingToast() clears it). */
   var _indexToastDismissed = false;
-  function showIndexingToast(msg) {
+  function showIndexingToast(msg, prog) {
     if (_indexToastDismissed) return;
     if (!_indexToastEl) {
       _indexToastEl = document.createElement('div');
@@ -1047,7 +1182,20 @@ def render_player_js(
       });
       document.body.appendChild(_indexToastEl);
     }
-    _indexToastEl.innerHTML = '<span class="spinner"></span>' + escHtml(msg || 'Indexing…');
+    /* Optional progress bar — prog may be the cache status object (build_percent)
+       or a plain {percent} object. */
+    var pct = null;
+    if (prog) {
+      if (typeof prog.build_percent === 'number') pct = prog.build_percent;
+      else if (typeof prog.percent === 'number') pct = prog.percent;
+    }
+    var barHtml = '';
+    if (pct !== null && pct >= 0) {
+      var w = Math.max(2, Math.min(100, pct));
+      barHtml = '<div class="ht-index-progress"><div class="ht-index-progress-fill" style="width:' + w + '%"></div></div>';
+    }
+    _indexToastEl.innerHTML = '<div class="ht-index-row"><span class="spinner"></span>' +
+      escHtml(msg || 'Indexing…') + '</div>' + barHtml;
     _indexToastEl.classList.add('visible');
   }
   function hideIndexingToast() {
@@ -1607,7 +1755,7 @@ def render_player_js(
           if (!data || data.error) return;
           if (data.refreshing) {
             var detail = data.detail || 'Building index…';
-            showIndexingToast(detail);
+            showIndexingToast(detail, data.cache);
             scheduleBackgroundRefresh();
             /* Update items if more are now available */
             var newItems = data && Array.isArray(data.items) ? data.items : [];
@@ -2030,7 +2178,7 @@ def render_player_js(
         if (data && data.loading && (!data.items || data.items.length === 0)) {
           var detail = data.detail || 'Library cache is warming in the background.';
           console.info('Initial catalog still building (empty):', detail);
-          showIndexingToast(detail);
+          showIndexingToast(detail, data.cache);
           scheduleInitialCatalogRetry(detail);
           return [];
         }
@@ -2048,7 +2196,7 @@ def render_player_js(
         if (data && data.refreshing) {
           var refreshDetail = data.detail || 'Building index in background…';
           console.info('Catalog served from quick scan, index still building:', refreshDetail);
-          showIndexingToast(refreshDetail);
+          showIndexingToast(refreshDetail, data.cache);
           if ((_toolState && _toolState.autoRefresh || 'auto') !== 'off') scheduleBackgroundRefresh();
         } else {
           hideIndexingToast();
@@ -3051,17 +3199,18 @@ def render_player_js(
 
   /* insert placeholder rows for missing episodes within the same season */
   function withMissingEpisodes(tracks) {
-    /* only insert gaps if all tracks are series episodes */
-    var allSeries = tracks.length > 0 && tracks.every(function(t) { return (t.season || 0) > 0; });
-    if (!allSeries) return tracks;
-
+    /* Insert placeholder rows for episodes missing *between* two present
+       episodes of the same season.  Works per adjacent pair (not "all tracks
+       must be series") so mixed folders (e.g. with a bonus clip) still get gap
+       placeholders between their real episodes.  Whole missing seasons or gaps
+       before the first / after the last episode are intentionally not shown. */
     var result = [];
     for (var i = 0; i < tracks.length; i++) {
       var t = tracks[i];
-      /* insert gap placeholders within the same season */
       if (i > 0) {
         var prev = tracks[i - 1];
-        if ((prev.season || 0) === (t.season || 0)) {
+        var sameSeason = (prev.season || 0) > 0 && (prev.season || 0) === (t.season || 0);
+        if (sameSeason && (prev.episode || 0) > 0 && (t.episode || 0) > 0) {
           var gap = (t.episode || 0) - (prev.episode || 0);
           for (var g = 1; g < gap && g < 20; g++) {
             result.push({ _missing: true, season: prev.season, episode: (prev.episode || 0) + g });
@@ -3133,9 +3282,10 @@ def render_player_js(
       /* missing episode placeholder */
       if (t._missing) {
         var seLabel = 'S' + String(t.season).padStart(2, '0') + 'E' + String(t.episode).padStart(2, '0');
-        return '<li class="track-item missing-episode">' +
+        return '<li class="track-item missing-episode" aria-disabled="true">' +
           '<span class="track-num"><span class="num-text">' + seLabel + '</span></span>' +
-          '<div class="track-info"><div class="track-title">\u2014</div></div></li>';
+          '<div class="track-info"><div class="track-title">Folge fehlt</div>' +
+          '<div class="track-artist">' + seLabel + ' \u2014 nicht in der Bibliothek</div></div></li>';
       }
       /* moved ghost: file was moved this session — shown dimmed with target hint, not playable */
       if (t._movedTo) {
@@ -4757,7 +4907,13 @@ def render_player_js(
     (typeof player.webkitSupportsPresentationMode === 'function' &&
      player.webkitSupportsPresentationMode('picture-in-picture'))
   );
-  if (pipSupported && btnPip) btnPip.hidden = false;
+  /* On mobile / touch devices we do NOT show a dedicated PiP button — PiP works
+     "like a classic browser" via the native video controls and the automatic
+     `autopictureinpicture` transition when the page is backgrounded.  A custom
+     button there is redundant and confusing. */
+  var isTouchDevice = isIOS || (navigator.maxTouchPoints > 0 &&
+    typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
+  if (pipSupported && btnPip && !isTouchDevice) btnPip.hidden = false;
 
   /* Enable Safari's automatic PiP on page background */
   if (isVideoPlayer) {
@@ -4968,6 +5124,7 @@ def render_player_js(
   function playItem(t, index) {
     currentIndex = typeof index === 'number' ? index : -1;
     currentStreamUrl = t.stream_url || '';
+    _setCurrentIntro(t);
 
     /* Sync shuffle queue position to the chosen index */
     if (shuffleMode && shuffleQueue.length && currentIndex >= 0) {
@@ -5047,6 +5204,7 @@ def render_player_js(
     if (LYRICS_ENABLED && _lyricsOpen) openLyricsPanel(t.relative_path || '', t.title);
 
     /* playback progress: track current item and try to resume */
+    saveProgressNow();   /* flush the outgoing track's position before switching */
     clearTimeout(_progressTimer);
     _progressRelPath = t.relative_path || '';
     if (AUTO_RESUME_ENABLED) loadAndSeekProgress(_progressRelPath);
@@ -5577,6 +5735,20 @@ def render_player_js(
   }
 
   player.addEventListener('ended', function() {
+    /* Guard against spurious 'ended' events: some browsers (and stream/network
+       errors after a connection loss) fire 'ended' even though playback did NOT
+       reach the end.  Auto-advancing then would jump to the next item — with
+       repeat-all this wraps to the first episode (S01E01).  Only treat it as a
+       real completion when we are actually near the end of the media. */
+    var dur = player.duration;
+    var pos = player.currentTime;
+    var reachedEnd = !isFinite(dur) || dur <= 0 || pos >= dur - 1.5;
+    if (!reachedEnd) {
+      /* Likely a stall/stream error, not a real end — keep position, don't advance. */
+      saveProgressNow();
+      btnPlay.innerHTML = IC_PLAY;
+      return;
+    }
     clearProgressFor(_progressRelPath);
     if (_xfading) {
       /* Crossfade already handled transition — just finish it */
@@ -5605,6 +5777,7 @@ def render_player_js(
     timeCur.textContent = fmtTime(player.currentTime);
     drawWaveform(player.currentTime / player.duration);
     saveProgressDebounced();
+    _updateSkipIntroBtn();
     /* Crossfade trigger: start fading when remaining time <= CROSSFADE_DURATION
        Skip crossfade for repeat-one (track restarts itself) */
     if (CROSSFADE_DURATION > 0 && !_xfading && !isVideoPlayer && repeatMode !== 'one') {
@@ -5618,6 +5791,67 @@ def render_player_js(
     timeDur.textContent = fmtTime(player.duration); progressBar.max = player.duration;
   });
   progressBar.addEventListener('input', function() { player.currentTime = progressBar.value; });
+
+  /* ── Tap / drag-to-seek on the whole progress track ──
+     The hidden range input has a 1px thumb, which on touch devices (iOS Safari)
+     is impossible to grab — tapping the track does not jump there either.  This
+     pointer handler makes the *entire* track tappable and draggable on mouse,
+     touch and pen, so seeking works on mobile again. */
+  (function initTrackSeek() {
+    if (!progressTrack) return;
+    var seeking = false;
+    function effDuration() {
+      if (bgAudio && !bgAudio.muted && document.hidden && isFinite(bgAudio.duration)) return bgAudio.duration;
+      return isFinite(player.duration) ? player.duration : 0;
+    }
+    function seekToClientX(clientX) {
+      var d = effDuration();
+      if (!d) return;
+      var rect = progressTrack.getBoundingClientRect();
+      if (!rect.width) return;
+      var frac = (clientX - rect.left) / rect.width;
+      frac = Math.max(0, Math.min(1, frac));
+      var t = frac * d;
+      try { player.currentTime = t; } catch (e) {}
+      if (bgAudio) { try { bgAudio.currentTime = t; } catch (e) {} }
+      if (progressBar) { progressBar.max = d; progressBar.value = t; }
+      if (timeCur) timeCur.textContent = fmtTime(t);
+      drawWaveform(frac);
+    }
+    progressTrack.addEventListener('pointerdown', function(e) {
+      if (e.button != null && e.button !== 0) return;
+      seeking = true;
+      try { progressTrack.setPointerCapture(e.pointerId); } catch (err) {}
+      seekToClientX(e.clientX);
+      e.preventDefault();
+    });
+    progressTrack.addEventListener('pointermove', function(e) {
+      if (!seeking) return;
+      seekToClientX(e.clientX);
+      e.preventDefault();
+    });
+    function endSeek(e) {
+      if (!seeking) return;
+      seeking = false;
+      try { progressTrack.releasePointerCapture(e.pointerId); } catch (err) {}
+      saveProgressNow();
+    }
+    progressTrack.addEventListener('pointerup', endSeek);
+    progressTrack.addEventListener('pointercancel', endSeek);
+  })();
+
+  /* Flush playback progress immediately when the page is hidden or unloaded.
+     The 5s debounce would otherwise be lost when the app is backgrounded or
+     closed on mobile, making the server-side "Continue watching" list lag
+     behind by several episodes. */
+  function _flushProgress() {
+    clearTimeout(_progressTimer);
+    saveProgressNow();
+  }
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) _flushProgress();
+  });
+  window.addEventListener('pagehide', _flushProgress);
 
   /* bg audio events — keep UI in sync when playing in background */
   if (isVideoPlayer) {

@@ -350,6 +350,36 @@ def get_crossfade_duration() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Skip Intro (video)
+# ---------------------------------------------------------------------------
+
+
+def get_skip_intro_enabled() -> bool:
+    """Return whether the Netflix-style "Skip Intro" button is enabled (video).
+
+    When enabled, the video player shows a "Intro überspringen" button while
+    playback is inside an episode's intro window (``intro_start``–``intro_end``).
+    Markers come from manual UI input, ``hometools_overrides.yaml`` or
+    chapter-based auto-detection.
+
+    Set ``HOMETOOLS_SKIP_INTRO=false`` to disable.  Default: ``True``.
+    """
+    return _get_bool_from_env("HOMETOOLS_SKIP_INTRO", True)
+
+
+def get_intro_autodetect_enabled() -> bool:
+    """Return whether chapter-based intro auto-detection runs in the background.
+
+    Requires ``ffprobe`` on PATH.  Scans video files for chapters named like
+    "Intro" / "Opening" and stores derived markers.  Disable to avoid the
+    background ffprobe sweep.
+
+    Set ``HOMETOOLS_INTRO_AUTODETECT=false`` to disable.  Default: ``True``.
+    """
+    return _get_bool_from_env("HOMETOOLS_INTRO_AUTODETECT", True)
+
+
+# ---------------------------------------------------------------------------
 # Channel (TV) server
 # ---------------------------------------------------------------------------
 

@@ -258,7 +258,15 @@ def _check_no_op(
     issues: list[Issue],
 ) -> None:
     """Warn about override files that have no effect at all."""
-    if not ov.series_title and not ov.episodes and not ov.language and not ov.subtitle_language and not ov.language_group:
+    if (
+        not ov.series_title
+        and not ov.episodes
+        and not ov.language
+        and not ov.subtitle_language
+        and not ov.language_group
+        and not ov.intro_start
+        and not ov.intro_end
+    ):
         issues.append(
             Issue(
                 folder=folder_key,
@@ -283,6 +291,8 @@ def _check_unknown_top_level_keys(
         "language",
         "subtitle_language",
         "language_group",
+        "intro_start",
+        "intro_end",
     }
     for key in raw:
         if key not in known_keys:
@@ -307,7 +317,7 @@ def _check_unknown_episode_fields(
     eps = raw.get("episodes")
     if not isinstance(eps, dict):
         return
-    known = {"title", "season", "episode", "language", "subtitle_language"}
+    known = {"title", "season", "episode", "language", "subtitle_language", "intro_start", "intro_end"}
     for ep_key, ep_val in eps.items():
         if not isinstance(ep_val, dict):
             continue

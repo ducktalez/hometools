@@ -22,6 +22,13 @@ File format
    # subtitle hint was detected automatically.
    subtitle_language: "de"
 
+   # Optional: folder-default series intro markers (seconds, or "mm:ss").
+   # Enables the Netflix-style "Skip Intro" button for every episode that
+   # does not define its own markers.  ``intro_end`` is the position the
+   # button seeks to; ``intro_start`` (default 0) is when the button appears.
+   intro_start: 0
+   intro_end: 90
+
    # Per-file overrides keyed by filename (not full path)
    episodes:
      "Avatar S01E01 German 2005 DVDRiP REPACK XviD-SiMPTY.avi":
@@ -30,6 +37,9 @@ File format
        title: "Die Verfolgungsjagd"
        season: 2
        episode: 8
+       # Per-episode intro markers win over the folder default.
+       intro_start: 5
+       intro_end: "1:35"
      # Per-episode language overrides (win over folder-level language).
      # Useful for folders with mixed-language episodes.
      "Avatar S03E05 English Dub.mp4":
@@ -68,6 +78,8 @@ class FolderOverrides:
     language_group: str = ""  # group id for multi-language linking (empty = auto)
     language: str = ""  # ISO 639-1 audio language override (empty = no override)
     subtitle_language: str = ""  # ISO 639-1 subtitle language override (empty = no override)
+    intro_start: float = 0.0  # folder-default series intro start in seconds (0.0 = unset)
+    intro_end: float = 0.0  # folder-default series intro end in seconds (0.0 = no skippable intro)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,11 +91,43 @@ class EpisodeOverride:
     episode: int | None = None
     language: str | None = None  # ISO 639-1; explicit per-episode override (wins over folder)
     subtitle_language: str | None = None  # ISO 639-1; explicit per-episode override
+    intro_start: float | None = None  # seconds; per-episode intro start (wins over folder)
+    intro_end: float | None = None  # seconds; per-episode intro end (wins over folder)
 
 
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
+
+
+def _coerce_seconds(value: object) -> float | None:
+    """Coerce an intro timestamp into seconds.
+
+    Accepts a plain number (seconds) or a ``"mm:ss"`` / ``"hh:mm:ss"`` string.
+    Returns ``None`` when the value is missing or cannot be parsed (so callers
+    can distinguish "not set" from ``0``).
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):  # guard: bool is a subclass of int
+        return None
+    if isinstance(value, int | float):
+        return max(0.0, float(value))
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            if ":" in text:
+                parts = [float(p) for p in text.split(":")]
+                total = 0.0
+                for p in parts:
+                    total = total * 60 + p
+                return max(0.0, total)
+            return max(0.0, float(text))
+        except ValueError:
+            return None
+    return None
 
 
 def _parse_overrides(raw: dict) -> FolderOverrides:
@@ -107,6 +151,8 @@ def _parse_overrides(raw: dict) -> FolderOverrides:
                 episode=int(episode) if episode is not None else None,
                 language=str(ep_language).strip().lower() if ep_language is not None else None,
                 subtitle_language=str(ep_sub_language).strip().lower() if ep_sub_language is not None else None,
+                intro_start=_coerce_seconds(entry.get("intro_start")),
+                intro_end=_coerce_seconds(entry.get("intro_end")),
             )
 
     language_group = str(raw.get("language_group") or "")
@@ -119,6 +165,8 @@ def _parse_overrides(raw: dict) -> FolderOverrides:
         language_group=language_group,
         language=language,
         subtitle_language=subtitle_language,
+        intro_start=_coerce_seconds(raw.get("intro_start")) or 0.0,
+        intro_end=_coerce_seconds(raw.get("intro_end")) or 0.0,
     )
 
 
@@ -260,6 +308,10 @@ def apply_overrides(
             folder_ov.subtitle_language if (folder_ov.subtitle_language and not item.subtitle_language) else item.subtitle_language
         )
 
+        # Apply intro markers: folder-level defaults first (only when set).
+        new_intro_start = folder_ov.intro_start if folder_ov.intro_start else item.intro_start
+        new_intro_end = folder_ov.intro_end if folder_ov.intro_end else item.intro_end
+
         # Apply per-episode override
         ep_ov = folder_ov.episodes.get(filename)
         if ep_ov is not None:
@@ -271,6 +323,11 @@ def apply_overrides(
                 new_language = ep_ov.language
             if ep_ov.subtitle_language is not None:
                 new_subtitle_language = ep_ov.subtitle_language
+            # Per-episode intro markers win over folder defaults.
+            if ep_ov.intro_start is not None:
+                new_intro_start = ep_ov.intro_start
+            if ep_ov.intro_end is not None:
+                new_intro_end = ep_ov.intro_end
             applied += 1
         else:
             new_title = item.title
@@ -285,6 +342,8 @@ def apply_overrides(
             and new_episode == item.episode
             and new_language == item.language
             and new_subtitle_language == item.subtitle_language
+            and new_intro_start == item.intro_start
+            and new_intro_end == item.intro_end
         ):
             result.append(item)
         else:
@@ -307,6 +366,8 @@ def apply_overrides(
                     file_size=item.file_size,
                     duration=item.duration,
                     bitrate=item.bitrate,
+                    intro_start=new_intro_start,
+                    intro_end=new_intro_end,
                 )
             )
 

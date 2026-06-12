@@ -17,10 +17,12 @@ INSTRUCTIONS (local):
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from hometools.constants import VIDEO_SUFFIX
@@ -41,6 +43,7 @@ _METADATA_CACHE_FILE = "video_metadata_cache.json"
 __all__ = [
     "MediaItem",
     "build_video_index",
+    "collect_intro_detection_work",
     "collect_thumbnail_work",
     "encode_relative_path",
     "list_artists",
@@ -183,7 +186,12 @@ def _file_signature(p: Path) -> tuple[int, int]:
         return 0, 0
 
 
-def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> list[MediaItem]:
+def build_video_index(
+    library_dir: Path,
+    *,
+    cache_dir: Path | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> list[MediaItem]:
     """Build a read-only video index from a local video library.
 
     Thumbnail URLs are only included when a cached thumbnail already exists
@@ -191,12 +199,22 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
 
     Uses mutagen-only metadata reading (no ffprobe subprocess) to avoid
     blocking for minutes on large libraries.
+
+    *progress* is an optional callback ``(processed, total, phase)`` invoked
+    during the build so callers (e.g. the index cache) can surface a live
+    "Building index … X / Y" status to the UI.
     """
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
+    def _progress(processed: int, total: int, phase: str) -> None:
+        if progress is not None:
+            with contextlib.suppress(Exception):
+                progress(processed, total, phase)
+
     t0 = time.monotonic()
     root = safe_resolve(library_dir)
+    _progress(0, 0, "scanning")
     scan_t0 = time.monotonic()
     video_files = get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX)
     scan_elapsed = time.monotonic() - scan_t0
@@ -211,6 +229,11 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
     mutagen_reads = 0
     seen_relative_paths: set[str] = set()
 
+    total_files = len(video_files)
+    # Report progress every ~0.5 % (and at least every 25 files) to keep it cheap.
+    progress_step = max(25, total_files // 200) if total_files else 1
+    _progress(0, total_files, "metadata")
+
     logger.info(
         "Building video index for %s — %d files discovered in %.2fs",
         root,
@@ -218,7 +241,7 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         scan_elapsed,
     )
 
-    for video_file in video_files:
+    for file_index, video_file in enumerate(video_files):
         relative_path = safe_resolve(video_file).relative_to(root).as_posix()
         seen_relative_paths.add(relative_path)
 
@@ -316,6 +339,11 @@ def build_video_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
             )
         )
 
+        if (file_index % progress_step) == 0:
+            _progress(file_index + 1, total_files, "metadata")
+
+    _progress(total_files, total_files, "finalizing")
+
     if cache_dir is not None:
         stale_keys = [key for key in metadata_cache if key not in seen_relative_paths]
         if stale_keys:
@@ -377,4 +405,21 @@ def collect_thumbnail_work(
         relative_path = safe_resolve(video_file).relative_to(root).as_posix()
         work.append((video_file, cache_dir, "video", relative_path))
 
+    return work
+
+
+def collect_intro_detection_work(library_dir: Path) -> list[tuple[Path, str]]:
+    """Return ``(absolute_path, relative_path)`` tuples for all video files.
+
+    Ready for
+    :func:`~hometools.streaming.core.intro_markers.start_background_intro_detection`.
+    """
+    if not library_dir.exists() or not library_dir.is_dir():
+        return []
+
+    root = safe_resolve(library_dir)
+    work: list[tuple[Path, str]] = []
+    for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
+        relative_path = safe_resolve(video_file).relative_to(root).as_posix()
+        work.append((video_file, relative_path))
     return work
