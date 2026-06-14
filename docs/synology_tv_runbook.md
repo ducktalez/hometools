@@ -76,6 +76,67 @@ Erreichbar:
 DSM-Firewall: ggf. Ports **8010/8011** für das LAN freigeben
 (Systemsteuerung → Sicherheit → Firewall).
 
+## 3b. Komplett über den Container Manager (ohne SSH) — Schritt für Schritt
+
+Der gesamte Ablauf geht rein über die DSM-Oberfläche. Voraussetzung:
+**Container Manager** ist im Paket-Zentrum installiert und du bist auf
+**DSM 7.2 oder neuer** (dort kann Container Manager Projekte aus einem
+`Dockerfile` **bauen**; bei DSM 7.0/7.1 fehlt die Build-Funktion — siehe
+Hinweis unten).
+
+**Schritt 1 — Repo-Ordner auf die NAS legen (File Station):**
+1. Am PC auf GitHub: **Code → Download ZIP**, entpacken.
+2. In DSM **File Station** einen Ordner anlegen, z. B. `docker/hometools`
+   (unter einer freigegebenen Volume, also `/volume1/docker/hometools`).
+3. Den **kompletten** entpackten Repo-Inhalt dort hochladen
+   (`Dockerfile`, `docker-compose.yml`, `src/`, `pyproject.toml`,
+   `requirements.txt`, … — der ganze Projektbaum, weil das Image aus dem
+   Quellcode gebaut wird).
+
+**Schritt 2 — `.env` im Projektordner erstellen:**
+1. In File Station in `docker/hometools` die Datei `docker/.env.example`
+   markieren → **Kopieren** → in denselben Ordner einfügen und in **`.env`**
+   umbenennen (Endung wirklich `.env`, kein `.env.txt`).
+2. `.env` mit dem **Texteditor** von File Station öffnen und setzen:
+   - `PUID` / `PGID` (DSM-User-IDs; siehe Abschnitt 2).
+   - `AUDIO_LIBRARY_PATH=/volume1/music`, `VIDEO_LIBRARY_PATH=/volume1/video`.
+   - optional `HOMETOOLS_PRETRANSCODE=true` (Default).
+
+   > Wird `.env` nicht gefunden, bricht der Build mit
+   > „set VIDEO_LIBRARY_PATH in .env" ab — dann liegt die Datei nicht im
+   > Projektordner oder heißt falsch.
+
+**Schritt 3 — Projekt im Container Manager anlegen:**
+1. **Container Manager → Projekt → Erstellen**.
+2. **Projektname:** z. B. `hometools`.
+3. **Pfad:** den Ordner `/volume1/docker/hometools` wählen.
+4. **Quelle:** „Verwende vorhandene `docker-compose.yml`" (Container Manager
+   liest die Compose-Datei aus dem Ordner ein und zeigt sie zur Kontrolle an).
+5. Den Assistenten durchklicken (Web-Portal-Frage kannst du überspringen).
+6. **Erstellen** → Container Manager **baut das Image** und startet die
+   Container `hometools-audio` und `hometools-video`. Den Fortschritt siehst
+   du im Tab **Protokoll/Log** des Projekts.
+
+**Schritt 4 — Prüfen:**
+- Projekt-Status muss **„running"** sein (grün).
+- Im Browser `http://NAS-IP:8011` öffnen → die Video-PWA lädt.
+- Bei Fehlern: Projekt → **Protokoll** ansehen (häufig PUID/PGID- oder
+  Pfad-Themen, siehe Troubleshooting unten).
+
+**Updates über den Container Manager:** Neue Repo-Version per File Station
+über den Ordner kopieren (oder ZIP neu hochladen) → Projekt → **Erstellen
+neu/Build** → **Aktion → Neu erstellen**. Die Daten-Volumes (`hometools-cache`,
+`hometools-audit`) bleiben erhalten.
+
+> **DSM 7.0 / 7.1 (kein Build im Projekt):** Dort kann das Projekt kein Image
+> aus dem `Dockerfile` bauen. Optionen:
+> 1. Auf DSM 7.2 aktualisieren (empfohlen), **oder**
+> 2. das Image auf einem PC mit Docker bauen
+>    (`docker build -t hometools:latest .`), als Tar exportieren
+>    (`docker save hometools:latest -o hometools.tar`), in DSM
+>    **Container Manager → Abbild → Hinzufügen → Von Datei** importieren und im
+>    Compose die `build:`-Blöcke durch `image: hometools:latest` ersetzen.
+
 ## 4. Zugriff vom Philips TV
 
 Philips-TVs laufen je nach Modell unter verschiedenen Systemen – das
@@ -139,4 +200,5 @@ bleiben erhalten.
 
 > Siehe auch `docs/docker.md` (allgemeiner Docker-Betrieb) und die Hinweise zu
 > Cast/Netzwerk/VLAN dort.
+
 
