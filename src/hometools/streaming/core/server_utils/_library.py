@@ -128,10 +128,19 @@ def build_index_status_payload(
     detail = library_message
     if library_ok and bool(cache_status.get("building")):
         runtime = cache_status.get("build_running_for_seconds")
-        if runtime is not None:
-            detail = f"Building {item_label} index in background for {float(runtime):.1f}s"
+        processed = cache_status.get("build_processed")
+        total = cache_status.get("build_total")
+        percent = cache_status.get("build_percent")
+        phase = str(cache_status.get("build_phase") or "")
+
+        if phase == "scanning" or not total:
+            detail = f"Building {item_label} index — scanning files…"
         else:
-            detail = f"Building {item_label} index in background"
+            count_str = f"{int(processed or 0):,} / {int(total or 0):,}".replace(",", ".")
+            pct_str = f" ({int(percent)} %)" if percent is not None else ""
+            detail = f"Building {item_label} index — {count_str} files{pct_str}"
+        if runtime is not None:
+            detail += f" — {float(runtime):.0f}s"
         if is_unc:
             detail += ". UNC/NAS libraries can be very slow on the first scan; a local LIBRARY_DIR plus NAS sync is recommended."
 

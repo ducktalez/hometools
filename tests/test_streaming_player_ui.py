@@ -1904,3 +1904,47 @@ class TestDupeKeyGeneratedJsIntegrity:
         """normalizeStem must strip standalone (Audio) and (Video) platform tags."""
         js = render_player_js(api_path="/api/test", item_noun="track")
         assert "Audio|Video|Music" in js  # part of the new promo-tag pattern
+
+
+class TestPlayerBugfixes2026_06:
+    """Mobile seek, spurious-ended guard, progress flush and PiP-on-mobile fixes."""
+
+    def test_js_has_pointer_based_track_seek(self):
+        """Seeking must work via tap/drag on the whole track (touch fix)."""
+        js = render_player_js(api_path="/api/test", item_noun="video")
+        assert "initTrackSeek" in js
+        assert "setPointerCapture" in js
+        assert "pointerdown" in js
+
+    def test_css_progress_track_disables_touch_scroll(self):
+        """progress-track needs touch-action:none so drag isn't stolen by scroll."""
+        css = render_base_css()
+        assert "touch-action: none" in css
+
+    def test_js_ended_guard_against_spurious_end(self):
+        """The ended handler must only advance when playback actually reached the end."""
+        js = render_player_js(api_path="/api/test", item_noun="video")
+        assert "reachedEnd" in js
+
+    def test_js_progress_uses_sendbeacon(self):
+        """Progress save must use sendBeacon so it survives backgrounding/unload."""
+        js = render_player_js(api_path="/api/test", item_noun="video")
+        assert "sendBeacon" in js
+        assert "pagehide" in js
+
+    def test_js_flushes_progress_before_switching_track(self):
+        """playItem must flush the outgoing track's progress before switching."""
+        js = render_player_js(api_path="/api/test", item_noun="video")
+        assert "flush the outgoing track" in js
+
+    def test_js_hides_pip_button_on_touch_devices(self):
+        """The custom PiP button must be suppressed on mobile/touch devices."""
+        js = render_player_js(api_path="/api/test", item_noun="video")
+        assert "isTouchDevice" in js
+        assert "(pointer: coarse)" in js
+
+    def test_js_missing_episode_placeholder_label(self):
+        """Missing-episode placeholders must show a clear 'Folge fehlt' label."""
+        js = render_player_js(api_path="/api/test", item_noun="video")
+        assert "Folge fehlt" in js
+        assert "withMissingEpisodes" in js

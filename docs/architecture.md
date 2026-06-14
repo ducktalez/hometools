@@ -74,6 +74,10 @@ Die Seite `/board` (nur Video-Server) zeigt offene Bibliotheks-Aufgaben — prim
 
 Die Katalog-API-Endpunkte (`/api/audio/tracks`, `/api/video/items`) prüfen zuerst den Cache und starten ggf. einen Background-Refresh. `check_library_accessible` wird **nur** aufgerufen, wenn keine gecachten Items vorhanden sind (Cold-Start oder leerer Cache). Dadurch blockiert der Library-Check (bis zu 3 s bei NAS-Pfaden) nie die Auslieferung bereits verfügbarer Daten.
 
+### Snapshot-Frische statt Rebuild-bei-jedem-Start (2026-06-12)
+
+Früher setzte `IndexCache.get_cached()` beim Laden eines persistierten Snapshots `_built_at = 0.0` und erzwang damit bei **jedem** Serverstart einen vollständigen Neu-Index der Bibliothek (Symptom: „lädt immer alle Datei-Indizes neu"). Jetzt wird das **reale Alter** des Snapshots übernommen (`_built_at = built_at` aus `saved_at`): ein Snapshot, der jünger als die TTL ist (`HOMETOOLS_STREAM_INDEX_CACHE_TTL`, Default 900 s), gilt als *fresh* → kein Rebuild beim Start. Nur ältere Snapshots lösen einen Hintergrund-Rescan aus (für offline hinzugefügte Dateien). Für sofortiges, vollständiges Neuladen dient weiterhin der „Katalog neu laden"-Button (`POST /api/<media>/refresh` → `invalidate()` + Rebuild).
+
 ## CLI-Dashboard
 
 `hometools stream-dashboard` kombiniert Issues, TODO-Kandidaten und den letzten Scheduler-Lauf in einer einzigen Box-Drawing-Tabelle. Daten-Logik lebt in `streaming/core/issue_registry.py`, Präsentation in `streaming/core/issue_dashboard.py`. Unterstützt `--json` für maschinelle Auswertung und `--fail-on-match` als Scheduler-Gate.
@@ -633,7 +637,21 @@ Für `.mp4`-Dateien ohne Faststart wird **einmalig eine gecachte Faststart-Kopie
 1. `.mp4` + Faststart vorhanden → `FileResponse` (direkt, Range-konform)
 2. `.mp4` + **kein** Faststart → `ensure_faststart_cache()` → `FileResponse` (Cache, Range-konform)  
    Fallback wenn ffmpeg fehlt: `StreamingResponse` (wie vorher)
-3. Nicht-native Container (MKV, AVI…) → `remux_stream()` → `StreamingResponse`
+3. Nicht-native Container (MKV, AVI…) → **gecachte Remux-/Transcode-MP4** (siehe unten) → `FileResponse`; nur als Fallback `remux_stream()` → `StreamingResponse`
+
+### Nicht-native Container: Range-fähiger Remux-Cache (2026-06-12)
+
+**Problem:** `.avi`/`.mkv`/`.flv` (`needs_remux`) wurden bisher ausschließlich über `StreamingResponse(remux_stream())` ausgeliefert — ein Live-ffmpeg-Pipe **ohne** HTTP-Range-Support. iOS Safari (und mobile Browser allgemein) verweigern dann die Wiedergabe. **Symptom:** MP4-Serien laufen am Handy, `.avi`-Serien „laden nicht".
+
+**Lösung:** Wie beim Faststart-Cache wird eine **vollständige, fast-start-fähige MP4-Kopie** im Shadow-Cache erzeugt und per `FileResponse` (Range/206) ausgeliefert.
+
+- **Module:** `remux.py` — `ensure_remux_cache()`, `get_remux_cache_path()`, `start_background_remux()` (einzelne Datei, dedupliziert), `start_background_remux_generation()` (Batch-Daemon).
+- **Cache-Pfad:** `{cache_dir}/video/{relative_path}.remux.mp4`.
+- **copy vs. transcode:** `can_copy_codecs()` entscheidet — H.264-in-MKV/FLV → `-c copy +faststart` (Sekunden); XviD-`.avi` → Transcode `libx264/aac +faststart` (CPU-intensiv).
+- **`/video/stream`-Logik bei `needs_remux`:** (1) frischer Remux-Cache → `FileResponse`; (2) sonst `copyable` → synchroner Copy-Remux → `FileResponse`; (3) sonst (Transcode nötig) → Hintergrund-Transcode anstoßen + für **diesen** Request `StreamingResponse`-Fallback (Desktop spielt sofort; Handy nach Cache-Fertigstellung erneut antippen).
+- **Pre-Transcode beim Start:** `collect_remux_work()` + `start_background_remux_generation()` bauen die Caches im Hintergrund vor (ein ffmpeg gleichzeitig), gesteuert via `HOMETOOLS_PRETRANSCODE` (Default an, benötigt ffmpeg). MTime-Invalidierung, exception-safe, blockiert Start/Katalog nie.
+
+> **HTTPS / Brave-Hinweis:** Eine „SSL-Fehlermeldung" in Brave kommt von dessen „Always use secure connections"/HTTPS-Upgrade, das den HTTP-Server auf `https://` umbiegt. Lokal ohne TLS ist das ein Client-Setting (für die Server-IP deaktivieren). Server-seitiges optionales HTTPS bleibt Backlog.
 
 ### Designregeln
 

@@ -196,6 +196,27 @@ def create_app(
                     logger.debug("Failed to start background intro detection", exc_info=True)
 
             threading.Thread(target=_prepare_intro_markers, daemon=True, name="video-intro-bootstrap").start()
+
+            def _prepare_remux() -> None:
+                from hometools.config import get_pretranscode_enabled
+
+                if not get_pretranscode_enabled():
+                    return
+                try:
+                    from hometools.streaming.core.remux import start_background_remux_generation
+                    from hometools.streaming.video.catalog import collect_remux_work
+
+                    work = collect_remux_work(resolved_library_dir, resolved_cache_dir)
+                    started = start_background_remux_generation(work)
+                    logger.info(
+                        "Video startup pre-transcode prepared: %d non-native files (started=%s)",
+                        len(work),
+                        started,
+                    )
+                except Exception:
+                    logger.debug("Failed to start background pre-transcode", exc_info=True)
+
+            threading.Thread(target=_prepare_remux, daemon=True, name="video-remux-bootstrap").start()
         else:
             logger.warning("Video server running in SAFE MODE — caches, PWA and thumbnail warmups are disabled")
 
@@ -508,11 +529,15 @@ def create_app(
         from fastapi.responses import StreamingResponse
 
         from hometools.streaming.core.remux import (
+            can_copy_codecs,
             ensure_faststart_cache,
+            ensure_remux_cache,
             get_faststart_cache_path,
+            get_remux_cache_path,
             has_faststart,
             needs_remux,
             remux_stream,
+            start_background_remux,
         )
 
         try:
@@ -561,7 +586,42 @@ def create_app(
 
         # --- Non-native container (MKV, AVI, …) or codec incompatibility ---
         if needs_remux(file_path):
-            logger.info("GET /video/stream — remuxing %s for browser playback", file_path.name)
+            relative_path = str(file_path.relative_to(resolved_library_dir)).replace("\\", "/")
+
+            # Preferred path: serve a cached, fast-start MP4 copy via FileResponse.
+            # FileResponse supports HTTP Range/206 requests — REQUIRED by iOS
+            # Safari and most mobile browsers.  The legacy StreamingResponse
+            # remux pipe below cannot serve Range, which is why .avi episodes
+            # failed to load on phones while native MP4s worked.
+            cached = get_remux_cache_path(resolved_cache_dir, relative_path)
+            try:
+                cache_fresh = cached.exists() and cached.stat().st_mtime >= file_path.stat().st_mtime
+            except OSError:
+                cache_fresh = False
+            if cache_fresh:
+                logger.debug("GET /video/stream — serving cached remux: %s", cached.name)
+                return FileResponse(cached, media_type="video/mp4", filename=file_path.stem + ".mp4")
+
+            # No cache yet.  If the codecs are already browser-compatible we can
+            # build it synchronously with `-c copy` (a few seconds) and serve
+            # the Range-capable file straight away.
+            copyable = can_copy_codecs(file_path)
+            if copyable:
+                logger.info("GET /video/stream — building copy-remux cache for %s", file_path.name)
+                out = ensure_remux_cache(file_path, resolved_cache_dir, relative_path, copy=True)
+                if out is not None and out.exists():
+                    return FileResponse(out, media_type="video/mp4", filename=file_path.stem + ".mp4")
+
+            # Full transcode needed (e.g. XviD .avi): too slow to block the
+            # request.  Kick off a background transcode so the next attempt is
+            # served from the Range-capable cache, and fall back to the live
+            # remux pipe for this request (works on desktop; mobile should
+            # retry once the cache is ready).
+            start_background_remux(file_path, resolved_cache_dir, relative_path, copy=False if not copyable else None)
+            logger.info(
+                "GET /video/stream — remuxing %s live (cache warming in background)",
+                file_path.name,
+            )
             return StreamingResponse(
                 remux_stream(file_path),
                 media_type="video/mp4",

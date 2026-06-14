@@ -44,6 +44,7 @@ __all__ = [
     "MediaItem",
     "build_video_index",
     "collect_intro_detection_work",
+    "collect_remux_work",
     "collect_thumbnail_work",
     "encode_relative_path",
     "list_artists",
@@ -422,4 +423,27 @@ def collect_intro_detection_work(library_dir: Path) -> list[tuple[Path, str]]:
     for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
         relative_path = safe_resolve(video_file).relative_to(root).as_posix()
         work.append((video_file, relative_path))
+    return work
+
+
+def collect_remux_work(library_dir: Path, cache_dir: Path) -> list[tuple[Path, Path, str]]:
+    """Return ``(file_path, cache_dir, relative_path)`` for non-native videos.
+
+    Only files whose container is not browser-native (``.avi``, ``.mkv``,
+    ``.flv``, …) are included — these are the ones that need a Range-capable
+    MP4 cache for mobile playback.  Ready for
+    :func:`~hometools.streaming.core.remux.start_background_remux_generation`.
+    """
+    if not library_dir.exists() or not library_dir.is_dir():
+        return []
+
+    from hometools.streaming.core.remux import needs_remux
+
+    root = safe_resolve(library_dir)
+    work: list[tuple[Path, Path, str]] = []
+    for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
+        if not needs_remux(video_file):
+            continue
+        relative_path = safe_resolve(video_file).relative_to(root).as_posix()
+        work.append((video_file, cache_dir, relative_path))
     return work

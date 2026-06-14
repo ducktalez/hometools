@@ -68,6 +68,10 @@ class IndexCache:
         self._last_build_duration: float = 0.0
         self._last_build_reason: str = ""
         self._last_error: str = ""
+        # Live build progress (updated by the builder via the progress callback)
+        self._build_total: int = 0
+        self._build_processed: int = 0
+        self._build_phase: str = ""
 
     # ------------------------------------------------------------------
     # Public API
@@ -145,19 +149,24 @@ class IndexCache:
         with self._lock:
             if not self._items or self._library_dir != library_dir or self._cache_dir != cache_dir:
                 self._items = items
-                # Mark snapshot data as stale so ensure_background_refresh()
-                # always triggers a rebuild after loading from disk.  The
-                # snapshot is still served instantly (fast startup), but the
-                # filesystem is rescanned in the background to pick up any
-                # changes that happened while the server was offline.
-                self._built_at = 0.0
+                # Preserve the snapshot's *real* age instead of forcing a full
+                # rebuild on every server start.  A snapshot saved recently
+                # (younger than the TTL) is treated as fresh, so the server does
+                # NOT rescan the whole library again just because it restarted.
+                # Only snapshots older than the TTL fall through to a background
+                # rescan (picking up files added while offline).  The manual
+                # "Katalog neu laden" button forces an immediate full refresh.
+                self._built_at = built_at
                 self._library_dir = library_dir
                 self._cache_dir = cache_dir
+                snapshot_age = max(0.0, now - built_at)
                 logger.info(
-                    "Index cache snapshot loaded: %s => %d items (snapshot_age=%.0fs, marked stale for refresh)",
+                    "Index cache snapshot loaded: %s => %d items (snapshot_age=%.0fs, ttl=%.0fs, %s)",
                     self._label,
                     len(items),
-                    max(0.0, now - built_at),
+                    snapshot_age,
+                    self._ttl,
+                    "fresh — no rebuild" if snapshot_age < self._ttl else "stale — background refresh",
                 )
         return self._items
 
@@ -198,6 +207,37 @@ class IndexCache:
         with self._lock:
             return self._building
 
+    def _report_progress(self, processed: int, total: int, phase: str = "") -> None:
+        """Update live build progress.  Called by the builder during a rebuild.
+
+        Cheap and thread-safe.  ``processed``/``total`` count media files;
+        ``phase`` is a short label such as ``"scanning"`` or ``"metadata"``.
+        """
+        with self._lock:
+            self._build_processed = max(0, int(processed))
+            self._build_total = max(0, int(total))
+            if phase:
+                self._build_phase = phase
+
+    def progress(self) -> dict[str, object]:
+        """Return the current build progress as a small dict.
+
+        ``percent`` is ``None`` while the total is still unknown (scanning).
+        """
+        with self._lock:
+            total = self._build_total
+            processed = self._build_processed
+            building = self._building
+            phase = self._build_phase
+        percent = round(processed / total * 100) if total > 0 else None
+        return {
+            "building": building,
+            "processed": processed,
+            "total": total,
+            "percent": percent,
+            "phase": phase,
+        }
+
     def status(
         self,
         library_dir: Path,
@@ -210,6 +250,10 @@ class IndexCache:
         with self._lock:
             cache_age = max(0.0, now - self._built_at) if self._built_at else None
             build_running_for = max(0.0, now - self._last_build_started_at) if self._building and self._last_build_started_at else None
+            build_total = self._build_total
+            build_processed = self._build_processed
+            build_phase = self._build_phase
+            build_percent = round(build_processed / build_total * 100) if build_total > 0 else None
             return {
                 "label": self._label,
                 "building": self._building,
@@ -221,6 +265,10 @@ class IndexCache:
                 "snapshot_path": str(snapshot_path) if snapshot_path is not None else "",
                 "snapshot_exists": bool(snapshot_path and snapshot_path.exists()),
                 "build_running_for_seconds": build_running_for,
+                "build_total": build_total,
+                "build_processed": build_processed,
+                "build_percent": build_percent,
+                "build_phase": build_phase,
                 "last_build_started_at": self._last_build_started_at or None,
                 "last_build_finished_at": self._last_build_finished_at or None,
                 "last_build_duration_seconds": self._last_build_duration or None,
@@ -246,6 +294,9 @@ class IndexCache:
             self._last_build_started_at = t0
             self._last_build_reason = reason
             self._last_error = ""
+            self._build_total = 0
+            self._build_processed = 0
+            self._build_phase = "scanning"
         logger.info(
             "Index cache rebuild started: %s (reason=%s, library=%s, cache=%s)",
             self._label,
@@ -254,7 +305,10 @@ class IndexCache:
             cache_dir,
         )
         try:
-            items = self._builder(library_dir, cache_dir=cache_dir)
+            if self._builder_supports_progress():
+                items = self._builder(library_dir, cache_dir=cache_dir, progress=self._report_progress)
+            else:
+                items = self._builder(library_dir, cache_dir=cache_dir)
         except Exception:
             with self._lock:
                 self._last_error = "builder failed"
@@ -269,6 +323,10 @@ class IndexCache:
             self._cache_dir = cache_dir
             self._last_build_finished_at = time.monotonic()
             self._last_build_duration = elapsed
+            # Mark progress as complete so a final poll shows 100 %.
+            self._build_total = len(items) if items else self._build_total
+            self._build_processed = self._build_total
+            self._build_phase = "done"
         self._save_snapshot(library_dir, cache_dir, items)
         logger.info(
             "Index cache rebuilt: %s => %d items in %.1fs (ttl=%.0fs)",
@@ -278,6 +336,22 @@ class IndexCache:
             self._ttl,
         )
         return items
+
+    def _builder_supports_progress(self) -> bool:
+        """Return whether the builder accepts a ``progress`` keyword argument."""
+        cached = getattr(self, "_progress_supported", None)
+        if cached is not None:
+            return cached
+        supported = False
+        try:
+            import inspect
+
+            params = inspect.signature(self._builder).parameters
+            supported = "progress" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
+        except (TypeError, ValueError):
+            supported = False
+        self._progress_supported = supported
+        return supported
 
     def _snapshot_path(self, cache_dir: Path | None, library_dir: Path | None = None) -> Path | None:
         if cache_dir is None:

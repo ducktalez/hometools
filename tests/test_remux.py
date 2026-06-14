@@ -12,7 +12,9 @@ from hometools.streaming.core.remux import (
     BROWSER_NATIVE_EXTENSIONS,
     can_copy_codecs,
     ensure_faststart_cache,
+    ensure_remux_cache,
     get_faststart_cache_path,
+    get_remux_cache_path,
     has_faststart,
     needs_remux,
     probe_codecs,
@@ -380,3 +382,60 @@ def test_ensure_faststart_cache_hit(tmp_path: Path) -> None:
 
     assert result == cache_path
     mock_run.assert_not_called()  # ffmpeg must NOT be called on cache hit
+
+
+# ---------------------------------------------------------------------------
+# Cached remux / transcode (Range-capable mobile playback for .avi/.mkv)
+# ---------------------------------------------------------------------------
+
+
+class TestRemuxCache:
+    def test_cache_path_layout(self):
+        p = get_remux_cache_path(Path("/cache"), "Series/ep01.avi")
+        assert p == Path("/cache/video/Series/ep01.avi.remux.mp4")
+
+    def test_cache_hit_skips_ffmpeg(self, tmp_path):
+        import os
+        import time
+
+        src = tmp_path / "ep.avi"
+        src.write_bytes(b"avi")
+        cache_path = get_remux_cache_path(tmp_path / "cache", "ep.avi")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(b"mp4")
+        time.sleep(0.01)
+        future = src.stat().st_mtime + 10
+        os.utime(cache_path, (future, future))
+
+        with patch("subprocess.run") as mock_run:
+            result = ensure_remux_cache(src, tmp_path / "cache", "ep.avi", copy=True)
+
+        assert result == cache_path
+        mock_run.assert_not_called()
+
+    def test_transcode_invoked_on_miss(self, tmp_path):
+        src = tmp_path / "ep.avi"
+        src.write_bytes(b"avi")
+
+        def fake_run(cmd, **kwargs):
+            # Simulate ffmpeg writing the output file then succeeding.
+            out = cmd[-1]
+            Path(out).write_bytes(b"transcoded")
+            return MagicMock(returncode=0, stderr=b"")
+
+        with patch("subprocess.run", side_effect=fake_run) as mock_run:
+            result = ensure_remux_cache(src, tmp_path / "cache", "ep.avi", copy=False)
+
+        assert result == get_remux_cache_path(tmp_path / "cache", "ep.avi")
+        assert result.exists()
+        # transcode args must include libx264 + faststart
+        called_cmd = mock_run.call_args[0][0]
+        assert "libx264" in called_cmd
+        assert "+faststart" in called_cmd
+
+    def test_ffmpeg_failure_returns_none(self, tmp_path):
+        src = tmp_path / "ep.avi"
+        src.write_bytes(b"avi")
+        with patch("subprocess.run", return_value=MagicMock(returncode=1, stderr=b"boom")):
+            result = ensure_remux_cache(src, tmp_path / "cache", "ep.avi", copy=True)
+        assert result is None

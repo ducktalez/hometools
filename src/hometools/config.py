@@ -380,6 +380,29 @@ def get_intro_autodetect_enabled() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Pre-transcode (video)
+# ---------------------------------------------------------------------------
+
+
+def get_pretranscode_enabled() -> bool:
+    """Return whether non-native videos are pre-remuxed/transcoded in background.
+
+    Browsers (especially iOS Safari) need HTTP Range support to play video,
+    which only works when serving a complete MP4 file (``FileResponse``).  The
+    live remux pipe cannot do Range, so ``.avi`` / ``.mkv`` episodes fail to
+    load on phones.  When enabled, the server pre-builds Range-capable MP4
+    copies of non-native files in the shadow cache at startup (one ffmpeg at a
+    time), so they are ready when requested.  Requires ``ffmpeg`` on PATH.
+
+    Transcoding (e.g. XviD ``.avi``) is CPU-intensive; disable on weak
+    hardware and rely on the on-demand background build instead.
+
+    Set ``HOMETOOLS_PRETRANSCODE=false`` to disable.  Default: ``True``.
+    """
+    return _get_bool_from_env("HOMETOOLS_PRETRANSCODE", True)
+
+
+# ---------------------------------------------------------------------------
 # Channel (TV) server
 # ---------------------------------------------------------------------------
 

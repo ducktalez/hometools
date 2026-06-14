@@ -363,3 +363,168 @@ class TestIndexCachePatchItems:
         cache = self._make_cache(items)
         changed = cache.patch_items({"a.mp3": {"nonexistent_field": 42}})
         assert changed == 0  # replace() fails, item kept as-is
+
+
+# ---------------------------------------------------------------------------
+# IndexCache build progress
+# ---------------------------------------------------------------------------
+
+
+class TestIndexCacheProgress:
+    """Live build-progress reporting surfaced via status()/progress()."""
+
+    def test_progress_defaults_empty(self):
+        from hometools.streaming.core.index_cache import IndexCache
+
+        cache = IndexCache(lambda lib, *, cache_dir=None: [], ttl=9999, label="t")
+        p = cache.progress()
+        assert p["processed"] == 0
+        assert p["total"] == 0
+        assert p["percent"] is None
+        assert p["building"] is False
+
+    def test_builder_receives_progress_callback(self):
+        from pathlib import Path
+
+        from hometools.streaming.core.index_cache import IndexCache
+
+        seen = {}
+
+        def builder(lib, *, cache_dir=None, progress=None):
+            assert progress is not None
+            progress(0, 4, "metadata")
+            progress(2, 4, "metadata")
+            seen["mid"] = (2, 4)
+            return [MediaItem("a.mp4", "A", "X", "/s", "video")]
+
+        cache = IndexCache(builder, ttl=9999, label="t")
+        items = cache.get(Path("/fake"))
+        assert len(items) == 1
+        assert seen["mid"] == (2, 4)
+
+    def test_builder_without_progress_still_works(self):
+        from pathlib import Path
+
+        from hometools.streaming.core.index_cache import IndexCache
+
+        cache = IndexCache(lambda lib, *, cache_dir=None: [MediaItem("a.mp4", "A", "X", "/s", "video")], ttl=9999, label="t")
+        items = cache.get(Path("/fake"))
+        assert len(items) == 1
+
+    def test_status_includes_progress_fields(self):
+        from pathlib import Path
+
+        from hometools.streaming.core.index_cache import IndexCache
+
+        cache = IndexCache(lambda lib, *, cache_dir=None: [], ttl=9999, label="t")
+        st = cache.status(Path("/fake"))
+        assert "build_total" in st
+        assert "build_processed" in st
+        assert "build_percent" in st
+        assert "build_phase" in st
+
+    def test_progress_percent_computed(self):
+        from hometools.streaming.core.index_cache import IndexCache
+
+        cache = IndexCache(lambda lib, *, cache_dir=None: [], ttl=9999, label="t")
+        cache._report_progress(25, 100, "metadata")
+        p = cache.progress()
+        assert p["processed"] == 25
+        assert p["total"] == 100
+        assert p["percent"] == 25
+        assert p["phase"] == "metadata"
+
+
+# ---------------------------------------------------------------------------
+# IndexCache snapshot freshness (no full rebuild on every restart)
+# ---------------------------------------------------------------------------
+
+
+class TestIndexCacheSnapshotFreshness:
+    """A recent snapshot must NOT trigger a full rebuild on server restart."""
+
+    def _build_count_cache(self, tmp_path, items, ttl):
+        from hometools.streaming.core.index_cache import IndexCache
+
+        calls = {"n": 0}
+
+        def builder(lib, *, cache_dir=None, progress=None):
+            calls["n"] += 1
+            return list(items)
+
+        return IndexCache(builder, ttl=ttl, label="freshtest"), calls
+
+    def test_recent_snapshot_is_fresh_and_skips_rebuild(self, tmp_path):
+        from pathlib import Path
+
+        lib = Path("/fake-lib")
+        items = [MediaItem("a.mp4", "A", "X", "/s", "video")]
+
+        # First cache instance builds + persists a snapshot.
+        cache1, _ = self._build_count_cache(tmp_path, items, ttl=900)
+        cache1._rebuild_now(lib, cache_dir=tmp_path, reason="initial")
+        assert (tmp_path / "indexes").exists()
+
+        # Second instance (simulates restart) loads the recent snapshot.
+        cache2, calls2 = self._build_count_cache(tmp_path, items, ttl=900)
+        loaded = cache2.get_cached(lib, cache_dir=tmp_path)
+        assert len(loaded) == 1
+        # Recent snapshot → fresh → no background rebuild scheduled.
+        assert cache2._is_fresh(__import__("time").monotonic(), lib, tmp_path) is True
+        started = cache2.ensure_background_refresh(lib, cache_dir=tmp_path)
+        assert started is False
+        assert calls2["n"] == 0  # builder never ran
+
+    def test_old_snapshot_triggers_refresh(self, tmp_path):
+        import json
+        import time
+        from pathlib import Path
+
+        lib = Path("/fake-lib2")
+        items = [MediaItem("a.mp4", "A", "X", "/s", "video")]
+        cache1, _ = self._build_count_cache(tmp_path, items, ttl=60)
+        cache1._rebuild_now(lib, cache_dir=tmp_path, reason="initial")
+
+        # Backdate the snapshot's saved_at well beyond the TTL.
+        snap = cache1._snapshot_path(tmp_path, lib)
+        payload = json.loads(snap.read_text(encoding="utf-8"))
+        payload["saved_at"] = time.time() - 10000
+        snap.write_text(json.dumps(payload), encoding="utf-8")
+
+        cache2, _ = self._build_count_cache(tmp_path, items, ttl=60)
+        cache2.get_cached(lib, cache_dir=tmp_path)
+        assert cache2._is_fresh(time.monotonic(), lib, tmp_path) is False
+
+
+class TestBuildIndexStatusProgressDetail:
+    """build_index_status_payload must surface live progress in its detail."""
+
+    def _payload(self, cache_status):
+        from pathlib import Path
+
+        from hometools.streaming.core.server_utils import build_index_status_payload
+
+        return build_index_status_payload(
+            library_dir=Path("/lib"),
+            item_label="video",
+            library_ok=True,
+            library_message="ok",
+            cache_status=cache_status,
+        )
+
+    def test_detail_shows_count_and_percent(self):
+        payload = self._payload(
+            {"building": True, "build_processed": 1234, "build_total": 5000, "build_percent": 25, "build_phase": "metadata"}
+        )
+        assert "1.234 / 5.000" in payload["detail"]
+        assert "25 %" in payload["detail"]
+
+    def test_detail_scanning_phase(self):
+        payload = self._payload(
+            {"building": True, "build_processed": 0, "build_total": 0, "build_percent": None, "build_phase": "scanning"}
+        )
+        assert "scanning" in payload["detail"].lower()
+
+    def test_detail_plain_when_not_building(self):
+        payload = self._payload({"building": False})
+        assert payload["detail"] == "ok"
