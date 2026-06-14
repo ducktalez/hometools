@@ -394,12 +394,17 @@ def get_pretranscode_enabled() -> bool:
     copies of non-native files in the shadow cache at startup (one ffmpeg at a
     time), so they are ready when requested.  Requires ``ffmpeg`` on PATH.
 
-    Transcoding (e.g. XviD ``.avi``) is CPU-intensive; disable on weak
-    hardware and rely on the on-demand background build instead.
+    Transcoding (e.g. XviD ``.avi``) is CPU-intensive; pre-building the whole
+    library at startup can also fill the cache disk (a large ``.avi`` collection
+    easily produces tens of GB of MP4 copies).  Therefore this **startup sweep is
+    opt-in**: by default only files that are actually requested get an on-demand
+    background transcode (see ``start_background_remux``), so the cache stays
+    proportional to what is watched.
 
-    Set ``HOMETOOLS_PRETRANSCODE=false`` to disable.  Default: ``True``.
+    Set ``HOMETOOLS_PRETRANSCODE=true`` to pre-build the entire library at
+    startup.  Default: ``False``.  Requires ``ffmpeg`` on PATH.
     """
-    return _get_bool_from_env("HOMETOOLS_PRETRANSCODE", True)
+    return _get_bool_from_env("HOMETOOLS_PRETRANSCODE", False)
 
 
 # ---------------------------------------------------------------------------

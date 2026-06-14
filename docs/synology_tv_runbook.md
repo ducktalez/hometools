@@ -51,9 +51,12 @@ In `.env` anpassen:
   VIDEO_LIBRARY_PATH=/volume1/video
   ```
 - Ports bei Bedarf (`AUDIO_PORT=8010`, `VIDEO_PORT=8011`).
-- **Empfohlen für TV** (Default bereits an): `HOMETOOLS_PRETRANSCODE=true`
-  baut `.avi`/`.mkv`/XviD im Hintergrund in Range-fähige MP4s um, damit sie
-  im TV-Browser laufen (sonst spielen nur native MP4/H.264).
+- **Optional für TV** (Default **aus**): `HOMETOOLS_PRETRANSCODE=true`
+  baut beim Start die **gesamte** Bibliothek (`.avi`/`.mkv`/XviD) im Hintergrund
+  in Range-fähige MP4s um. ⚠️ Das kann den Cache-Datenträger stark füllen
+  (eine große `.avi`-Sammlung → leicht zweistellige GB). Ohne diese Option
+  werden Nicht-MP4-Dateien **on-demand beim Abspielen** transkodiert — der Cache
+  bleibt dann proportional zum tatsächlich Geschauten.
 
 ## 3. Starten
 
@@ -100,7 +103,7 @@ Hinweis unten).
 2. `.env` mit dem **Texteditor** von File Station öffnen und setzen:
    - `PUID` / `PGID` (DSM-User-IDs; siehe Abschnitt 2).
    - `AUDIO_LIBRARY_PATH=/volume1/music`, `VIDEO_LIBRARY_PATH=/volume1/video`.
-   - optional `HOMETOOLS_PRETRANSCODE=true` (Default).
+   - optional `HOMETOOLS_PRETRANSCODE=true` (Default **aus**; transkodiert beim Start die ganze Bibliothek — Cache-Speicher beachten).
 
    > Wird `.env` nicht gefunden, bricht der Build mit
    > „set VIDEO_LIBRARY_PATH in .env" ab — dann liegt die Datei nicht im
@@ -200,5 +203,7 @@ bleiben erhalten.
 
 > Siehe auch `docs/docker.md` (allgemeiner Docker-Betrieb) und die Hinweise zu
 > Cast/Netzwerk/VLAN dort.
+
+
 
 
