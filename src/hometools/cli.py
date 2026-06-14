@@ -253,6 +253,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scan_lib_p.set_defaults(func=run_scan_library)
 
+    missing_eps_p = subparsers.add_parser(
+        "missing-episodes",
+        help="List missing individual episodes inside existing series seasons (no whole seasons).",
+    )
+    missing_eps_p.add_argument(
+        "--library-dir",
+        type=Path,
+        default=None,
+        help="Video library directory to analyse (default: video library dir).",
+    )
+    missing_eps_p.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    missing_eps_p.set_defaults(func=run_missing_episodes)
+
     return parser
 
 
@@ -827,6 +840,41 @@ def run_scan_library(args: argparse.Namespace) -> int:
 
     if args.fail_on_warning and report.has_warnings:
         return 1
+    return 0
+
+
+def run_missing_episodes(args: argparse.Namespace) -> int:
+    """List missing individual episodes inside existing series seasons."""
+    from hometools.streaming.core.episode_gaps import find_missing_episodes
+    from hometools.streaming.video.catalog import build_video_index
+
+    setup_logging(log_file=None)
+    library_dir: Path = (args.library_dir or get_video_library_dir()).resolve()
+
+    if not library_dir.is_dir():
+        _console_print(f"Fehler: {library_dir} ist kein Verzeichnis.")
+        return 2
+
+    items = build_video_index(library_dir, cache_dir=None)
+    gaps = find_missing_episodes(items)
+
+    if args.json:
+        print(json.dumps([g.to_dict() for g in gaps], indent=2, ensure_ascii=False))
+        return 0
+
+    total = sum(len(g.missing_episodes) for g in gaps)
+    _console_print(f"Video-Bibliothek: {library_dir}")
+    _console_print(f"{len(gaps)} Staffel(n) mit fehlenden Einzelfolgen, {total} Folge(n) insgesamt.\n")
+    if not gaps:
+        _console_print("Keine fehlenden Einzelfolgen gefunden.")
+        return 0
+    for g in gaps:
+        missing = ", ".join(f"E{n:02d}" for n in g.missing_episodes)
+        _console_print(f"  {g.series} — Staffel {g.season}")
+        _console_print(f"      Fehlt: {missing}  (vorhanden E{g.first_episode}\u2013E{g.last_episode}, {len(g.present_episodes)} Folgen)")
+        if g.folder:
+            _console_print(f"      {g.folder}")
+        _console_print("")
     return 0
 
 

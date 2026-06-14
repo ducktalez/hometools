@@ -16,8 +16,10 @@ INSTRUCTIONS (local):
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from hometools.audio.metadata import audiofile_assume_artist_title, get_audio_file_info, get_genre, get_rating_stars
@@ -46,22 +48,41 @@ __all__ = [
 ]
 
 
-def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> list[MediaItem]:
+def build_audio_index(
+    library_dir: Path,
+    *,
+    cache_dir: Path | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> list[MediaItem]:
     """Build a read-only track index from a local audio library.
 
     Thumbnail URLs are only included when a cached thumbnail already exists
     on disk — no extraction is attempted here so startup stays fast.
+
+    *progress* is an optional callback ``(processed, total, phase)`` invoked
+    during the build so callers (e.g. the index cache) can surface a live
+    "Building index … X / Y" status to the UI.
     """
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
+    def _progress(processed: int, total: int, phase: str) -> None:
+        if progress is not None:
+            with contextlib.suppress(Exception):
+                progress(processed, total, phase)
+
     t0 = time.monotonic()
     root = safe_resolve(library_dir)
+    _progress(0, 0, "scanning")
     scan_t0 = time.monotonic()
     audio_files = get_audio_files_in_folder(root)
     scan_elapsed = time.monotonic() - scan_t0
     tracks: list[MediaItem] = []
     cached_thumbnails = 0
+
+    total_files = len(audio_files)
+    progress_step = max(25, total_files // 200) if total_files else 1
+    _progress(0, total_files, "metadata")
 
     logger.info(
         "Building audio index for %s — %d files discovered in %.2fs",
@@ -70,7 +91,7 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
         scan_elapsed,
     )
 
-    for audio_file in audio_files:
+    for file_index, audio_file in enumerate(audio_files):
         relative_path = safe_resolve(audio_file).relative_to(root).as_posix()
         artist, title = audiofile_assume_artist_title(audio_file)
 
@@ -119,6 +140,11 @@ def build_audio_index(library_dir: Path, *, cache_dir: Path | None = None) -> li
                 bitrate=bitrate,
             )
         )
+
+        if (file_index % progress_step) == 0:
+            _progress(file_index + 1, total_files, "metadata")
+
+    _progress(total_files, total_files, "finalizing")
 
     elapsed = time.monotonic() - t0
     logger.info(

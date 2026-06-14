@@ -347,6 +347,17 @@ def create_app(
         filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
         query_elapsed = time.monotonic() - query_t0
         cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
+        build_detail = (
+            build_index_status_payload(
+                library_dir=resolved_library_dir,
+                item_label="audio",
+                library_ok=True,
+                library_message="ok",
+                cache_status=cache_status,
+            )["detail"]
+            if building
+            else ""
+        )
         logger.info(
             "GET /api/audio/tracks — %d/%d items in %.1fs (cache=%.2fs, query=%.2fs, refresh_started=%s, building=%s, q=%r, artist=%r, sort=%r)",
             len(filtered),
@@ -367,6 +378,7 @@ def create_app(
             "artists": list_artists(tracks),
             "refreshing": building,
             "cache": cache_status,
+            "detail": build_detail,
             "query": {"q": q or "", "artist": artist or "all", "sort": sort},
         }
 

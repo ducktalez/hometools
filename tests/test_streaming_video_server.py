@@ -307,3 +307,45 @@ def test_video_recent_deduplicates_by_series(tmp_path, monkeypatch):
     items = resp.json()["items"]
     assert len(items) == 1
     assert items[0]["relative_path"] == "Avatar/S01E02.mp4"
+
+
+def test_video_board_page_renders(tmp_path):
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/board")
+    assert resp.status_code == 200
+    assert "Aufgaben-Board" in resp.text
+    assert "Fehlende Folgen" in resp.text
+    assert "MEDIA_TYPE = 'video'" in resp.text
+
+
+def test_video_board_api_reports_missing_episode(tmp_path):
+    from hometools.streaming.core.models import MediaItem
+
+    ep1 = MediaItem(
+        relative_path="Avatar/S01E01.mp4", title="Ep1", artist="Avatar", stream_url="u1", media_type="video", season=1, episode=1
+    )
+    ep3 = MediaItem(
+        relative_path="Avatar/S01E03.mp4", title="Ep3", artist="Avatar", stream_url="u3", media_type="video", season=1, episode=3
+    )
+
+    with patch(
+        "hometools.streaming.video.server._video_index_cache.get_cached",
+        return_value=[ep1, ep3],
+    ):
+        client = TestClient(create_app(tmp_path))
+        resp = client.get("/api/video/board")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["missing_count"] == 1
+    assert len(data["missing_episodes"]) == 1
+    assert data["missing_episodes"][0]["missing_episodes"] == [2]
+    assert "issues" in data
+
+
+def test_video_home_includes_board_link(tmp_path):
+    client = TestClient(create_app(tmp_path))
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert 'id="board-btn"' in resp.text
+    assert 'href="/board"' in resp.text

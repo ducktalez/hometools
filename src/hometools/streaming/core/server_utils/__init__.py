@@ -19,6 +19,7 @@ import logging
 
 # Re-exports from split sub-modules (backward-compat).
 from ._audit import render_audit_panel_html  # noqa: F401
+from ._board import render_board_page_html  # noqa: F401
 from ._css import render_base_css  # noqa: F401
 from ._html import render_media_page  # noqa: F401
 from ._library import (  # noqa: F401
