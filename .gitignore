@@ -34,6 +34,19 @@ _debug_*.py
 _debug_*.txt
 _check_*.py
 
+# Root-level scratch / debug helpers (never belong in the repo)
+_dbg*
+_server_*.txt
+_test*.txt
+_test_server.py
+_analyze.py
+_audit_inspect.py
+_commit_msg.txt
+# Private finance / travel-cost workflow (must never be committed)
+_parse_konto*.py
+_konto_*.txt
+_test_fp*
+
 # OS
 Thumbs.db
 .DS_Store

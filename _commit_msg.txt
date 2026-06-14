@@ -1,7 +1,0 @@
-feat+fix: URL-routing, tools-panel UX, multiple-ghost move fix
-
-1. URL-Routing erweitert: sort/filter/viewmode/panel in URL
-2. Tools-Panel: Aenderungsverlauf als fester Header-Button, Downloaded-Pille
-   entfernt, Sektionsueberschriften, Buttongroup full-width ohne Wrap
-3. Bugfix: alle verschobenen Titel bleiben als Ghost sichtbar (_moveGhosts-Map)
-
