@@ -1,0 +1,8 @@
+<resources>
+    <!-- App theme: dark, no action bar. Compose (androidx.tv.material3) draws
+         the actual UI; this XML theme only needs to be a valid app theme. -->
+    <style name="Theme.HometoolsTV" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>
+

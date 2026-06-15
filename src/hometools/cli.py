@@ -266,6 +266,24 @@ def build_parser() -> argparse.ArgumentParser:
     missing_eps_p.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     missing_eps_p.set_defaults(func=run_missing_episodes)
 
+    export_openapi_p = subparsers.add_parser(
+        "export-openapi",
+        help="Export the FastAPI OpenAPI schema for a server (contract source for native clients).",
+    )
+    export_openapi_p.add_argument(
+        "--server",
+        choices=["video", "audio"],
+        default="video",
+        help="Which server's schema to export (default: video).",
+    )
+    export_openapi_p.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output file (default: clients/shared/openapi/<server>-openapi.json).",
+    )
+    export_openapi_p.set_defaults(func=run_export_openapi)
+
     return parser
 
 
@@ -875,6 +893,46 @@ def run_missing_episodes(args: argparse.Namespace) -> int:
         if g.folder:
             _console_print(f"      {g.folder}")
         _console_print("")
+    return 0
+
+
+def run_export_openapi(args: argparse.Namespace) -> int:
+    """Export a server's OpenAPI schema as JSON (contract for native clients).
+
+    The schema is the single source of truth shared by the web admin UI and
+    the native clients (Android TV, future iOS/Android). Generating a typed
+    client from this file (e.g. via openapi-generator) keeps the clients from
+    drifting away from the backend API.
+    """
+    setup_logging(log_file=None)
+
+    if args.server == "audio":
+        from hometools.streaming.audio.server import create_app
+    else:
+        from hometools.streaming.video.server import create_app
+
+    try:
+        app = create_app()
+        # Reuse the same JSON-API-only schema builder the live servers serve at
+        # /openapi.json. Binary/HTML routes are excluded (they also break
+        # FastAPI's schema builder under `from __future__ import annotations`).
+        from hometools.streaming.core.openapi_schema import build_api_openapi
+
+        schema = build_api_openapi(app)
+    except Exception as exc:
+        _console_print(f"Fehler beim Erzeugen des OpenAPI-Schemas: {exc}")
+        return 1
+
+    output: Path = args.output or (Path("clients") / "shared" / "openapi" / f"{args.server}-openapi.json")
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        _console_print(f"Fehler beim Schreiben von {output}: {exc}")
+        return 1
+
+    path_count = len(schema.get("paths", {}))
+    _console_print(f"OpenAPI-Schema ({args.server}) mit {path_count} Pfaden geschrieben: {output}")
     return 0
 
 

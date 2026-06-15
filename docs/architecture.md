@@ -1,5 +1,55 @@
 # Architecture
 
+## Native client layer (`clients/`) & API contract (2026-06-15)
+
+Native apps (Android TV active; iOS/Android phone reserved) live under
+`clients/`. They are **thin REST clients** of the Python backend — the
+single source of truth. No business logic is duplicated in client code.
+
+**Anti-duplication strategy ("don't build admin + remote-UI twice"):**
+
+- All functionality stays server-side, exposed via the JSON API.
+- The web admin UI is the **full** client; native clients implement only the
+  **read/playback subset** (`/api/video/items`, `/api/video/continue`,
+  `/api/video/metadata`, `/api/video/progress`, `/api/video/intro`, plus the
+  binary `GET /video/stream` and `GET /thumb`). Admin write-endpoints
+  (rating/tag/move/delete/playlists) are **never** ported to a native client.
+- **Contract = OpenAPI.** `hometools export-openapi --server {video,audio}`
+  (CLI in `cli.py:run_export_openapi`) writes `clients/shared/openapi/*.json`.
+  Only the JSON API surface (`/api/*` + `/health`) is included; HTML/binary
+  routes are excluded (they also trip FastAPI's schema builder under
+  `from __future__ import annotations`). `tests/test_openapi_export.py` locks
+  the playback-relevant paths.
+- **Browser-testable API (`/openapi.json` + `/docs`).** Both servers install a
+  filtered schema builder via `streaming/core/openapi_schema.py`
+  (`install_filtered_openapi`) in `create_app`. This reuses the same
+  `build_api_openapi` helper the CLI export uses, so the live servers serve a
+  working Swagger UI at **`http://<host>:<port>/docs`** for interactive testing
+  without breaking on the HTML/binary routes. The helper is exception-safe and
+  never blocks startup.
+
+**Continue-Watching feed:** `streaming/core/progress.py:get_continue_watching()`
+filters the recent-progress store to *unfinished* items (watched past 30 s,
+below 95 % of duration). `GET /api/video/continue` joins it with the catalog so
+each entry carries full `MediaItem` metadata + resume position. Audio has no
+equivalent (audiobook resume is automatic). Tests in
+`tests/test_continue_watching.py`.
+
+**Android TV (`clients/androidtv/`):** Kotlin + Jetpack **Compose for TV**
+(`androidx.tv.material3`, D-pad focus) + **Media3/ExoPlayer**. ExoPlayer plays
+MP4/MKV/AVI with HTTP Range straight from `/video/stream` — the reason a native
+app handles formats the TV browser cannot, and why a WebView wrapper was
+rejected for TV. Three screens: server setup → browse → player. Data layer
+(`data/`) mirrors `MediaItem.to_dict()` and tolerates unknown fields.
+
+### Designregeln (Clients)
+
+- API-first: ein API-Change → Schema neu exportieren + Client im selben Change anpassen.
+- Admin-Tools bleiben **web-only**; native Clients rufen nur die Playback-Teilmenge.
+- `MediaItem`-Feldnamen sind der Contract; Clients parsen vorwärtskompatibel.
+- Backend-Lücken werden **im Backend** geschlossen (Endpoint + Test), nicht clientseitig.
+- Build-Artefakte (`clients/**/build/`, Gradle) sind git- und docker-ignoriert.
+
 ## Streaming issue pipeline
 
 Die Streaming-Server schreiben Warnungen/Errors nicht nur in Logs, sondern zusätzlich in den Shared-Core-Mechanismus unter `src/hometools/streaming/core/issue_registry.py`.
@@ -1063,4 +1113,3 @@ auf schmalen Viewports die Header-Suchleiste. Lösung:
   (`scheduleBackgroundRefresh`) läuft weiter, zeigt aber nichts.
 - **Reset:** `hideIndexingToast()` (Index ist fertig) setzt das Flag
   zurück → nächste Indexing-Runde zeigt den Toast wieder an.
-

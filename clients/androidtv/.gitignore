@@ -1,0 +1,20 @@
+# Gradle / Android build artifacts
+.gradle/
+build/
+local.properties
+/captures
+*.apk
+*.aab
+.cxx/
+
+# Gradle wrapper binary — regenerate locally via `gradle wrapper` (never commit the jar)
+gradle/wrapper/gradle-wrapper.jar
+
+# Generated API clients (regenerate from clients/shared/openapi)
+/generated/
+/app/generated/
+
+# IDE
+*.iml
+.idea/
+

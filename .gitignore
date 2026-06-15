@@ -50,3 +50,14 @@ _test_fp*
 # OS
 Thumbs.db
 .DS_Store
+
+# Native clients (Android/Gradle build artifacts)
+clients/**/.gradle/
+clients/**/build/
+clients/**/local.properties
+clients/**/.cxx/
+clients/**/generated/
+clients/**/gradle/wrapper/gradle-wrapper.jar
+*.apk
+*.aab
+

@@ -35,6 +35,7 @@ from hometools.streaming.audio.catalog import (
 )
 from hometools.streaming.core.catalog import quick_folder_scan
 from hometools.streaming.core.index_cache import IndexCache
+from hometools.streaming.core.openapi_schema import install_filtered_openapi
 from hometools.streaming.core.server_utils import (
     build_index_status_payload,
     check_library_accessible,
@@ -227,6 +228,9 @@ def create_app(
         yield
 
     app = FastAPI(title="hometools audio streaming prototype", lifespan=lifespan)
+    # Serve a JSON-API-only OpenAPI schema so /openapi.json + /docs work in the
+    # browser (HTML/binary routes would otherwise break FastAPI's schema builder).
+    install_filtered_openapi(app)
 
     # Cache quick-scan results so repeated polls during index build don't
     # re-walk the filesystem every 2 seconds.

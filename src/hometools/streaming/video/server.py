@@ -27,6 +27,7 @@ from hometools.config import (
 from hometools.constants import VIDEO_SUFFIX
 from hometools.streaming.core.catalog import list_artists, query_items, quick_folder_scan
 from hometools.streaming.core.index_cache import IndexCache
+from hometools.streaming.core.openapi_schema import install_filtered_openapi
 from hometools.streaming.core.server_utils import (
     build_index_status_payload,
     check_library_accessible,
@@ -234,6 +235,9 @@ def create_app(
         yield
 
     app = FastAPI(title="hometools video streaming prototype", lifespan=lifespan)
+    # Serve a JSON-API-only OpenAPI schema so /openapi.json + /docs work in the
+    # browser (HTML/binary routes would otherwise break FastAPI's schema builder).
+    install_filtered_openapi(app)
 
     # Cache quick-scan results so repeated polls during index build don't
     # re-walk the filesystem every 2 seconds.
@@ -533,6 +537,48 @@ def create_app(
 
         entry = load_progress(resolved_cache_dir, path)
         return {"items": [entry] if entry else []}
+
+    @app.get("/api/video/continue")
+    def video_continue_watching(limit: int = 20) -> dict[str, object]:
+        """Return unfinished, recently-played videos for a "Continue Watching" row.
+
+        Joins the playback-progress store with the current catalog so each
+        entry carries full item metadata (title, artist, thumbnail, stream URL,
+        intro markers) plus the resume position. Built for the native TV client
+        (10-foot UI), but generic enough for any consumer. Never 500s — returns
+        ``{"items": []}`` when the catalog isn't ready or on any error.
+        """
+        from hometools.streaming.core.progress import get_continue_watching
+
+        try:
+            entries = get_continue_watching(resolved_cache_dir, limit=max(1, min(int(limit), 100)))
+        except Exception:
+            logger.debug("GET /api/video/continue — failed to read progress", exc_info=True)
+            return {"items": []}
+
+        if not entries:
+            return {"items": []}
+
+        if resolved_safe_mode:
+            items = build_video_index(resolved_library_dir, cache_dir=None)
+        else:
+            items = _video_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
+        by_path = {it.relative_path: it for it in (items or [])}
+
+        result: list[dict[str, object]] = []
+        for entry in entries:
+            rp = str(entry.get("relative_path") or "")
+            item = by_path.get(rp)
+            if item is None:
+                continue  # progress for a file no longer in the catalog
+            merged = item.to_dict()
+            merged["position_seconds"] = entry.get("position_seconds", 0.0)
+            merged["resume_duration"] = entry.get("duration", 0.0)
+            merged["last_played"] = entry.get("timestamp", 0.0)
+            result.append(merged)
+
+        logger.info("GET /api/video/continue — %d resumable item(s)", len(result))
+        return {"items": result}
 
     @app.get("/video/stream")
     def video_stream(path: str):

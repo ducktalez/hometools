@@ -35,6 +35,10 @@ test_*.txt
 docs/
 wa_data/
 
+# Native client apps — not part of the Python runtime image
+clients/
+scripts/
+
 # OS junk
 .DS_Store
 Thumbs.db

@@ -131,6 +131,50 @@ def get_recent_progress(cache_dir: Path, limit: int = 20) -> list[dict[str, Any]
     return entries[:limit]
 
 
+def get_continue_watching(
+    cache_dir: Path,
+    *,
+    limit: int = 20,
+    min_position_seconds: float = 30.0,
+    finished_fraction: float = 0.95,
+) -> list[dict[str, Any]]:
+    """Return recently played, *unfinished* items for a "Continue Watching" row.
+
+    Filters :func:`get_recent_progress` down to entries that are worth
+    resuming — useful for the 10-foot TV UI (Netflix/Jellyfin style).
+
+    An entry is included when:
+
+    - it has been watched past *min_position_seconds* (skip accidental taps), and
+    - it is not effectively finished: when a positive ``duration`` is known,
+      ``position_seconds / duration`` must be below *finished_fraction*
+      (items watched to the end are dropped). Entries without a known
+      duration are kept (we cannot tell, so err on the side of showing them).
+
+    Entries are newest-first (inherited from :func:`get_recent_progress`).
+    Each entry is the stored progress dict plus ``"relative_path"``.
+    Never raises; returns ``[]`` on error.
+    """
+    try:
+        # Pull a generous slice first, then filter, then trim to *limit*.
+        recent = get_recent_progress(cache_dir, limit=max(limit * 4, limit))
+        result: list[dict[str, Any]] = []
+        for entry in recent:
+            pos = float(entry.get("position_seconds", 0.0) or 0.0)
+            dur = float(entry.get("duration", 0.0) or 0.0)
+            if pos < min_position_seconds:
+                continue
+            if dur > 0 and (pos / dur) >= finished_fraction:
+                continue
+            result.append(entry)
+            if len(result) >= limit:
+                break
+        return result
+    except Exception:
+        logger.debug("Failed to build continue-watching list", exc_info=True)
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers (must be called with _lock held)
 # ---------------------------------------------------------------------------
