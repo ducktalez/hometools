@@ -230,6 +230,7 @@ def ensure_faststart_cache(
     (ffmpeg missing, disk error, …).  Never raises.
     """
     out_path = get_faststart_cache_path(cache_dir, relative_path)
+    tmp_path: Path | None = None
 
     try:
         # Check mtime-based invalidation
@@ -274,11 +275,10 @@ def ensure_faststart_cache(
                 file_path.name,
                 stderr_msg,
             )
-            if tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
             return None
 
         tmp_path.rename(out_path)
+        tmp_path = None  # renamed — nothing left to clean up
         logger.info("ensure_faststart_cache — done: %s", out_path.name)
         return out_path
 
@@ -291,6 +291,15 @@ def ensure_faststart_cache(
     except Exception:
         logger.warning("ensure_faststart_cache — unexpected error for %s", file_path.name, exc_info=True)
         return None
+    finally:
+        # Always remove a partial temp file (timeout, crash, disk-full,
+        # daemon-thread kill at interpreter shutdown). Otherwise half-written
+        # ``.tmp.mp4`` files accumulate and bloat the shadow cache.
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("ensure_faststart_cache — could not remove temp file %s", tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +343,7 @@ def ensure_remux_cache(
     failure.  Never raises.
     """
     out_path = get_remux_cache_path(cache_dir, relative_path)
+    tmp_path: Path | None = None
 
     try:
         if out_path.exists():
@@ -380,11 +390,10 @@ def ensure_remux_cache(
                 file_path.name,
                 stderr_msg,
             )
-            if tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
             return None
 
         tmp_path.rename(out_path)
+        tmp_path = None  # renamed — nothing left to clean up
         logger.info("ensure_remux_cache — done: %s", out_path.name)
         return out_path
 
@@ -397,6 +406,15 @@ def ensure_remux_cache(
     except Exception:
         logger.warning("ensure_remux_cache — unexpected error for %s", file_path.name, exc_info=True)
         return None
+    finally:
+        # Always remove a partial temp file (timeout, crash, disk-full,
+        # daemon-thread kill at interpreter shutdown). A timed-out transcode
+        # can leave a multi-GB ``.tmp.mp4`` behind — these must never linger.
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("ensure_remux_cache — could not remove temp file %s", tmp_path)
 
 
 # Tracks in-flight background remux jobs so we never spawn two ffmpeg
@@ -465,6 +483,34 @@ def start_background_remux_generation(work: list[tuple[Path, Path, str]]) -> boo
 
     threading.Thread(target=_run, daemon=True, name="remux-bootstrap").start()
     return True
+
+
+def cleanup_stale_remux_tmp(cache_dir: Path) -> int:
+    """Delete leftover ``*.tmp.mp4`` partials from the video shadow cache.
+
+    Half-written temp files can survive a crash, a disk-full event, or the
+    daemon thread being killed at interpreter shutdown.  A timed-out transcode
+    in particular can leave a multi-GB partial behind.  This sweep removes them
+    so the cache doesn't grow unbounded.
+
+    Returns the number of files removed.  Best-effort, never raises.
+    """
+    video_cache = cache_dir / "video"
+    removed = 0
+    try:
+        if not video_cache.is_dir():
+            return 0
+        for tmp_file in video_cache.rglob("*.tmp.mp4"):
+            try:
+                tmp_file.unlink(missing_ok=True)
+                removed += 1
+            except OSError:
+                logger.debug("cleanup_stale_remux_tmp — could not remove %s", tmp_file)
+    except Exception:
+        logger.debug("cleanup_stale_remux_tmp — sweep failed", exc_info=True)
+    if removed:
+        logger.info("cleanup_stale_remux_tmp — removed %d stale temp file(s)", removed)
+    return removed
 
 
 def remux_stream(

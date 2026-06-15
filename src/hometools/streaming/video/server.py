@@ -197,6 +197,16 @@ def create_app(
 
             threading.Thread(target=_prepare_intro_markers, daemon=True, name="video-intro-bootstrap").start()
 
+            def _sweep_stale_remux_tmp() -> None:
+                try:
+                    from hometools.streaming.core.remux import cleanup_stale_remux_tmp
+
+                    cleanup_stale_remux_tmp(resolved_cache_dir)
+                except Exception:
+                    logger.debug("Failed to sweep stale remux temp files", exc_info=True)
+
+            threading.Thread(target=_sweep_stale_remux_tmp, daemon=True, name="video-remux-tmp-sweep").start()
+
             def _prepare_remux() -> None:
                 from hometools.config import get_pretranscode_enabled
 

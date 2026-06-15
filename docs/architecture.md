@@ -660,6 +660,16 @@ Für `.mp4`-Dateien ohne Faststart wird **einmalig eine gecachte Faststart-Kopie
 - `ensure_faststart_cache()` ist idempotent, thread-safe über tmp→rename-Pattern.
 - Fehler (ffmpeg fehlt, Timeout, Disk-Fehler) werden geloggt; die Funktion gibt `None` zurück und der Aufrufer fällt auf den alten Remux-Pfad zurück — kein Absturz.
 
+### Temp-File-Hygiene für Remux/Faststart-Caches (2026-06-15)
+
+**Problem:** `ensure_remux_cache()` und `ensure_faststart_cache()` schreiben zuerst in eine `*.tmp.mp4`-Datei und benennen sie nach Erfolg um (atomares tmp→rename-Pattern). Der partielle Temp-File wurde aber **nur** im `returncode != 0`-Zweig gelöscht. Bei einem **Timeout** (Transcode-Timeout bis zu 7200 s!), beim Kill des Daemon-Threads beim Interpreter-Shutdown oder bei einer unerwarteten Exception (z. B. Disk-Full während des `rename`) blieb die halb geschriebene Datei zurück. Bei knappem Speicher scheiterten viele Transcodes mitten im Schreiben → **angesammelte, teils mehrere GB große `.tmp.mp4`-Leichen** im Shadow-Cache.
+
+**Lösung:**
+- Beide Funktionen kapseln die Temp-Datei-Behandlung in `try/finally`: `tmp_path` wird nach erfolgreichem `rename` auf `None` gesetzt; das `finally` entfernt jede noch existierende Temp-Datei (`unlink(missing_ok=True)`), unabhängig vom Exit-Pfad. Exception-safe.
+- Neue `cleanup_stale_remux_tmp(cache_dir)`-Funktion durchsucht `{cache_dir}/video/**/*.tmp.mp4` und entfernt Altlasten aus der Zeit vor diesem Fix. Best-effort, wirft nie.
+- Beim Video-Server-Start läuft die Bereinigung einmalig in einem Daemon-Thread (`video-remux-tmp-sweep`), blockiert Start/Katalog nie. Fertige `*.remux.mp4`/`*.faststart.mp4`-Caches bleiben unangetastet.
+
+
 ### Background-Prewarm (2026-05-29)
 
 Der erste Stream-Request einer großen MP4-Datei ohne Faststart blockierte

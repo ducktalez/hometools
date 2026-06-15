@@ -439,3 +439,62 @@ class TestRemuxCache:
         with patch("subprocess.run", return_value=MagicMock(returncode=1, stderr=b"boom")):
             result = ensure_remux_cache(src, tmp_path / "cache", "ep.avi", copy=True)
         assert result is None
+
+    def test_partial_tmp_removed_on_ffmpeg_failure(self, tmp_path):
+        """A half-written .tmp.mp4 must not survive a non-zero ffmpeg exit."""
+        src = tmp_path / "ep.avi"
+        src.write_bytes(b"avi")
+
+        def fake_run(cmd, **kwargs):
+            Path(cmd[-1]).write_bytes(b"partial")  # ffmpeg wrote some bytes
+            return MagicMock(returncode=1, stderr=b"boom")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = ensure_remux_cache(src, tmp_path / "cache", "ep.avi", copy=True)
+
+        assert result is None
+        tmp = get_remux_cache_path(tmp_path / "cache", "ep.avi").with_suffix(".tmp.mp4")
+        assert not tmp.exists()
+
+    def test_partial_tmp_removed_on_timeout(self, tmp_path):
+        """A timed-out transcode must not leave a (potentially huge) partial behind."""
+        import subprocess
+
+        src = tmp_path / "ep.avi"
+        src.write_bytes(b"avi")
+
+        def fake_run(cmd, **kwargs):
+            Path(cmd[-1]).write_bytes(b"partial" * 100)  # ffmpeg wrote a partial
+            raise subprocess.TimeoutExpired(cmd, 7200)
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = ensure_remux_cache(src, tmp_path / "cache", "ep.avi", copy=False)
+
+        assert result is None
+        tmp = get_remux_cache_path(tmp_path / "cache", "ep.avi").with_suffix(".tmp.mp4")
+        assert not tmp.exists()
+
+
+class TestCleanupStaleRemuxTmp:
+    def test_removes_stale_tmp_files(self, tmp_path):
+        from hometools.streaming.core.remux import cleanup_stale_remux_tmp
+
+        video = tmp_path / "video" / "Series"
+        video.mkdir(parents=True)
+        stale_a = video / "ep01.avi.tmp.mp4"
+        stale_b = video / "ep02.mkv.tmp.mp4"
+        keep = video / "ep01.avi.remux.mp4"
+        for f in (stale_a, stale_b, keep):
+            f.write_bytes(b"x")
+
+        removed = cleanup_stale_remux_tmp(tmp_path)
+
+        assert removed == 2
+        assert not stale_a.exists()
+        assert not stale_b.exists()
+        assert keep.exists()  # finished caches are preserved
+
+    def test_no_video_dir_returns_zero(self, tmp_path):
+        from hometools.streaming.core.remux import cleanup_stale_remux_tmp
+
+        assert cleanup_stale_remux_tmp(tmp_path) == 0

@@ -32,6 +32,29 @@ cd hometools
 **Variante B – ohne git:** Auf GitHub „Code → Download ZIP", entpacken und
 den Ordner via File Station nach `/volume1/docker/hometools` legen.
 
+## 1b. Ein-Befehl-Deploy (Skript)
+
+Statt die Schritte 2–3 von Hand zu machen, gibt es ein idempotentes
+Deploy-Skript, das **auf der NAS** läuft (nach `git clone`):
+
+```bash
+cd /volume1/docker/hometools
+sudo bash scripts/deploy-synology.sh
+```
+
+Das Skript:
+1. `git pull` (wenn es ein git-Checkout ist),
+2. legt `.env` aus `docker/.env.synology.example` an und füllt **PUID/PGID**
+   automatisch aus dem aufrufenden DSM-User; danach stoppt es **einmalig**,
+   damit du die Bibliothekspfade in `.env` eintragen kannst,
+3. prüft beim erneuten Lauf, dass die Library-Pfade existieren,
+4. `docker compose up -d --build`,
+5. zeigt die erreichbaren URLs + einen `/health`-Check.
+
+Erneut ausführen = Update (git pull + Rebuild). Es nimmt **kein Passwort**
+entgegen; Docker auf DSM braucht `sudo`.
+
+
 ## 2. `.env` anlegen
 
 ```bash

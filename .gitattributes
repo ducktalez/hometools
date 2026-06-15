@@ -1,0 +1,4 @@
+# Shell scripts must keep LF line endings, even when checked out on Windows.
+# CRLF would break the shebang and `set -e` semantics on the Synology NAS.
+*.sh text eol=lf
+
