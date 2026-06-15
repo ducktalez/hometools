@@ -4,14 +4,15 @@
 
 ```bash
 cp docker/.env.example .env
-# In .env: AUDIO_LIBRARY_PATH und VIDEO_LIBRARY_PATH eintragen
-docker compose up -d --build
+# In .env: VIDEO_LIBRARY_PATH eintragen (AUDIO_LIBRARY_PATH nur bei Bedarf)
+docker compose up -d --build            # nur Video (Default)
+docker compose --profile audio up -d --build   # zusätzlich Audio
 ```
 
 Erreichbar:
 
-- Audio: <http://HOST:8010>
 - Video: <http://HOST:8011>
+- Audio (nur mit `--profile audio`): <http://HOST:8010>
 - Channel (optional, im Compose auskommentiert): <http://HOST:8012>
 
 ## Architektur
@@ -23,9 +24,16 @@ und Audit-Log, aber jeder Service hat seine eigene Bibliothek.
 
 | Service   | Port  | Command         | Library-Mount     |
 |-----------|-------|-----------------|-------------------|
-| `audio`   | 8010  | `serve-audio`   | `/media/audio:ro` |
 | `video`   | 8011  | `serve-video`   | `/media/video:ro` |
+| `audio`   | 8010  | `serve-audio`   | `/media/audio:ro` (Profil `audio`, opt-in) |
 | `channel` | 8012  | `serve-channel` | `/media/video:ro` + `channel_schedule.yaml` |
+
+Der **Video-Service läuft per Default**; **Audio** liegt hinter dem
+Compose-Profil `audio` und wird nur mit `--profile audio` (bzw.
+`COMPOSE_PROFILES=audio` in der `.env`) gestartet. Ohne aktives Profil wird
+der Audio-Container nicht angelegt — ein fehlender `AUDIO_LIBRARY_PATH` ist
+dann kein Fehler.
+
 
 Alternativ kann der auskommentierte `all-in-one`-Service aktiviert werden,
 der über `serve-all` alle drei Server in einem Container laufen lässt

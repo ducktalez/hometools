@@ -70,9 +70,16 @@ In `.env` anpassen:
   → `PUID=1026`, `PGID=100`.
 - **Bibliothekspfade** (die echten Freigaben auf der Diskstation):
   ```dotenv
-  AUDIO_LIBRARY_PATH=/volume1/music
   VIDEO_LIBRARY_PATH=/volume1/video
   ```
+  > **Nur Video?** Per Default startet **ausschließlich der Video-Server**.
+  > `AUDIO_LIBRARY_PATH` darf dann fehlen/leer bleiben — der Audio-Service
+  > liegt hinter dem Compose-Profil `audio` und wird ohne `--profile audio`
+  > (bzw. `ENABLE_AUDIO=1` beim Skript) gar nicht erst angelegt. Audio nur
+  > aktivieren, wenn du eine Musik-Freigabe hast:
+  > ```dotenv
+  > AUDIO_LIBRARY_PATH=/volume1/music
+  > ```
 - Ports bei Bedarf (`AUDIO_PORT=8010`, `VIDEO_PORT=8011`).
 - **Optional für TV** (Default **aus**): `HOMETOOLS_PRETRANSCODE=true`
   baut beim Start die **gesamte** Bibliothek (`.avi`/`.mkv`/XviD) im Hintergrund
@@ -91,13 +98,17 @@ In `.env` anpassen:
 
 **Oder per SSH:**
 ```bash
-docker compose up -d --build
-docker compose logs -f video      # Startfortschritt
+docker compose up -d --build          # startet nur den Video-Server (Default)
+docker compose logs -f video          # Startfortschritt
 ```
 
+> **Audio zusätzlich** (optional): `docker compose --profile audio up -d --build`.
+> Ohne `--profile audio` wird der Audio-Container nicht angelegt, und ein
+> fehlender/leerer `AUDIO_LIBRARY_PATH` ist dann **kein** Fehler.
+
 Erreichbar:
-- Audio: `http://NAS-IP:8010`
 - Video: `http://NAS-IP:8011`
+- Audio (nur mit `--profile audio`): `http://NAS-IP:8010`
 
 DSM-Firewall: ggf. Ports **8010/8011** für das LAN freigeben
 (Systemsteuerung → Sicherheit → Firewall).
@@ -218,6 +229,8 @@ bleiben erhalten.
 
 | Symptom | Ursache / Lösung |
 |---------|------------------|
+| Build bricht ab: `groupadd: GID '100' already exists` | `PGID=100` (Synology-Gruppe `users`) existiert im Image bereits. Aktuelle `Dockerfile`-Version ziehen (`git pull`) — sie legt Gruppe/User nur an, wenn die ID noch fehlt. Ad-hoc ohne Pull: im `Dockerfile` den `RUN groupadd …`-Block durch die getent-Variante ersetzen (siehe README/Runbook). |
+| Build/Start bricht ab, „AUDIO_LIBRARY_PATH … does not exist" / Musikordner fehlt | Du willst nur Video → Audio ist optional. Mit `docker compose up -d --build` (ohne `--profile audio`) wird der Audio-Container gar nicht angelegt; `AUDIO_LIBRARY_PATH` darf leer bleiben. Falls eine alte `.env` noch `AUDIO_LIBRARY_PATH:?` erzwang: aktuelle `docker-compose.yml` ziehen (`git pull`). |
 | `/health` nicht erreichbar | Firewall-Port nicht offen, oder Container nicht „running" (`docker compose ps`). |
 | „Permission denied" beim Library-Lesen | PUID/PGID stimmen nicht mit der Datei-Ownership überein (`docker exec hometools-video id`). |
 | `.avi` lädt am TV nicht | `HOMETOOLS_PRETRANSCODE=true` setzen; ffmpeg ist im Image enthalten; erste Konvertierung im Hintergrund abwarten. |

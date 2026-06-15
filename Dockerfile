@@ -56,15 +56,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /opt/venv /opt/venv
 
 # Non-root user — UID/GID overridable at build time so the container can
-# read NAS shares mounted with specific ownership (Synology PUID/PGID pattern)
+# read NAS shares mounted with specific ownership (Synology PUID/PGID pattern).
+# Robust against pre-existing GID/UID: on Synology PGID=100 ("users") already
+# exists in the base image, so a naive `groupadd -g 100` would fail. We reuse
+# an existing group/user when present and only create what's missing.
 ARG PUID=1000
 ARG PGID=1000
-RUN groupadd -g ${PGID} hometools && \
-    useradd -u ${PUID} -g ${PGID} -m -s /usr/sbin/nologin hometools && \
-    mkdir -p /data/cache /data/audit /media/audio /media/video && \
-    chown -R hometools:hometools /data
+RUN set -eux; \
+    if ! getent group "${PGID}" >/dev/null; then \
+        groupadd -g "${PGID}" hometools; \
+    fi; \
+    if ! getent passwd "${PUID}" >/dev/null; then \
+        useradd -u "${PUID}" -g "${PGID}" -m -s /usr/sbin/nologin hometools; \
+    fi; \
+    mkdir -p /data/cache /data/audit /media/audio /media/video; \
+    chown -R "${PUID}:${PGID}" /data /home/hometools 2>/dev/null || chown -R "${PUID}:${PGID}" /data
 
-USER hometools
+USER ${PUID}:${PGID}
 WORKDIR /home/hometools
 
 # Healthcheck: every server exposes /health.  HC_PORT is set per-service in
