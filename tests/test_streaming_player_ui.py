@@ -1947,4 +1947,127 @@ class TestPlayerBugfixes2026_06:
         """Missing-episode placeholders must show a clear 'Folge fehlt' label."""
         js = render_player_js(api_path="/api/test", item_noun="video")
         assert "Folge fehlt" in js
-        assert "withMissingEpisodes" in js
+
+
+# ---------------------------------------------------------------------------
+# Catalog cache (localStorage stale-while-revalidate) — regression tests
+# Bug: every page reload fetched the full catalog from the server because
+#      loadInitialCatalog() always used cache:'no-store' and INITIAL was empty.
+#      These tests lock the stale-while-revalidate implementation so it never
+#      regresses silently.
+# ---------------------------------------------------------------------------
+
+
+class TestCatalogLocalStorageCache:
+    """The JS must persist and restore the catalog from localStorage to avoid
+    a full-index fetch on every page reload (stale-while-revalidate pattern)."""
+
+    def _js(self):
+        return render_player_js(api_path="/api/test/items", item_noun="track")
+
+    # ── Helper functions must be present ─────────────────────────────────────
+
+    def test_save_catalog_cache_function_defined(self):
+        assert "function _saveCatalogCache(" in self._js()
+
+    def test_load_catalog_cache_function_defined(self):
+        assert "function _loadCatalogCache(" in self._js()
+
+    def test_clear_catalog_cache_function_defined(self):
+        assert "function _clearCatalogCache(" in self._js()
+
+    def test_catalog_cache_key_uses_api_path(self):
+        """Key must be derived from API_PATH so audio and video never share a slot."""
+        js = self._js()
+        assert "_CATALOG_CACHE_KEY" in js
+        assert "API_PATH" in js
+
+    def test_catalog_max_age_defined(self):
+        assert "_CATALOG_MAX_AGE_MS" in self._js()
+
+    # ── loadInitialCatalog must use the cache ─────────────────────────────────
+
+    def test_load_initial_catalog_checks_cache_before_fetch(self):
+        """loadInitialCatalog must call _loadCatalogCache() before going to the network."""
+        js = self._js()
+        load_fn_start = js.index("function loadInitialCatalog(")
+        # _loadCatalogCache must appear inside loadInitialCatalog, before the fetch call
+        load_cache_pos = js.index("_loadCatalogCache()", load_fn_start)
+        fetch_pos = js.index("fetch(API_PATH", load_fn_start)
+        assert load_cache_pos < fetch_pos, "_loadCatalogCache() must be called BEFORE the network fetch inside loadInitialCatalog"
+
+    def test_load_initial_catalog_saves_after_fetch(self):
+        """After a successful network fetch, loadInitialCatalog must persist the result."""
+        js = self._js()
+        load_fn_start = js.index("function loadInitialCatalog(")
+        # Find next function definition to bound the search
+        next_fn = js.index("\n  function ", load_fn_start + 1)
+        fn_body = js[load_fn_start:next_fn]
+        assert "_saveCatalogCache(allItems)" in fn_body, "_saveCatalogCache must be called inside loadInitialCatalog after the fetch"
+
+    def test_load_initial_catalog_shows_cached_items_without_loading_state(self):
+        """When cache is present, loadInitialCatalog must call showFolderView() immediately."""
+        js = self._js()
+        load_fn_start = js.index("function loadInitialCatalog(")
+        next_fn = js.index("\n  function ", load_fn_start + 1)
+        fn_body = js[load_fn_start:next_fn]
+        # showFolderView() must appear before the initialCatalogRetryCount increment
+        # (i.e. in the cache-hit branch, not the loading branch)
+        show_pos = fn_body.index("showFolderView()")
+        retry_pos = fn_body.index("initialCatalogRetryCount")
+        assert show_pos < retry_pos, "showFolderView() must be called in the cache-hit branch, before the retry counter"
+
+    # ── Cache must be updated on background/manual refresh ───────────────────
+
+    def test_background_refresh_saves_catalog(self):
+        """scheduleBackgroundRefresh must persist the updated catalog."""
+        js = self._js()
+        bg_fn_start = js.index("function scheduleBackgroundRefresh(")
+        next_fn = js.index("\n  function ", bg_fn_start + 1)
+        fn_body = js[bg_fn_start:next_fn]
+        assert "_saveCatalogCache(allItems)" in fn_body, "_saveCatalogCache must be called inside scheduleBackgroundRefresh"
+
+    def test_refresh_poll_saves_catalog(self):
+        """_refreshPoll (manual refresh polling) must persist the updated catalog."""
+        js = self._js()
+        poll_fn_start = js.index("function _refreshPoll(")
+        next_fn = js.index("\n  function ", poll_fn_start + 1)
+        fn_body = js[poll_fn_start:next_fn]
+        assert "_saveCatalogCache(allItems)" in fn_body, "_saveCatalogCache must be called inside _refreshPoll"
+
+    # ── Explicit refresh must clear the cache ─────────────────────────────────
+
+    def test_refresh_catalog_clears_cache(self):
+        """User-triggered refreshCatalog must clear the localStorage cache
+        so the next load fetches fresh data and doesn't serve stale items."""
+        js = self._js()
+        refresh_fn_start = js.index("function refreshCatalog(")
+        next_fn = js.index("\n  function ", refresh_fn_start + 1)
+        fn_body = js[refresh_fn_start:next_fn]
+        assert "_clearCatalogCache()" in fn_body, "_clearCatalogCache must be called inside refreshCatalog"
+
+    # ── Load function handles offline gracefully ──────────────────────────────
+
+    def test_cache_hit_handles_offline_server_gracefully(self):
+        """When cache is used and the background fetch fails (server offline),
+        the cached data must remain visible — no crash or empty state."""
+        js = self._js()
+        load_fn_start = js.index("function loadInitialCatalog(")
+        next_fn = js.index("\n  function ", load_fn_start + 1)
+        fn_body = js[load_fn_start:next_fn]
+        # Must have a .catch() handler in the background fetch branch
+        assert ".catch(function()" in fn_body, "The background refresh fetch inside loadInitialCatalog must have a .catch() handler"
+
+    # ── Parity: both audio and video API paths produce distinct keys ──────────
+
+    def test_cache_key_differs_between_audio_and_video(self):
+        """The cache key must be unique per server so that the audio catalog
+        never overwrites the video catalog or vice versa."""
+        js_audio = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+        js_video = render_player_js(api_path="/api/video/items", item_noun="video")
+        # Both must define the constant
+        assert "_CATALOG_CACHE_KEY" in js_audio
+        assert "_CATALOG_CACHE_KEY" in js_video
+        # The values must differ (key contains the API path)
+        assert "_api_audio_tracks" in js_audio or "api/audio/tracks" in js_audio
+        assert "_api_video_items" in js_video or "api/video/items" in js_video

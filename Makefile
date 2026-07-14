@@ -8,12 +8,15 @@ TODO_KEY ?=
 TODO_ACTION ?= acknowledge
 TODO_SECONDS ?= 3600
 
+TV_IP ?=
+
 .PHONY: help lint format test parity streaming-config issues issues-json issues-errors todos todos-json scheduler-once todo-state dashboard dashboard-json \
 	serve-audio serve-video serve-all \
 	serve-audio-safe serve-video-safe serve-all-safe \
 	reset reset-hard reset-all-hard \
 	prewarm prewarm-full audio-prewarm video-prewarm audio-reindex video-reindex \
-	clean
+	clean \
+	android-check android-build android-test android-install android-deploy
 
 help:
 	@echo "Targets:"
@@ -51,6 +54,13 @@ help:
 	@echo "                         video_metadata_cache.json, thumbnail_failures.json)"
 	@echo "                        Audit log (.hometools-audit/) is a separate directory"
 	@echo "                        and is NOT affected by clean."
+	@echo ""
+	@echo "Android TV (clients/androidtv/):"
+	@echo "  android-check       - Voraussetzungen prüfen (JDK 17, Android SDK, Wrapper JAR)"
+	@echo "  android-build       - APK bauen (assembleDebug)"
+	@echo "  android-test        - JVM-Unit-Tests (kein Emulator nötig)"
+	@echo "  android-install     - APK auf verbundenes Gerät installieren"
+	@echo "  android-deploy      - Build + ADB-Deploy auf TV (TV_IP=<ip> erforderlich)"
 
 lint:
 	$(RUFF) check src tests --fix
@@ -152,4 +162,22 @@ deleted = []; \
 print('  deleted:', len(deleted), 'items') \
 "
 	@echo "Done. Run 'make audio-prewarm' or 'make video-prewarm' to rebuild."
+
+# ── Android TV ────────────────────────────────────────────────────────────────
+
+android-check:
+	powershell -ExecutionPolicy Bypass -File clients/androidtv/scripts/build.ps1 -Action check
+
+android-build:
+	powershell -ExecutionPolicy Bypass -File clients/androidtv/scripts/build.ps1 -Action build
+
+android-test:
+	powershell -ExecutionPolicy Bypass -File clients/androidtv/scripts/build.ps1 -Action test
+
+android-install:
+	powershell -ExecutionPolicy Bypass -File clients/androidtv/scripts/build.ps1 -Action install -TvIp "$(TV_IP)"
+
+android-deploy:
+	@if [ -z "$(TV_IP)" ]; then echo "Fehler: TV_IP ist erforderlich. Beispiel: make android-deploy TV_IP=192.168.178.100"; exit 1; fi
+	powershell -ExecutionPolicy Bypass -File clients/androidtv/scripts/build.ps1 -Action deploy -TvIp "$(TV_IP)"
 

@@ -144,6 +144,31 @@ def _update_refresh_log(
     return now
 
 
+def _deferred_delete(path: Path, retries: int = 12, delay: float = 5.0) -> None:
+    """Delete *path* in a background thread with retries.
+
+    Used on Windows when a file is still held open by an active stream while we
+    already copied it to the new location.  We keep retrying until the file
+    handle is released (typically when the HTTP connection closes).
+    """
+    import time as _time
+
+    for attempt in range(retries):
+        _time.sleep(delay)
+        try:
+            if not path.exists():
+                return  # already gone
+            path.unlink()
+            logger.info("Deferred delete succeeded: %s (attempt %d)", path, attempt + 1)
+            return
+        except PermissionError:
+            logger.debug("Deferred delete attempt %d/%d — file still in use: %s", attempt + 1, retries, path)
+        except Exception:
+            logger.warning("Deferred delete failed for %s", path, exc_info=True)
+            return
+    logger.warning("Deferred delete gave up after %d attempts: %s", retries, path)
+
+
 def create_app(
     library_dir: Path | None = None,
     *,
@@ -726,6 +751,31 @@ def create_app(
         try:
             target_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(file_path), str(target_file))
+        except PermissionError as exc:
+            # Windows WinError 32: file is held open by an active stream.
+            # shutil.move() already copied the file to the destination before
+            # failing to delete the source.  If the copy is in place we treat
+            # the move as successful and schedule a background retry to remove
+            # the original once the file handle is released.
+            if target_file.exists():
+                logger.info(
+                    "File in use during move %s → %s — copy succeeded, scheduling deferred source delete",
+                    file_path,
+                    target_file,
+                )
+                threading.Thread(
+                    target=_deferred_delete,
+                    args=(file_path,),
+                    daemon=True,
+                    name="deferred-delete",
+                ).start()
+                # Fall through to the success path below
+            else:
+                # Copy did not succeed either — genuine failure
+                raise HTTPException(
+                    status_code=409,
+                    detail="Die Datei kann nicht verschoben werden (Zugriff verweigert).",
+                ) from exc
         except Exception as exc:
             logger.exception("Failed to move file %s → %s", file_path, target_file)
             raise HTTPException(status_code=500, detail=f"Move failed: {exc}") from exc
@@ -748,14 +798,13 @@ def create_app(
 
     @app.post("/api/audio/delete-file")
     def audio_delete_file(payload: dict[str, object]) -> dict[str, object]:
-        """Soft-delete an audio file (move to trash directory).
+        """Delete an audio file by sending it to the system Recycle Bin / Trash.
 
         Body: ``{"path": "Folder/song.mp3"}``
         Returns ``{"ok": true, "entry_id": "..."}``
         """
-        from hometools.config import get_delete_dir
         from hometools.streaming.core.audit_log import log_file_delete
-        from hometools.utils import attention_delete_files
+        from hometools.utils import send_to_trash
 
         path = str(payload.get("path") or "").strip()
         if not path:
@@ -768,11 +817,8 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        delete_dir = get_delete_dir()
-        trash_dest = delete_dir / file_path.name
-
         try:
-            attention_delete_files([file_path], delete_dir=delete_dir)
+            trash_dest = send_to_trash(file_path)
         except Exception as exc:
             logger.exception("Failed to delete file %s", file_path)
             raise HTTPException(status_code=500, detail=f"Delete failed: {exc}") from exc
@@ -781,7 +827,7 @@ def create_app(
             resolved_audit_dir,
             server="audio",
             path=path,
-            trash_path=str(trash_dest),
+            trash_path=trash_dest,
         )
 
         _audio_index_cache.invalidate()

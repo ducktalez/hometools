@@ -132,8 +132,14 @@ def get_stream_index_cache_ttl() -> int:
 
     A longer TTL avoids expensive full-library rescans on frequent reloads,
     while background refresh keeps stale snapshots up to date.
+
+    Default is 1800 s (30 min) — a reasonable balance for home-NAS usage where
+    the library rarely changes during a viewing session.  The indexing toast
+    appears for the duration of each background rebuild; lower values increase
+    toast frequency.  Override with ``HOMETOOLS_STREAM_INDEX_CACHE_TTL`` (seconds).
+    Use the manual "Katalog neu laden" button for immediate updates.
     """
-    return _get_int_from_env("HOMETOOLS_STREAM_INDEX_CACHE_TTL", 900)
+    return _get_int_from_env("HOMETOOLS_STREAM_INDEX_CACHE_TTL", 1800)
 
 
 def get_stream_safe_mode() -> bool:

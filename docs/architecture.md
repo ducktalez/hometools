@@ -42,6 +42,19 @@ app handles formats the TV browser cannot, and why a WebView wrapper was
 rejected for TV. Three screens: server setup → browse → player. Data layer
 (`data/`) mirrors `MediaItem.to_dict()` and tolerates unknown fields.
 
+**Android TV Build & Test Pipeline (2026-06-24):**
+
+- `clients/androidtv/scripts/build.ps1` — PowerShell-Script mit Aktionen `check | build | test | install | deploy`.  
+  `check` prüft JDK 17, Android SDK, Gradle Wrapper JAR und erstellt `local.properties` automatisch.  
+  `deploy -TvIp <ip>` führt `adb connect`, dann `installDebug` aus.
+- Makefile-Targets: `android-check`, `android-build`, `android-test`, `android-install`, `android-deploy TV_IP=<ip>`.
+- **JVM-Unit-Tests** (`app/src/test/`) laufen ohne Emulator/Gerät via `gradlew test`:
+  - `ApiClientTest` — URL-Joining, baseUrl-Normalisierung, thumbUrl-Präferenz für large Variant
+  - `ModelsTest` — JSON-Parsing der API-Antworten, unbekannte Felder werden ignoriert (forward-compat), Default-Werte, ProgressBody-Serialisierung
+- **Gradle Wrapper JAR** ist git-ignoriert (`.gitignore`); muss einmalig via `gradle wrapper --gradle-version 8.9` lokal generiert werden.
+- **`local.properties`** ist git-ignoriert; wird vom `check`-Script automatisch aus `ANDROID_HOME` / `ANDROID_SDK_ROOT` / Standard-Pfad erstellt.
+- Voraussetzungen: JDK 17, Android SDK (Android Studio oder CLI-Tools), Gradle für den initialen Wrapper.
+
 ### Designregeln (Clients)
 
 - API-first: ein API-Change → Schema neu exportieren + Client im selben Change anpassen.
@@ -196,6 +209,28 @@ Das Shadow-Cache-Verzeichnis (Default: `.hometools-cache/` im Repo-Root, übersc
 ### Index-Snapshots
 
 Der vollständige Index wird nach einem erfolgreichen Rebuild atomar als JSON-Snapshot gespeichert (`_save_snapshot`). **Es gibt kein inkrementelles Speichern während des Builds** — wird der Server während der Indizierung beendet, geht der laufende Scan-Fortschritt verloren. Der **letzte erfolgreiche Snapshot bleibt erhalten** und wird beim nächsten Start als Fallback geladen, sodass der Server sofort funktionsfähig ist (ohne Scan-Wartezeit).
+
+### Catalog-Caching: Stale-While-Revalidate (Client-seitig, 2026-07-05)
+
+**Wiederholt aufgetretener Bug:** Jedes Seitenneuladen (F5) lud den kompletten Index neu, weil:
+1. `GET /` die HTML immer mit leerem `initial-data` (`[]`) rendert
+2. `loadInitialCatalog()` deshalb immer `fetch(API_PATH, { cache: 'no-store' })` aufrief
+
+**Fix:** `localStorage`-basierter Katalog-Cache mit Stale-While-Revalidate-Muster in `_player_js.py`.
+
+**Ablauf:**
+1. Beim Laden prüft `_loadCatalogCache()` den localStorage-Eintrag (`ht-catalog-<api-path>`)
+2. Ist ein frischer Snapshot (< 5 Minuten) vorhanden → sofort anzeigen, kein Ladespinner
+3. Im Hintergrund: `fetch(API_PATH, { cache: 'no-store' })` zur Verifikation
+4. Bei Änderung (item count differs): `allItems` und localStorage aktualisieren, `showFolderView()` aufrufen
+5. Ohne Snapshot: normales Fetch mit Ladespinner (Erstaufruf / nach Ablauf)
+
+**Invarianten (Tests: `TestCatalogLocalStorageCache`):**
+- `_saveCatalogCache(allItems)` nach jedem erfolgreichen Fetch: `loadInitialCatalog`, `scheduleBackgroundRefresh`, `_refreshPoll`
+- `_clearCatalogCache()` am Anfang von `refreshCatalog()` (expliziter Nutzer-Refresh)
+- Cache-Key: `'ht-catalog-' + API_PATH.replace(/\W+/g, '_')` — Audio und Video nie identisch
+- Max-Alter: 5 Minuten (`_CATALOG_MAX_AGE_MS`)
+- Alle localStorage-Zugriffe in try/catch (QuotaExceededError bei großen Bibliotheken)
 
 ### `make clean`
 

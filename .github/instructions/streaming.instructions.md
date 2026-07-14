@@ -41,6 +41,37 @@ When adding or changing a feature:
 - When changing API response shapes, the Service Worker and frontend JS
   must both be updated (they are generated strings in `server_utils.py`).
 
+## Catalog caching — stale-while-revalidate (IMPORTANT — recurring bug area)
+
+**Problem (occurred multiple times):** Every page reload triggered a full
+catalog fetch from the server because the HTML `initial-data` is always
+rendered with an empty list and `loadInitialCatalog()` always called
+`fetch(API_PATH, { cache: 'no-store' })`.
+
+**Correct behavior:**
+1. `loadInitialCatalog()` reads from `localStorage` first (`_loadCatalogCache()`).
+2. If a fresh snapshot is found (< 5 min old), it is displayed **immediately**
+   without any loading spinner or network request.
+3. A silent background fetch verifies against the server; `allItems` and
+   `localStorage` are updated if the item count differs.
+4. Only when no localStorage snapshot exists does the function fetch normally
+   (showing a loading spinner).
+
+**Rules — never break these:**
+- `_saveCatalogCache(allItems)` must be called after every successful
+  catalog fetch: in `loadInitialCatalog()`, `scheduleBackgroundRefresh()`,
+  and `_refreshPoll()`.
+- `_clearCatalogCache()` must be called at the start of `refreshCatalog()`
+  (user-triggered explicit refresh) so the next load fetches fresh data.
+- The cache key is `'ht-catalog-' + API_PATH.replace(/\W+/g, '_')` — unique
+  per server (audio ≠ video).
+- Max age is `_CATALOG_MAX_AGE_MS = 5 * 60 * 1000` (5 minutes).
+- All localStorage access is wrapped in try/catch (`QuotaExceededError`
+  for large libraries, private-mode restrictions).
+- Tests: `tests/test_streaming_player_ui.py::TestCatalogLocalStorageCache`
+  — run after any change to `loadInitialCatalog`, `scheduleBackgroundRefresh`,
+  `_refreshPoll`, or `refreshCatalog`.
+
 ## Channel streaming (Fernsehsender)
 
 The channel server produces a **continuous HLS livestream** via ffmpeg.

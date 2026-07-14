@@ -947,14 +947,13 @@ def create_app(
 
     @app.post("/api/video/delete-file")
     def video_delete_file(payload: dict[str, object]) -> dict[str, object]:
-        """Soft-delete a video file (move to trash directory).
+        """Delete a video file by sending it to the system Recycle Bin / Trash.
 
         Body: ``{"path": "Folder/movie.mp4"}``
         Returns ``{"ok": true, "entry_id": "..."}``
         """
-        from hometools.config import get_delete_dir
         from hometools.streaming.core.audit_log import log_file_delete
-        from hometools.utils import attention_delete_files
+        from hometools.utils import send_to_trash
 
         path = str(payload.get("path") or "").strip()
         if not path:
@@ -967,11 +966,8 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        delete_dir = get_delete_dir()
-        trash_dest = delete_dir / file_path.name
-
         try:
-            attention_delete_files([file_path], delete_dir=delete_dir)
+            trash_dest = send_to_trash(file_path)
         except Exception as exc:
             logger.exception("Failed to delete file %s", file_path)
             raise HTTPException(status_code=500, detail=f"Delete failed: {exc}") from exc
@@ -980,7 +976,7 @@ def create_app(
             resolved_audit_dir,
             server="video",
             path=path,
-            trash_path=str(trash_dest),
+            trash_path=trash_dest,
         )
 
         _video_index_cache.invalidate()

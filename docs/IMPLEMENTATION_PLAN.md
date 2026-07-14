@@ -17,6 +17,13 @@
 - Optionales HTTPS
 - iOS Background Video Playback → [plans/background_video_playback.md](plans/background_video_playback.md)
 
+### Android TV
+- Server-URL-Eingabe verbessern: IP-Stepper oder QR-Code-Pairing (aktuell: einfaches Text-Feld)
+- Branding: echtes Icon/Banner statt Platzhalter-Vektor
+- Größere Poster-Art: Backend liefert 120 px / 480 px; TV-typische Poster/Backdrops (TMDB?) folgen
+- Device-Token / LAN-Discovery (statt manueller IP-Eingabe)
+- Instrumented UI-Tests (Jetpack Compose for TV + Emulator) — JVM-Unit-Tests sind bereits vorhanden
+
 ## Backlog — Low / Experimental
 
 - **DJ-Extension** — Mixing, Stems (Gesang/Instrumental/Beat), BPM-Analyse, Auto-DJ-Modus

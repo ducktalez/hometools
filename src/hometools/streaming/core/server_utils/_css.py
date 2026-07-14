@@ -210,6 +210,13 @@ body.tool-show-duplicates .dupe-badge { display: inline-flex; }
 }
 .track-delete-btn svg { width: 12px; height: 12px; }
 .track-delete-btn:hover { opacity: 1; color: #7f1d1d; }
+/* Safety-based colour coding (set when dupe-map is built):
+   --safe  = both size AND duration within 2 % → amber, probably identical rips
+   --warn  = deviation > 2 % in either metric   → red,   review before deleting */
+.track-delete-btn--safe { opacity: 0.9; color: #f59e0b; }
+.track-delete-btn--safe:hover { opacity: 1; color: #d97706; }
+.track-delete-btn--warn { opacity: 0.9; color: #ef4444; }
+.track-delete-btn--warn:hover { opacity: 1; color: #b91c1c; }
 /* ── Duplicate list panel ── */
 .dupe-panel-backdrop {
   position: fixed; inset: 0; z-index: 310; background: rgba(0,0,0,0.65);
@@ -248,6 +255,11 @@ body.tool-show-duplicates .dupe-badge { display: inline-flex; }
 }
 .dupe-trash-btn svg { width: 16px; height: 16px; }
 .dupe-trash-btn:hover { color: #ef4444; background: rgba(239,68,68,0.12); }
+/* Safety colour coding — same thresholds as .track-delete-btn variants */
+.dupe-trash-btn--safe { color: #f59e0b; }
+.dupe-trash-btn--safe:hover { color: #d97706; background: rgba(245,158,11,0.12); }
+.dupe-trash-btn--warn { color: #ef4444; }
+.dupe-trash-btn--warn:hover { color: #b91c1c; background: rgba(239,68,68,0.12); }
 .dupe-panel-close {
   background: none; border: 1px solid #555; color: var(--sub);
   border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer;
@@ -297,6 +309,15 @@ body.tool-show-file-mover .track-queue-btn { display: none; }
   max-width: 140px; flex-shrink: 1;
 }
 .move-folder-select:focus { border-color: var(--accent); outline: none; }
+.move-delete-btn {
+  background: none; border: none; color: var(--sub); cursor: pointer;
+  border-left: 1px solid #444; padding: 2px 6px 2px 8px;
+  font-size: 0.62rem; display: flex; align-items: center; gap: 3px;
+  border-radius: 0 4px 4px 0; white-space: nowrap; flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.move-delete-btn svg { width: 11px; height: 11px; flex-shrink: 0; }
+.move-delete-btn:hover { color: #e57373; background: rgba(229,115,115,0.08); }
 .folder-filter-bar {
   padding: 0 16px 4px; display: flex; align-items: center; gap: 8px;
 }
@@ -618,6 +639,16 @@ body.modal-open { overflow: hidden; }
 .track-item--hidden-shown.active { background: rgba(24,51,32,0.55); opacity: 0.5; }
 /* filter-hidden chip: stable width so click target doesn't shift */
 #filter-hidden { min-width: 8.5rem; justify-content: flex-start; }
+/* fade-out animation for delete / move — item slides up and disappears */
+@keyframes ht-fadeout {
+  from { opacity: 1; max-height: 120px; }
+  to   { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; overflow: hidden; }
+}
+.track-item--removing {
+  animation: ht-fadeout 0.32s ease forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
 /* moved ghost: file was moved this session — shown dimmed with target hint */
 .track-item--moved { opacity: 0.32; cursor: default; pointer-events: none; }
 .track-item--moved:hover { opacity: 0.42; }

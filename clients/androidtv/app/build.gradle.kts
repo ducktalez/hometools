@@ -59,5 +59,9 @@ dependencies {
     implementation(libs.retrofit.kotlinx.serialization)
 
     implementation(libs.coil.compose)
+
+    // JVM unit tests (run on the host JVM — no emulator/device needed)
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.serialization.json.test)
 }
 

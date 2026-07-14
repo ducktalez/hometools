@@ -634,6 +634,44 @@ def render_player_js(
   var viewToggle  = document.getElementById('view-toggle');
   var _savedViewMode = localStorage.getItem('ht-view-mode');
   var viewMode    = (_savedViewMode === 'list' || _savedViewMode === 'grid') ? _savedViewMode : 'list';
+
+  /* ── Catalog cache (localStorage, stale-while-revalidate) ──────────────────
+     Persists the full catalog so that page reloads show content immediately
+     without a loading spinner.  A silent background fetch always follows to
+     pick up any changes since the cache was written.
+     Key is unique per API endpoint so audio and video never clash.
+     Rule: _saveCatalogCache after every successful items fetch;
+           _clearCatalogCache before any user-triggered forced refresh.        */
+  var _CATALOG_CACHE_KEY = 'ht-catalog-' + API_PATH.replace(/\\W+/g, '_');
+  var _CATALOG_MAX_AGE_MS = 5 * 60 * 1000;  /* 5 min — discard if older */
+
+  function _saveCatalogCache(items) {
+    if (!items || !items.length) return;
+    try {
+      localStorage.setItem(_CATALOG_CACHE_KEY, JSON.stringify({
+        items: items, savedAt: Date.now(), count: items.length
+      }));
+    } catch (e) { /* QuotaExceededError on large libraries or private-mode — ignore */ }
+  }
+
+  function _loadCatalogCache() {
+    try {
+      var raw = localStorage.getItem(_CATALOG_CACHE_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.items) || !data.savedAt) return null;
+      if (Date.now() - data.savedAt > _CATALOG_MAX_AGE_MS) {
+        localStorage.removeItem(_CATALOG_CACHE_KEY);
+        return null;  /* expired */
+      }
+      return data.items;
+    } catch (e) { return null; }
+  }
+
+  function _clearCatalogCache() {
+    try { localStorage.removeItem(_CATALOG_CACHE_KEY); } catch (e) {}
+  }
+
   var currentStreamUrl = '';
   var currentOfflineUrl = null;
 """
@@ -1791,6 +1829,7 @@ def render_player_js(
           allItems = data && Array.isArray(data.items) ? data.items : [];
           _invalidateDupeMap();
           _invalidateFolderCache();
+          _saveCatalogCache(allItems);
           console.info('Background refresh complete:', allItems.length, 'items');
           showFolderView();
         })
@@ -1829,6 +1868,7 @@ def render_player_js(
       allItems = Array.isArray(data.items) ? data.items : [];
       _invalidateDupeMap();
       _invalidateFolderCache();
+      _saveCatalogCache(allItems);
       if (_rb) _rb.classList.remove('spinning');
 
       /* Show refresh timestamp */
@@ -1859,6 +1899,7 @@ def render_player_js(
 
   function refreshCatalog() {
     var _rb = _getRefreshBtn(); if (_rb) _rb.classList.add('spinning');
+    _clearCatalogCache();  /* force fresh data — user explicitly requested a reload */
     _ratingRefreshPath = null;
 
     var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
@@ -2177,6 +2218,43 @@ def render_player_js(
       console.info('Initial catalog already present in page payload:', allItems.length, 'items');
       return Promise.resolve(allItems);
     }
+    /* ── Stale-while-revalidate: show cached catalog immediately ───────────────
+       If localStorage holds a fresh snapshot (< _CATALOG_MAX_AGE_MS), display
+       it instantly with no loading spinner.  A silent background fetch follows
+       to pick up any changes; the UI only re-renders when the item count differs.
+       _loadCatalogCache() returns null when the entry is absent or expired.    */
+    var _cachedItems = _loadCatalogCache();
+    if (_cachedItems && _cachedItems.length) {
+      console.info('Initial catalog: serving', _cachedItems.length, 'items from localStorage cache (background refresh follows)');
+      allItems = _cachedItems;
+      _invalidateDupeMap();
+      _invalidateFolderCache();
+      showFolderView();
+      /* Verify against server silently — no loading state, no spinner */
+      fetch(API_PATH, { cache: 'no-store' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+          if (!data || data.error || data.loading) return;
+          var fresh = Array.isArray(data.items) ? data.items : [];
+          /* Detect deletions: check whether any currently cached path is absent
+             from the fresh catalog (count-only check misses e.g. replaced files). */
+          var freshPaths = null;
+          var hasDeletion = false;
+          if (fresh.length === allItems.length && allItems.length > 0) {
+            freshPaths = new Set(fresh.map(function(i) { return i.relative_path; }));
+            hasDeletion = allItems.some(function(i) { return !freshPaths.has(i.relative_path); });
+          }
+          var changed = fresh.length !== allItems.length || hasDeletion;
+          allItems = fresh;
+          _invalidateDupeMap();
+          _invalidateFolderCache();
+          _saveCatalogCache(allItems);
+          if (changed) { showFolderView(); }
+          if (data.refreshing) scheduleBackgroundRefresh();
+        })
+        .catch(function() { /* server offline — cached data stays visible */ });
+      return Promise.resolve(allItems);
+    }
     initialCatalogRetryCount += 1;
     if (initialCatalogRetryCount <= 1) {
       showLoadingState('Loading library…');
@@ -2209,6 +2287,7 @@ def render_player_js(
         allItems = data && Array.isArray(data.items) ? data.items : [];
         _invalidateDupeMap();
         _invalidateFolderCache();
+        _saveCatalogCache(allItems);
         console.info('Initial catalog parsed after', Date.now() - t0, 'ms:', allItems.length, 'items');
         showFolderView();
         /* If still building, show indexing toast and poll for updates */
@@ -3353,7 +3432,15 @@ def render_player_js(
       var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
       var convertBadge = needsConversion(t.relative_path) ? '<span class="convert-badge" title="Wird on-the-fly konvertiert">\\u26A1</span>' : '';
       var isDupe = _dupePaths && _dupePaths.has(t.relative_path);
-      var dupeBadge = isDupe ? '<span class="dupe-badge" title="Duplikat erkannt">Duplikat<button class="track-delete-btn" data-index="' + idx + '" title="Duplikat l\\u00f6schen">' + IC_TRASH + '</button></span>' : '';
+      var dupeSafe = isDupe && _dupeSafety && _dupeSafety[t.relative_path];
+      var dupeDeleteCls = isDupe ? (dupeSafe ? ' track-delete-btn--safe' : ' track-delete-btn--warn') : '';
+      var dupeDeleteTitle = isDupe
+        ? (dupeSafe ? 'Duplikat l\u00f6schen (Gr\u00f6\u00dfe + L\u00e4nge nahezu identisch)'
+                    : 'Duplikat l\u00f6schen \u2014 Vorsicht: Gr\u00f6\u00dfe oder L\u00e4nge weicht ab!')
+        : '';
+      var dupeBadge = isDupe ? '<span class="dupe-badge" title="Duplikat erkannt">Duplikat' +
+        '<button class="track-delete-btn' + dupeDeleteCls + '" data-index="' + idx +
+        '" title="' + escHtml(dupeDeleteTitle) + '">' + IC_TRASH + '</button></span>' : '';
       return '<li class="track-item' + extraCls +
         '" data-index="' + idx + '">' +
         '<span class="track-num"><span class="num-text">' + numLabel + '</span></span>' +
@@ -3485,6 +3572,14 @@ def render_player_js(
     });
     /* Wire up inline delete buttons for duplicate tracks */
     document.querySelectorAll('.track-delete-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        _deleteTrackFromList(Number(btn.dataset.index));
+      });
+    });
+    /* Wire up delete button inside file-mover widget */
+    document.querySelectorAll('.move-delete-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
         e.preventDefault();
@@ -3879,12 +3974,16 @@ def render_player_js(
                 })
               : allItems.filter(function(it) { return it.relative_path.indexOf('/') < 0; });
             if (!folderItems.length) folderItems = [found];
-            var idx = 0;
-            for (var j = 0; j < folderItems.length; j++) {
-              if (folderItems[j].relative_path === path) { idx = j; break; }
-            }
             showPlaylist(folderItems, false);
-            playItem(found, idx);
+            /* Find the correct index in filteredItems *after* showPlaylist has
+               sorted them via applyFilter.  Computing idx from the unsorted
+               folderItems before showPlaylist would give a stale position and
+               cause the wrong next-episode to play when the current one ends. */
+            var filteredIdx = 0;
+            for (var k = 0; k < filteredItems.length; k++) {
+              if (filteredItems[k].relative_path === path) { filteredIdx = k; break; }
+            }
+            playItem(found, filteredIdx);
             /* seek to saved position after canplay */
             if (seekPos > 2) {
               player.addEventListener('canplay', function onCp() {
@@ -4439,6 +4538,27 @@ def render_player_js(
   var IC_DUPLICATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
   var _dupeMap = null;   /* Map<key, [itemIndex, ...]> — only groups with 2+ items */
   var _dupePaths = null;  /* Set<relative_path> — all paths that belong to a dupe group */
+  var _dupeSafety = null; /* {relative_path: bool} — true=safe(≤2% deviation), false=warn(>2%) */
+  var _DUPE_SAFE_THRESHOLD = 0.02; /* 2 % — max allowed relative deviation in size & duration */
+
+  /* Return true when ALL pairs in the group have file_size AND duration within threshold.
+     Returns false if any metric is missing (0) for any item, or if any pair exceeds the
+     threshold in either metric. */
+  function _isDupeGroupSafe(groupItems) {
+    if (groupItems.length < 2) return true;
+    for (var a = 0; a < groupItems.length; a++) {
+      for (var b = a + 1; b < groupItems.length; b++) {
+        var sA = groupItems[a].file_size || 0;
+        var sB = groupItems[b].file_size || 0;
+        var dA = groupItems[a].duration  || 0;
+        var dB = groupItems[b].duration  || 0;
+        /* Both values must be present and within threshold */
+        if (!sA || !sB || Math.abs(sA - sB) / Math.max(sA, sB) > _DUPE_SAFE_THRESHOLD) return false;
+        if (!dA || !dB || Math.abs(dA - dB) / Math.max(dA, dB) > _DUPE_SAFE_THRESHOLD) return false;
+      }
+    }
+    return true;
+  }
 
   /* ── Dupe-panel metadata formatters ── */
   function _fmtDuration(secs) {
@@ -4536,13 +4656,21 @@ def render_player_js(
     /* Keep only groups with 2+ items */
     _dupeMap = {};
     _dupePaths = new Set();
+    _dupeSafety = {};
     var keys = Object.keys(map);
     for (var k = 0; k < keys.length; k++) {
       if (map[keys[k]].length > 1) {
-        _dupeMap[keys[k]] = map[keys[k]];
-        map[keys[k]].forEach(function(idx) {
-          var rp = allItems[idx] ? allItems[idx].relative_path : null;
-          if (rp) _dupePaths.add(rp);
+        var groupIndices = map[keys[k]];
+        _dupeMap[keys[k]] = groupIndices;
+        /* Collect group items for safety check */
+        var groupItems = groupIndices.map(function(gi) { return allItems[gi]; }).filter(Boolean);
+        var isSafe = _isDupeGroupSafe(groupItems);
+        groupIndices.forEach(function(gi) {
+          var rp = allItems[gi] ? allItems[gi].relative_path : null;
+          if (rp) {
+            _dupePaths.add(rp);
+            _dupeSafety[rp] = isSafe;
+          }
         });
       }
     }
@@ -4551,6 +4679,7 @@ def render_player_js(
   function _invalidateDupeMap() {
     _dupeMap = null;
     _dupePaths = null;
+    _dupeSafety = null;
   }
 
   function _ensureDupeMap() {
@@ -4596,6 +4725,11 @@ def render_player_js(
           var metaHtml = metaParts.length
             ? '<div class="dupe-group-item-meta">' + metaParts.join(' \u00b7 ') + '</div>'
             : '';
+          var isSafe = _dupeSafety && _dupeSafety[t.relative_path];
+          var trashCls = isSafe ? ' dupe-trash-btn--safe' : ' dupe-trash-btn--warn';
+          var trashTitle = isSafe
+            ? 'In den Papierkorb verschieben (Gr\u00f6\u00dfe + L\u00e4nge nahezu identisch)'
+            : 'In den Papierkorb verschieben \u2014 Vorsicht: Gr\u00f6\u00dfe oder L\u00e4nge weicht ab!';
           html += '<div class="dupe-group-item" data-all-index="' + idx + '">' +
             '<img src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
             '<div class="dupe-group-item-info">' +
@@ -4603,7 +4737,8 @@ def render_player_js(
               '<div class="dupe-group-item-path">' + escHtml(folder || t.relative_path) + '</div>' +
               metaHtml +
             '</div>' +
-            '<button class="dupe-trash-btn" data-all-index="' + idx + '" title="In den Papierkorb verschieben">' + IC_TRASH + '</button>' +
+            '<button class="dupe-trash-btn' + trashCls + '" data-all-index="' + idx +
+            '" title="' + escHtml(trashTitle) + '">' + IC_TRASH + '</button>' +
             '</div>';
         });
         html += '</div>';
@@ -4717,6 +4852,8 @@ def render_player_js(
       allItems.splice(allIndex, 1);
       _invalidateDupeMap();
       _invalidateFolderCache();
+      /* Keep localStorage in sync so the deleted file is gone on the next page load too */
+      _saveCatalogCache(allItems);
       /* Adjust currentIndex */
       if (wasBefore) {
         currentIndex = Math.max(0, currentIndex - 1);
@@ -4732,6 +4869,38 @@ def render_player_js(
     }).catch(function(err) {
       showToast('L\\u00f6schen fehlgeschlagen: ' + (err.message || err));
     });
+  }
+
+  /* Remove a track that the player could not load (404 / gone on disk).
+     Called from the player 'error' handler after a HEAD-request confirms 404.
+     Mirrors the logic of _deleteTrackFromList but without the server DELETE call. */
+  function _removeGoneTrack(relativePath) {
+    showToast('Datei nicht gefunden \u2014 aus der Liste entfernt');
+    /* Determine playback context before mutating filteredItems */
+    var wasCurrentlyPlaying = (relativePath === _progressRelPath);
+    var wasBefore = false;
+    if (!wasCurrentlyPlaying && currentIndex >= 0) {
+      for (var fi = 0; fi < currentIndex && fi < filteredItems.length; fi++) {
+        if (filteredItems[fi].relative_path === relativePath) { wasBefore = true; break; }
+      }
+    }
+    allItems = allItems.filter(function(it) { return it.relative_path !== relativePath; });
+    _invalidateDupeMap();
+    _invalidateFolderCache();
+    _saveCatalogCache(allItems);
+    playlistItems = playlistItems.filter(function(it) { return it.relative_path !== relativePath; });
+    if (wasBefore) currentIndex = Math.max(0, currentIndex - 1);
+    btnPlay.innerHTML = IC_PLAY;
+    if (inPlaylist) {
+      applyFilter();
+      if (wasCurrentlyPlaying && filteredItems.length > 0) {
+        playTrack(Math.min(currentIndex < 0 ? 0 : currentIndex, filteredItems.length - 1));
+      } else if (filteredItems.length === 0) {
+        showFolderView();
+      }
+    } else {
+      showFolderView();
+    }
   }
 
   function _deleteTrackFromList(filteredIdx) {
@@ -4752,6 +4921,8 @@ def render_player_js(
       allItems = allItems.filter(function(it) { return it.relative_path !== t.relative_path; });
       _invalidateDupeMap();
       _invalidateFolderCache();
+      /* Keep localStorage in sync so the deleted file is gone on the next page load too */
+      _saveCatalogCache(allItems);
       /* Adjust currentIndex so the player stays on the right track */
       if (wasBefore) {
         currentIndex = Math.max(0, currentIndex - 1);
@@ -4760,14 +4931,24 @@ def render_player_js(
         if (currentIndex >= filteredItems.length - 1) currentIndex = Math.max(0, currentIndex - 1);
       }
       showToast('Datei gel\\u00f6scht: ' + name);
-      if (inPlaylist) {
-        var items = itemsUnder(currentPath);
-        if (items.length) { playlistItems = items; applyFilter(); }
-        else { showFolderView(); }
-      } else { showFolderView(); }
-      /* If the playing track was deleted, advance to the next one */
-      if (wasCurrentlyPlaying && filteredItems.length > 0) {
-        playTrack(Math.min(currentIndex, filteredItems.length - 1));
+      /* Re-render after the fade-out completes, or immediately if element not found */
+      function _doRemoveRender() {
+        if (inPlaylist) {
+          var items = itemsUnder(currentPath);
+          if (items.length) { playlistItems = items; applyFilter(); }
+          else { showFolderView(); }
+        } else { showFolderView(); }
+        /* If the playing track was deleted, advance to the next one */
+        if (wasCurrentlyPlaying && filteredItems.length > 0) {
+          playTrack(Math.min(currentIndex, filteredItems.length - 1));
+        }
+      }
+      var li = trackList.querySelector('[data-index="' + filteredIdx + '"]');
+      if (li) {
+        li.classList.add('track-item--removing');
+        li.addEventListener('animationend', _doRemoveRender, { once: true });
+      } else {
+        _doRemoveRender();
       }
     }).catch(function(err) {
       showToast('L\\u00f6schen fehlgeschlagen: ' + (err.message || err));
@@ -4822,6 +5003,10 @@ def render_player_js(
         if (!seen[allF[fi]]) { picks.push(allF[fi]); seen[allF[fi]] = true; }
       }
     }
+    /* The currently playing track may briefly remain at the source location while
+       streaming; the server handles this gracefully (deferred delete).
+       We keep the widget fully active — no disabled state. */
+    var isActive = false; /* reserved, not used for blocking */
     var html = '<span class="track-move-widget" data-index="' + idx + '">';
     /* 2x2 quick-pick grid — always 4 buttons */
     html += '<span class="move-quick-grid">';
@@ -4840,6 +5025,9 @@ def render_player_js(
       html += '<option value="' + escHtml(f) + '"' + (f === curFolder ? ' selected' : '') + '>' + escHtml(f) + '</option>';
     });
     html += '</select>';
+    /* Delete button — last element, visually separated by left border */
+    html += '<button class="move-delete-btn" data-index="' + idx + '" title="Datei in den Papierkorb verschieben">' +
+      IC_TRASH + 'L\u00f6schen</button>';
     html += '</span>';
     return html;
   }
@@ -4874,11 +5062,16 @@ def render_player_js(
       }
       _invalidateDupeMap();
       _invalidateFolderCache();
-      /* Register ghost so all subsequent re-renders (applyFilter, refreshFolderRatings, etc.)
-         keep showing the dimmed hint until the user navigates away. */
-      _moveGhosts[t.relative_path] = targetFolder;
-      applyFilter();
+      _saveCatalogCache(allItems);  /* keep localStorage in sync after rename */
       showToast('Verschoben nach ' + targetFolder);
+      /* Fade item out, then re-render — no ghost needed since item is cleanly gone */
+      var li = trackList.querySelector('[data-index="' + idx + '"]');
+      if (li) {
+        li.classList.add('track-item--removing');
+        li.addEventListener('animationend', function() { applyFilter(); }, { once: true });
+      } else {
+        applyFilter();
+      }
     })
     .catch(function(err) { showToast('Fehler: ' + (err.message || 'Verschieben fehlgeschlagen')); });
   }
@@ -5770,6 +5963,40 @@ def render_player_js(
       return;
     }
     playNextItem();
+  });
+  /* ── Player error: detect missing/gone files (404) ──────────────────────
+     MEDIA_ERR_NETWORK (2) fires when the browser gets a 4xx/5xx on the
+     stream URL.  We do a quick HEAD to confirm it is a 404 before removing
+     the item from the list — this avoids wrongly deleting items on a
+     transient Wi-Fi drop. */
+  player.addEventListener('error', function() {
+    var err = player.error;
+    if (!err) { btnPlay.innerHTML = IC_PLAY; return; }
+    /* MEDIA_ERR_ABORTED (1) = user-initiated stop, ignore */
+    if (err.code === 1) return;
+    var checkUrl = currentStreamUrl || player.currentSrc || '';
+    var rp = _progressRelPath;
+    if (err.code === 2 && checkUrl && rp) {
+      /* Network error — confirm with HEAD before removing */
+      fetch(checkUrl, { method: 'HEAD', cache: 'no-store' })
+        .then(function(r) {
+          if (r.status === 404) {
+            _removeGoneTrack(rp);
+          } else {
+            showToast('Wiedergabe fehlgeschlagen');
+            btnPlay.innerHTML = IC_PLAY;
+          }
+        })
+        .catch(function() {
+          /* Offline or CORS blocked — don't remove, might be transient */
+          showToast('Verbindungsfehler');
+          btnPlay.innerHTML = IC_PLAY;
+        });
+    } else {
+      /* MEDIA_ERR_DECODE (3) or MEDIA_ERR_SRC_NOT_SUPPORTED (4) */
+      showToast('Wiedergabe fehlgeschlagen');
+      btnPlay.innerHTML = IC_PLAY;
+    }
   });
   player.addEventListener('pause', function() {
     /* Don't change state when the browser auto-paused for background,

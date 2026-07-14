@@ -164,6 +164,42 @@ user_rename_fromToDict = user_rename_from_to_dict
 # ---------------------------------------------------------------------------
 
 
+def send_to_trash(path: Path) -> str:
+    """Move *path* to the system Recycle Bin / Trash.
+
+    Uses ``send2trash`` so files land in the OS-native Trash (Windows Recycle
+    Bin, macOS Trash, freedesktop Trash on Linux) and can be restored by the
+    user.  Falls back to the legacy ``HOMETOOLS_DELETE_DIR`` folder on headless
+    systems where no Trash is available (e.g. Docker / NAS without a GUI
+    session).
+
+    Returns a human-readable string describing where the file went.
+    """
+    try:
+        from send2trash import send2trash  # type: ignore[import]
+
+        send2trash(str(path))
+        logger.info("Sent to system trash: %s", path)
+        return "(Papierkorb)"
+    except Exception as exc:
+        # Fallback: classic DELETE_ME folder (headless / Docker / network drives)
+        logger.info("send2trash unavailable or failed (%s) — using DELETE_ME fallback", exc)
+        delete_dir = get_delete_dir()
+        path_make_dir(delete_dir)
+        dest = delete_dir / path.name
+        if dest == path:
+            # File is already inside the DELETE_ME folder — send to parent trash
+            # by using a temp name to avoid same-path rename
+            import shutil as _shutil
+
+            _shutil.move(str(path), str(dest.parent.parent / dest.name))
+            logger.info("Moved out of DELETE_ME to library root: %s", path)
+            return str(dest.parent.parent / dest.name)
+        path.rename(dest)
+        logger.info("Moved to DELETE_ME folder: %s → %s", path, dest)
+        return str(dest)
+
+
 def attention_delete_files(paths, delete_dir: Path | None = None, soft_delete=True):
     """Move files to a trash directory (soft) or delete them (hard)."""
     delete_dir = delete_dir or get_delete_dir()
