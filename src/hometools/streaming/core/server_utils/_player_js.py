@@ -543,11 +543,15 @@ def render_player_js(
   var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
   var playlistItems = [];
-  /* Tracks moved this session: relative_path → targetFolder.
-     Accumulated across multiple moves; cleared on navigation.
-     Applied in applyFilter() so ghosts survive all re-renders. */
+  /* _moveGhosts kept for compat but no longer populated — ghost display removed. */
   var _moveGhosts = {};
+  /* Path currently being deleted by _deleteTrackFromList.  Prevents _removeGoneTrack
+     (triggered by the 404 the stream returns for the deleted file) from double-advancing
+     the player while the delete animation is still running. */
+  var _deletePending = null;
   /* Paths deleted client-side this session (file sent to trash via POST /delete).
+     Set IMMEDIATELY on user confirm (before the API call) to close the race window
+     where a concurrent silent-refresh could re-add the item while the call is in-flight.
      Applied as a filter in every background catalog fetch so deleted items never
      reappear before the server has rebuilt its index. Cleared on full manual refresh. */
   var _locallyDeletedPaths = {};
@@ -3326,17 +3330,8 @@ def render_player_js(
       if (ea !== eb) return ea - eb;
       return a.title.localeCompare(b.title);
     });
-    /* Re-apply any pending move ghosts so they survive filter/sort re-renders */
-    if (Object.keys(_moveGhosts).length > 0) {
-      items = items.map(function(item) {
-        var movedTo = _moveGhosts[item.relative_path];
-        return movedTo ? Object.assign({}, item, { _movedTo: movedTo }) : item;
-      });
-    }
     renderTracks(items);
   }
-
-  /* ── track list rendering ── */
   var NATIVE_EXT = ['.mp4','.m4v','.webm','.ogg','.ogv','.mp3','.m4a','.aac','.opus','.flac','.wav'];
   function needsConversion(rp) {
     if (!rp) return false;
@@ -3388,58 +3383,24 @@ def render_player_js(
   function renderTracks(tracks) {
     /* Ensure dupe data is available when the dupe tool is active */
     if (_toolState.duplicates) _ensureDupeMap();
-    /* Separate real items from debug-dimmed items and moved ghosts for filteredItems / shuffle */
+    /* Separate real items from debug-dimmed items for filteredItems / shuffle */
     var realTracks = DEBUG_FILTER
-      ? tracks.filter(function(t) { return !t._debugReason && !t._movedTo; })
-      : tracks.filter(function(t) { return !t._movedTo; });
+      ? tracks.filter(function(t) { return !t._debugReason; })
+      : tracks;
     var debugCount = tracks.filter(function(t) { return !!t._debugReason; }).length;
-    var movedCount = tracks.filter(function(t) { return !!t._movedTo; }).length;
     filteredItems = realTracks;
     /* Rebuild shuffle queue whenever the filtered set changes */
     if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
     var hiddenShownCount = realTracks.filter(function(t) { return !!t._hiddenShown; }).length;
     var visibleCount = realTracks.length - hiddenShownCount;
     var noun = visibleCount !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
-    /* "ausgeblendet" count shown in filter-hidden chip; debug count omitted here to keep track-count width stable */
-    trackCount.textContent = visibleCount + ' ' + noun +
-      (movedCount > 0 ? ' (' + movedCount + ' verschoben)' : '');
+    trackCount.textContent = visibleCount + ' ' + noun;
     if (!tracks.length) {
       trackList.innerHTML = '<li class="empty-hint">No matching items.</li>';
       return;
     }
     var showOrig = _anyToolActive();
-    /* Pass realTracks to withMissingEpisodes so ghost items don't confuse ep-gap detection */
     var displayTracks = withMissingEpisodes(realTracks);
-    /* Re-inject ghost items at their original positions */
-    if (movedCount > 0) {
-      var _ghostInserted = [];
-      var _realOffset = 0;
-      for (var _gi = 0; _gi < tracks.length; _gi++) {
-        if (tracks[_gi]._movedTo) {
-          /* Insert ghost at this position in the display list (after adjusting for gaps already inserted) */
-          _ghostInserted.push(_gi);
-        }
-      }
-      /* Rebuild displayTracks with ghosts inserted at their original index in tracks[] */
-      var _dt2 = [];
-      var _ri2 = 0; /* index into realTracks */
-      var _di2 = 0; /* index into displayTracks (includes missing-episode placeholders) */
-      for (var _ti = 0; _ti < tracks.length; _ti++) {
-        if (tracks[_ti]._movedTo) {
-          _dt2.push(tracks[_ti]);
-        } else {
-          /* copy the corresponding entry from displayTracks, which may include preceding gap placeholders */
-          while (_di2 < displayTracks.length && displayTracks[_di2]._missing) {
-            _dt2.push(displayTracks[_di2++]);
-          }
-          if (_di2 < displayTracks.length) _dt2.push(displayTracks[_di2++]);
-          _ri2++;
-        }
-      }
-      /* Append any remaining gap placeholders at the end */
-      while (_di2 < displayTracks.length) { _dt2.push(displayTracks[_di2++]); }
-      displayTracks = _dt2;
-    }
     var realIdx = 0;
     trackList.innerHTML = displayTracks.map(function(t) {
       /* missing episode placeholder */
@@ -3449,23 +3410,6 @@ def render_player_js(
           '<span class="track-num"><span class="num-text">' + seLabel + '</span></span>' +
           '<div class="track-info"><div class="track-title">Folge fehlt</div>' +
           '<div class="track-artist">' + seLabel + ' \u2014 nicht in der Bibliothek</div></div></li>';
-      }
-      /* moved ghost: file was moved this session — shown dimmed with target hint, not playable */
-      if (t._movedTo) {
-        var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
-        var subtitle = t.artist || t.relative_path;
-        var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
-        var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
-        return '<li class="track-item track-item--moved">' +
-          '<span class="track-num"><span class="num-text">\u2192</span></span>' +
-          '<div class="thumb-wrap track-thumb-wrap">' +
-          '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-          ratingBar + '</div>' +
-          '<div class="track-info">' +
-            '<div class="track-title"><span class="track-title-text">' + escHtml(displayTitle) + '</span>' +
-              '<span class="moved-hint">\u2192\u00a0' + escHtml(t._movedTo) + '</span></div>' +
-            '<div class="track-artist">' + escHtml(subtitle) + '</div>' +
-          '</div></li>';
       }
       /* debug-filtered placeholder: dimmed, not playable */
       if (t._debugReason) {
@@ -4940,6 +4884,9 @@ def render_player_js(
      Called from the player 'error' handler after a HEAD-request confirms 404.
      Mirrors the logic of _deleteTrackFromList but without the server DELETE call. */
   function _removeGoneTrack(relativePath) {
+    /* If _deleteTrackFromList is already handling this path (animation still running),
+       don't double-advance the player — _doRemoveRender will call playTrack after fade. */
+    if (_deletePending === relativePath) return;
     showToast('Datei nicht gefunden \u2014 aus der Liste entfernt');
     /* Determine playback context before mutating filteredItems */
     var wasCurrentlyPlaying = (relativePath === _progressRelPath);
@@ -4975,6 +4922,10 @@ def render_player_js(
     if (!confirm('Datei "' + name + '" in den Papierkorb verschieben?')) return;
     var wasCurrentlyPlaying = (filteredIdx === currentIndex);
     var wasBefore = (currentIndex >= 0 && filteredIdx < currentIndex);
+    /* Mark IMMEDIATELY (before API call) so concurrent silent-refreshes and
+       _removeGoneTrack don't re-add or double-handle the item. */
+    _locallyDeletedPaths[t.relative_path] = true;
+    _deletePending = t.relative_path;
     fetch(DELETE_API_PATH, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -4984,8 +4935,6 @@ def render_player_js(
       return r.json();
     }).then(function() {
       allItems = allItems.filter(function(it) { return it.relative_path !== t.relative_path; });
-      /* Track as locally deleted so background fetches don't re-add it before server rescans */
-      _locallyDeletedPaths[t.relative_path] = true;
       _invalidateDupeMap();
       _invalidateFolderCache();
       /* Keep localStorage in sync so the deleted file is gone on the next page load too */
@@ -5000,12 +4949,14 @@ def render_player_js(
       showToast('Datei gel\\u00f6scht: ' + name);
       /* Re-render after the fade-out completes, or immediately if element not found */
       function _doRemoveRender() {
+        _deletePending = null;
         if (inPlaylist) {
           var items = itemsUnder(currentPath);
           if (items.length) { playlistItems = items; applyFilter(); }
           else { showFolderView(); }
         } else { showFolderView(); }
-        /* If the playing track was deleted, advance to the next one */
+        /* If the playing track was deleted, advance to the next one.
+           Guard: _removeGoneTrack may have already advanced during the animation. */
         if (wasCurrentlyPlaying && filteredItems.length > 0) {
           playTrack(Math.min(currentIndex, filteredItems.length - 1));
         }
@@ -5018,6 +4969,8 @@ def render_player_js(
         _doRemoveRender();
       }
     }).catch(function(err) {
+      _locallyDeletedPaths[t.relative_path] && delete _locallyDeletedPaths[t.relative_path];
+      _deletePending = null;
       showToast('L\\u00f6schen fehlgeschlagen: ' + (err.message || err));
     });
   }

@@ -649,25 +649,6 @@ body.modal-open { overflow: hidden; }
   pointer-events: none;
   overflow: hidden;
 }
-/* moved ghost: file was moved this session — shown dimmed with target hint */
-.track-item--moved { opacity: 0.32; cursor: default; pointer-events: none; }
-.track-item--moved:hover { opacity: 0.42; }
-.moved-hint {
-  display: inline-flex; align-items: center; font-size: 0.6rem;
-  color: #fff; background: rgba(60,120,220,0.55);
-  padding: 1px 6px; border-radius: 8px; margin-left: 6px;
-  vertical-align: middle; font-weight: 500; white-space: nowrap; letter-spacing: 0.01em;
-}
-/* deleted ghost: file was soft-deleted this session — shown dimmed with strikethrough */
-.track-item--deleted { opacity: 0.35; cursor: default; pointer-events: none; }
-.track-item--deleted .track-title-text { text-decoration: line-through; color: var(--sub); }
-.deleted-badge {
-  display: inline-flex; align-items: center; font-size: 0.6rem;
-  color: #fff; background: rgba(180,60,60,0.65);
-  padding: 1px 5px; border-radius: 8px; margin-left: 5px;
-  vertical-align: middle; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
-  flex-shrink: 0;
-}
 /* Deleted item in dupe panel */
 .dupe-group-item--deleted { opacity: 0.35; cursor: default; pointer-events: none; }
 .dupe-group-item--deleted .dupe-group-item-title { text-decoration: line-through; }
