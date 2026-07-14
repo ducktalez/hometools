@@ -63,11 +63,24 @@ rendered with an empty list and `loadInitialCatalog()` always called
   and `_refreshPoll()`.
 - `_clearCatalogCache()` must be called at the start of `refreshCatalog()`
   (user-triggered explicit refresh) so the next load fetches fresh data.
+  Also reset `_locallyDeletedPaths = {}` in `refreshCatalog()` so the user
+  gets the real server state.
 - The cache key is `'ht-catalog-' + API_PATH.replace(/\W+/g, '_')` — unique
   per server (audio ≠ video).
 - Max age is `_CATALOG_MAX_AGE_MS = 5 * 60 * 1000` (5 minutes).
 - All localStorage access is wrapped in try/catch (`QuotaExceededError`
   for large libraries, private-mode restrictions).
+- **Client-side mutation tracking (`_locallyDeletedPaths`):** After a
+  successful `POST /delete`, the relative path is added to `_locallyDeletedPaths`
+  (an object used as a Set). Every background/silent fetch passes its result
+  through `_applyLocalMutations(items)` which filters these paths out, so
+  deleted items never reappear before the server has rescanned.
+  Confirmed deletions (server no longer returns them) are pruned automatically.
+- **Fresh fetch on folder navigation (`_triggerSilentRefresh()`):** Called by
+  `navigateInto()` and the file-card click handler instead of the old
+  `forceBackgroundRefresh()`. It always fetches with `cache: 'no-store'`,
+  applies `_applyLocalMutations`, and re-renders only when something changed.
+  A `_silentRefreshInFlight` flag prevents concurrent fetches.
 - Tests: `tests/test_streaming_player_ui.py::TestCatalogLocalStorageCache`
   — run after any change to `loadInitialCatalog`, `scheduleBackgroundRefresh`,
   `_refreshPoll`, or `refreshCatalog`.

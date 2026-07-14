@@ -547,6 +547,10 @@ def render_player_js(
      Accumulated across multiple moves; cleared on navigation.
      Applied in applyFilter() so ghosts survive all re-renders. */
   var _moveGhosts = {};
+  /* Paths deleted client-side this session (file sent to trash via POST /delete).
+     Applied as a filter in every background catalog fetch so deleted items never
+     reappear before the server has rebuilt its index. Cleared on full manual refresh. */
+  var _locallyDeletedPaths = {};
   var filteredItems = [];
   var currentIndex = -1;
   var inPlaylist = false;
@@ -670,6 +674,26 @@ def render_player_js(
 
   function _clearCatalogCache() {
     try { localStorage.removeItem(_CATALOG_CACHE_KEY); } catch (e) {}
+  }
+
+  /* Filter items returned by a background/silent fetch: remove paths that were
+     deleted client-side this session so they don't reappear before the server
+     has rescanned. Also prunes the set once the server confirms the deletion. */
+  function _applyLocalMutations(items) {
+    if (!items || !items.length) return items;
+    var deletedKeys = Object.keys(_locallyDeletedPaths);
+    if (!deletedKeys.length) return items;
+    var freshSet = null;
+    /* Prune confirmed deletions: if server no longer has the path, it's safe to
+       remove from the local tracking set (no risk of re-adding). */
+    deletedKeys.forEach(function(rp) {
+      if (!freshSet) {
+        freshSet = {};
+        items.forEach(function(it) { freshSet[it.relative_path] = true; });
+      }
+      if (!freshSet[rp]) delete _locallyDeletedPaths[rp];
+    });
+    return items.filter(function(it) { return !_locallyDeletedPaths[it.relative_path]; });
   }
 
   var currentStreamUrl = '';
@@ -1826,7 +1850,7 @@ def render_player_js(
           }
           /* Full index ready */
           hideIndexingToast();
-          allItems = data && Array.isArray(data.items) ? data.items : [];
+          allItems = _applyLocalMutations(data && Array.isArray(data.items) ? data.items : []);
           _invalidateDupeMap();
           _invalidateFolderCache();
           _saveCatalogCache(allItems);
@@ -1844,6 +1868,45 @@ def render_player_js(
     clearTimeout(_indexRefreshTimer);
     _indexRefreshTimer = null;
     scheduleBackgroundRefresh(0);
+  }
+
+  /* Trigger a silent catalog fetch immediately — called on every folder/playlist
+     navigation so the user always gets fresh data with the highest priority.
+     Shows cached data first (instant), then updates the view if something changed.
+     A flag prevents concurrent fetches; already-in-flight requests are reused. */
+  var _silentRefreshInFlight = false;
+  function _triggerSilentRefresh() {
+    if (_silentRefreshInFlight) return;
+    _silentRefreshInFlight = true;
+    fetch(API_PATH, { cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        _silentRefreshInFlight = false;
+        if (!data || data.error || data.loading) return;
+        var fresh = _applyLocalMutations(Array.isArray(data.items) ? data.items : []);
+        /* Detect any change: count OR missing/added path */
+        var changed = fresh.length !== allItems.length;
+        if (!changed && fresh.length > 0) {
+          var freshSet = {};
+          fresh.forEach(function(it) { freshSet[it.relative_path] = true; });
+          changed = allItems.some(function(it) { return !freshSet[it.relative_path]; });
+        }
+        allItems = fresh;
+        _invalidateDupeMap();
+        _invalidateFolderCache();
+        _saveCatalogCache(allItems);
+        if (changed) {
+          if (inPlaylist) {
+            var newItems = itemsUnder(currentPath);
+            if (newItems.length) { playlistItems = newItems; applyFilter(); }
+            else { showFolderView(); }
+          } else {
+            showFolderView();
+          }
+        }
+        if (data.refreshing) scheduleBackgroundRefresh();
+      })
+      .catch(function() { _silentRefreshInFlight = false; });
   }
 
   /* ── Manual catalog refresh (user-triggered) ── */
@@ -1900,6 +1963,7 @@ def render_player_js(
   function refreshCatalog() {
     var _rb = _getRefreshBtn(); if (_rb) _rb.classList.add('spinning');
     _clearCatalogCache();  /* force fresh data — user explicitly requested a reload */
+    _locallyDeletedPaths = {};  /* clear session-deletions — user wants the real server state */
     _ratingRefreshPath = null;
 
     var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
@@ -2235,14 +2299,15 @@ def render_player_js(
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
           if (!data || data.error || data.loading) return;
-          var fresh = Array.isArray(data.items) ? data.items : [];
+          var fresh = _applyLocalMutations(Array.isArray(data.items) ? data.items : []);
           /* Detect deletions: check whether any currently cached path is absent
              from the fresh catalog (count-only check misses e.g. replaced files). */
           var freshPaths = null;
           var hasDeletion = false;
           if (fresh.length === allItems.length && allItems.length > 0) {
-            freshPaths = new Set(fresh.map(function(i) { return i.relative_path; }));
-            hasDeletion = allItems.some(function(i) { return !freshPaths.has(i.relative_path); });
+            freshPaths = {};
+            fresh.forEach(function(i) { freshPaths[i.relative_path] = true; });
+            hasDeletion = allItems.some(function(i) { return !freshPaths[i.relative_path]; });
           }
           var changed = fresh.length !== allItems.length || hasDeletion;
           allItems = fresh;
@@ -2714,7 +2779,7 @@ def render_player_js(
     folderGrid.querySelectorAll('.file-card').forEach(function(card) {
       card.addEventListener('click', function(e) {
         if (wasDrag(e)) return;
-        forceBackgroundRefresh(); /* get freshest data while index builds */
+        _triggerSilentRefresh(); /* get freshest data on playlist entry */
         showPlaylist(looseFiles, true, Number(card.dataset.fileIdx));
       });
     });
@@ -2783,7 +2848,7 @@ def render_player_js(
 
   function navigateInto(name) {
     currentPath = currentPath ? currentPath + '/' + name : name;
-    forceBackgroundRefresh(); /* get freshest data while index builds */
+    _triggerSilentRefresh(); /* always fetch fresh catalog on folder navigation */
     showFolderView();
   }
 
@@ -4919,6 +4984,8 @@ def render_player_js(
       return r.json();
     }).then(function() {
       allItems = allItems.filter(function(it) { return it.relative_path !== t.relative_path; });
+      /* Track as locally deleted so background fetches don't re-add it before server rescans */
+      _locallyDeletedPaths[t.relative_path] = true;
       _invalidateDupeMap();
       _invalidateFolderCache();
       /* Keep localStorage in sync so the deleted file is gone on the next page load too */
