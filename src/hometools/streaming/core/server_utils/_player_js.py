@@ -2898,6 +2898,10 @@ def render_player_js(
       /* When shuffle is on, start from shuffleQueue[0] instead of startIdx */
       var firstIdx = shuffleMode && shuffleQueue.length ? shuffleQueue[0] : (startIdx || 0);
       playTrack(firstIdx);
+    } else if (typeof startIdx === 'undefined') {
+      /* Passive folder navigation — highlight the last-watched episode (if any)
+         so the user can resume with a single click without starting playback. */
+      _restoreLastEpisode();
     }
     /* Pre-warm: fetch server-side order and re-sort if different */
     var _showPlaylistPath = currentPath;
@@ -2910,6 +2914,46 @@ def render_player_js(
       applyFilter();
     });
     if (typeof _router !== 'undefined') _router.update();
+  }
+
+  /* ── Auto-resume: restore last-watched episode when navigating into a folder ─
+     Called from showPlaylist when the user opens a folder without an explicit
+     startIdx (i.e. not via "Play All" or a file-card click).
+     Fetches the recent API, finds the first entry that is in the current
+     filteredItems list AND has a non-trivial saved position (≥ 5 s), and
+     silently highlights that item without starting playback.
+     The user can then press Play or click the item to resume exactly there. */
+  function _restoreLastEpisode() {
+    if (!RECENT_ENABLED) return;
+    fetch(RECENT_API_PATH + '?limit=100')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (!d || !d.items || !d.items.length) return;
+        /* Don't override if the user already interacted */
+        if (currentIndex >= 0) return;
+        /* Build path → filteredIdx map */
+        var pathToIdx = {};
+        filteredItems.forEach(function(it, i) { pathToIdx[it.relative_path] = i; });
+        /* Items are newest-first; pick the first one in this playlist with saved progress */
+        for (var j = 0; j < d.items.length; j++) {
+          var entry = d.items[j];
+          var rp = entry.relative_path || '';
+          if (!(rp in pathToIdx)) continue;
+          var pos = Number(entry.position_seconds || 0);
+          if (pos < 5) continue; /* fully watched or just started — skip */
+          var idx = pathToIdx[rp];
+          /* Guard: another interaction may have set currentIndex in the meantime */
+          if (currentIndex >= 0) return;
+          currentIndex = idx;
+          markActive();
+          var li = trackList.querySelector('[data-index="' + idx + '"]');
+          if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          var label = (filteredItems[idx] && filteredItems[idx].title) || rp;
+          showToast('Weiter bei: ' + label + ' (' + fmtTime(pos) + ')', 5000);
+          return;
+        }
+      })
+      .catch(function() {});
   }
 
   /* ── back ── */
