@@ -687,6 +687,37 @@ def render_player_js(
     try { localStorage.removeItem(_CATALOG_CACHE_KEY); } catch (e) {}
   }
 
+  /* ── Last-played position (localStorage) ────────────────────────────────────
+     Saved on every playItem() start and every saveProgressNow() tick.
+     Survives server restarts and page reloads, unlike the in-memory currentIndex.
+     Used as the primary (fast, offline) source for _restoreLastEpisode().
+     Key is unique per server so audio and video don't clash.
+     TTL: 30 days.                                                              */
+  var _LAST_PLAYED_KEY = 'ht-last-' + API_PATH.replace(/\\W+/g, '_');
+
+  function _saveLastPlayedLocal(rp, pos) {
+    if (!rp) return;
+    try {
+      localStorage.setItem(_LAST_PLAYED_KEY, JSON.stringify({
+        path: rp,
+        position_seconds: pos,
+        folder: rp.lastIndexOf('/') > 0 ? rp.substring(0, rp.lastIndexOf('/')) : '',
+        timestamp: Date.now()
+      }));
+    } catch (e) {}
+  }
+
+  function _loadLastPlayedLocal() {
+    try {
+      var raw = localStorage.getItem(_LAST_PLAYED_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data || !data.path) return null;
+      if (Date.now() - (data.timestamp || 0) > 30 * 24 * 60 * 60 * 1000) return null; /* 30 days */
+      return data;
+    } catch (e) { return null; }
+  }
+
   /* Filter items returned by a background/silent fetch: remove paths that were
      deleted client-side this session so they don't reappear before the server
      has rescanned. Also prunes the set once the server confirms the deletion. */
@@ -1185,6 +1216,9 @@ def render_player_js(
     var pos = player.currentTime;
     var dur = player.duration;
     if (!isFinite(pos) || !isFinite(dur)) return;
+    /* Always update localStorage so the episode is restored after server restarts,
+       even in the first/last 5 s where the server save is intentionally skipped. */
+    _saveLastPlayedLocal(rp, pos);
     if (pos < 5 || pos > dur - 5) return;
     var payload = JSON.stringify({relative_path: rp, position_seconds: pos, duration: dur});
     /* Prefer sendBeacon — it survives page unload / app backgrounding on mobile,
@@ -2919,37 +2953,49 @@ def render_player_js(
   /* ── Auto-resume: restore last-watched episode when navigating into a folder ─
      Called from showPlaylist when the user opens a folder without an explicit
      startIdx (i.e. not via "Play All" or a file-card click).
-     Fetches the recent API, finds the first entry that is in the current
-     filteredItems list AND has a non-trivial saved position (≥ 5 s), and
-     silently highlights that item without starting playback.
-     The user can then press Play or click the item to resume exactly there. */
+     Priority: localStorage (instant, survives server restarts) → server recent API.
+     Does NOT start playback — user must click explicitly. */
   function _restoreLastEpisode() {
+    /* ── 1. Try localStorage first (fast, works through server restarts) ─── */
+    var local = _loadLastPlayedLocal();
+    if (local && local.path) {
+      var pathToIdx = {};
+      filteredItems.forEach(function(it, i) { pathToIdx[it.relative_path] = i; });
+      if (local.path in pathToIdx && currentIndex < 0) {
+        var idx = pathToIdx[local.path];
+        currentIndex = idx;
+        markActive();
+        var li = trackList.querySelector('[data-index="' + idx + '"]');
+        if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        var pos = Number(local.position_seconds || 0);
+        var label = (filteredItems[idx] && filteredItems[idx].title) || local.path;
+        showToast('Weiter bei: ' + label + (pos > 2 ? ' (' + fmtTime(pos) + ')' : ''), 5000);
+        return;
+      }
+    }
+    /* ── 2. Fallback: server recent API ────────────────────────────────────── */
     if (!RECENT_ENABLED) return;
     fetch(RECENT_API_PATH + '?limit=100')
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
         if (!d || !d.items || !d.items.length) return;
-        /* Don't override if the user already interacted */
         if (currentIndex >= 0) return;
-        /* Build path → filteredIdx map */
-        var pathToIdx = {};
-        filteredItems.forEach(function(it, i) { pathToIdx[it.relative_path] = i; });
-        /* Items are newest-first; pick the first one in this playlist with saved progress */
+        var pathToIdx2 = {};
+        filteredItems.forEach(function(it, i) { pathToIdx2[it.relative_path] = i; });
         for (var j = 0; j < d.items.length; j++) {
           var entry = d.items[j];
           var rp = entry.relative_path || '';
-          if (!(rp in pathToIdx)) continue;
-          var pos = Number(entry.position_seconds || 0);
-          if (pos < 5) continue; /* fully watched or just started — skip */
-          var idx = pathToIdx[rp];
-          /* Guard: another interaction may have set currentIndex in the meantime */
+          if (!(rp in pathToIdx2)) continue;
+          var pos2 = Number(entry.position_seconds || 0);
+          if (pos2 < 5) continue;
           if (currentIndex >= 0) return;
-          currentIndex = idx;
+          var idx2 = pathToIdx2[rp];
+          currentIndex = idx2;
           markActive();
-          var li = trackList.querySelector('[data-index="' + idx + '"]');
-          if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          var label = (filteredItems[idx] && filteredItems[idx].title) || rp;
-          showToast('Weiter bei: ' + label + ' (' + fmtTime(pos) + ')', 5000);
+          var li2 = trackList.querySelector('[data-index="' + idx2 + '"]');
+          if (li2) li2.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          var label2 = (filteredItems[idx2] && filteredItems[idx2].title) || rp;
+          showToast('Weiter bei: ' + label2 + ' (' + fmtTime(pos2) + ')', 5000);
           return;
         }
       })
@@ -5597,6 +5643,10 @@ def render_player_js(
     saveProgressNow();   /* flush the outgoing track's position before switching */
     clearTimeout(_progressTimer);
     _progressRelPath = t.relative_path || '';
+    /* Also persist to localStorage so the episode can be restored after a
+       server restart or page reload — even if < 5 s have elapsed (which
+       saveProgressNow would otherwise skip). */
+    _saveLastPlayedLocal(_progressRelPath, 0);
     if (AUTO_RESUME_ENABLED) loadAndSeekProgress(_progressRelPath);
 
     /* load sprite sheet for video scrubber preview */
