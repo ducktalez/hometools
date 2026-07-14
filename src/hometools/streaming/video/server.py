@@ -983,6 +983,27 @@ def create_app(
 
         return {"ok": True, "entry_id": entry.entry_id}
 
+    @app.post("/api/video/reveal")
+    def video_reveal(payload: dict[str, object]) -> dict[str, object]:
+        """Return the absolute path of a video file and optionally open it in Explorer.
+
+        Body: ``{"path": "Series/episode.mp4"}``
+        Returns ``{"ok": true, "path": "/abs/path/to/episode.mp4", "revealed": true|false}``
+        """
+        from hometools.utils import reveal_in_explorer
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        try:
+            file_path = resolve_video_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        abs_path = str(file_path.resolve())
+        revealed = reveal_in_explorer(file_path)
+        return {"ok": True, "path": abs_path, "revealed": revealed}
+
     # --- Shortcuts API ---
 
     @app.get("/api/video/shortcuts")

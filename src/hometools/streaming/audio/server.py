@@ -834,6 +834,27 @@ def create_app(
 
         return {"ok": True, "entry_id": entry.entry_id}
 
+    @app.post("/api/audio/reveal")
+    def audio_reveal(payload: dict[str, object]) -> dict[str, object]:
+        """Return the absolute path of an audio file and optionally open it in Explorer.
+
+        Body: ``{"path": "Folder/song.mp3"}``
+        Returns ``{"ok": true, "path": "/abs/path/to/song.mp3", "revealed": true|false}``
+        """
+        from hometools.utils import reveal_in_explorer
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        abs_path = str(file_path.resolve())
+        revealed = reveal_in_explorer(file_path)
+        return {"ok": True, "path": abs_path, "revealed": revealed}
+
     @app.get("/api/audio/recent")
     def audio_recent(limit: int = 10) -> dict[str, object]:
         """No recently-played section for audio.

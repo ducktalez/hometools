@@ -219,3 +219,29 @@ def deleting_file(p: Path, delete_dir: Path | None = None):
     path_make_dir(delete_dir)
     dest = delete_dir / p.name
     user_rename_file(p, dest, ask_user_str=f"{p} -> {dest}")
+
+
+def reveal_in_explorer(path: Path) -> bool:
+    """Try to reveal *path* in the OS file manager (Explorer / Finder / Nautilus).
+
+    Returns ``True`` if the OS command was launched successfully, ``False``
+    on any error or on platforms without a supported command.  Never raises.
+
+    * Windows: ``explorer /select,<path>``
+    * macOS:   ``open -R <path>``
+    * Linux:   ``xdg-open <parent-dir>`` (best-effort, opens folder)
+    """
+    import sys
+
+    try:
+        abs_path = str(path.resolve())
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", "/select,", abs_path])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", abs_path])
+        else:
+            subprocess.Popen(["xdg-open", str(path.parent.resolve())])
+        return True
+    except Exception:
+        logger.debug("reveal_in_explorer failed for %s", path, exc_info=True)
+        return False

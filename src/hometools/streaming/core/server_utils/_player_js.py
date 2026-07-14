@@ -7,6 +7,7 @@ from ._svg import (  # noqa: F401
     SVG_CAST,
     SVG_CHECK,
     SVG_CLOSE_X,
+    SVG_DOTS,
     SVG_DOWNLOAD,
     SVG_DUPLICATE,
     SVG_EDIT,
@@ -474,6 +475,9 @@ def render_player_js(
   var DELETE_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/delete-file';
+  var REVEAL_API_PATH = '"""
+        + api_path.rsplit("/", 1)[0]
+        + """/reveal';
   var FOLDERS_API_PATH = '"""
         + api_path.rsplit("/", 1)[0]
         + """/folders';
@@ -489,6 +493,9 @@ def render_player_js(
   var IC_REMOVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   var IC_TRASH = '"""
         + SVG_TRASH.replace("'", "\\'")
+        + """';
+  var IC_DOTS = '"""
+        + SVG_DOTS.replace("'", "\\'")
         + """';
   var IC_REFRESH = '"""
         + SVG_REFRESH.replace("'", "\\'")
@@ -3472,6 +3479,8 @@ def render_player_js(
         (METADATA_EDIT_ENABLED ? '<button class="track-edit-btn" data-index="' + idx + '" title="Bearbeiten">' + IC_EDIT + '</button>' : '') +
         (PLAYLISTS_ENABLED ? '<button class="track-playlist-btn" data-relative-path="' + escHtml(t.relative_path || '') + '" title="Zur Playlist hinzuf\\u00fcgen">' + IC_PLAYLIST + '</button>' : '') +
         '<button class="track-queue-btn" data-relative-path="' + escHtml(t.relative_path || '') + '" data-index="' + idx + '" title="Zur Warteschlange hinzuf\\u00fcgen">' + IC_QUEUE + '</button>' +
+        '<button class="track-kebab-btn" data-relative-path="' + escHtml(t.relative_path || '') +
+          '" data-title="' + escHtml(t.title) + '" title="Mehr Optionen">' + IC_DOTS + '</button>' +
         renderInlineRating(t, idx) +
         renderMoveWidget(t, idx) +
         '</li>';
@@ -3593,6 +3602,14 @@ def render_player_js(
         e.stopPropagation();
         e.preventDefault();
         _deleteTrackFromList(Number(btn.dataset.index));
+      });
+    });
+    /* Wire up three-dot context menu */
+    document.querySelectorAll('.track-kebab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        _openTrackCtxMenu(btn, btn.dataset.relativePath, btn.dataset.title);
       });
     });
   }
@@ -5047,7 +5064,7 @@ def render_player_js(
     html += '</select>';
     /* Delete button — last element, visually separated by left border */
     html += '<button class="move-delete-btn" data-index="' + idx + '" title="Datei in den Papierkorb verschieben">' +
-      IC_TRASH + 'L\u00f6schen</button>';
+      IC_TRASH + '</button>';
     html += '</span>';
     return html;
   }
@@ -5057,6 +5074,9 @@ def render_player_js(
     if (!t) return;
     var curFolder = _currentFolderOf(t);
     if (targetFolder === curFolder) { showToast('Datei ist bereits in diesem Ordner'); return; }
+    /* Mark old path immediately so concurrent background fetches don't
+       re-add the item at its old location before the server has rescanned. */
+    _locallyDeletedPaths[t.relative_path] = true;
     fetch(MOVE_API_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5093,7 +5113,106 @@ def render_player_js(
         applyFilter();
       }
     })
-    .catch(function(err) { showToast('Fehler: ' + (err.message || 'Verschieben fehlgeschlagen')); });
+    .catch(function(err) {
+      delete _locallyDeletedPaths[t.relative_path];
+      showToast('Fehler: ' + (err.message || 'Verschieben fehlgeschlagen'));
+    });
+  }
+
+  /* ── Track context menu (three-dot / kebab) ─────────────────────────────── */
+  var _ctxMenuCleanup = null;
+
+  function _closeTrackCtxMenu() {
+    if (_ctxMenuCleanup) { _ctxMenuCleanup(); _ctxMenuCleanup = null; }
+    var old = document.getElementById('track-ctx-menu');
+    if (old) old.remove();
+  }
+
+  function _openTrackCtxMenu(btn, relativePath, title) {
+    _closeTrackCtxMenu();
+    var menu = document.createElement('div');
+    menu.id = 'track-ctx-menu';
+    menu.className = 'track-ctx-menu';
+    var IC_FOLDER_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+    menu.innerHTML =
+      '<button class="track-ctx-item" data-action="reveal">' +
+        IC_FOLDER_OPEN + ' Im Explorer anzeigen' +
+      '</button>';
+    document.body.appendChild(menu);
+    /* Position: align right edge with button, just below */
+    var rect = btn.getBoundingClientRect();
+    menu.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
+    var spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow >= menu.offsetHeight + 8) {
+      menu.style.top = (rect.bottom + 4) + 'px';
+    } else {
+      menu.style.top = Math.max(4, rect.top - menu.offsetHeight - 4) + 'px';
+    }
+    menu.querySelector('[data-action="reveal"]').addEventListener('click', function() {
+      _closeTrackCtxMenu();
+      _revealInExplorer(relativePath, title);
+    });
+    /* Close on outside click or Escape */
+    function _onOutside(e) {
+      if (!menu.contains(e.target) && e.target !== btn) _closeTrackCtxMenu();
+    }
+    function _onEsc(e) { if (e.key === 'Escape') _closeTrackCtxMenu(); }
+    setTimeout(function() {
+      document.addEventListener('click', _onOutside);
+      document.addEventListener('keydown', _onEsc);
+    }, 0);
+    _ctxMenuCleanup = function() {
+      document.removeEventListener('click', _onOutside);
+      document.removeEventListener('keydown', _onEsc);
+    };
+  }
+
+  function _revealInExplorer(relativePath, title) {
+    fetch(REVEAL_API_PATH, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: relativePath})
+    })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d) { showToast('Pfad nicht gefunden'); return; }
+      _showPathModal(d.path, d.revealed);
+    })
+    .catch(function() { showToast('Fehler beim Anzeigen'); });
+  }
+
+  function _showPathModal(absPath, revealed) {
+    var old = document.getElementById('path-modal-overlay');
+    if (old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'path-modal-overlay';
+    overlay.className = 'path-modal-overlay';
+    overlay.innerHTML =
+      '<div class="path-modal">' +
+        '<div class="path-modal-title">Dateipfad' +
+          (revealed ? ' <span class="path-modal-revealed">(Explorer ge\u00f6ffnet)</span>' : '') +
+        '</div>' +
+        '<div class="path-modal-path">' + escHtml(absPath) + '</div>' +
+        '<div class="path-modal-actions">' +
+          '<button class="path-modal-copy">Pfad kopieren</button>' +
+          '<button class="path-modal-close">Schlie\u00dfen</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('.path-modal-close').addEventListener('click', function() { overlay.remove(); });
+    overlay.querySelector('.path-modal-copy').addEventListener('click', function() {
+      var pathText = absPath;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(pathText).then(function() { showToast('Pfad kopiert'); overlay.remove(); });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = pathText; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+        showToast('Pfad kopiert'); overlay.remove();
+      }
+    });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
   }
 
   /* ── playback ── */

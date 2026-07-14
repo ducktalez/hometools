@@ -699,6 +699,65 @@ body.modal-open { overflow: hidden; }
   -webkit-tap-highlight-color: transparent;
   padding: 0; line-height: 1;
 }
+/* Three-dot kebab menu button */
+.track-kebab-btn {
+  background: none; border: none; color: var(--sub);
+  border-radius: 50%; width: 28px; height: 28px; padding: 0;
+  cursor: pointer; flex-shrink: 0; margin-left: 2px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.55; transition: opacity 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.track-kebab-btn:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+.track-kebab-btn svg { width: 14px; height: 14px; pointer-events: none; }
+/* Track context menu */
+.track-ctx-menu {
+  position: fixed; z-index: 9999;
+  background: #1e1e1e; border: 1px solid #333; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45); min-width: 190px; overflow: hidden;
+}
+.track-ctx-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 10px 14px;
+  background: none; border: none; color: var(--fg);
+  cursor: pointer; font-size: 0.875rem; text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.track-ctx-item:hover { background: rgba(255,255,255,0.08); }
+.track-ctx-item svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.75; }
+/* Path modal overlay */
+.path-modal-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.path-modal {
+  background: #1e1e1e; border: 1px solid #333; border-radius: 12px;
+  padding: 20px; max-width: 560px; width: 100%;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+}
+.path-modal-title {
+  font-size: 0.75rem; color: var(--sub); margin-bottom: 10px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.path-modal-revealed { color: var(--accent); font-weight: 600; text-transform: none; letter-spacing: 0; }
+.path-modal-path {
+  font-family: monospace; font-size: 0.82rem; color: var(--fg);
+  background: #111; border: 1px solid #2a2a2a; border-radius: 6px;
+  padding: 10px 12px; word-break: break-all; margin-bottom: 14px;
+  user-select: all; -webkit-user-select: all;
+}
+.path-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.path-modal-copy {
+  background: var(--accent); color: #000; border: none;
+  border-radius: 6px; padding: 7px 14px; font-size: 0.82rem;
+  cursor: pointer; font-weight: 600;
+}
+.path-modal-close {
+  background: none; border: 1px solid #444; color: var(--sub);
+  border-radius: 6px; padding: 7px 14px; font-size: 0.82rem; cursor: pointer;
+}
+.path-modal-close:hover { border-color: #666; color: var(--fg); }
 .track-pin-btn svg { width: 14px; height: 14px; fill: currentColor; pointer-events: none; }
 .track-pin-btn:hover { color: var(--accent); border-color: var(--accent); }
 .track-pin-btn.pinned {
