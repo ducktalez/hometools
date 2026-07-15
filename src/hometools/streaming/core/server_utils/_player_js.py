@@ -2944,7 +2944,9 @@ def render_player_js(
       if (_currentPlaylistId !== '__folder__') return;
       var localOrder = _loadFolderOrder(_showPlaylistPath);
       if (JSON.stringify(localOrder) === JSON.stringify(serverOrder)) return;
-      playlistItems = _sortByFolderOrder(_showPlaylistPath, items);
+      /* Use itemsUnder() — reads from current allItems — NOT the stale 'items'
+         closure which still contains songs deleted during this session. */
+      playlistItems = _sortByFolderOrder(_showPlaylistPath, itemsUnder(_showPlaylistPath));
       applyFilter();
     });
     if (typeof _router !== 'undefined') _router.update();
@@ -3303,7 +3305,11 @@ def render_player_js(
   function applyFilter() {
     var needle = searchInput.value.trim().toLowerCase();
     var sortBy = sortField.value;
-    var items = playlistItems;
+    /* Safety net: always strip locally-deleted paths regardless of how
+       playlistItems was last set (stale closure, folder-order callback, etc.) */
+    var items = Object.keys(_locallyDeletedPaths).length
+      ? playlistItems.filter(function(it) { return !_locallyDeletedPaths[it.relative_path]; })
+      : playlistItems;
 
     if (DEBUG_FILTER) {
       /* ── Debug mode: annotate items with reasons instead of removing ──
