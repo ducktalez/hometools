@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import html
 
+from ._svg import SVG_STAR, SVG_STAR_EMPTY
+
 _AUDIT_PANEL_CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root { --bg:#121212; --surface:#1e1e1e; --surface2:#2a2a2a; --accent:#1db954;
@@ -60,10 +62,15 @@ td { padding:0.5rem 0.75rem; vertical-align:middle; }
 .toast.show { opacity:1; transform:translateY(0); pointer-events:auto; }
 """
 
-_AUDIT_PANEL_JS = """
+_AUDIT_PANEL_JS = (
+    """
 var SERVER_LABEL = document.querySelector('header h1')?.textContent || '';
-var IC_STAR_FILLED = '<svg viewBox="0 0 24 24"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="currentColor"/></svg>';
-var IC_STAR_EMPTY  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>';
+var IC_STAR_FILLED = '"""
+    + SVG_STAR.replace("'", "\\'")
+    + """';
+var IC_STAR_EMPTY  = '"""
+    + SVG_STAR_EMPTY.replace("'", "\\'")
+    + """';
 var IC_CLIPBOARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>';
 
 function fmtDate(iso) {
@@ -195,6 +202,7 @@ document.getElementById('f-clear')?.addEventListener('click', function() {
 
 loadEntries();
 """
+)
 
 
 def render_audit_panel_html(*, server: str, media_type: str, title: str) -> str:

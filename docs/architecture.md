@@ -425,6 +425,35 @@ The favorite star now uses a more pointed 5-point silhouette and the edit
 icon is a pencil/diagonal-pen glyph instead of the earlier document-style
 mark so button semantics read more clearly at small sizes.
 
+### Bugfix: `_svg.py` edits had no visible effect (2026-07-25)
+
+**Symptom:** Updating `SVG_STAR`/`SVG_STAR_EMPTY`/`SVG_EDIT` in `_svg.py`
+did not change the rendered icons at all — the old shapes kept showing up.
+
+**Root cause:** `_player_js.py`'s JS header defines its own `var IC_PLAY`,
+`IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_FOLDER_PLAY`, `IC_PIN`, `IC_STAR`,
+`IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_REPEAT`, `IC_EDIT`,
+`IC_LYRICS` as **hardcoded literal SVG strings**, even though the matching
+`SVG_*` constants were already imported from `_svg.py` at the top of the
+file (masked by a blanket `# noqa: F401`). `_audit.py`'s separate
+`_AUDIT_PANEL_JS` script had the exact same problem for `IC_STAR_FILLED`/
+`IC_STAR_EMPTY`. Editing `_svg.py` alone therefore never reached the
+browser — the duplicated literals silently won.
+
+**Fix:** All of the above `IC_*` variables in `_player_js.py` and
+`_audit.py` now reference the imported `SVG_*` constant (same
+`.replace("'", "\\'")` escaping pattern already used for `IC_PLAYLIST`,
+`IC_TRASH`, `IC_DOTS`, etc.), so `_svg.py` is once again the single
+source of truth for these icons. `IC_REPEAT_ONE`, `IC_EYE`, `IC_EYE_OFF`
+have no `_svg.py` equivalent and stay as local literals (not duplicated
+elsewhere, so no drift risk).
+
+**Why no test caught it:** parseability (`esprima`) and the "no bare
+`SVG_*` identifier" regex test both passed — the bug wasn't a leaked
+identifier or invalid syntax, just two *valid*, independently-authored
+copies of the same JS string literal. No existing test asserted that the
+`IC_*` header block matches `_svg.py`'s `SVG_*` constants byte-for-byte.
+
 ## Known follow-ups
 
 See `docs/IMPLEMENTATION_PLAN.md` for the maintained backlog (including a

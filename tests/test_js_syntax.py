@@ -182,3 +182,38 @@ def test_no_leaked_python_svg_constant_names(config_name):
     assert not leaked, (
         f"Bare Python SVG_* constant name(s) leaked into generated JS for {config_name!r}: {sorted(leaked)} (should be IC_* JS variables instead)"
     )
+
+
+@pytest.mark.parametrize("config_name", sorted(CONFIGS))
+def test_ic_star_and_edit_match_svg_py(config_name):
+    """The `IC_STAR`/`IC_STAR_FILLED`/`IC_STAR_EMPTY`/`IC_EDIT` JS variables
+    must embed the exact markup of `_svg.py`'s `SVG_STAR`/`SVG_STAR_EMPTY`/
+    `SVG_EDIT` constants.
+
+    `_player_js.py`'s header used to hardcode a *second*, independent copy
+    of this markup instead of referencing the already-imported `SVG_*`
+    constants. Both copies were valid JS, so no syntax/leak test caught it
+    — editing `_svg.py` silently had zero effect on the rendered icon. This
+    test locks the two together so any future edit to `_svg.py` is
+    guaranteed to reach the browser.
+    """
+    from hometools.streaming.core.server_utils._svg import (
+        SVG_EDIT,
+        SVG_STAR,
+        SVG_STAR_EMPTY,
+    )
+
+    js = render_player_js(**CONFIGS[config_name])
+    assert SVG_STAR.replace("'", "\\'") in js, "IC_STAR/IC_STAR_FILLED out of sync with SVG_STAR in _svg.py"
+    assert SVG_STAR_EMPTY.replace("'", "\\'") in js, "IC_STAR_EMPTY out of sync with SVG_STAR_EMPTY in _svg.py"
+    assert SVG_EDIT.replace("'", "\\'") in js, "IC_EDIT out of sync with SVG_EDIT in _svg.py"
+
+
+def test_audit_panel_star_matches_svg_py():
+    """Same guarantee as above for the standalone audit-panel script."""
+    from hometools.streaming.core.server_utils._audit import render_audit_panel_html
+    from hometools.streaming.core.server_utils._svg import SVG_STAR, SVG_STAR_EMPTY
+
+    html = render_audit_panel_html(server="hometools audio", media_type="audio", title="Audit")
+    assert SVG_STAR.replace("'", "\\'") in html
+    assert SVG_STAR_EMPTY.replace("'", "\\'") in html
