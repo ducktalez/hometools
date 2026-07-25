@@ -421,6 +421,9 @@ pin/star (+empty)/shuffle/repeat/history/board/edit/lyrics/playlist/
 smart-playlist/queue/refresh/duplicate/move/trash/dots/cast, plus flags
 for de/en/fr/es/it/ja/ko/zh/pt/ru. New constants always go in `_svg.py`
 (Python side), never inline in a fragment module.
+The favorite star now uses a more pointed 5-point silhouette and the edit
+icon is a pencil/diagonal-pen glyph instead of the earlier document-style
+mark so button semantics read more clearly at small sizes.
 
 ## Known follow-ups
 
