@@ -386,11 +386,16 @@ def evaluate_smart(
         return []
 
 
-def validate_smart_rules(smart: Any) -> tuple[bool, str]:
+def validate_smart_rules(smart: Any, *, own_id: str | None = None) -> tuple[bool, str]:
     """Lightweight validator for a ``smart`` rule block.
 
     Returns ``(ok, reason)``.  Used by API endpoints to reject obviously
     malformed payloads before persisting them.
+
+    If *own_id* is given (i.e. this smart-block belongs to an existing
+    playlist being updated), any ``in_playlist`` rule that references
+    *own_id* is rejected — this prevents a smart playlist from creating a
+    circular self-reference in its own rules.
     """
     if not isinstance(smart, dict):
         return False, "smart must be an object"
@@ -411,6 +416,11 @@ def validate_smart_rules(smart: Any) -> tuple[bool, str]:
             return False, f"rule[{idx}].op is required"
         if "value" not in rule:
             return False, f"rule[{idx}].value is required"
+        if own_id and rule.get("field") == "in_playlist":
+            value = rule.get("value")
+            refs = value if isinstance(value, list | tuple) else [value]
+            if any(str(v) == str(own_id) for v in refs if v):
+                return False, f"rule[{idx}] darf nicht auf die eigene Playlist verweisen (Zirkelreferenz)"
     limit = smart.get("limit")
     if limit is not None and (not isinstance(limit, int | float) or limit < 0 or limit > 10_000):
         return False, "smart.limit must be 0–10000"

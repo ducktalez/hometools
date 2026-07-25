@@ -1108,6 +1108,20 @@ def create_app(
         remaining = delete_playlist(resolved_cache_dir, "audio", id)
         return {"items": remaining}
 
+    @app.patch("/api/audio/playlists")
+    def audio_rename_playlist(payload: dict[str, str]) -> dict[str, object]:
+        """Rename an existing playlist."""
+        from hometools.streaming.core.playlists import rename_playlist
+
+        playlist_id = payload.get("playlist_id", "")
+        name = payload.get("name", "").strip()
+        if not playlist_id or not name:
+            raise HTTPException(status_code=400, detail="playlist_id and name are required")
+        pl = rename_playlist(resolved_cache_dir, "audio", playlist_id, name=name)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        return {"playlist": pl}
+
     @app.post("/api/audio/playlists/items")
     def audio_add_playlist_item(payload: dict[str, str]) -> dict[str, object]:
         """Add a track to a playlist."""
@@ -1197,7 +1211,7 @@ def create_app(
         smart = payload.get("smart")
         if not playlist_id:
             raise HTTPException(status_code=400, detail="playlist_id is required")
-        ok, reason = validate_smart_rules(smart)
+        ok, reason = validate_smart_rules(smart, own_id=playlist_id)
         if not ok:
             raise HTTPException(status_code=400, detail=reason)
         pl = update_smart_rules(resolved_cache_dir, "audio", playlist_id, smart=smart)  # type: ignore[arg-type]

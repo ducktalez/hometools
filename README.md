@@ -22,13 +22,54 @@ Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
 
 ## Plan/TODOs
 
-- 
-- Füge in den Tools-einstellungen eine buttongroup ein, welche einen Lösch-button bei Titeln einfügt zum löschen einer Datei. Optionen: (Löschen (mit Warnung)/Löschen (direkt)/ausblenden). Dateien werden immer in den delete_me Ordner verschoben. Die Warnung könnte z.B. ein Pop-up sein, das den Benutzer auffordert, die Aktion zu bestätigen, bevor die Datei endgültig gelöscht wird.
+
+---
+
+
+- Bug: In intelligenten Wiedergabelisten ist die Anzeige der Kopfleiste und Layout anders. Wie kann das sein? Diese sollte überall gleich sein. (zB.: Die Suchfunktionen fehlen, "Tools"-Pille wird angezeigt, aber kann nicht angeklickt werden)
+- Bei serien (ducktales: staffel 1) erschienen die Folgen in der Liste mit unterschiedlichem Format links als Nummern (1-17), danach ging es weiter als „S01E12“. Das Problem waren falsche Dateinamen ("S01.E01" statt "S01E02"). Die Einrückung sollte aber trotzdem passen. Für solche Fälle sollte im Dashboard zusätzlich eine Warnung für die Datei erscheinen. Auch eine bessere Staffel/Folgeerkennung aus Strings über Regex wäre denkbar. 
+- Layout: Es gibt drei Listentypen: Ordner, normale Wiedergabeliste, intelligente Wiedergabeliste. Diese sollen erkennbar sein. Intelligente Wiedergabelisten haben bereits ein Symbol. 
+  - Wiedergabelisten sollen auch ein Cover haben (Wie bei Ordnern).
+  - Ordner sollen ein überblendendes Ordnersymbol über dem Cover haben, WIedergabelisten 
+  - 
+- Dashboard. Ich will eine Startseite, die einem einen Überblick über die wichtigsten Funktionen gibt. Im Dashboard kann auch auf die Server zugegriffen werden - evtl laufen diese dann am selben Port. Zu den jeweiligen Servern sollten hier auch Aufgaben angeigt werden. Diese wären zB.
+  - Konvertierungen vorschlagen (zB. Konvertierung zu .mp4 bei nicht streambaren files, die sonst gemuxed werden müssen). Würde per Klick direkt erledigt werden.
+  - fehlenden Folgen einer Serie
+  - Liste mit Duplikaten bei Liedern (Hier könnte ein Link zur Playliste mit Duplikaten führen)
+  - Warnungen: Der Nutzer soll bei Titeln/Videos bei den Optionen "Warnung/flaggen" haben. Der Song wird dann im Dashboard angezeigt.
+  - Zeitpunkte der letzten Synchronisierung/Indizierung. Wenn gerade eine Synchronisierung läuft, sollte auch per Fortschrittsbalken angezeigt werden, was schon erledigt worden ist und was noch aussteht. (zB. 10 von 100 Dateien synchronisiert). Besonders bei der Synchronisation sollte hier eine Hierarchie der Aufgaben vorherrschen (Vom Nutzer angeforderter Titel (wenn keine Metadaten)-> Vom Nutzer angeforderte Liste -> restliche Wiedergabelisten (bei Neustart bzw. wenn schon lange her).  (!) Thumbnails/Audio-scrolls sollen generell nicht erneuert werden, wenn sie bereits vorhanden sind. Diese Neugenerierung wäre nur bei User-Request nötig. Wenn du hier noch weitere Vorschläge hast, gerne umsetzen.
+- Ich überlege, die auf verschiedenen Ports laufenden Hauptfunktionen nicht mehr zu unterscheiden. Ist das eine kluge Idee?
+- Die "letzte Wiedergabe fortsetzen" soll nur bei der zuletzt gesehenen Folge (bei Hörbüchern immer) angewandt werden. Momentan starten willkürliche Folgen oft mittendrin, weil sie vor Ewigkeiten mal gesehen wurden.
+- Ich würde im nächsten Schritt gerne die Administrator-Dashboard-Seite überarbeiten. Hier sollen Aufgaben, die den Streamingprozess erleichtern, für die vorbereitete Abarbeitung vorgeschlagen werden.
+  - Konvertierungen vorschlagen (zB. Konvertierung zu .mp4 bei nicht streambaren files, die sonst gemuxed werden müssen)
+  - fehlenden Folgen einer Serie
+  - Liste mit Duplikaten bei Liedern
+- Idee: Anzeige eines Art "Embeddings" für Lieder
+  - Lieder werden in einem 2D-Plot angezeigt, der die Ähnlichkeit der Lieder zueinander darstellt (Lieder als Kreisen mit Coverbild, Titel/Künstler)
+  - Wichtig für das Embedding könnte zB. die BPM, das Genre, der Interpret, die Tonart, die Länge, Erscheinungsjahr, Hinzugefügt-am-Zeitpunkt, die Lautstärke, die Stimmung (zB. fröhlich, traurig, aggressiv) sein. Auch die Popularität (zB. Bewertung) könnte ein Faktor sein. Ebenfalls wären tags möglich.
+  - Der Algorithmus könnte sich nun durch-"crawlen" und ähnliche Lieder in der Nähe anzeigen und diese als nächstes abspielen
+  - Als Nutzer sollte man die insgesamt möglichen Lieder per Filter bestimmen können. Auch die Richtung (schneller, fröhlicher, ...) wären interessant
+  - Die Embeddings könnten auch für die Suche genutzt werden. ZB. "ähnliche Lieder wie XY" oder "ähnliche Lieder wie das gerade gespielte Lied"
+  - Es würde sich vermutlich um kein echtes Embedding handeln, sondern eher um eine Art "Feature-Space", der die Lieder in einem 2D-Raum anordnet. Die Ähnlichkeit könnte zB. über eine gewichtete Summe der Features berechnet werden. Zwei Embedding-faktoren wären 2d-mäßig anzeigbar, die Sterne könnten durch Farbe oder Größe dargestellt werden. Die anderen Faktoren könnten per Filter ein- und ausgeblendet werden.
+  - Dieses Feature-space-embedding sollte titel - sowie Listenspezifische Features abbilden.  Für WIedergabelisten sollte man in einer Tabelle diese Features jeweils bewerten können. (zB. happy (rank 0-5), energy (0-5), party (0-5), sing (0-5))
+- Layout/UX Instructions: funktionale Farben
+  - Das folgende soll umgesetzt werden, insbesondere sollen aber auch die .github-Instructions dafür angepasst werden. Meine Anweisungen sind Vorschläge, vermutlich kennst du weitere/bessere UI-Sachen.
+  - In der Gesamterfahrung sollen Farben nicht allzu dominant und auf Funktionalität ausgelegt sein (ähnlich wie bei einem Pioneer-DJ-Pult. Fokus auf Audio-server, da hier mehr gearbeitet wird als bei Video). Das heißt zB.::
+    - zusammenhängende Funktionen haben ähnliche Farben.
+      - Hat sich etwas wichtiges verändert, sollte es dort kurz blinken (blink-up wenn aktiv oder blink-down-short wenn inaktiviert)
+      - Farben sind eher Zugehörigkeiten - Warnungen/Vorschläge sollten durch blinken/Glow sichtbar gemacht werden
+    - Bei Farb-Änderungen sollte zur besseren Aufmerksamkeit die Elemente kurz blinken
+    - Cover sollten [optionalerweise im .env-File einstellbar]  weniger gesättigt angezeigt werden, damit Signalfarben immer Signalfarben bleiben.
+    - Wird ein neuer Titel zur Warteschlange hinzugefügt, sollte der Handle sanft grün blinken. SOlang Titel in der Warteschlange sind, glowt der Handle grün.
+  - Die Bewertungs-Sterne sollten weniger Sättigung haben als bisher. dennoch passt die Farbe Gelb, da diese Info wichtig ist.
+  - Bitte frage bei konkreten Ideen oder Problemen nach
+- Strg+Z um die letzte Aktion rückgängig machen zu können? (Gute Idee? Zu komplex?)
+- Ich hätte gerne eine zusätzliche Funktion: die Möglichkeit, Clips zu erstellen. Die Idee ist, dass man einfach eine normale Serie schaut und Momente sieht, die sich gut für einen Clip eignen, ausgeschneiden werden können. Auch das Markieren interessanter Momente wäre hilfreich. Es handelt sich um eine etwas separate Entwicklung. Das ist mir klar.
 - Im tools-modus sollen die anderen Metadaten wysiwig geändert werden können (z.B. Album, Interpret, Genre, Jahr, etc.). Das ist teilweise schon möglich, aber noch nicht vollständig umgesetzt.
 - Es soll eine Listenansicht für Titel geben, in der (wie im windows ordner) die Metadaten Spaltenmäßig angezeigt werden. Die Spalten sollen auch ausgewählt werden können.
-- Ich will für die Anwendung urls/routes haben, sodass man listen/titel/etc. via Link schicken kann. Kannst du dafür einen plan erstellen/umsetzen?
 - wav/mp3 Organisation für DJs.
-- Deleted files landen in delete_me statt in den Papierkorb
+- bug: Deleted files landen in delete_me statt in den Papierkorb. Da es oft keinen gibt: Hier ist eigentlich der Windows-Papierkorb gemeint. Bitte prüfen, ob das möglich ist. Sonst würde der delete_me Ordner passen oder die Titel könnten umbenannt werden (leading-".", damit versteckt und nicht mehr in Liste sichtbar). Papierkorb-dateien im delete-me Ordner sollten im Dashboard als final löschbar angezeigt werden.
+- Bei Serien sollte in der Listenanzeige nur Staffel/Folge 
 - original-downloadname vs. syntaktisch korrekter Name
 - podcast & Musik gleichzeitig laufen lassen
 - TV-Idee: Stream der Wer wird Millionär Show aus dem Quiz Repository. Hier kann eine zufällige Person online teilnehmen. 
@@ -37,6 +78,7 @@ Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
 - Drei ??? Alben sind aufeinanderfolgende Titel . automatisch erkennen/automatisch mergen?
 - Tests haben immer eine Auswirkung auf den Serverzustand. Kann man tests iwie besser mocken?
 - Musik abspielen, während man ein Hörbuch hört?
+- Layout Erweiterung: In Spotify und iTunes sind Wiedergabelisten üblicherweise an der linken Seite und die Titel in einem Fenster an der rechten. Dieses Design soll hier auch so umgesetzt werden. 
 
 ---
 

@@ -2071,3 +2071,57 @@ class TestCatalogLocalStorageCache:
         # The values must differ (key contains the API path)
         assert "_api_audio_tracks" in js_audio or "api/audio/tracks" in js_audio
         assert "_api_video_items" in js_video or "api/video/items" in js_video
+
+
+# ---------------------------------------------------------------------------
+# Track detail/table view (audio only): hover-play, table columns, inline edit
+# ---------------------------------------------------------------------------
+
+
+class TestTrackDetailTableView:
+    """Audio-only "table" view toggled from the view-toggle button: shows
+    title/artist/duration/genre/rating as columns and allows inline editing
+    of title/artist while a tool is active."""
+
+    def test_table_view_toggle_present_in_audio_js(self):
+        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        assert "_toggleTrackViewMode" in js
+        assert "trackViewMode" in js
+        assert "IC_TABLE" in js
+
+    def test_table_view_locked_out_for_video(self):
+        js = render_player_js(api_path="/api/video/items", item_noun="video")
+        # Toggling is a no-op for video (detail/table view is audio-only)
+        assert "detail/table view is audio-only" in js
+
+    def test_track_row_has_duration_and_genre_cells(self):
+        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        assert "track-duration-cell" in js
+        assert "track-genre-cell" in js
+
+    def test_table_header_columns(self):
+        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        assert "track-table-header" in js
+        assert "Interpret" in js
+        assert "Dauer" in js
+        assert "Genre" in js
+
+    def test_inline_edit_save_function_present(self):
+        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        assert "_saveInlineTableEdit" in js
+        assert "contenteditable" in js
+
+    def test_css_defines_table_mode_grid(self):
+        css = render_base_css()
+        assert ".track-list.table-mode .track-item" in css
+        assert ".track-table-header" in css
+
+    def test_hover_play_button_on_track_thumbnail(self):
+        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        assert "track-play-btn" in js
+
+    def test_folder_hover_play_button_moved_over_cover(self):
+        css = render_base_css()
+        assert ".folder-play-btn" in css
+        # Positioned over the left side of the cover, not bottom-right anymore
+        assert "left: 0.6rem" in css

@@ -637,7 +637,7 @@ class TestQueueParity:
     """Queue (Warteschlange) must be present in both audio and video UIs."""
 
     def test_both_home_pages_include_queue_button(self, tmp_path):
-        """Both UIs must have the queue button in the player bar."""
+        """Both UIs must have the queue peek-handle in the player bar."""
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
@@ -646,8 +646,8 @@ class TestQueueParity:
         audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
         video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
 
-        assert 'id="btn-queue"' in audio_html
-        assert 'id="btn-queue"' in video_html
+        assert 'id="queue-peek-handle"' in audio_html
+        assert 'id="queue-peek-handle"' in video_html
 
     def test_both_home_pages_include_queue_panel(self, tmp_path):
         """Both UIs must have the queue panel HTML."""

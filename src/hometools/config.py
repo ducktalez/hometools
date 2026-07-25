@@ -485,11 +485,11 @@ def get_channel_encoder() -> str:
 def get_recent_video_limit() -> int:
     """Return max number of recently played video items shown on the start screen.
 
-    Default 3 — only the most recently seen episode per series is kept,
-    so this is an episode count, not a series count.
+    Default 20 — one episode per series, last 14 days.  Effectively shows all
+    series from the last two weeks in practice.
     Set ``HOMETOOLS_RECENT_VIDEO_LIMIT`` to override.
     """
-    return _get_int_from_env("HOMETOOLS_RECENT_VIDEO_LIMIT", 3)
+    return _get_int_from_env("HOMETOOLS_RECENT_VIDEO_LIMIT", 20)
 
 
 def get_recent_max_age_days() -> int:

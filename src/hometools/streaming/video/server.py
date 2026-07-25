@@ -769,6 +769,20 @@ def create_app(
         remaining = delete_playlist(resolved_cache_dir, "video", id)
         return {"items": remaining}
 
+    @app.patch("/api/video/playlists")
+    def video_rename_playlist(payload: dict[str, str]) -> dict[str, object]:
+        """Rename an existing playlist."""
+        from hometools.streaming.core.playlists import rename_playlist
+
+        playlist_id = payload.get("playlist_id", "")
+        name = payload.get("name", "").strip()
+        if not playlist_id or not name:
+            raise HTTPException(status_code=400, detail="playlist_id and name are required")
+        pl = rename_playlist(resolved_cache_dir, "video", playlist_id, name=name)
+        if pl is None:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+        return {"playlist": pl}
+
     @app.post("/api/video/playlists/items")
     def video_add_playlist_item(payload: dict[str, str]) -> dict[str, object]:
         """Add a video to a playlist."""
@@ -858,7 +872,7 @@ def create_app(
         smart = payload.get("smart")
         if not playlist_id:
             raise HTTPException(status_code=400, detail="playlist_id is required")
-        ok, reason = validate_smart_rules(smart)
+        ok, reason = validate_smart_rules(smart, own_id=playlist_id)
         if not ok:
             raise HTTPException(status_code=400, detail=reason)
         pl = update_smart_rules(resolved_cache_dir, "video", playlist_id, smart=smart)  # type: ignore[arg-type]
@@ -1053,7 +1067,7 @@ def create_app(
         from hometools.config import get_recent_max_age_days, get_recent_max_per_series, get_recent_video_limit
         from hometools.streaming.core.progress import get_recent_progress
 
-        effective_limit = get_recent_video_limit() if limit is None else max(1, min(int(limit), 50))
+        effective_limit = get_recent_video_limit() if limit is None else max(1, min(int(limit), 200))
         max_age_days = get_recent_max_age_days()
         max_per_series = get_recent_max_per_series()
         cutoff_ts = time.time() - max_age_days * 86400

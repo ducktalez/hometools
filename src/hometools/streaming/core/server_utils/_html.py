@@ -22,7 +22,6 @@ from ._svg import (
     SVG_PIP,
     SVG_PLAY,
     SVG_PREV,
-    SVG_QUEUE,
     SVG_REPEAT,
     SVG_SHUFFLE,
     SVG_SKIP_INTRO,
@@ -105,7 +104,13 @@ def render_media_page(
     repeat_btn_html = (
         f'<button class="ctrl-btn repeat-btn" id="btn-repeat" title="Wiederholen">{SVG_REPEAT}</button>' if enable_repeat else ""
     )
-    queue_btn_html = f'<button class="ctrl-btn queue-btn" id="btn-queue" title="Warteschlange">{SVG_QUEUE}<span class="queue-badge" id="queue-badge"></span></button>'
+    queue_peek_html = (
+        '<div class="queue-peek-handle" id="queue-peek-handle" title="Warteschlange \u00f6ffnen">'
+        '<div class="queue-peek-bar"></div>'
+        '<span class="queue-peek-badge" id="queue-peek-badge"></span>'
+        "</div>"
+    )
+
     sw_register = (
         ""
         if safe_mode
@@ -345,8 +350,9 @@ def render_media_page(
     if player_bar_style == "waveform":
         player_bar_html = f"""
   <div class="player-bar waveform view-hidden">
+    {queue_peek_html}
     <div class="player-bar-top">
-      <img class="track-thumb" id="player-thumb" src="" alt="" style="display:none">
+      <img class="track-thumb player-thumb-clickable" id="player-thumb" src="" alt="" style="display:none" title="Zum aktuellen Titel in der Liste springen">
       <div class="player-info">
         <div class="player-title"  id="player-title">No {item_noun} selected</div>
         <div class="player-artist" id="player-artist">&ndash;</div>
@@ -360,8 +366,8 @@ def render_media_page(
         {lyrics_btn_html}
         {shuffle_btn_html}
         {repeat_btn_html}
-        {queue_btn_html}
       </div>
+      <div class="player-bar-actions" id="player-bar-actions"></div>
     </div>
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>
@@ -379,7 +385,8 @@ def render_media_page(
     else:
         player_bar_html = f"""
   <div class="player-bar classic view-hidden">
-    <img class="track-thumb" id="player-thumb" src="" alt="" style="display:none">
+    {queue_peek_html}
+    <img class="track-thumb player-thumb-clickable" id="player-thumb" src="" alt="" style="display:none" title="Zum aktuellen Titel in der Liste springen">
     <div class="player-info">
       <div class="player-title"  id="player-title">No {item_noun} selected</div>
       <div class="player-artist" id="player-artist">&ndash;</div>
@@ -393,7 +400,6 @@ def render_media_page(
       {lyrics_btn_html}
       {shuffle_btn_html}
       {repeat_btn_html}
-      {queue_btn_html}
     </div>
     <div class="progress-wrap">
       <span class="time-label"     id="time-cur">0:00</span>
@@ -407,6 +413,7 @@ def render_media_page(
       </div>
       <span class="time-label end" id="time-dur">0:00</span>
     </div>
+    <div class="player-bar-actions" id="player-bar-actions"></div>
   </div>"""
 
     # Build the player section: video mode → overlay modal, audio mode → inline bar

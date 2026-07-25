@@ -62,7 +62,7 @@ def test_stream_safe_mode_from_env(monkeypatch):
 
 
 def test_recent_video_limit_default():
-    assert get_recent_video_limit() == 3
+    assert get_recent_video_limit() == 20
 
 
 def test_recent_video_limit_from_env(monkeypatch):

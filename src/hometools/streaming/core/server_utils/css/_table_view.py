@@ -1,0 +1,249 @@
+"""CSS fragment: table view (split from the former monolithic _css.py)."""
+
+from __future__ import annotations
+
+
+def render_table_view_css() -> str:
+    """Return the table view section of the dark-theme CSS."""
+    return """/* ── Track detail/table view (audio only) ──────────────────────────────────
+   Toggled via the view-toggle button while a folder/playlist is open.
+   Columns: num | thumb | title | artist | duration | genre | rating | actions */
+.track-duration-cell, .track-genre-cell { display: none; }
+.track-table-header {
+  display: grid;
+  grid-template-columns: 2.5rem 2.75rem 2fr 1.3fr 4rem 6rem 5.5rem 4.5rem;
+  gap: 0.6rem; align-items: center;
+  padding: 0.5rem max(1rem, var(--sar)) 0.5rem max(1rem, var(--sal));
+  font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--sub); border-bottom: 1px solid #333;
+  position: sticky; top: 0; background: var(--surface); z-index: 5;
+}
+.track-list.table-mode { }
+.track-list.table-mode .track-item {
+  display: grid;
+  grid-template-columns: 2.5rem 2.75rem 2fr 1.3fr 4rem 6rem 5.5rem 4.5rem;
+  gap: 0.6rem; align-items: center;
+  padding-top: 0.4rem; padding-bottom: 0.4rem;
+}
+.track-list.table-mode .thumb-wrap.track-thumb-wrap { width: 32px; height: 32px; order: 1; }
+.track-list.table-mode .track-info { display: contents; }
+.track-list.table-mode .track-title { order: 2; margin: 0; }
+.track-list.table-mode .track-artist { order: 3; margin: 0; }
+.track-list.table-mode .track-duration-cell {
+  display: block; order: 4; font-size: 0.78rem; color: var(--sub);
+}
+.track-list.table-mode .track-genre-cell {
+  display: block; order: 5; font-size: 0.78rem; color: var(--sub);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.track-list.table-mode .track-inline-rating { display: flex !important; order: 6; margin-left: 0; }
+.track-list.table-mode .rating-bar { display: none; }
+.track-list.table-mode .track-dl-btn,
+.track-list.table-mode .track-pin-btn,
+.track-list.table-mode .track-queue-btn,
+.track-list.table-mode .track-playlist-btn,
+.track-list.table-mode .track-edit-btn,
+.track-list.table-mode .track-move-widget { display: none; }
+.track-list.table-mode .track-kebab-btn,
+.track-list.table-mode .track-reveal-btn { order: 7; }
+/* Inline-editable title/artist cells (tools mode active) */
+.track-title-text[contenteditable="true"],
+.track-artist[contenteditable="true"] {
+  cursor: text; border-radius: 3px; outline: none;
+  box-shadow: 0 0 0 1px transparent; transition: box-shadow 0.12s;
+}
+.track-title-text[contenteditable="true"]:hover,
+.track-artist[contenteditable="true"]:hover {
+  box-shadow: 0 0 0 1px #444;
+}
+.track-title-text[contenteditable="true"]:focus,
+.track-artist[contenteditable="true"]:focus {
+  box-shadow: 0 0 0 1px var(--accent); background: rgba(255,255,255,0.04);
+}
+.track-meta {
+  font-size: 0.68rem; color: #666;
+  white-space: nowrap; flex-shrink: 0;
+}
+/* missing episode placeholder */
+.track-item.missing-episode {
+  opacity: 0.6; pointer-events: none; min-height: 32px;
+  border-bottom: 1px solid #1a1a1a;
+  background: repeating-linear-gradient(45deg, transparent, transparent 9px,
+    rgba(207,102,121,0.06) 9px, rgba(207,102,121,0.06) 18px);
+}
+.track-item.missing-episode .track-num { color: #cf6679; }
+.track-item.missing-episode .track-title { font-style: italic; color: #cf6679; }
+.track-item.missing-episode .track-artist { color: #888; }
+/* debug-filtered items (shown dimmed with filter reason) */
+.track-item.debug-filtered {
+  opacity: 0.35; pointer-events: none;
+}
+.track-item.debug-filtered .track-info { position: relative; }
+.debug-reason {
+  font-size: 0.7rem; color: #e57373; font-style: italic; margin-top: 2px;
+}
+/* hidden-shown: normally filtered by MIN_RATING, visible via toggle */
+.track-item--hidden-shown {
+  opacity: 0.4; background: rgba(110,110,110,0.05);
+  filter: saturate(0.2);
+}
+.track-item--hidden-shown:hover { opacity: 0.58; filter: saturate(0.35); }
+.track-item--hidden-shown .track-title-text { color: var(--sub); }
+.track-item--hidden-shown .track-artist { color: #555; }
+/* Keep the "ausgeblendet" indicator even in active/playing state */
+.track-item--hidden-shown.active { background: rgba(24,51,32,0.55); opacity: 0.5; }
+/* filter-hidden chip: stable width so click target doesn't shift */
+#filter-hidden { min-width: 8.5rem; justify-content: flex-start; }
+/* fade-out animation for delete / move — item slides up and disappears */
+@keyframes ht-fadeout {
+  from { opacity: 1; max-height: 120px; }
+  to   { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; overflow: hidden; }
+}
+.track-item--removing {
+  animation: ht-fadeout 0.32s ease forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* Deleted item in dupe panel */
+.dupe-group-item--deleted { opacity: 0.35; cursor: default; pointer-events: none; }
+.dupe-group-item--deleted .dupe-group-item-title { text-decoration: line-through; }
+.hidden-badge {
+  display: inline-flex; align-items: center; font-size: 0.6rem;
+  color: #fff; background: rgba(120,120,120,0.7);
+  padding: 1px 5px; border-radius: 8px; margin-left: 5px;
+  vertical-align: middle; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+  flex-shrink: 0;
+}
+/* refresh-info label in the header */
+.refresh-info {
+  font-size: 0.68rem; color: var(--sub); margin-left: 0.5rem; white-space: nowrap;
+}
+/* conversion badge for non-native formats */
+.convert-badge {
+  display: inline-block; font-size: 0.65rem; color: #f5a623;
+  margin-left: 5px; vertical-align: middle; opacity: 0.8;
+  title: attr(data-tip);
+}
+.track-dl-btn {
+  background: none; border: 1px solid #555; color: var(--sub);
+  border-radius: 50%; width: 30px; height: 30px;
+  cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0; line-height: 1; font-size: 0.7rem;
+}
+.track-dl-btn svg { width: 16px; height: 16px; fill: currentColor; pointer-events: none; }
+.track-dl-btn:hover { color: var(--accent); border-color: var(--accent); }
+.track-dl-btn.cached {
+  color: var(--accent); border-color: var(--accent);
+  background: rgba(29, 185, 84, 0.12);
+}
+.track-dl-btn.downloading {
+  color: #ffcc00; border-color: #ffcc00; font-size: 0.65rem;
+  cursor: pointer;
+}
+@keyframes dl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.track-dl-btn.downloading { animation: dl-pulse 1.2s ease-in-out infinite; }
+.track-pin-btn {
+  background: none; border: 1px solid #555; color: var(--sub);
+  border-radius: 50%; width: 28px; height: 28px;
+  cursor: pointer; flex-shrink: 0; margin-left: 4px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0; line-height: 1;
+}
+/* Three-dot kebab menu button */
+.track-kebab-btn {
+  background: none; border: none; color: var(--sub);
+  border-radius: 50%; width: 28px; height: 28px; padding: 0;
+  cursor: pointer; flex-shrink: 0; margin-left: 2px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.55; transition: opacity 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.track-kebab-btn:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+.track-kebab-btn svg { width: 14px; height: 14px; pointer-events: none; }
+/* "Im Explorer anzeigen" button in track list — always visible, right-aligned after trash */
+.track-reveal-btn {
+  background: none; border: none; color: var(--sub);
+  border-radius: 50%; width: 28px; height: 28px; padding: 0;
+  cursor: pointer; flex-shrink: 0; margin-left: 2px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.45; transition: opacity 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.track-reveal-btn:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+.track-reveal-btn svg { width: 14px; height: 14px; pointer-events: none; fill: none; stroke: currentColor; stroke-width: 2; }
+/* Generic three-dot / kebab dropdown menu — shared by every kebab menu
+   in the UI (track rows, player bar, playlist cards, …) so they all look
+   and behave the same. */
+.ht-ctx-menu {
+  position: fixed; z-index: 9999;
+  background: #1e1e1e; border: 1px solid #333; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45); min-width: 190px; overflow: hidden;
+}
+.ht-ctx-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 10px 14px;
+  background: none; border: none; color: var(--fg);
+  cursor: pointer; font-size: 0.875rem; text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.ht-ctx-item:hover { background: rgba(255,255,255,0.08); }
+.ht-ctx-item svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.75; }
+.ht-ctx-item--danger { color: #ff5c5c; }
+.ht-ctx-item--danger svg { opacity: 0.9; }
+.ht-ctx-item--danger:hover { background: rgba(255,92,92,0.12); }
+/* Path modal overlay */
+.path-modal-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.path-modal {
+  background: #1e1e1e; border: 1px solid #333; border-radius: 12px;
+  padding: 20px; max-width: 560px; width: 100%;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+}
+.path-modal-title {
+  font-size: 0.75rem; color: var(--sub); margin-bottom: 10px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.path-modal-revealed { color: var(--accent); font-weight: 600; text-transform: none; letter-spacing: 0; }
+.path-modal-path {
+  font-family: monospace; font-size: 0.82rem; color: var(--fg);
+  background: #111; border: 1px solid #2a2a2a; border-radius: 6px;
+  padding: 10px 12px; word-break: break-all; margin-bottom: 14px;
+  user-select: all; -webkit-user-select: all;
+}
+.path-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.path-modal-copy {
+  background: var(--accent); color: #000; border: none;
+  border-radius: 6px; padding: 7px 14px; font-size: 0.82rem;
+  cursor: pointer; font-weight: 600;
+}
+.path-modal-close {
+  background: none; border: 1px solid #444; color: var(--sub);
+  border-radius: 6px; padding: 7px 14px; font-size: 0.82rem; cursor: pointer;
+}
+.path-modal-close:hover { border-color: #666; color: var(--fg); }
+.track-pin-btn svg { width: 14px; height: 14px; fill: currentColor; pointer-events: none; }
+.track-pin-btn:hover { color: var(--accent); border-color: var(--accent); }
+.track-pin-btn.pinned {
+  color: var(--accent); border-color: var(--accent);
+  background: rgba(29, 185, 84, 0.12);
+}
+.track-edit-btn {
+  background: none; border: 1px solid #555; color: var(--sub);
+  border-radius: 50%; width: 28px; height: 28px;
+  cursor: pointer; flex-shrink: 0; margin-left: 4px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0; line-height: 1;
+}
+.track-edit-btn svg { width: 14px; height: 14px; fill: currentColor; pointer-events: none; }
+.track-edit-btn:hover { color: var(--accent); border-color: var(--accent); }
+"""
