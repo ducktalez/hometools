@@ -435,11 +435,10 @@ body.modal-open { overflow: hidden; }
 .track-list--series .track-num { width: 4rem; min-width: 4rem; }
 .track-item.active .num-text { display: none; }
 .track-info { flex: 1 1 0; min-width: 0; }
-/* Fixed visual order for trailing action buttons — guarantees the kebab
-   and reveal-in-explorer buttons always render right-most regardless of
-   which optional buttons (edit/playlist/inline-rating/move-widget) are
-   conditionally shown by the active tools-mode. DOM order stays as-is;
-   only the visual flex order changes. */
+/* Fixed visual order for trailing action buttons — keeps the reveal button
+   just left of the kebab menu while the rest of the optional tools buttons
+   can still appear/disappear without shifting the cluster unexpectedly.
+   DOM order stays as-is; only the visual flex order changes. */
 .track-num { order: 0; }
 .thumb-wrap.track-thumb-wrap { order: 1; }
 .track-info { order: 2; }
@@ -450,8 +449,8 @@ body.modal-open { overflow: hidden; }
 .track-queue-btn { order: 7; }
 .track-inline-rating { order: 8; }
 .track-move-widget { order: 9; }
-.track-kebab-btn { order: 10; }
-.track-reveal-btn { order: 11; }
+.track-reveal-btn { order: 10; }
+.track-kebab-btn { order: 11; }
 
 .track-title {
   font-size: 0.92rem; font-weight: 500;

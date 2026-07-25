@@ -44,8 +44,8 @@ def render_table_view_css() -> str:
 .track-list.table-mode .track-playlist-btn,
 .track-list.table-mode .track-edit-btn,
 .track-list.table-mode .track-move-widget { display: none; }
-.track-list.table-mode .track-kebab-btn,
 .track-list.table-mode .track-reveal-btn { order: 7; }
+.track-list.table-mode .track-kebab-btn { order: 8; }
 /* Inline-editable title/artist cells (tools mode active) */
 .track-title-text[contenteditable="true"],
 .track-artist[contenteditable="true"] {

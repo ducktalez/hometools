@@ -186,6 +186,9 @@ for file locations.
   bespoke dropdown or place a kebab button anywhere but the right edge of
   its card/row. Destructive items use `danger: true` (`.ht-ctx-item--danger`,
   red text/hover).
+  Track rows keep `track-reveal-btn` immediately left of `track-kebab-btn`
+  in both list and table mode; the duplicate-trash icon remains inside
+  `.dupe-badge` near the title and is not part of the trailing action cluster.
 
 - **Playlists** (`streaming/core/playlists.py`): CRUD, pseudo-folder cards
   on the root screen, drag-and-drop reorder (`initPlaylistDragDrop`),
