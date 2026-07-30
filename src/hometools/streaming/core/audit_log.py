@@ -46,6 +46,7 @@ _LEGACY_CACHE_SUBDIR = "audit"
 VALID_ACTIONS = {
     "rating_write",
     "tag_write",
+    "bpm_write",
     "file_rename",
     "file_move",
     "file_delete",
@@ -368,6 +369,39 @@ def log_tag_write(
         new_value,
         entry.entry_id,
     )
+    return entry
+
+
+def log_bpm_write(
+    audit_dir: Path,
+    *,
+    server: str,
+    path: str,
+    old_bpm: float,
+    new_bpm: float,
+) -> AuditEntry:
+    """Create, append, and return an audit entry for a BPM tag write.
+
+    Mirrors :func:`log_rating_write` — BPM is a simple numeric field with
+    its own dedicated undo handling (unlike ``tag_write``, whose undo only
+    supports title/artist/album).
+    """
+    entry = new_entry(
+        action="bpm_write",
+        server=server,
+        path=path,
+        field="bpm",
+        old_value=old_bpm,
+        new_value=new_bpm,
+        undo_payload={
+            "entry_id": "",
+            "path": path,
+            "bpm": old_bpm,
+        },
+    )
+    entry = AuditEntry(**{**asdict(entry), "undo_payload": {**entry.undo_payload, "entry_id": entry.entry_id}})
+    append_entry(audit_dir, entry)
+    logger.info("audit: %s bpm %r \u2192 %r (entry %s)", path, old_bpm, new_bpm, entry.entry_id)
     return entry
 
 

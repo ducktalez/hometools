@@ -20,6 +20,11 @@ venv/
 .vscode/
 *.swp
 
+# Streaming webui build tooling (Vite/TypeScript migration scaffold)
+src/hometools/streaming/core/webui/node_modules/
+src/hometools/streaming/core/webui/dist-typecheck/
+src/hometools/streaming/core/static/
+
 # Logs & generated files
 *.log
 

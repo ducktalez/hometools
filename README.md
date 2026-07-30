@@ -24,26 +24,83 @@ Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
 
 
 ---
+(Generell gilt: Wird code geändert, der migriert werden könnte, dann soll dieser code migriert werden.)
+- BPM-Anzeige Für Lieder (und Listen)
+  - Die BPM eines Liedes sollen als Pille beim Lied angezeigt werden ("160", "160bpm").
+  - Zusätzlich soll man visuell als Erkennungshilfe sehen, ob ein Lied schnell oder langsam ist. Ich suche noch nach der besten Lösung, bin aber für Vorschläge offen. Eine Option wäre, einen Balken, der von rechts nach links bei gleicher Pillengröße die Pille füllt und so zeigt, ob es langsam oder schnell ist. Die zweite Option wäre, die Pille mit einer Heatmap-Farbe zu füllen. 
+  - Die BPMs sollten von Haus aus auf ein Minimum und Maximum limitiert sein (Einstellbar, default 60-180). Wenn keine BPM im Lead eingetragen sind, erscheint es grau mit einem Fragezeichen. 
+  - Bei fehlenden BPM sollte auch eine Möglichkeit bestehen, diese auszurechnen und einzutragen. Diese Option ist Teil der Edit-Tools und muss aktiviert werden. Ist sie aktiviert dann erscheint der graue Button mit gelb leuchtendem Glow. Dieser soll implizieren, dass man per Klick auf die BPM diese eintragen kann.
 
+Allgemeine Zusatzinfo: Die "Detailansicht" / "Listenansicht" sollen beide alle Metadaten anzeigen können. In der Listenansicht -> Pille, Detailansicht (=Tabellenansicht mit Spalten) -> Spalte. (Instructions evtl. anpassen). In Zukunft werden ähnliche erweiterungen (Genre, Stimmung, Tonart, ...) implementiert werden, deshalb soll die Architektur in diesem BPM-Beispiel bereits ausgearbeitet werden.
 
-- Bug: In intelligenten Wiedergabelisten ist die Anzeige der Kopfleiste und Layout anders. Wie kann das sein? Diese sollte überall gleich sein. (zB.: Die Suchfunktionen fehlen, "Tools"-Pille wird angezeigt, aber kann nicht angeklickt werden)
-- Bei serien (ducktales: staffel 1) erschienen die Folgen in der Liste mit unterschiedlichem Format links als Nummern (1-17), danach ging es weiter als „S01E12“. Das Problem waren falsche Dateinamen ("S01.E01" statt "S01E02"). Die Einrückung sollte aber trotzdem passen. Für solche Fälle sollte im Dashboard zusätzlich eine Warnung für die Datei erscheinen. Auch eine bessere Staffel/Folgeerkennung aus Strings über Regex wäre denkbar. 
-- Layout: Es gibt drei Listentypen: Ordner, normale Wiedergabeliste, intelligente Wiedergabeliste. Diese sollen erkennbar sein. Intelligente Wiedergabelisten haben bereits ein Symbol. 
-  - Wiedergabelisten sollen auch ein Cover haben (Wie bei Ordnern).
-  - Ordner sollen ein überblendendes Ordnersymbol über dem Cover haben, WIedergabelisten 
-  - 
+- Für Wiedergabelisten als auch generell für Feldelemente sollte es Templates oder Klassen oder Ähnliches geben, an die sich gehalten werden muss. 
+  - Zum Beispiel sollte am rechten Rand immer die drei-Punkte-Optionen zu finden sein. Aktuell ist das bei den Playlists nicht der Fall (fehlt bei "Intelligente Playlisten"). 
+  - Auch Ordner sollen diese Punkteoptionen haben. Optionale Einträge wären: 
+    - In Explorer anzeigen
+    - Thumbnail neu generieren
+
+- DJ-Mix Warteschlange (DJ-Alternative zur normalen Warteschlange)
+  - Tracks in der Warteschlange werden als zusammenhängendes DJ-Set interpretiert
+  - Track Metadaten (Titel, Interpret) sind ausgegraut im Hintergrund, im Vordergrund sieht man die Sinus-Waves der Tracks. (Vorbild Serato DJ)
+  - Am Anfang und Ende der Tracks wird ein Fade-in und Fade-out angezeigt (Überlagerung der Track-kurven, immer 10 sek). In der Mitte des Übergangs soll auch der Track-Wechsel/Zeilenwechsel sein.  
+    - während ein Track abspielt, sieht man das nicht nur unten im Player - sondern auch in der Liste.
+  - Zwischen allen Songs werden potenzielle Übergänge analysiert. 
+    - Bei gleichem BPM: überblenden
+    - Bei unterschiedlichen BPM: über Pitching (Tempo anpassen)
+    - Sind die Übergänge schlecht möglich, zum Beispiel wegen BPM, soll der Übergang in Signalfarbe eingefärbt werden (Je intensiver, desto schlimmer)
+  - Vermutlich ist eine schönere Track-Analyse hilfreich. 
+
 - Dashboard. Ich will eine Startseite, die einem einen Überblick über die wichtigsten Funktionen gibt. Im Dashboard kann auch auf die Server zugegriffen werden - evtl laufen diese dann am selben Port. Zu den jeweiligen Servern sollten hier auch Aufgaben angeigt werden. Diese wären zB.
   - Konvertierungen vorschlagen (zB. Konvertierung zu .mp4 bei nicht streambaren files, die sonst gemuxed werden müssen). Würde per Klick direkt erledigt werden.
   - fehlenden Folgen einer Serie
   - Liste mit Duplikaten bei Liedern (Hier könnte ein Link zur Playliste mit Duplikaten führen)
   - Warnungen: Der Nutzer soll bei Titeln/Videos bei den Optionen "Warnung/flaggen" haben. Der Song wird dann im Dashboard angezeigt.
   - Zeitpunkte der letzten Synchronisierung/Indizierung. Wenn gerade eine Synchronisierung läuft, sollte auch per Fortschrittsbalken angezeigt werden, was schon erledigt worden ist und was noch aussteht. (zB. 10 von 100 Dateien synchronisiert). Besonders bei der Synchronisation sollte hier eine Hierarchie der Aufgaben vorherrschen (Vom Nutzer angeforderter Titel (wenn keine Metadaten)-> Vom Nutzer angeforderte Liste -> restliche Wiedergabelisten (bei Neustart bzw. wenn schon lange her).  (!) Thumbnails/Audio-scrolls sollen generell nicht erneuert werden, wenn sie bereits vorhanden sind. Diese Neugenerierung wäre nur bei User-Request nötig. Wenn du hier noch weitere Vorschläge hast, gerne umsetzen.
+
+- Der Indizierungsprozess soll neu strukturiert werden. 
+  - Klickt man in einer Liste auf "reload", während der Indizierungsprozess am Laufen ist, so soll dieser Ordner in der quene sofort abgearbeitet werden
+  - Der Reload-Button bei Listen soll nur die angezeigten Lieder neu laden. 
+
+- Klangart/Tonart Mit Python herausfinden 
+- Allen Ordnern im Audio-Tool soll beim Start entsprechend des Regenbogens eine Farbe zugeordnet werden. Diese hat lediglich eine Bedeutung bei der Umrandung des Covers und bei den Buttons zum Verschieben der Tracks. 
+- "Tools"-funktionen immer am rechten Song-rand. 
+  - Die "Tools"-Funktionen können momentan nur in der Listenansicht genutzt werden. Das soll auch in der Detailansicht möglich sein. 
+  - Hierfür sollen die Instructions für die generelle Anzeige überarbeitet werden. 
+  - Es gibt standardfunktionen, die unabhängig von der Listen- oder Detailansicht sind. Diese sollten immer am rechten Rand zu finden sein. Als Teil dieser Funktionen könnte man auch die Tools einblenden. 
+  - Standardfunktionen sind zum Beispiel (Download/zu Favoriten hinzufügen/Optionen)
+- "Tools & Einstellungen" Beinhaltet momentan Admin Tools (zb. Titelbearbeitung) sowie Einstellungen bezüglich der Benutzeroberfläche. Diese sollen getrennt werden. 
+  - ANzeige/UserInterface:
+    - Funktional: Buttons zum Download, Favoriten, ...
+    - Diese Funktionen sollen auch immer im 3-Punkte-Menu verfügbar gemacht werden (instructions anpassen). 
+  - Edit-Tools / Admin-Tools:
+    - Hier befinden sich alle Funktionen, die Änderungen im Fallsystem nach sich ziehen. 
+    - Auf der mobilen Version würde das bedeuten, dass nun Tasks an den Server geschickt werden. In der Desktop-Version können sie direkt geändert werden. 
+    Anzeige/User Interface wäre eine einzelne Pille ("Oberfläche"), die man nicht aktivieren oder deaktivieren kann. Es sind einfach die Anstellungen. Die Edit-Tools soll man weiterhin aktivieren oder deaktivieren können. 
+- Entwicklung+Planung: Dynamische Audio-Wiedergabelisten
+  - Mit Shift+click sollen mehrere Wiedergabelisten ausgewählt werden können. Diese kann man dann zu einer intelligenten/Embedded-playlist zusammenführen.
+  - Die ertellte Playlist erscheint zusammen mit den anderen.
+  - Zusätzlich erscheint diese neue Playlist als kleiner Hint in den Playlisten, aus denen sie besteht. 
+  Beispiel: Die Songs mit +4 Sternen aus 'HipHip -2000s'/'Pop -2000s' werden mit Schlagern kombiniert. Dann erscheint ein "used in"-Hinweis.
+  Eventuell könnte man auch eine Art Vernetzung der Playlisten einführen (Graph). 
+- Klickt man im Player unten auf das Thumbnail, soll man direkt zum Track in der Liste kommen (hinspringen + markieren). Außerdem soll als Hint über dem Thumbnail der Haupt-Speicherort-Ordnername erscheinen.  
+- In Playlisten gibt es einen Trackcount. Dieser soll auch als Aktualisierungsbutton dienen. Achtung, das erfordert Anpassungen an zwei Stellen: 1. bei der Listenübersicht 2. gibt es diesen Track Count auch in der Suchleiste
+- Ordner ohne Lieder werden nicht angezeigt. Das soll geändert werden.
+- Beim hovern über den "Aktualisieren"-button soll erscheinen, wie weit die Aktualisierung ist.
+- Die Shortcut-buttons (zum verschieben von Liedern) sind kein 2x2-grid mehr, sondern ein 1x4-grid. Bitte wieder auf 2x2 ändern.
+- Bug/Layout: Der grüne/lila Rand um Playlisten hat keine bottom-line.
+- Bug: Beim Klick auf eine intelligente Wiedergabeliste ändert sich die Kopfzeile. Sie wird auch teilweise unfunktional. Diese soll aber immer gleich sein.
+- Die Toolsfunktion "verschieben" wird nur in der Listenansicht korrekt ein/ausgeblendet. Im Player (unten) bleibt sie eingeblendet. Gleiches gilt für den "Lösch"-button, auch dieser soll bei deaktivierten Tools verschwinden.
+- Bei Klick im Player auf den `Previous`-button wird direkt das vorherige Lied abgespielt. Dies sollte nur passieren, wenn noch nicht zu viel abgespielt wurde. Bei besonders kurzen liedern sollte aber dennoch das vorherige Lied abgespielt werden. Bitte halte dich hierbei an übliche Grenzen. 
+- Bug: In intelligenten Wiedergabelisten ist die Anzeige der Kopfleiste und Layout anders. Wie kann das sein? Diese sollte überall gleich sein. (zB.: Die Suchfunktionen fehlen, "Tools"-Pille wird angezeigt, aber kann nicht angeklickt werden)
+- Bei serien (ducktales: staffel 1) erschienen die Folgen in der Liste mit unterschiedlichem Format links als Nummern (1-17), danach ging es weiter als „S01E12“. Das Problem waren falsche Dateinamen ("S01.E01" statt "S01E02"). Die Einrückung sollte aber trotzdem passen. Für solche Fälle sollte im Dashboard zusätzlich eine Warnung für die Datei erscheinen. Auch eine bessere Staffel/Folgeerkennung aus Strings über Regex wäre denkbar. 
+- Layout: Es gibt drei Listentypen: Ordner, normale Wiedergabeliste, intelligente Wiedergabeliste. Diese sollen erkennbar sein. Intelligente Wiedergabelisten haben bereits ein Symbol. 
+  - Wiedergabelisten sollen auch ein Cover haben (Wie bei Ordnern).
+  - Ordner sollen ein überblendendes Ordnersymbol über dem Cover haben, Wiedergabelisten 
+  - 
+
 - Ich überlege, die auf verschiedenen Ports laufenden Hauptfunktionen nicht mehr zu unterscheiden. Ist das eine kluge Idee?
 - Die "letzte Wiedergabe fortsetzen" soll nur bei der zuletzt gesehenen Folge (bei Hörbüchern immer) angewandt werden. Momentan starten willkürliche Folgen oft mittendrin, weil sie vor Ewigkeiten mal gesehen wurden.
-- Ich würde im nächsten Schritt gerne die Administrator-Dashboard-Seite überarbeiten. Hier sollen Aufgaben, die den Streamingprozess erleichtern, für die vorbereitete Abarbeitung vorgeschlagen werden.
-  - Konvertierungen vorschlagen (zB. Konvertierung zu .mp4 bei nicht streambaren files, die sonst gemuxed werden müssen)
-  - fehlenden Folgen einer Serie
-  - Liste mit Duplikaten bei Liedern
+
 - Idee: Anzeige eines Art "Embeddings" für Lieder
   - Lieder werden in einem 2D-Plot angezeigt, der die Ähnlichkeit der Lieder zueinander darstellt (Lieder als Kreisen mit Coverbild, Titel/Künstler)
   - Wichtig für das Embedding könnte zB. die BPM, das Genre, der Interpret, die Tonart, die Länge, Erscheinungsjahr, Hinzugefügt-am-Zeitpunkt, die Lautstärke, die Stimmung (zB. fröhlich, traurig, aggressiv) sein. Auch die Popularität (zB. Bewertung) könnte ein Faktor sein. Ebenfalls wären tags möglich.
@@ -52,6 +109,7 @@ Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
   - Die Embeddings könnten auch für die Suche genutzt werden. ZB. "ähnliche Lieder wie XY" oder "ähnliche Lieder wie das gerade gespielte Lied"
   - Es würde sich vermutlich um kein echtes Embedding handeln, sondern eher um eine Art "Feature-Space", der die Lieder in einem 2D-Raum anordnet. Die Ähnlichkeit könnte zB. über eine gewichtete Summe der Features berechnet werden. Zwei Embedding-faktoren wären 2d-mäßig anzeigbar, die Sterne könnten durch Farbe oder Größe dargestellt werden. Die anderen Faktoren könnten per Filter ein- und ausgeblendet werden.
   - Dieses Feature-space-embedding sollte titel - sowie Listenspezifische Features abbilden.  Für WIedergabelisten sollte man in einer Tabelle diese Features jeweils bewerten können. (zB. happy (rank 0-5), energy (0-5), party (0-5), sing (0-5))
+  - Manche Playlists, zum Beispiel Hip Hop und Punk Rock, können beide das selbe Tempo haben, würden aber dennoch nicht zueinander passen. Hier könnte man entweder eine Distanz zueinander definieren oder auch schauen, ob die Embedding-Schritte zwischen den Playlisten ausreichen, um einen Weg vom einen zum anderen zu erstellen. 
 - Layout/UX Instructions: funktionale Farben
   - Das folgende soll umgesetzt werden, insbesondere sollen aber auch die .github-Instructions dafür angepasst werden. Meine Anweisungen sind Vorschläge, vermutlich kennst du weitere/bessere UI-Sachen.
   - In der Gesamterfahrung sollen Farben nicht allzu dominant und auf Funktionalität ausgelegt sein (ähnlich wie bei einem Pioneer-DJ-Pult. Fokus auf Audio-server, da hier mehr gearbeitet wird als bei Video). Das heißt zB.::
@@ -79,6 +137,8 @@ Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
 - Tests haben immer eine Auswirkung auf den Serverzustand. Kann man tests iwie besser mocken?
 - Musik abspielen, während man ein Hörbuch hört?
 - Layout Erweiterung: In Spotify und iTunes sind Wiedergabelisten üblicherweise an der linken Seite und die Titel in einem Fenster an der rechten. Dieses Design soll hier auch so umgesetzt werden. 
+
+- Funktion: Metadaten zu Liedern/Serien aus bestimmten Schnittstellen laden und in die Datenbank eintragen. (zB. Albumcover, Interpret, Genre, Jahr, ...). Metadaten nicht automatisch ändern (Eintrag im Dashboard)
 
 ---
 

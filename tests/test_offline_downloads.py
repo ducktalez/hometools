@@ -4,7 +4,7 @@ from hometools.streaming.core.server_utils import render_base_css, render_media_
 
 
 def _js():
-    return render_player_js(api_path="/api/test", item_noun="track", player_bar_style="classic")
+    return render_player_js(player_bar_style="classic")
 
 
 def _page():

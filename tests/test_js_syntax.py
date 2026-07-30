@@ -1,18 +1,23 @@
 """JS syntax safety net for the generated player JavaScript.
 
-`server_utils/player_js/` and `server_utils/_css.py` generate all frontend
-code as plain Python strings (see docs/architecture.md — "CSS/JS package
-split"). There is deliberately no TypeScript/bundler pipeline (no Node
-toolchain in this repo, no separate frontend build step, instant server
-startup — see docs/IMPLEMENTATION_PLAN.md "Agent-friendly codebase
-cleanup" for the full trade-off discussion). The one thing a bundler would
-normally catch for free — "did this edit produce syntactically broken
-JS?" — is covered here instead with a lightweight `esprima` parse check.
+`server_utils/player_js/` and `server_utils/_css.py` generate almost all
+frontend code as plain Python strings (see docs/architecture.md — "CSS/JS
+package split"). There is deliberately no bundler pipeline for *this* code
+(Vite/TS migration Phase 5 is porting it module-by-module instead — see
+docs/IMPLEMENTATION_PLAN.md; the first ported slice, `fmtTime`/`escHtml`/
+`formatBytes`, already lives in `streaming/core/webui/src/main.ts` and was
+deleted from `player_js/_core.py`). The one thing a bundler would normally
+catch for free — "did this edit produce syntactically broken JS?" — is
+covered here instead with a lightweight `esprima` parse check, for
+whatever remains un-ported.
 
 This is intentionally NOT a full type-checker or linter: it only proves
 the generated JS is parseable, which is exactly the failure mode most
 likely to be introduced by editing the split `player_js/*.py` fragment
-files (e.g. an unbalanced brace/quote after a manual edit).
+files (e.g. an unbalanced brace/quote after a manual edit). Once a
+fragment is fully ported to `.ts`, `tsc --noEmit` (via `npm run
+typecheck` in `webui/`) supersedes this check for that fragment — see
+Phase 6 in docs/IMPLEMENTATION_PLAN.md.
 """
 
 from __future__ import annotations
@@ -27,57 +32,20 @@ from hometools.streaming.core.server_utils import render_player_js
 # streaming/video/server.py:render_video_index_html) plus the two
 # `player_bar_style` branches, which are the only branches that actually
 # change the generated JS structure (waveform setup vs. none).
+#
+# Vite/TS migration Phase 3 (docs/IMPLEMENTATION_PLAN.md): render_player_js()
+# now only accepts `player_bar_style` — every other former parameter
+# (api_path, item_noun, enable_*, min_rating, ...) is read at runtime from
+# the `#ht-config` JSON blob instead. audio_classic/video_classic (and
+# audio_waveform/video_waveform) therefore produce byte-identical output;
+# the distinct keys are kept only for readable test IDs / historical parity
+# with the render_media_page()-level config that used to vary per key here.
 CONFIGS = {
-    "audio_classic": dict(
-        api_path="/api/audio/tracks",
-        item_noun="track",
-        file_emoji="\U0001f3b5",
-        player_bar_style="classic",
-        enable_shuffle=True,
-        enable_repeat=True,
-        enable_rating_write=True,
-        enable_metadata_edit=True,
-        enable_recent=False,
-        enable_auto_resume=False,
-        enable_lyrics=True,
-        enable_playlists=True,
-        playlist_sync_interval_ms=30000,
-        min_rating=2,
-        crossfade_duration=3,
-        debug_filter=False,
-    ),
-    "audio_waveform": dict(
-        api_path="/api/audio/tracks",
-        item_noun="track",
-        player_bar_style="waveform",
-        enable_shuffle=True,
-        enable_repeat=True,
-        enable_playlists=True,
-        crossfade_duration=3,
-    ),
-    "video_classic": dict(
-        api_path="/api/video/items",
-        item_noun="video",
-        file_emoji="\U0001f3ac",
-        player_bar_style="classic",
-        enable_repeat=True,
-        enable_playlists=True,
-        playlist_sync_interval_ms=30000,
-        min_rating=0,
-        debug_filter=False,
-        language_groups_json='{"de": ["de", "de-DE"]}',
-        default_language="de",
-        enable_skip_intro=True,
-    ),
-    "video_waveform": dict(
-        api_path="/api/video/items",
-        item_noun="video",
-        player_bar_style="waveform",
-        enable_repeat=True,
-        enable_playlists=True,
-        enable_skip_intro=True,
-    ),
-    "defaults": dict(api_path="/api/audio/tracks"),
+    "audio_classic": dict(player_bar_style="classic"),
+    "audio_waveform": dict(player_bar_style="waveform"),
+    "video_classic": dict(player_bar_style="classic"),
+    "video_waveform": dict(player_bar_style="waveform"),
+    "defaults": dict(),
 }
 
 

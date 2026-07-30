@@ -54,6 +54,10 @@ help:
 	@echo "                         video_metadata_cache.json, thumbnail_failures.json)"
 	@echo "                        Audit log (.hometools-audit/) is a separate directory"
 	@echo "                        and is NOT affected by clean."
+	@echo "  webui-build         - npm install + build the streaming player UI bundle"
+	@echo "                        (streaming/core/static/, required for /static assets"
+	@echo "                        when running a server outside Docker)"
+	@echo "  webui-typecheck     - tsc --noEmit for streaming/core/webui/"
 	@echo ""
 	@echo "Android TV (clients/androidtv/):"
 	@echo "  android-check       - Voraussetzungen prüfen (JDK 17, Android SDK, Wrapper JAR)"
@@ -162,6 +166,12 @@ deleted = []; \
 print('  deleted:', len(deleted), 'items') \
 "
 	@echo "Done. Run 'make audio-prewarm' or 'make video-prewarm' to rebuild."
+
+webui-build:
+	cd src/hometools/streaming/core/webui && npm install && npm run build
+
+webui-typecheck:
+	cd src/hometools/streaming/core/webui && npm run typecheck
 
 # ── Android TV ────────────────────────────────────────────────────────────────
 

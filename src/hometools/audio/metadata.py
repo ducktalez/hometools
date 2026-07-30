@@ -753,6 +753,114 @@ def get_genre(p: Path) -> str:
     return ""
 
 
+# ---------------------------------------------------------------------------
+# BPM (beats per minute) tag access
+# ---------------------------------------------------------------------------
+
+
+def _find_txxx_tag(tags, *descs: str) -> str:
+    """Return the text of the first ID3 ``TXXX`` (user-defined text) frame
+    whose description matches one of *descs* (case-insensitive).
+
+    Several taggers (Mp3tag "BPM" custom field, Traktor, Serato, MusicBee, …)
+    write BPM/tempo as a free-text ``TXXX`` frame instead of the native
+    ``TBPM`` frame. Mutagen exposes these as dict keys formatted
+    ``"TXXX:<description>"`` — a plain ``"BPM" in tags`` lookup never matches
+    them, so they need this dedicated (case-insensitive) scan.
+    """
+    wanted = {d.lower() for d in descs}
+    for key, value in tags.items():
+        if not isinstance(key, str) or not key.startswith("TXXX:"):
+            continue
+        if key[len("TXXX:") :].lower() in wanted:
+            text = _first_text(value)
+            if text:
+                return text
+    return ""
+
+
+def get_bpm(p: Path) -> float:
+    """Read the BPM (beats per minute) tag from an audio file.
+
+    Supports MP3 (ID3 ``TBPM``, falling back to a ``TXXX:BPM``/``TXXX:TEMPO``
+    user-defined text frame), M4A/MP4 (``tmpo`` atom, integer), FLAC/OGG
+    (``BPM``/``TBPM`` Vorbis comment), and WMA/ASF (``WM/BeatsPerMinute``).
+    Returns ``0.0`` (unknown/not analyzed) when no BPM tag is found or the
+    value can't be parsed as a positive number.  Never raises.
+    """
+    ext = p.suffix.lower()
+    try:
+        if ext in (".m4a", ".mp4", ".aac"):
+            audio = MP4(p)
+            if audio.tags and "tmpo" in audio.tags:
+                raw = audio.tags["tmpo"]
+                if raw:
+                    return float(raw[0])
+            return 0.0
+        audio = File(p)
+        if audio is None or not audio.tags:
+            return 0.0
+        raw_text = _find_tag(audio.tags, "TBPM", "BPM", "bpm", "WM/BeatsPerMinute")
+        if not raw_text:
+            raw_text = _find_txxx_tag(audio.tags, "BPM", "TEMPO", "BEATS PER MINUTE")
+        if not raw_text:
+            return 0.0
+        # Some taggers store "128.00" or "128 BPM" — keep only the leading number.
+        match = re.match(r"[\d.]+", raw_text.strip())
+        return float(match.group()) if match else 0.0
+    except Exception as exc:
+        logger.debug("get_bpm %s: %s", p.name, exc)
+    return 0.0
+
+
+def set_bpm(p: Path, bpm: float) -> bool:
+    """Write the BPM (beats per minute) tag to an audio file.
+
+    Supports MP3 (ID3 ``TBPM``), M4A/MP4 (``tmpo`` atom, integer),
+    FLAC/OGG (``BPM`` Vorbis comment). ``bpm <= 0`` is rejected (use a
+    positive, analyzed/measured value).  Returns ``False`` for unsupported
+    formats, invalid input, or on any error — never raises.
+    """
+    if bpm <= 0:
+        logger.warning("set_bpm: refusing to write non-positive bpm=%r for %s", bpm, p.name)
+        return False
+    rounded = round(bpm)
+    ext = p.suffix.lower()
+    try:
+        if ext == ".mp3":
+            from mutagen.id3 import TBPM, ID3NoHeaderError
+
+            try:
+                tags = ID3(p)
+            except ID3NoHeaderError:
+                tags = ID3()
+            tags["TBPM"] = TBPM(encoding=3, text=str(rounded))
+            tags.save(p)
+            return True
+        if ext in (".m4a", ".mp4", ".aac"):
+            audio = MP4(p)
+            if audio.tags is None:
+                audio.add_tags()
+            audio.tags["tmpo"] = [rounded]
+            audio.save()
+            return True
+        if ext in (".flac", ".ogg", ".opus"):
+            audio = File(p)
+            if audio is None:
+                logger.warning("set_bpm: could not open %s", p.name)
+                return False
+            if audio.tags is None:
+                audio.add_tags()
+            audio.tags["BPM"] = [str(rounded)]
+            audio.save()
+            return True
+    except Exception as exc:
+        logger.error("set_bpm: failed for %s: %s", p.name, exc)
+        return False
+    logger.warning("set_bpm: unsupported format %s for %s", ext, p.name)
+    return False
+
+
 def get_lyrics(p: Path) -> str | None:
     """Read embedded lyrics from an audio file.
 

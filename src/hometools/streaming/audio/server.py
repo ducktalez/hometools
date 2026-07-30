@@ -39,6 +39,7 @@ from hometools.streaming.core.openapi_schema import install_filtered_openapi
 from hometools.streaming.core.server_utils import (
     build_index_status_payload,
     check_library_accessible,
+    mount_static_assets,
     render_error_page,
     render_media_page,
     render_pwa_icon_png,
@@ -73,7 +74,14 @@ def resolve_audio_path(library_dir: Path, encoded_relative_path: str) -> Path:
 
 def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False) -> str:
     """Render the audio player UI — dark theme, folder grid, player."""
-    from hometools.config import get_crossfade_duration, get_debug_filter, get_min_rating, get_playlist_sync_interval
+    from hometools.config import (
+        get_bpm_max,
+        get_bpm_min,
+        get_crossfade_duration,
+        get_debug_filter,
+        get_min_rating,
+        get_playlist_sync_interval,
+    )
 
     items_json = _json.dumps([t.to_dict() for t in tracks], ensure_ascii=False)
 
@@ -100,6 +108,8 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         min_rating=get_min_rating(),
         crossfade_duration=get_crossfade_duration(),
         debug_filter=get_debug_filter(),
+        bpm_min=get_bpm_min(),
+        bpm_max=get_bpm_max(),
     )
 
 
@@ -256,6 +266,10 @@ def create_app(
     # Serve a JSON-API-only OpenAPI schema so /openapi.json + /docs work in the
     # browser (HTML/binary routes would otherwise break FastAPI's schema builder).
     install_filtered_openapi(app)
+    # Vite/TS migration Phase 4 (docs/IMPLEMENTATION_PLAN.md): serve the built
+    # webui bundle at /static if present. No-op (logs a warning) when the
+    # bundle hasn't been built yet — never blocks/crashes startup.
+    mount_static_assets(app)
 
     # Cache quick-scan results so repeated polls during index build don't
     # re-walk the filesystem every 2 seconds.
@@ -693,6 +707,59 @@ def create_app(
 
         return {"ok": ok, "entry_ids": entry_ids}
 
+    @app.post("/api/audio/bpm/calculate")
+    async def audio_bpm_calculate(payload: dict[str, object]) -> dict[str, object]:
+        """Estimate a track's BPM (librosa) and write it to the file's tags.
+
+        Body: ``{"path": "..."}``. This is an **edit tool** — the client
+        only exposes it (as a clickable pill) when the Tools-panel "BPM
+        berechnen" toggle is active; the endpoint itself has no separate
+        feature flag since BPM calculation is inherently harmless to expose
+        (it estimates + writes one numeric tag, same trust level as rating
+        writes).  Requires the optional ``audio-analysis`` extra (librosa);
+        returns ``{"ok": false, "error": "..."}`` (never a 5xx) when that
+        dependency is missing or analysis fails, so the UI can show a toast
+        instead of a broken request.
+        """
+        import asyncio
+
+        from hometools.audio.bpm import calculate_bpm
+        from hometools.audio.metadata import get_bpm, set_bpm
+        from hometools.streaming.core.audit_log import log_bpm_write
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        old_bpm = get_bpm(file_path)
+        bpm = await asyncio.to_thread(calculate_bpm, file_path)
+        if bpm is None:
+            return {
+                "ok": False,
+                "error": "BPM-Berechnung nicht verf\u00fcgbar (librosa fehlt oder Analyse fehlgeschlagen).",
+            }
+
+        ok = set_bpm(file_path, bpm)
+        if not ok:
+            return {"ok": False, "error": "BPM konnte nicht gespeichert werden."}
+
+        rounded = float(round(bpm))
+        _audio_index_cache.patch_items({path: {"bpm": rounded}})
+        _audio_index_cache.invalidate()
+        entry = log_bpm_write(
+            resolved_audit_dir,
+            server="audio",
+            path=path,
+            old_bpm=old_bpm,
+            new_bpm=rounded,
+        )
+        return {"ok": True, "bpm": rounded, "entry_id": entry.entry_id}
+
     @app.get("/api/audio/folders")
     def audio_list_folders() -> dict[str, object]:
         """Return all top-level folder names in the audio library."""
@@ -922,6 +989,31 @@ def create_app(
                 _audio_index_cache.invalidate()
                 return {"ok": True, "action": action, "restored_rating": restore_stars}
             raise HTTPException(status_code=500, detail="Failed to restore rating")
+
+        if action == "bpm_write":
+            from hometools.audio.metadata import set_bpm
+
+            path = str(undo.get("path") or "").strip()
+            restore_bpm = float(undo.get("bpm") or 0)
+            try:
+                file_path = resolve_audio_path(resolved_library_dir, path)
+            except (FileNotFoundError, ValueError) as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            if restore_bpm <= 0:
+                # set_bpm() only writes positive values (no "delete tag" support in
+                # any of the supported formats' write path) — the tag was unset
+                # before this write, so there is nothing safe to restore it to.
+                raise HTTPException(
+                    status_code=422,
+                    detail="Kann nicht r\u00fcckg\u00e4ngig gemacht werden: BPM war zuvor nicht gesetzt.",
+                )
+            ok = set_bpm(file_path, restore_bpm)
+            if ok:
+                mark_undone(resolved_audit_dir, entry_id)
+                _audio_index_cache.patch_items({path: {"bpm": restore_bpm}})
+                _audio_index_cache.invalidate()
+                return {"ok": True, "action": action, "restored_bpm": restore_bpm}
+            raise HTTPException(status_code=500, detail="Failed to restore bpm")
 
         if action == "tag_write":
             from hometools.audio.metadata import write_track_tags

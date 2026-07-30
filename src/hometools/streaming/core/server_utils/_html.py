@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import html
+import json
 
 from ._css import render_base_css
 from ._player_js import render_player_js
 from ._pwa import render_pwa_head_tags
+from ._static import get_static_script_tag
 from ._svg import (
     SVG_BACK,
     SVG_BOARD,
@@ -26,6 +28,80 @@ from ._svg import (
     SVG_SHUFFLE,
     SVG_SKIP_INTRO,
 )
+
+
+def _render_player_config_json(
+    *,
+    item_noun: str,
+    emoji: str,
+    api_path: str,
+    safe_mode: bool,
+    enable_shuffle: bool,
+    enable_repeat: bool,
+    enable_skip_intro: bool,
+    enable_rating_write: bool,
+    min_rating: int,
+    debug_filter: bool,
+    enable_recent: bool,
+    enable_auto_resume: bool,
+    crossfade_duration: int,
+    enable_metadata_edit: bool,
+    enable_lyrics: bool,
+    enable_playlists: bool,
+    playlist_sync_interval_ms: int,
+    language_groups_json: str,
+    default_language: str,
+    player_bar_style: str,
+    bpm_min: int,
+    bpm_max: int,
+) -> str:
+    """Build the ``#ht-config`` JSON blob (Vite/TS migration, Phase 2 — additive only).
+
+    Mirrors the ``PlayerConfig`` TypeScript interface in
+    ``streaming/core/webui/src/main.ts``. This is currently NOT consumed by
+    ``render_player_js()`` — the existing flat top-level JS vars
+    (``SHUFFLE_ENABLED`` etc.) keep being generated exactly as before so no
+    test or runtime behaviour changes. Future TS modules read this blob
+    instead of the flat vars; once ported, the corresponding flat var is
+    dropped. See ``docs/IMPLEMENTATION_PLAN.md`` → "Vite/TypeScript migration".
+    """
+    try:
+        language_groups = json.loads(language_groups_json) if language_groups_json else {}
+    except (TypeError, ValueError):
+        language_groups = {}
+    try:
+        from hometools.config import get_audiobook_dirs
+
+        audiobook_dirs = get_audiobook_dirs()
+    except Exception:
+        audiobook_dirs = []
+    config = {
+        "itemNoun": item_noun,
+        "fileEmoji": emoji,
+        "apiPath": api_path,
+        "enableOffline": not safe_mode,
+        "enableShuffle": enable_shuffle,
+        "enableRepeat": enable_repeat,
+        "enableSkipIntro": enable_skip_intro,
+        "enableRatingWrite": enable_rating_write,
+        "minRating": min_rating,
+        "debugFilter": debug_filter,
+        "enableRecent": enable_recent,
+        "enableAutoResume": enable_auto_resume,
+        "crossfadeDuration": crossfade_duration,
+        "enableMetadataEdit": enable_metadata_edit,
+        "enableLyrics": enable_lyrics,
+        "enablePlaylists": enable_playlists,
+        "playlistSyncIntervalMs": playlist_sync_interval_ms,
+        "languageGroups": language_groups,
+        "defaultLanguage": default_language,
+        "audiobookDirs": audiobook_dirs,
+        "playerBarStyle": player_bar_style,
+        "bpmMin": bpm_min,
+        "bpmMax": bpm_max,
+    }
+    # "</" -> "<\/" prevents premature </script> termination; valid JSON escape.
+    return json.dumps(config).replace("</", "<\\/")
 
 
 def render_media_page(
@@ -55,6 +131,8 @@ def render_media_page(
     language_groups_json: str = "{}",
     default_language: str = "de",
     enable_skip_intro: bool = False,
+    bpm_min: int = 60,
+    bpm_max: int = 180,
 ) -> str:
     """Build the complete HTML page for a media streaming UI.
 
@@ -74,28 +152,39 @@ def render_media_page(
     Wires up to ``POST /api/<media>/metadata/edit``.
     """
     css = render_base_css() + extra_css
-    js = render_player_js(
-        api_path=api_path,
+    config_json = _render_player_config_json(
         item_noun=item_noun,
-        file_emoji=emoji,
-        player_bar_style=player_bar_style,
-        enable_offline=not safe_mode,
+        emoji=emoji,
+        api_path=api_path,
+        safe_mode=safe_mode,
         enable_shuffle=enable_shuffle,
         enable_repeat=enable_repeat,
+        enable_skip_intro=enable_skip_intro,
         enable_rating_write=enable_rating_write,
-        enable_metadata_edit=enable_metadata_edit,
+        min_rating=min_rating,
+        debug_filter=debug_filter,
         enable_recent=enable_recent,
+        enable_auto_resume=enable_auto_resume,
+        crossfade_duration=crossfade_duration,
+        enable_metadata_edit=enable_metadata_edit,
         enable_lyrics=enable_lyrics,
         enable_playlists=enable_playlists,
         playlist_sync_interval_ms=playlist_sync_interval_ms,
-        min_rating=min_rating,
-        enable_auto_resume=enable_auto_resume,
-        crossfade_duration=crossfade_duration,
-        debug_filter=debug_filter,
         language_groups_json=language_groups_json,
         default_language=default_language,
-        enable_skip_intro=enable_skip_intro,
+        player_bar_style=player_bar_style,
+        bpm_min=bpm_min,
+        bpm_max=bpm_max,
     )
+    js = render_player_js(player_bar_style=player_bar_style)
+    # Vite/TS migration Phase 4/5 (docs/IMPLEMENTATION_PLAN.md): the built
+    # webui bundle (if present — see server_utils/_static.py) provides
+    # already-ported symbols (fmtTime/escHtml/formatBytes, ...) as `window.*`
+    # globals. It must load BEFORE the inline script below so the legacy
+    # concatenated JS's bare identifier references resolve via the scope
+    # chain. Empty string (no tag rendered) when the bundle hasn't been
+    # built yet — see webui/README.md for the local build command.
+    static_script_tag = get_static_script_tag()
     is_video = media_element_tag == "video"
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
     shuffle_btn_html = (
@@ -154,6 +243,16 @@ def render_media_page(
         </div>
         <label class="tools-toggle">
           <input type="checkbox" id="tool-inline-ratings">
+          <span class="tools-toggle-track"></span>
+        </label>
+      </div>
+      <div class="tools-item">
+        <div>
+          <div class="tools-item-label">BPM berechnen</div>
+          <div class="tools-item-desc">Fehlende BPM-Werte per Klick auf die Pille automatisch berechnen und speichern</div>
+        </div>
+        <label class="tools-toggle">
+          <input type="checkbox" id="tool-bpm-calc">
           <span class="tools-toggle-track"></span>
         </label>
       </div>
@@ -526,7 +625,9 @@ def render_media_page(
 
 {player_section_html}
 
+  <script id="ht-config" type="application/json">{config_json}</script>
   <script id="initial-data" type="application/json">{items_json}</script>
+  {static_script_tag}
   <script>{js}</script>
 {sw_register}
 </body>

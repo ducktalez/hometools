@@ -442,15 +442,16 @@ body.modal-open { overflow: hidden; }
 .track-num { order: 0; }
 .thumb-wrap.track-thumb-wrap { order: 1; }
 .track-info { order: 2; }
-.track-dl-btn { order: 3; }
-.track-pin-btn { order: 4; }
-.track-edit-btn { order: 5; }
-.track-playlist-btn { order: 6; }
-.track-queue-btn { order: 7; }
-.track-inline-rating { order: 8; }
-.track-move-widget { order: 9; }
-.track-reveal-btn { order: 10; }
-.track-kebab-btn { order: 11; }
+.track-bpm-cell { order: 3; }
+.track-dl-btn { order: 4; }
+.track-pin-btn { order: 5; }
+.track-edit-btn { order: 6; }
+.track-playlist-btn { order: 7; }
+.track-queue-btn { order: 8; }
+.track-inline-rating { order: 9; }
+.track-move-widget { order: 10; }
+.track-reveal-btn { order: 11; }
+.track-kebab-btn { order: 12; }
 
 .track-title {
   font-size: 0.92rem; font-weight: 500;

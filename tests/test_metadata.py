@@ -8,6 +8,7 @@ import pytest
 
 from hometools.audio.metadata import (
     _find_tag,
+    _find_txxx_tag,
     _first_text,
     _m4a_rating_to_stars,
     _read_m4a_rating,
@@ -17,9 +18,11 @@ from hometools.audio.metadata import (
     _wm_rating_to_stars,
     _write_xtra_rating,
     audiofile_assume_artist_title,
+    get_bpm,
     get_rating_stars,
     popm_raw_to_stars,
     read_embedded_metadata,
+    set_bpm,
     set_rating_stars,
     stars_to_popm_raw,
     write_track_tags,
@@ -917,3 +920,144 @@ class TestXtraRealFile:
         set_rating_stars(real_m4a, 4.0)
         assert _read_xtra_rating(real_m4a) == 4.0
         assert get_rating_stars(real_m4a) == 4.0
+
+
+# ---------------------------------------------------------------------------
+# BPM (beats per minute) tag access
+# ---------------------------------------------------------------------------
+
+
+class TestFindTxxxTag:
+    """_find_txxx_tag — case-insensitive TXXX:<desc> lookup."""
+
+    def test_matches_exact_desc(self):
+        tags = {"TXXX:BPM": MagicMock(text=["128"])}
+        assert _find_txxx_tag(tags, "BPM", "TEMPO") == "128"
+
+    def test_matches_case_insensitively(self):
+        tags = {"TXXX:bpm": MagicMock(text=["128"])}
+        assert _find_txxx_tag(tags, "BPM") == "128"
+
+    def test_ignores_non_txxx_keys(self):
+        tags = {"TIT2": MagicMock(text=["Song Title"])}
+        assert _find_txxx_tag(tags, "BPM") == ""
+
+    def test_returns_empty_when_no_match(self):
+        tags = {"TXXX:COMMENT": MagicMock(text=["hello"])}
+        assert _find_txxx_tag(tags, "BPM", "TEMPO") == ""
+
+
+class TestGetBpmMp3:
+    """get_bpm — MP3 (ID3) branch, including the TXXX fallback."""
+
+    def test_reads_native_tbpm(self, tmp_path):
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"TBPM": MagicMock(text=["128"])}
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 128.0
+
+    def test_falls_back_to_txxx_bpm_when_no_native_tbpm(self, tmp_path):
+        """Regression test: some taggers (Mp3tag custom fields, DJ software, …)
+        write BPM as a TXXX:BPM user-defined text frame instead of the native
+        TBPM frame — get_bpm must not silently return 0.0 in that case."""
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"TXXX:BPM": MagicMock(text=["140"])}
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 140.0
+
+    def test_falls_back_to_txxx_tempo(self, tmp_path):
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"TXXX:TEMPO": MagicMock(text=["95"])}
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 95.0
+
+    def test_strips_unit_suffix(self, tmp_path):
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"TBPM": MagicMock(text=["128 BPM"])}
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 128.0
+
+    def test_no_bpm_tag_returns_zero(self, tmp_path):
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"TIT2": MagicMock(text=["Title"])}
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 0.0
+
+    def test_no_tags_returns_zero(self, tmp_path):
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = None
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 0.0
+
+    def test_file_open_failure_returns_zero(self, tmp_path):
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        with patch("hometools.audio.metadata.File", side_effect=OSError("boom")):
+            assert get_bpm(f) == 0.0
+
+
+class TestGetBpmMp4:
+    """get_bpm — M4A/MP4 (tmpo atom) branch."""
+
+    def test_reads_tmpo(self, tmp_path):
+        f = tmp_path / "song.m4a"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"tmpo": [128]}
+        with patch("hometools.audio.metadata.MP4", return_value=fake_audio):
+            assert get_bpm(f) == 128.0
+
+    def test_missing_tmpo_returns_zero(self, tmp_path):
+        f = tmp_path / "song.m4a"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {}
+        with patch("hometools.audio.metadata.MP4", return_value=fake_audio):
+            assert get_bpm(f) == 0.0
+
+
+class TestGetBpmVorbisAndAsf:
+    """get_bpm — FLAC/OGG (Vorbis comment) and WMA/ASF branches."""
+
+    def test_reads_vorbis_bpm(self, tmp_path):
+        f = tmp_path / "song.flac"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"BPM": ["128"]}
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 128.0
+
+    def test_reads_asf_beats_per_minute(self, tmp_path):
+        """WMA/ASF stores BPM under the WM/BeatsPerMinute attribute."""
+        f = tmp_path / "song.wma"
+        f.write_bytes(b"")
+        fake_audio = MagicMock()
+        fake_audio.tags = {"WM/BeatsPerMinute": ["128"]}
+        with patch("hometools.audio.metadata.File", return_value=fake_audio):
+            assert get_bpm(f) == 128.0
+
+
+class TestSetBpm:
+    """set_bpm — rejects invalid input, never raises."""
+
+    def test_rejects_non_positive_bpm(self, tmp_path):
+        f = tmp_path / "song.mp3"
+        f.write_bytes(b"")
+        assert set_bpm(f, 0.0) is False
+        assert set_bpm(f, -5.0) is False
+
+    def test_missing_file_returns_false(self, tmp_path):
+        result = set_bpm(tmp_path / "missing.mp3", 128.0)
+        assert result is False

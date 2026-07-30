@@ -1,6 +1,24 @@
 # syntax=docker/dockerfile:1.7
 
-# ─── Stage 1: builder ──────────────────────────────────────────────────────
+# ─── Stage 1: webui builder (Vite/TypeScript player UI bundle) ─────────────
+# Vite/TS migration Phase 4 (docs/IMPLEMENTATION_PLAN.md): streaming/core/
+# static/ is git-ignored (build output) and must be produced here so the
+# Python package below can include it. Never let a Node/npm failure here
+# fail silently and ship a broken image without the bundle — this stage's
+# output is COPYed directly into the python-builder stage's source tree
+# before `pip install .`, so a build failure here fails the whole image
+# build (matches "fail loud, not silently" for build-time issues; runtime
+# code in server_utils/_static.py still degrades gracefully if this stage
+# is ever skipped in a custom build).
+FROM node:20-slim AS webui-builder
+
+WORKDIR /build/webui
+COPY src/hometools/streaming/core/webui/package.json src/hometools/streaming/core/webui/package-lock.json ./
+RUN npm ci
+COPY src/hometools/streaming/core/webui/ ./
+RUN npm run build
+
+# ─── Stage 2: python builder ────────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -25,11 +43,15 @@ RUN pip install --upgrade pip && \
 
 # Copy source and install hometools itself (no extra deps fetched)
 COPY src/ ./src/
+# Vite/TS migration Phase 4: drop the webui-builder stage's output into the
+# package tree BEFORE `pip install .` so setuptools picks it up as package
+# data (see pyproject.toml [tool.setuptools.package-data]).
+COPY --from=webui-builder /build/static/ ./src/hometools/streaming/core/static/
 COPY README.md LICENSE ./
 RUN pip install --no-deps .
 
 
-# ─── Stage 2: runtime ──────────────────────────────────────────────────────
+# ─── Stage 3: runtime ──────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

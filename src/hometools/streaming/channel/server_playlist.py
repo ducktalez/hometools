@@ -58,6 +58,7 @@ from hometools.streaming.channel.schedule import (
 from hometools.streaming.core.models import MediaItem, normalize_relative_path
 from hometools.streaming.core.server_utils import (
     check_library_accessible,
+    mount_static_assets,
     render_error_page,
     render_media_page,
     resolve_media_path,
@@ -328,6 +329,10 @@ def create_app(
         logger.info("Channel server shutdown complete")
 
     app = FastAPI(title=f"hometools channel — {channel_name}", lifespan=lifespan)
+    # Vite/TS migration Phase 4 (docs/IMPLEMENTATION_PLAN.md): this server
+    # also renders a full render_media_page() UI, so it needs the same
+    # /static mount as audio/video. No-op if the bundle isn't built.
+    mount_static_assets(app)
 
     # ── Health ──
     @app.get("/health")

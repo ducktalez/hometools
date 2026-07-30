@@ -688,28 +688,18 @@ def render_core_js(waveform_js) -> str:
   player.addEventListener('play',  _syncMiniPlayBtn);
   player.addEventListener('pause', _syncMiniPlayBtn);
 
-  /* ── helpers ── */
-  function fmtTime(s) {
-    if (!isFinite(s)) return '0:00';
-    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-    var sec = String(Math.floor(s % 60)).padStart(2, '0');
-    return h > 0 ? h + ':' + String(m).padStart(2, '0') + ':' + sec : m + ':' + sec;
-  }
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-  function formatBytes(bytes) {
-    var value = Number(bytes || 0);
-    if (value <= 0) return '0 B';
-    var units = ['B', 'KB', 'MB', 'GB'];
-    var idx = 0;
-    while (value >= 1024 && idx < units.length - 1) {
-      value /= 1024;
-      idx++;
-    }
-    return (idx === 0 ? String(value) : value.toFixed(1)) + ' ' + units[idx];
-  }
+  /* ── helpers ──
+     fmtTime/escHtml/formatBytes used to be defined here as plain function
+     declarations. Vite/TS migration Phase 5 first slice (see
+     streaming/core/webui/src/main.ts): they are now ported to TypeScript
+     and served as window.fmtTime/window.escHtml/window.formatBytes by the
+     static bundle _html.py loads BEFORE this inline script (see
+     server_utils/_static.py + _html.py::render_media_page). Bare
+     identifier references below (`fmtTime(...)`, `escHtml(...)`,
+     `formatBytes(...)`) resolve to those globals via the normal JS scope
+     chain — do NOT re-add local definitions here (that would silently
+     shadow the ported TS version, defeating the whole point of the port —
+     see the "single source of truth" rule in copilot-instructions.md). */
   /* Single canonical toast implementation. Was accidentally duplicated in
      _library_tools.py / _track_render.py during the module split — a second
      top-level `function showToast(...)`/`function formatBytes(...)` later in

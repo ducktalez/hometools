@@ -22,7 +22,21 @@ def _page(media="audio", style="classic"):
 
 
 def _js(style="classic"):
-    return render_player_js(api_path="/api/test", item_noun="track", player_bar_style=style)
+    return render_player_js(player_bar_style=style)
+
+
+def _extract_ht_config(page):
+    """Parse the `#ht-config` JSON blob out of a rendered page.
+
+    Shared helper for Vite/TS migration Phase 3 tests that need to verify
+    a runtime config value rather than a Python-interpolated JS literal
+    (see docs/IMPLEMENTATION_PLAN.md "Vite/TypeScript migration").
+    """
+    import json
+
+    m = _re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', page, _re.S)
+    assert m, "ht-config script tag missing"
+    return json.loads(m.group(1))
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +123,7 @@ def test_queue_drag_handle_html_present():
 
 def test_queue_resize_js_persists_height():
     """JS must contain localStorage persistence for queue height."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "hometools_queue_height" in js
     assert "localStorage.setItem" in js
     assert "localStorage.getItem" in js
@@ -117,7 +131,7 @@ def test_queue_resize_js_persists_height():
 
 def test_queue_panel_bottom_set_dynamically_by_js():
     """openQueuePanel must measure player-bar height and set bottom + max-height."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "function _syncQueueBottom()" in js
     assert ".offsetHeight" in js
     assert "style.bottom" in js
@@ -610,25 +624,20 @@ def test_shuffle_btn_absent_in_video_page():
     assert 'id="btn-shuffle"' not in page
 
 
-def test_shuffle_js_enabled_flag_true():
-    """SHUFFLE_ENABLED must be true when enable_shuffle=True."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
-    assert "SHUFFLE_ENABLED = true" in js
-
-
-def test_shuffle_js_enabled_flag_false_by_default():
-    """SHUFFLE_ENABLED must be false when enable_shuffle=False (default)."""
+def test_shuffle_js_reads_enabled_flag_from_runtime_config():
+    """SHUFFLE_ENABLED must be sourced from the runtime #ht-config blob
+    (Vite/TS migration Phase 3), not a Python-interpolated literal — the
+    actual true/false value is asserted at the #ht-config JSON level, see
+    TestHtConfigJson.test_ht_config_reflects_feature_flags.
+    """
     js = _js()
-    assert "SHUFFLE_ENABLED = false" in js
+    assert "SHUFFLE_ENABLED = !!CFG.enableShuffle" in js
 
 
 def test_shuffle_js_has_core_functions():
-    """Shuffle logic functions must be present when enabled."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    """Shuffle logic functions must always be present (not gated by a flag —
+    only the runtime SHUFFLE_ENABLED boolean toggles UI behavior)."""
+    js = _js()
     assert "fisherYates" in js
     assert "buildWeightedQueue" in js
     assert "buildNormalQueue" in js
@@ -640,9 +649,7 @@ def test_shuffle_js_has_core_functions():
 
 def test_shuffle_js_has_next_prev_index():
     """nextIndex / prevIndex must exist and respect shuffle state."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    js = _js()
     assert "function nextIndex" in js
     assert "function prevIndex" in js
     assert "shuffleQueue" in js
@@ -651,18 +658,14 @@ def test_shuffle_js_has_next_prev_index():
 
 def test_shuffle_js_restores_from_localstorage():
     """Shuffle preference must be loaded from localStorage on startup."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    js = _js()
     assert "ht-shuffle-mode" in js
     assert "localStorage.getItem" in js
 
 
 def test_shuffle_js_has_long_press_binding():
     """Shuffle button must support long-press for weighted shuffle mode."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    js = _js()
     assert "_startShuffleLongPress" in js
     assert "touchstart" in js
     assert "activateWeightedShuffle" in js
@@ -695,6 +698,9 @@ def test_shuffle_btn_in_both_player_bar_styles():
 
 def test_audio_server_enables_shuffle():
     """The audio server must enable shuffle in its rendered HTML."""
+    import json
+    import re
+
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
@@ -702,11 +708,16 @@ def test_audio_server_enables_shuffle():
     client = TestClient(create_app())
     html = client.get("/").text
     assert 'id="btn-shuffle"' in html
-    assert "SHUFFLE_ENABLED = true" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["enableShuffle"] is True
 
 
 def test_video_server_does_not_enable_shuffle():
     """The video server must NOT include the shuffle button."""
+    import json
+    import re
+
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
@@ -714,7 +725,9 @@ def test_video_server_does_not_enable_shuffle():
     client = TestClient(create_app())
     html = client.get("/").text
     assert 'id="btn-shuffle"' not in html
-    assert "SHUFFLE_ENABLED = false" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["enableShuffle"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -742,21 +755,20 @@ def test_repeat_btn_absent_when_disabled():
     assert 'id="btn-repeat"' not in page
 
 
-def test_repeat_js_enabled_flag_true():
-    """REPEAT_ENABLED must be true when enable_repeat=True."""
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
-    assert "REPEAT_ENABLED = true" in js
-
-
-def test_repeat_js_enabled_flag_false_by_default():
-    """REPEAT_ENABLED must be false when enable_repeat=False (default)."""
+def test_repeat_js_reads_enabled_flag_from_runtime_config():
+    """REPEAT_ENABLED must be sourced from the runtime #ht-config blob
+    (Vite/TS migration Phase 3), not a Python-interpolated literal — the
+    actual true/false value is asserted at the #ht-config JSON level, see
+    TestHtConfigJson.test_ht_config_reflects_feature_flags.
+    """
     js = _js()
-    assert "REPEAT_ENABLED = false" in js
+    assert "REPEAT_ENABLED = !!CFG.enableRepeat" in js
 
 
 def test_repeat_js_has_core_functions():
-    """Repeat logic functions must be present."""
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    """Repeat logic functions must always be present (not gated by a flag —
+    only the runtime REPEAT_ENABLED boolean toggles UI behavior)."""
+    js = _js()
     assert "cycleRepeat" in js
     assert "updateRepeatBtn" in js
     assert "repeatMode" in js
@@ -766,7 +778,7 @@ def test_repeat_js_has_core_functions():
 
 def test_repeat_js_restores_from_localstorage():
     """Repeat preference must be loaded from localStorage on startup."""
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    js = _js()
     assert "ht-repeat-mode" in js
 
 
@@ -795,6 +807,9 @@ def test_repeat_btn_in_both_player_bar_styles():
 
 def test_audio_server_enables_repeat():
     """The audio server must enable repeat in its rendered HTML."""
+    import json
+    import re
+
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
@@ -802,11 +817,16 @@ def test_audio_server_enables_repeat():
     client = TestClient(create_app())
     html = client.get("/").text
     assert 'id="btn-repeat"' in html
-    assert "REPEAT_ENABLED = true" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["enableRepeat"] is True
 
 
 def test_video_server_enables_repeat():
     """The video server must enable repeat in its rendered HTML."""
+    import json
+    import re
+
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
@@ -814,23 +834,20 @@ def test_video_server_enables_repeat():
     client = TestClient(create_app())
     html = client.get("/").text
     assert 'id="btn-repeat"' in html
-    assert "REPEAT_ENABLED = true" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["enableRepeat"] is True
 
 
 def test_repeat_one_suppresses_crossfade():
     """When repeat mode is 'one', the crossfade trigger must be skipped."""
-    js = render_player_js(
-        api_path="/api/test",
-        item_noun="track",
-        enable_repeat=True,
-        crossfade_duration=5,
-    )
+    js = render_player_js()
     assert "repeatMode !== 'one'" in js
 
 
 def test_repeat_nextindex_returns_minus_one_when_off():
     """nextIndex must contain logic to return -1 (stop) when repeat is off at end of list."""
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    js = render_player_js()
     assert "repeat" in js.lower()
     # When repeat is 'all' → wrap to first playable; when off → return -1
     assert "return repeatMode === 'all' ? 0 : -1" in js
@@ -838,7 +855,7 @@ def test_repeat_nextindex_returns_minus_one_when_off():
 
 def test_play_next_item_handles_repeat_one():
     """playNextItem must restart current track when repeat mode is 'one'."""
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_repeat=True)
+    js = render_player_js()
     assert "repeatMode === 'one'" in js
     assert "player.currentTime = 0" in js
 
@@ -847,7 +864,7 @@ def test_shuffle_queue_rebuild_in_render_tracks():
     """JS must rebuild the shuffle queue when filteredItems changes (applyFilter)."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    js = render_player_js()
     # rebuildShuffleQueue must be called inside renderTracks
     # filteredItems is set to realTracks (debug-mode aware) instead of plain tracks
     assert "filteredItems = realTracks" in js
@@ -856,7 +873,7 @@ def test_shuffle_queue_rebuild_in_render_tracks():
 
 def test_queue_next_logic_is_centralized_in_play_next_item():
     """All Next triggers must use the same queue-first helper."""
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_shuffle=True)
+    js = render_player_js()
     assert "function playNextItem()" in js
     assert "btnNext.addEventListener('click', playNextItem);" in js
     assert "navigator.mediaSession.setActionHandler('nexttrack', function() {" in js
@@ -866,7 +883,7 @@ def test_queue_next_logic_is_centralized_in_play_next_item():
 
 def test_queue_dom_refs_requery_detached_nodes():
     """Queue DOM resolver must refresh detached references to avoid invisible panels."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "function _domNodeMissingOrDetached(el)" in js
     assert "!el.isConnected" in js
     assert "function openQueuePanel()" in js
@@ -928,46 +945,49 @@ def test_rating_stars_absent_when_disabled():
 
 
 def test_rating_write_js_flag_true():
-    """RATING_WRITE_ENABLED must be true when enable_rating_write=True."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
-    assert "RATING_WRITE_ENABLED = true" in js
+    """RATING_WRITE_ENABLED must be sourced from the runtime #ht-config blob
+    (Vite/TS migration Phase 3) — the actual true/false value is asserted at
+    the #ht-config JSON level (see test_audio_server_enables_rating_write /
+    test_video_server_does_not_enable_rating_write below)."""
+    js = render_player_js()
+    assert "RATING_WRITE_ENABLED = !!CFG.enableRatingWrite" in js
 
 
 def test_rating_write_js_flag_false_by_default():
-    """RATING_WRITE_ENABLED must be false when enable_rating_write=False."""
+    """Same runtime-config note as test_rating_write_js_flag_true."""
     js = _js()
-    assert "RATING_WRITE_ENABLED = false" in js
+    assert "RATING_WRITE_ENABLED = !!CFG.enableRatingWrite" in js
 
 
 def test_rating_api_path_injected():
-    """RATING_API_PATH must be injected and point to /api/audio/rating."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
-    assert "RATING_API_PATH = '/api/audio/rating'" in js
+    """RATING_API_PATH is derived at runtime via _apiBase() (Phase 3)."""
+    js = render_player_js()
+    assert "RATING_API_PATH = _apiBase() + '/rating'" in js
 
 
 def test_rating_js_has_render_and_set_functions():
     """renderPlayerRating and setRating JS functions must exist."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "renderPlayerRating" in js
     assert "setRating" in js
 
 
 def test_rating_js_calls_fetch_rating_api():
     """setRating must call fetch with RATING_API_PATH and POST method."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "fetch(RATING_API_PATH" in js
     assert "'POST'" in js
 
 
 def test_rating_js_calls_render_on_play():
     """renderPlayerRating must be called inside playItem when a track is selected."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    js = render_player_js()
     assert "renderPlayerRating" in js
 
 
 def test_rating_js_updates_after_metadata_refresh():
     """After refreshMetadata, renderPlayerRating should be called with updated value."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    js = render_player_js()
     assert "renderPlayerRating(meta.rating)" in js
 
 
@@ -987,45 +1007,45 @@ def test_rating_css_has_active_and_hover_states():
 
 def test_rating_toggle_to_zero_via_player_bar():
     """Clicking the already-active star must pass 0 to setRating (toggle off)."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     # The click handler must compute `current` from filteredItems and call setRating(0) on match
     assert "clicked === current ? 0 : clicked" in js
 
 
 def test_rating_toggle_to_zero_via_inline_stars():
     """Clicking the already-active inline star must pass 0 to setInlineRating (toggle off)."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "_clicked === _cur ? 0 : _clicked" in js
 
 
 def test_set_rating_patches_all_items():
     """setRating success callback must call _patchAllItemsRating to keep allItems in sync."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "_patchAllItemsRating" in js
 
 
 def test_set_rating_updates_track_rating_bar():
     """setRating success callback must call _updateTrackRatingBar to refresh the DOM."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "_updateTrackRatingBar" in js
 
 
 def test_undo_rating_patches_all_items():
     """undoRating success callback must call _patchAllItemsRating."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     # _patchAllItemsRating called in both setRating and undoRating
     assert js.count("_patchAllItemsRating") >= 2
 
 
 def test_rating_toast_zero_stars_label():
     """setRating with 0 stars must produce 'Bewertung entfernt' label (not '0 Sterne vergeben')."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "Bewertung entfernt" in js
 
 
 def test_rating_star_tooltip_hints_toggle():
     """The currently-set star should show a 'remove' hint in its tooltip."""
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "Bewertung entfernen" in js
     assert "nochmals klicken" in js
 
@@ -1060,24 +1080,14 @@ def test_edit_modal_rating_html_present():
 
 def test_edit_modal_rating_js_render_function():
     """JS must contain renderEditModalRating function."""
-    js = render_player_js(
-        api_path="/api/audio/tracks",
-        item_noun="track",
-        enable_metadata_edit=True,
-        enable_rating_write=True,
-    )
+    js = render_player_js()
     assert "renderEditModalRating" in js
     assert "_editModalRating" in js
 
 
 def test_edit_modal_rating_submit_sends_rating():
     """submitEditModal must include rating API call when rating changes."""
-    js = render_player_js(
-        api_path="/api/audio/tracks",
-        item_noun="track",
-        enable_metadata_edit=True,
-        enable_rating_write=True,
-    )
+    js = render_player_js()
     assert "RATING_API_PATH" in js
     assert "ratingChanged" in js
     assert "Promise.all" in js
@@ -1104,25 +1114,35 @@ def test_audio_server_has_rating_endpoint():
 
 
 def test_audio_server_enables_rating_write():
-    """The audio server HTML must include RATING_WRITE_ENABLED = true."""
+    """The audio server's #ht-config must have enableRatingWrite: true."""
+    import json
+    import re
+
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
 
     client = TestClient(create_app())
     html = client.get("/").text
-    assert "RATING_WRITE_ENABLED = true" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["enableRatingWrite"] is True
 
 
 def test_video_server_does_not_enable_rating_write():
-    """The video server must NOT enable rating write."""
+    """The video server's #ht-config must have enableRatingWrite: false."""
+    import json
+    import re
+
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
 
     client = TestClient(create_app())
     html = client.get("/").text
-    assert "RATING_WRITE_ENABLED = false" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["enableRatingWrite"] is False
 
 
 def test_rating_in_both_player_bar_styles():
@@ -1223,7 +1243,7 @@ def test_genre_filter_js_variable():
     """The JS must declare filterGenre variable and persist in localStorage."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "filterGenreBtn" in js
     assert "filterGenre" in js
     assert "ht-filter-genre" in js
@@ -1233,7 +1253,7 @@ def test_genre_filter_apply_logic():
     """applyFilter must filter by genre when filterGenre is set."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "t.genre === filterGenre" in js
 
 
@@ -1277,7 +1297,7 @@ def test_swipe_gesture_code_present():
     """Touch swipe gesture handlers must be present in the generated JS."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "Touch swipe gestures" in js
     assert "touchstart" in js
     assert "touchend" in js
@@ -1288,7 +1308,7 @@ def test_swipe_gesture_skips_range_inputs():
     """Swipe handler must not intercept touch events on range inputs (progress bar)."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "type === 'range'" in js or "el.type === 'range'" in js
 
 
@@ -1296,7 +1316,7 @@ def test_swipe_no_next_prev_track():
     """Swipe must NOT trigger next/prev track — only buttons do that."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     # Extract only the swipe gesture IIFE section
     start = js.index("Touch swipe gestures")
     end = js.index("}());", start)
@@ -1309,7 +1329,7 @@ def test_swipe_right_calls_go_back():
     """Swipe right must call goBack (back navigation only)."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "goBack()" in js
 
 
@@ -1318,25 +1338,30 @@ def test_swipe_right_calls_go_back():
 # ---------------------------------------------------------------------------
 
 
-def test_sync_interval_default_injected():
-    """Default sync interval (30000ms) is injected into the JS."""
+def test_sync_interval_reads_from_runtime_config():
+    """_PLAYLIST_SYNC_INTERVAL is now sourced from CFG.playlistSyncIntervalMs
+    (Vite/TS migration Phase 3) instead of a Python-interpolated literal —
+    the actual numeric value is asserted at the #ht-config JSON level."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_playlists=True)
-    assert "_PLAYLIST_SYNC_INTERVAL = 30000" in js
+    js = render_player_js()
+    assert "_PLAYLIST_SYNC_INTERVAL = CFG.playlistSyncIntervalMs" in js
 
 
 def test_sync_interval_custom_injected():
-    """Custom sync interval is injected into the JS."""
-    from hometools.streaming.core.server_utils import render_player_js
+    """Custom playlist_sync_interval_ms reaches the #ht-config JSON blob."""
+    from hometools.streaming.core.server_utils import render_media_page
 
-    js = render_player_js(
+    page = render_media_page(
+        title="T",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
         api_path="/api/test",
-        item_noun="track",
-        enable_playlists=True,
         playlist_sync_interval_ms=60000,
     )
-    assert "_PLAYLIST_SYNC_INTERVAL = 60000" in js
+    cfg = _extract_ht_config(page)
+    assert cfg["playlistSyncIntervalMs"] == 60000
 
 
 # ---------------------------------------------------------------------------
@@ -1348,7 +1373,7 @@ def test_optimistic_snapshot_helpers_in_js():
     """Optimistic UI helpers _snapshotPlaylists / _restorePlaylists must be present."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_playlists=True)
+    js = render_player_js()
     assert "_snapshotPlaylists" in js
     assert "_restorePlaylists" in js
 
@@ -1357,7 +1382,7 @@ def test_optimistic_rollback_toast_in_delete():
     """deleteUserPlaylist must show a rollback toast on error."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track", enable_playlists=True)
+    js = render_player_js()
     assert "r\\u00fcckg\\u00e4ngig" in js or "rückg" in js
 
 
@@ -1366,20 +1391,28 @@ def test_optimistic_rollback_toast_in_delete():
 # ---------------------------------------------------------------------------
 
 
-def test_min_rating_threshold_default_zero():
-    """Default MIN_RATING_THRESHOLD is 0 (show all)."""
+def test_min_rating_threshold_reads_from_runtime_config():
+    """MIN_RATING_THRESHOLD is now sourced from CFG.minRating (Phase 3)."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track")
-    assert "MIN_RATING_THRESHOLD = 0" in js
+    js = render_player_js()
+    assert "MIN_RATING_THRESHOLD = CFG.minRating" in js
 
 
 def test_min_rating_threshold_custom_injected():
-    """Custom min_rating is injected into the JS."""
-    from hometools.streaming.core.server_utils import render_player_js
+    """Custom min_rating reaches the #ht-config JSON blob."""
+    from hometools.streaming.core.server_utils import render_media_page
 
-    js = render_player_js(api_path="/api/test", item_noun="track", min_rating=2)
-    assert "MIN_RATING_THRESHOLD = 2" in js
+    page = render_media_page(
+        title="T",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+        min_rating=2,
+    )
+    cfg = _extract_ht_config(page)
+    assert cfg["minRating"] == 2
 
 
 def test_min_rating_filter_logic_in_apply_filter():
@@ -1392,7 +1425,7 @@ def test_min_rating_filter_logic_in_apply_filter():
     """
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
+    js = render_player_js()
     # Must contain the filter that hides rated-but-low tracks while keeping unrated
     assert "MIN_RATING_THRESHOLD" in js
     # Semantics: exclusive < comparison, so threshold-star songs are NOT hidden
@@ -1404,21 +1437,31 @@ def test_min_rating_filter_logic_in_apply_filter():
 # ---------------------------------------------------------------------------
 
 
-def test_crossfade_duration_default_zero():
-    """CROSSFADE_DURATION must default to 0 (disabled)."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
-    assert "CROSSFADE_DURATION = 0" in js
+def test_crossfade_duration_reads_from_runtime_config():
+    """CROSSFADE_DURATION is now sourced from CFG.crossfadeDuration (Phase 3)."""
+    js = render_player_js()
+    assert "CROSSFADE_DURATION = CFG.crossfadeDuration" in js
 
 
 def test_crossfade_duration_custom_injected():
-    """Custom crossfade_duration is injected into the JS."""
-    js = render_player_js(api_path="/api/test", item_noun="track", crossfade_duration=5)
-    assert "CROSSFADE_DURATION = 5" in js
+    """Custom crossfade_duration reaches the #ht-config JSON blob."""
+    from hometools.streaming.core.server_utils import render_media_page
+
+    page = render_media_page(
+        title="T",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+        crossfade_duration=5,
+    )
+    cfg = _extract_ht_config(page)
+    assert cfg["crossfadeDuration"] == 5
 
 
 def test_crossfade_js_has_xfade_functions():
     """Crossfade JS must contain the core functions."""
-    js = render_player_js(api_path="/api/test", item_noun="track", crossfade_duration=3)
+    js = render_player_js()
     assert "_startCrossfade" in js
     assert "_finishCrossfade" in js
     assert "_xfadeCleanup" in js
@@ -1427,7 +1470,7 @@ def test_crossfade_js_has_xfade_functions():
 
 def test_crossfade_trigger_in_timeupdate():
     """timeupdate handler must check CROSSFADE_DURATION and trigger crossfade."""
-    js = render_player_js(api_path="/api/test", item_noun="track", crossfade_duration=4)
+    js = render_player_js()
     assert "CROSSFADE_DURATION > 0" in js
     assert "_startCrossfade()" in js
 
@@ -1468,7 +1511,7 @@ def test_audio_server_passes_crossfade_duration():
 
 def test_global_search_function_exists():
     """The JS must contain the globalSearch function."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "function globalSearch" in js
     assert "function initGlobalSearch" in js
     assert "function exitGlobalSearch" in js
@@ -1481,7 +1524,7 @@ def test_global_search_respects_min_rating():
 
     Only filters when !showHidden (opt-in), using < comparison (exclusive).
     """
-    js = render_player_js(api_path="/api/test", item_noun="track", min_rating=3)
+    js = render_player_js()
     assert "MIN_RATING_THRESHOLD" in js
     # The globalSearch function filters via _effectiveThreshold with < semantics
     assert "r < _effectiveThreshold" in js
@@ -1504,13 +1547,13 @@ def test_folder_filter_bar_in_html():
 
 def test_global_search_shows_folder_path():
     """Search results must show the folder path for context."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "search-result-folder" in js
 
 
 def test_global_search_debounce():
     """Global search input should be debounced."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
+    js = render_player_js()
     assert "_globalSearchDebounce" in js
 
 
@@ -1619,15 +1662,37 @@ def test_js_has_default_lang_variable():
 
 
 def test_js_default_lang_injectable():
-    """DEFAULT_LANG must be injectable via the default_language parameter."""
-    js = render_player_js(api_path="/api/test", item_noun="track", default_language="en")
-    assert "DEFAULT_LANG = 'en'" in js
+    """DEFAULT_LANG is now sourced from CFG.defaultLanguage (Phase 3);
+    custom default_language reaches the #ht-config JSON blob."""
+    from hometools.streaming.core.server_utils import render_media_page
+
+    js = render_player_js()
+    assert "DEFAULT_LANG = CFG.defaultLanguage" in js
+    page = render_media_page(
+        title="T",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+        default_language="en",
+    )
+    cfg = _extract_ht_config(page)
+    assert cfg["defaultLanguage"] == "en"
 
 
 def test_js_default_lang_defaults_to_de():
-    """DEFAULT_LANG must default to 'de'."""
-    js = render_player_js(api_path="/api/test", item_noun="track")
-    assert "DEFAULT_LANG = 'de'" in js
+    """default_language must default to 'de' in the #ht-config JSON blob."""
+    from hometools.streaming.core.server_utils import render_media_page
+
+    page = render_media_page(
+        title="T",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+    )
+    cfg = _extract_ht_config(page)
+    assert cfg["defaultLanguage"] == "de"
 
 
 def test_css_has_composite_flag():
@@ -1883,7 +1948,7 @@ class TestDupeKeyGeneratedJsIntegrity:
 
     def test_js_does_not_strip_remix_aggressively(self):
         """The old aggressive strip list must be gone from the generated JS."""
-        js = render_player_js(api_path="/api/test", item_noun="track")
+        js = render_player_js()
         # The new code must NOT strip 'remix' or 'live' or 'extended' from parts
         assert "remix|mix|version" not in js and "extended|radio|vocal|edit|remix" not in js, (
             "Old aggressive version-strip regex still present in generated JS"
@@ -1891,18 +1956,18 @@ class TestDupeKeyGeneratedJsIntegrity:
 
     def test_js_strips_only_promo_markers(self):
         """New strip regex must target only official/explicit/clean."""
-        js = render_player_js(api_path="/api/test", item_noun="track")
+        js = render_player_js()
         assert r"\bofficial\b|\bexplicit\b|\bclean\b" in js
 
     def test_js_normalizestem_has_broad_official_pattern(self):
         """normalizeStem must strip ALL (Official ...) blocks, not only (Official*Video)."""
-        js = render_player_js(api_path="/api/test", item_noun="track")
+        js = render_player_js()
         # In the generated JS the regex appears as /\(Official[^)]*\)/gi
         assert r"\(Official[^)]*\)" in js
 
     def test_js_normalizestem_strips_audio_video_tags(self):
         """normalizeStem must strip standalone (Audio) and (Video) platform tags."""
-        js = render_player_js(api_path="/api/test", item_noun="track")
+        js = render_player_js()
         assert "Audio|Video|Music" in js  # part of the new promo-tag pattern
 
 
@@ -1911,7 +1976,7 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_has_pointer_based_track_seek(self):
         """Seeking must work via tap/drag on the whole track (touch fix)."""
-        js = render_player_js(api_path="/api/test", item_noun="video")
+        js = render_player_js()
         assert "initTrackSeek" in js
         assert "setPointerCapture" in js
         assert "pointerdown" in js
@@ -1923,29 +1988,29 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_ended_guard_against_spurious_end(self):
         """The ended handler must only advance when playback actually reached the end."""
-        js = render_player_js(api_path="/api/test", item_noun="video")
+        js = render_player_js()
         assert "reachedEnd" in js
 
     def test_js_progress_uses_sendbeacon(self):
         """Progress save must use sendBeacon so it survives backgrounding/unload."""
-        js = render_player_js(api_path="/api/test", item_noun="video")
+        js = render_player_js()
         assert "sendBeacon" in js
         assert "pagehide" in js
 
     def test_js_flushes_progress_before_switching_track(self):
         """playItem must flush the outgoing track's progress before switching."""
-        js = render_player_js(api_path="/api/test", item_noun="video")
+        js = render_player_js()
         assert "flush the outgoing track" in js
 
     def test_js_hides_pip_button_on_touch_devices(self):
         """The custom PiP button must be suppressed on mobile/touch devices."""
-        js = render_player_js(api_path="/api/test", item_noun="video")
+        js = render_player_js()
         assert "isTouchDevice" in js
         assert "(pointer: coarse)" in js
 
     def test_js_missing_episode_placeholder_label(self):
         """Missing-episode placeholders must show a clear 'Folge fehlt' label."""
-        js = render_player_js(api_path="/api/test", item_noun="video")
+        js = render_player_js()
         assert "Folge fehlt" in js
 
 
@@ -1963,7 +2028,7 @@ class TestCatalogLocalStorageCache:
     a full-index fetch on every page reload (stale-while-revalidate pattern)."""
 
     def _js(self):
-        return render_player_js(api_path="/api/test/items", item_noun="track")
+        return render_player_js()
 
     # ── Helper functions must be present ─────────────────────────────────────
 
@@ -2062,15 +2127,21 @@ class TestCatalogLocalStorageCache:
 
     def test_cache_key_differs_between_audio_and_video(self):
         """The cache key must be unique per server so that the audio catalog
-        never overwrites the video catalog or vice versa."""
-        js_audio = render_player_js(api_path="/api/audio/tracks", item_noun="track")
-        js_video = render_player_js(api_path="/api/video/items", item_noun="video")
-        # Both must define the constant
-        assert "_CATALOG_CACHE_KEY" in js_audio
-        assert "_CATALOG_CACHE_KEY" in js_video
-        # The values must differ (key contains the API path)
-        assert "_api_audio_tracks" in js_audio or "api/audio/tracks" in js_audio
-        assert "_api_video_items" in js_video or "api/video/items" in js_video
+        never overwrites the video catalog or vice versa.
+
+        _CATALOG_CACHE_KEY is derived at runtime from API_PATH (= CFG.apiPath,
+        Vite/TS migration Phase 3) — the JS expression itself is now
+        identical for every server, so uniqueness is verified end-to-end via
+        the actual #ht-config apiPath values of the two live servers.
+        """
+        js = render_player_js()
+        assert "_CATALOG_CACHE_KEY = 'ht-catalog-' + API_PATH.replace" in js
+
+        audio_page = render_media_page(title="T", emoji="", items_json="[]", media_element_tag="audio", api_path="/api/audio/tracks")
+        video_page = render_media_page(title="T", emoji="", items_json="[]", media_element_tag="video", api_path="/api/video/items")
+        audio_cfg = _extract_ht_config(audio_page)
+        video_cfg = _extract_ht_config(video_page)
+        assert audio_cfg["apiPath"] != video_cfg["apiPath"]
 
 
 # ---------------------------------------------------------------------------
@@ -2084,30 +2155,30 @@ class TestTrackDetailTableView:
     of title/artist while a tool is active."""
 
     def test_table_view_toggle_present_in_audio_js(self):
-        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        js = render_player_js()
         assert "_toggleTrackViewMode" in js
         assert "trackViewMode" in js
         assert "IC_TABLE" in js
 
     def test_table_view_locked_out_for_video(self):
-        js = render_player_js(api_path="/api/video/items", item_noun="video")
+        js = render_player_js()
         # Toggling is a no-op for video (detail/table view is audio-only)
         assert "detail/table view is audio-only" in js
 
     def test_track_row_has_duration_and_genre_cells(self):
-        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        js = render_player_js()
         assert "track-duration-cell" in js
         assert "track-genre-cell" in js
 
     def test_table_header_columns(self):
-        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        js = render_player_js()
         assert "track-table-header" in js
         assert "Interpret" in js
         assert "Dauer" in js
         assert "Genre" in js
 
     def test_inline_edit_save_function_present(self):
-        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        js = render_player_js()
         assert "_saveInlineTableEdit" in js
         assert "contenteditable" in js
 
@@ -2117,7 +2188,7 @@ class TestTrackDetailTableView:
         assert ".track-table-header" in css
 
     def test_hover_play_button_on_track_thumbnail(self):
-        js = render_player_js(api_path="/api/audio/items", item_noun="track")
+        js = render_player_js()
         assert "track-play-btn" in js
 
     def test_folder_hover_play_button_moved_over_cover(self):
@@ -2125,3 +2196,69 @@ class TestTrackDetailTableView:
         assert ".folder-play-btn" in css
         # Positioned over the left side of the cover, not bottom-right anymore
         assert "left: 0.6rem" in css
+
+
+class TestHtConfigJson:
+    """``#ht-config`` — Vite/TS migration Phase 2 (additive JSON blob).
+
+    Not yet consumed by ``render_player_js()`` — the flat ``SHUFFLE_ENABLED``
+    etc. vars keep working unchanged (see other tests in this file). This
+    only locks the parallel JSON contract so future TS modules can rely on
+    it (see streaming/core/webui/src/main.ts:PlayerConfig).
+    """
+
+    def _config(self, page):
+        return _extract_ht_config(page)
+
+    def test_ht_config_present_and_valid_json(self):
+        page = _page()
+        cfg = self._config(page)
+        assert cfg["apiPath"] == "/api/test"
+        assert cfg["itemNoun"] == "track"
+
+    def test_ht_config_reflects_feature_flags(self):
+        page = render_media_page(
+            title="Test",
+            emoji="\U0001f3b5",
+            items_json="[]",
+            media_element_tag="audio",
+            api_path="/api/audio/tracks",
+            item_noun="track",
+            enable_shuffle=True,
+            enable_repeat=True,
+            min_rating=3,
+            crossfade_duration=2,
+        )
+        cfg = self._config(page)
+        assert cfg["enableShuffle"] is True
+        assert cfg["enableRepeat"] is True
+        assert cfg["minRating"] == 3
+        assert cfg["crossfadeDuration"] == 2
+        assert cfg["fileEmoji"] == "\U0001f3b5"
+
+    def test_ht_config_language_groups_parsed(self):
+        page = render_media_page(
+            title="Test",
+            emoji="",
+            items_json="[]",
+            media_element_tag="video",
+            api_path="/api/video/items",
+            item_noun="video",
+            language_groups_json='{"show": ["de", "en"]}',
+        )
+        cfg = self._config(page)
+        assert cfg["languageGroups"] == {"show": ["de", "en"]}
+
+    def test_ht_config_survives_malformed_language_groups(self):
+        """Malformed language_groups_json must not crash page rendering."""
+        page = render_media_page(
+            title="Test",
+            emoji="",
+            items_json="[]",
+            media_element_tag="video",
+            api_path="/api/video/items",
+            item_noun="video",
+            language_groups_json="not-json",
+        )
+        cfg = self._config(page)
+        assert cfg["languageGroups"] == {}

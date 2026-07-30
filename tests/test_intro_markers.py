@@ -216,6 +216,9 @@ class TestIntroEndpoints:
 
 class TestSkipIntroUI:
     def test_video_page_has_button_when_enabled(self):
+        import json
+        import re
+
         from hometools.streaming.core.server_utils import render_media_page
 
         html = render_media_page(
@@ -227,9 +230,15 @@ class TestSkipIntroUI:
             enable_skip_intro=True,
         )
         assert 'class="video-skip-intro-btn"' in html
-        assert "var SKIP_INTRO_ENABLED = true" in html
+        assert "var SKIP_INTRO_ENABLED = !!CFG.enableSkipIntro" in html
+        m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+        assert m
+        assert json.loads(m.group(1))["enableSkipIntro"] is True
 
     def test_video_page_no_button_when_disabled(self):
+        import json
+        import re
+
         from hometools.streaming.core.server_utils import render_media_page
 
         html = render_media_page(
@@ -241,7 +250,9 @@ class TestSkipIntroUI:
             enable_skip_intro=False,
         )
         assert 'class="video-skip-intro-btn"' not in html
-        assert "var SKIP_INTRO_ENABLED = false" in html
+        m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+        assert m
+        assert json.loads(m.group(1))["enableSkipIntro"] is False
 
     def test_audio_page_never_has_button(self):
         from hometools.streaming.core.server_utils import render_media_page

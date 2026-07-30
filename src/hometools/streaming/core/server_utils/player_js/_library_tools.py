@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 
-def render_library_tools_js(playlist_sync_interval_ms) -> str:
+def render_library_tools_js() -> str:
     """Return the library tools section of the player JS."""
-    return (
-        """  function _buildDuplicateMap() {
+    return """  function _buildDuplicateMap() {
     var map = {};
     allItems.forEach(function(item, i) {
       var key = _dupeKey(item);
@@ -2328,9 +2327,6 @@ def render_library_tools_js(playlist_sync_interval_ms) -> str:
 
   var _playlistRevision = 0;
   var _playlistSyncTimer = null;
-  var _PLAYLIST_SYNC_INTERVAL = """
-        + (str(playlist_sync_interval_ms))
-        + """; /* ms */
+  var _PLAYLIST_SYNC_INTERVAL = CFG.playlistSyncIntervalMs || 30000; /* ms */
 
 """
-    )

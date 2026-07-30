@@ -22,7 +22,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from hometools.audio.metadata import audiofile_assume_artist_title, get_audio_file_info, get_genre, get_rating_stars
+from hometools.audio.metadata import audiofile_assume_artist_title, get_audio_file_info, get_bpm, get_genre, get_rating_stars
 from hometools.streaming.core.catalog import list_artists
 from hometools.streaming.core.catalog import query_items as query_tracks
 from hometools.streaming.core.catalog import sort_items as sort_tracks
@@ -112,6 +112,9 @@ def build_audio_index(
         # Genre tag
         genre = get_genre(audio_file)
 
+        # BPM tag (beats per minute; 0.0 = unknown/not analyzed)
+        bpm = get_bpm(audio_file)
+
         # Duration and bitrate (best-effort via mutagen)
         duration, bitrate = get_audio_file_info(audio_file)
 
@@ -138,6 +141,7 @@ def build_audio_index(
                 file_size=file_size,
                 duration=duration,
                 bitrate=bitrate,
+                bpm=bpm,
             )
         )
 

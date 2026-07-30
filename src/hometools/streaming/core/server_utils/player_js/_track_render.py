@@ -759,6 +759,7 @@ def render_track_render_js() -> str:
   var _toolDuplicates = document.getElementById('tool-duplicates');
   var _dupeShowLink = document.getElementById('dupe-show-link');
   var _toolFileMover = document.getElementById('tool-file-mover');
+  var _toolBpmCalc = document.getElementById('tool-bpm-calc');
   var _toolAutoRefreshGroup = null; /* removed — auto-refresh feature disabled */
   var _toolsGlobalRefreshBtn = document.getElementById('tools-global-refresh-btn');
 
@@ -802,6 +803,7 @@ def render_track_render_js() -> str:
       document.body.classList.remove('tool-hide-playlists');
       document.body.classList.remove('tool-show-duplicates');
       document.body.classList.remove('tool-show-file-mover');
+      document.body.classList.remove('tool-bpm-calc');
       if (toolsPill) toolsPill.classList.remove('has-active');
       /* Re-render to remove tool widgets from track list */
       if (folderGrid && !folderGrid.classList.contains('view-hidden')) {
@@ -846,6 +848,13 @@ def render_track_render_js() -> str:
     } else {
       document.body.classList.remove('tool-show-file-mover');
       if (_toolFileMover) _toolFileMover.checked = false;
+    }
+    if (_toolState.bpmCalc) {
+      document.body.classList.add('tool-bpm-calc');
+      if (_toolBpmCalc) _toolBpmCalc.checked = true;
+    } else {
+      document.body.classList.remove('tool-bpm-calc');
+      if (_toolBpmCalc) _toolBpmCalc.checked = false;
     }
     /* Update pill highlight (now on the wrap container) */
     var anyActive = _anyToolActive();
@@ -960,6 +969,14 @@ def render_track_render_js() -> str:
       if (inPlaylist) applyFilter();
     });
   }
+  if (_toolBpmCalc) {
+    _toolBpmCalc.addEventListener('change', function() {
+      _toolState.bpmCalc = _toolBpmCalc.checked;
+      _saveToolState();
+      /* Re-render so the "?" pills switch between static and clickable-glow */
+      if (inPlaylist) applyFilter();
+    });
+  }
   /* Global Tools: "Ordnerdaten aller Ordner erneuern" button */
   if (_toolsGlobalRefreshBtn) {
     _toolsGlobalRefreshBtn.addEventListener('click', function() {
@@ -1033,6 +1050,68 @@ def render_track_render_js() -> str:
       }
     })
     .catch(function() {});
+  }
+
+  /* ── BPM calculate (Tools-panel "BPM berechnen") ──────────────────────────
+     Click handler for the .meta-pill--calc button rendered by
+     window.renderBpmPill() (webui/src/metricPill.ts) when a track's BPM is
+     unknown and the tool is active. Stays Python-generated (not ported to
+     TS) because it needs filteredItems/allItems/showToast — identifiers
+     private to this script's own closure, not reachable from the separate
+     static bundle. See docs/IMPLEMENTATION_PLAN.md Design Discussions
+     ("Player-JS-Modulkopplung") for why that boundary exists. */
+  function _patchAllItemsBpm(relativePath, bpm) {
+    for (var i = 0; i < allItems.length; i++) {
+      if (allItems[i].relative_path === relativePath) {
+        allItems[i] = Object.assign({}, allItems[i], { bpm: bpm });
+        break;
+      }
+    }
+  }
+
+  function _calculateBpmForTrack(idx, btnEl) {
+    var t = filteredItems[idx];
+    if (!t || !t.relative_path) return;
+    if (btnEl) {
+      btnEl.classList.add('meta-pill--calculating');
+      btnEl.disabled = true;
+      btnEl.textContent = '\u2026';
+    }
+    fetch(BPM_CALC_API_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: t.relative_path })
+    })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (!d || !d.ok) {
+          showToast((d && d.error) || 'BPM-Berechnung fehlgeschlagen');
+          if (btnEl) {
+            btnEl.classList.remove('meta-pill--calculating');
+            btnEl.disabled = false;
+            btnEl.textContent = '?';
+          }
+          return;
+        }
+        t.bpm = d.bpm;
+        _patchAllItemsBpm(t.relative_path, d.bpm);
+        if (btnEl && btnEl.parentNode && typeof window.renderBpmPill === 'function') {
+          var wrap = document.createElement('span');
+          wrap.innerHTML = window.renderBpmPill(d.bpm, BPM_MIN, BPM_MAX,
+            { index: idx, relativePath: t.relative_path, calcEnabled: false });
+          var newPill = wrap.firstChild;
+          if (newPill) btnEl.parentNode.replaceChild(newPill, btnEl);
+        }
+        showToast('BPM berechnet: ' + Math.round(d.bpm));
+      })
+      .catch(function() {
+        showToast('BPM-Berechnung fehlgeschlagen (Netzwerkfehler)');
+        if (btnEl) {
+          btnEl.classList.remove('meta-pill--calculating');
+          btnEl.disabled = false;
+          btnEl.textContent = '?';
+        }
+      });
   }
 
   /* ── Duplicate detection (client-side) ── */

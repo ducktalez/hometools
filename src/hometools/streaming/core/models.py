@@ -41,6 +41,7 @@ class MediaItem:
     bitrate: int = 0  # average bitrate in kbps (0 = unknown / lossless)
     intro_start: float = 0.0  # series intro start in seconds (0.0 = unset)
     intro_end: float = 0.0  # series intro end in seconds (0.0 = no skippable intro)
+    bpm: float = 0.0  # beats per minute (audio only; 0.0 = unknown/not analyzed)
 
     def to_dict(self) -> dict[str, str]:
         """Return a JSON-serializable representation."""

@@ -2,6 +2,149 @@
 
 ## Backlog — Medium
 
+### Vite/TypeScript migration (in progress, Phase 1 done — 2026-07-30)
+
+**Ziel:** `server_utils/_player_js.py` + `player_js/*.py` + `_css.py` +
+`css/*.py` (aktuell ~8900 Zeilen JS/CSS als Python-String-Konkatenation)
+schrittweise durch echte `.ts`/`.css`-Dateien ersetzen, gebaut mit Vite,
+ausgeliefert von FastAPI als statische Assets. Backend (FastAPI, Katalog,
+Sync, ...) bleibt unverändert — reine Frontend-Tooling-Migration.
+
+**Phase 1 (done, 2026-07-30):** Scaffold unter
+`src/hometools/streaming/core/webui/` (`package.json`, `vite.config.ts`,
+`tsconfig.json`, `src/main.ts` mit `PlayerConfig`-Typ als Vertrag für das
+künftige `<script id="ht-config">`-JSON-Blob). `npm run build` /
+`npm run typecheck` laufen isoliert und grün, ohne dass Server-Code
+angefasst wurde. `node_modules/`, `dist-typecheck/` und der Build-Output
+(`../static/`) sind `.gitignore`-Einträge. Details + volle Migrationsschritte
+→ `src/hometools/streaming/core/webui/README.md`.
+
+**Phase 2 (done, 2026-07-30) — Config extraction (additive):** `_html.py` now
+builds an `#ht-config` JSON `<script>` tag (`_render_player_config_json()`)
+mirroring `PlayerConfig` in `main.ts`, embedded next to `#initial-data`.
+**Not yet consumed** by `render_player_js()` — the existing flat vars
+(`SHUFFLE_ENABLED`, `API_PATH`, ...) keep being generated exactly as before,
+so all ~20 existing test call sites and `render_player_js()`'s signature are
+untouched. Malformed `language_groups_json` degrades to `{}` instead of
+crashing (`try/except` around `json.loads`). New tests:
+`tests/test_streaming_player_ui.py::TestHtConfigJson` (4 cases: presence/
+valid JSON, feature flags reflected, language groups parsed, malformed input
+survives).
+
+**Phase 3 (done — 2026-07-30) — Switch-over:** all of `render_player_js()`'s
+former Python parameters are gone. Only `player_bar_style` remains (a
+genuinely structural choice — waveform vs. classic emits different JS).
+Everything else — `enable_shuffle`, `enable_repeat`, `enable_skip_intro`,
+`enable_rating_write`, `min_rating`, `debug_filter`, `enable_recent`,
+`enable_auto_resume`, `crossfade_duration`, `enable_metadata_edit`,
+`enable_lyrics`, `enable_playlists`, `playlist_sync_interval_ms`,
+`language_groups_json`/`default_language`, `item_noun`, `file_emoji`,
+`api_path` — is read at runtime from `CFG` (parsed from `#ht-config`).
+
+- **First three slices** (`enable_shuffle`, `enable_repeat`,
+  `enable_skip_intro`) done incrementally with their own test fixes — see
+  history below.
+- **Remaining twelve variables done in one larger pass:** `enable_rating_write`,
+  `min_rating`, `debug_filter`, `enable_recent`, `enable_auto_resume`,
+  `crossfade_duration`, `enable_metadata_edit`, `enable_lyrics`,
+  `enable_playlists`, `playlist_sync_interval_ms` (moved out of
+  `render_library_tools_js(playlist_sync_interval_ms)` into
+  `CFG.playlistSyncIntervalMs`, function now takes no params),
+  `language_groups_json`/`default_language`, `item_noun`, `file_emoji`.
+- **`api_path` fully migrated too** — the biggest structural change. Every
+  derived endpoint path (`INTRO_API_PATH`, `RATING_API_PATH`,
+  `AUDIT_UNDO_PATH`, `RECENT_API_PATH`, `METADATA_EDIT_PATH`,
+  `LYRICS_API_PATH`, `PLAYLISTS_API_PATH`/`_VERSION_PATH`/`_SMART_PATH`,
+  `FOLDER_ORDER_API_PATH`, `MOVE_API_PATH`, `DELETE_API_PATH`,
+  `REVEAL_API_PATH`, `FOLDERS_API_PATH`, and classic-mode
+  `WAVEFORM_API_PATH`) used to be built in Python via
+  `api_path.rsplit("/", 1)[0] + "/xxx"`. All of these now use a single new
+  JS helper `function _apiBase() { return API_PATH.split('/').slice(0, -1).join('/'); }`
+  defined once near the top of the IIFE (right after `CFG` is parsed) —
+  `var XXX_API_PATH = _apiBase() + '/xxx';`. `AUDIOBOOK_DIRS` also moved
+  from an inline `__import__("hometools.config", ...)` hack in
+  `_player_js.py` to `CFG.audiobookDirs` (computed once in
+  `_html.py::_render_player_config_json`, same `get_audiobook_dirs()` call,
+  just in one place instead of two).
+- **Test fallout** (grepped the *entire* `tests/` directory per the Phase 3
+  lesson-learned rule before starting, not just the historically-known
+  files): ~80 direct `render_player_js(...)` call sites across
+  `test_audit_log.py`, `test_offline_downloads.py`, `test_pwa_shortcuts.py`,
+  `test_smart_playlists.py`, `test_streaming_player_ui.py`,
+  `test_streaming_progress.py` had their now-invalid kwargs
+  (`api_path=...`, `item_noun=...`, `enable_*=...`, etc.) stripped via a
+  one-off Python script (paren-balanced call-site rewrite, kept only
+  `player_bar_style=...` where present — see git history for the script if
+  a similar bulk edit is ever needed again). `test_js_syntax.py`'s
+  `CONFIGS` dict collapsed from 5 verbose per-server kwarg sets down to
+  just `player_bar_style` per entry (every other kwarg is now runtime-only,
+  so `audio_classic`/`video_classic` produce byte-identical JS — the
+  distinct dict keys are kept only as readable test IDs).
+  Literal-value assertions (`"RATING_WRITE_ENABLED = true" in js`,
+  `"MIN_RATING_THRESHOLD = 2" in js`, `"DEFAULT_LANG = 'en'" in js`,
+  `"RECENT_API_PATH = '/api/audio/recent'" in js`, etc.) were rewritten to
+  either (a) assert the new `CFG.xxx`-based JS expression structurally, or
+  (b) render a real page via `render_media_page()`/a live `TestClient` and
+  parse the actual `#ht-config` JSON for the value — new shared test helper
+  `_extract_ht_config(page)` added to `test_streaming_player_ui.py` and
+  `test_streaming_progress.py` for this. `TestHtConfigJson._config` in
+  `test_streaming_player_ui.py` now delegates to the same module-level
+  helper instead of duplicating the regex/`json.loads`.
+- **Verified end-to-end:** live `TestClient` requests against both audio
+  and video servers confirm every migrated `CFG.*` field and every
+  `_apiBase()`-derived path expression is present and correctly populated
+  (`apiPath`, `minRating`, `crossfadeDuration`, `playlistSyncIntervalMs`,
+  `defaultLanguage`, `audiobookDirs`, all boolean flags).
+- 1388 tests passing, `ruff check`/`ruff format` clean,
+  `tests/test_feature_parity.py` green (51/51).
+
+**Phase 4 (done — 2026-07-30) — Static Serving:** FastAPI `StaticFiles`-Mount
+für `/static/` (`server_utils/_static.py::mount_static_assets()`, wired into
+`audio/server.py`, `video/server.py` and `channel/server_playlist.py`'s
+`create_app()`). `_html.py::render_media_page()` now renders
+`<script src="/static/player.<hash>.js"></script>` (resolved from Vite's
+`build.manifest: true` output, `server_utils/_static.py::get_static_script_tag()`)
+directly before the remaining inline `<script>{js}</script>`. Both halves
+degrade gracefully when `streaming/core/static/` hasn't been built yet
+(local dev without `npm run build`): `mount_static_assets()` logs one
+warning and skips the mount; `get_static_script_tag()` returns `""` so no
+broken `<script src>` is ever rendered. `vite.config.ts` now builds in
+`format: "iife"` (not an ES module) so ported symbols can be bridged onto
+`window` for the still-inline legacy script to consume as bare identifiers
+— see Phase 5 below. Dockerfile gained a `webui-builder` Node stage that
+runs `npm ci && npm run build` and copies the output into the python-builder
+stage's source tree before `pip install .`; `pyproject.toml` gained
+`[tool.setuptools.package-data]` so the wheel includes `static/**/*` when
+present. New tests: `tests/test_streaming_static.py` (11 cases covering
+missing/malformed/valid manifest, mount graceful-skip + real FastAPI mount,
+`render_media_page()` tag placement).
+
+**Phase 5 (in progress — first slice done, 2026-07-30) — Modulweiser Port:**
+`fmtTime`/`escHtml`/`formatBytes` (previously top-level `function` declarations
+in `player_js/_core.py::render_core_js()`) are now real, typed functions in
+`streaming/core/webui/src/main.ts`, exported for `tsc`/tests and additionally
+assigned onto `window` (`window.fmtTime = fmtTime;` etc.) so the remaining
+Python-generated inline script's bare `fmtTime(...)` / `escHtml(...)` /
+`formatBytes(...)` references keep resolving via the normal JS scope chain —
+this only works because the bundle loads (as a classic, blocking `<script
+src>`, not `type="module"`) strictly before the inline script in the same
+document, so execution order matches today's behavior exactly. The three
+Python definitions were deleted from `_core.py` (single source of truth per
+`copilot-instructions.md`); every call site elsewhere in `player_js/*.py`
+was left untouched (calls, not definitions — grepped first to confirm no
+other file also defines any of the three names).
+
+These three were deliberately chosen as the **first** slice: they are the
+only fragments in the entire ~8900-line JS surface with zero references to
+any other identifier defined elsewhere in the concatenated script — a hard
+precondition for a safe module boundary today, since (see Design
+Discussions below) every other `player_js/*.py` fragment freely reads and
+writes identifiers declared in a *different* fragment file, all relying on
+being concatenated into one shared non-strict function scope.
+
+**Phase 6 (offen) — Cleanup:** Python-Generatoren + `tests/test_js_syntax.py`
+(esprima-basiert) entfernen, sobald `tsc` die Syntax-Absicherung übernimmt.
+
 ### Streaming UI (Audio + Video)
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album bzw. TMDB) (zurückstellen)
 
@@ -59,24 +202,67 @@
 
 ### TypeScript/bundler switch (2026-07-25)
 
-**Status:** rejected for now, revisit if conditions below change.
+**Status:** superseded 2026-07-30 — see "Vite/TypeScript migration" above,
+now in progress (Phase 1-4 done, Phase 5 first slice done). The concerns
+below were valid at the time and shaped the migration's design (gradual,
+additive, `#ht-config` JSON extraction before any JS is touched, graceful
+degradation when the bundle isn't built) rather than ruling it out entirely.
 
-**Kurzfassung (Why not now):** Server-Werte (z. B. `api_path`,
-`enable_shuffle`, `language_groups_json`) werden aktuell direkt in den
+**Kurzfassung (Why not then):** Server-Werte (z. B. `api_path`,
+`enable_shuffle`, `language_groups_json`) wurden damals direkt in den
 JS-Text interpoliert (`render_player_js()`), nicht als separates JSON
 injiziert — ein Bundler braucht aber statische Dateien zur Build-Zeit,
-bevor diese Werte bekannt sind. Ein sauberer Umstieg wäre also kein reines
-Tooling-Upgrade, sondern eine echte Architekturänderung. Zusätzlich: neue
-Laufzeit-Dependency (Node), Build-Schritt vor jedem Testlauf/Server-Start
-(widerspricht „sofort verfügbar" + „ein Startbefehl"), Docker-Image-Kosten,
-Test-Anpassung (Feature-Parity-Tests grep'en aktuell direkt im JS-String),
-~8900 Zeilen JS nachträglich typisieren. Stattdessen: `esprima`-basierter
-Pytest-Check (`tests/test_js_syntax.py`, siehe oben) als leichte
-Sicherheitsnetz-Alternative ohne Node-Runtime-Dependency.
+bevor diese Werte bekannt sind. Das wurde mit der `#ht-config`-Extraktion
+(Phase 2/3) gelöst, bevor Phase 4 (Static Serving) begonnen wurde.
+Zusätzlich: neue Laufzeit-Dependency (Node) nur zur **Build**-Zeit (nicht
+zur Laufzeit — `server_utils/_static.py` degradiert graceful, falls
+`static/` fehlt), Docker-Image-Kosten (gelöst über eine eigene
+`webui-builder`-Stage im Dockerfile), Test-Anpassung (Feature-Parity-Tests
+grep'en weiterhin direkt im JS-String für alles, was noch nicht portiert
+ist), ~8900 Zeilen JS nachträglich typisieren (bewusst **modulweise**,
+nicht auf einmal — siehe "Player-JS-Modulkopplung" unten für die dabei
+entdeckte strukturelle Hürde).
 
 **Revisit, wenn:** mehrere Personen parallel am JS arbeiten, echtes
 Code-Splitting/Lazy-Loading nötig wird, oder komplexere Client-State-
 Verwaltung ansteht, die von echten ES-Modulen profitiert.
+
+### Player-JS-Modulkopplung blockiert einfachen Modul-für-Modul-Port (2026-07-30)
+
+**Status:** offen — beeinflusst die Reihenfolge/den Aufwand von Phase 5.
+
+Beim Auswählen der ersten Phase-5-Slice (`fmtTime`/`escHtml`/`formatBytes`)
+zeigte sich: praktisch **jedes** andere `player_js/*.py`-Fragment
+(`_drag_drop_init.py`, `_playlists.py`, `_smart_playlists.py`, ...) liest
+und schreibt Bezeichner, die in einer *anderen* Fragmentdatei deklariert
+sind (z. B. `filteredItems`, `PLAYLISTS_ENABLED`, `showFolderView`,
+`reorderPlaylistItem`, `_userPlaylists`, `allItems`, `inPlaylist`) — alles
+verlässt sich darauf, in **eine** gemeinsame, nicht-strikte
+Funktions-Scope konkateniert zu werden. Ein Fragment ist damit kein
+JS-„Modul" im eigentlichen Sinn, sondern nur eine Datei-Grenze zur
+besseren Python-Quelltext-Pflege.
+
+Zusätzlich gefundenes konkretes Beispiel für die Fragilität dieses Musters:
+`_drag_drop_init.py` weist `_dndCleanup = function() {...}` zu, **ohne**
+`var _dndCleanup` irgendwo zu deklarieren — funktioniert nur, weil die
+Zuweisung dadurch (nicht-strict mode) ein implizites globales
+`window._dndCleanup` erzeugt, auf das `destroyPlaylistDragDrop()` in
+`_smart_playlists.py` dann zugreift. Das ist ein Code-Smell (verlässt sich
+auf Sloppy-Mode-Verhalten, das ein `"use strict"` oder ein ES-Modul sofort
+bricht) — absichtlich **nicht** in dieser Runde repariert (kein
+eindeutiger Bug, funktioniert wie vorgesehen), aber ein Blocker für jeden
+künftigen Versuch, ein Fragment als echtes strict-mode ES-Modul zu
+bauen, ohne vorher eine explizite geteilte "Player State"-Schnittstelle
+einzuführen.
+
+**Plan für die nächsten Slices:** vor dem Port eines Fragments mit
+Querverweisen zuerst ein Ambient-Types-Contract (`.d.ts`) für die von ihm
+konsumierten globalen Bezeichner schreiben, dann `fmtTime`-artige,
+abhängigkeitsfreie Funktionen bevorzugt weiter zuerst portieren
+(Kandidaten: reine Formatierungs-/Validierungs-Helfer in `_search_filter.py`
+und `_track_render.py`), größere zustandsbehaftete Fragmente
+(`_core.py`, `_library_tools.py`) erst danach angehen.
+
 
 ### Smart-Playlist-Kaskaden (Phase 2)
 

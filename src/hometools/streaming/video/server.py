@@ -31,6 +31,7 @@ from hometools.streaming.core.openapi_schema import install_filtered_openapi
 from hometools.streaming.core.server_utils import (
     build_index_status_payload,
     check_library_accessible,
+    mount_static_assets,
     render_error_page,
     render_media_page,
     render_pwa_icon_png,
@@ -238,6 +239,10 @@ def create_app(
     # Serve a JSON-API-only OpenAPI schema so /openapi.json + /docs work in the
     # browser (HTML/binary routes would otherwise break FastAPI's schema builder).
     install_filtered_openapi(app)
+    # Vite/TS migration Phase 4 (docs/IMPLEMENTATION_PLAN.md): serve the built
+    # webui bundle at /static if present. No-op (logs a warning) when the
+    # bundle hasn't been built yet — never blocks/crashes startup.
+    mount_static_assets(app)
 
     # Cache quick-scan results so repeated polls during index build don't
     # re-walk the filesystem every 2 seconds.

@@ -58,30 +58,9 @@ from .player_js import (
 
 
 def render_player_js(
-    api_path: str,
-    item_noun: str = "track",
-    file_emoji: str = "\U0001f3b5",
     player_bar_style: str = "classic",
-    enable_offline: bool = True,
-    enable_shuffle: bool = False,
-    enable_repeat: bool = False,
-    enable_rating_write: bool = False,
-    enable_metadata_edit: bool = False,
-    enable_recent: bool = True,
-    enable_lyrics: bool = False,
-    enable_playlists: bool = False,
-    playlist_sync_interval_ms: int = 30000,
-    min_rating: int = 0,
-    enable_auto_resume: bool = True,
-    crossfade_duration: int = 0,
-    debug_filter: bool = False,
-    language_groups_json: str = "{}",
-    default_language: str = "de",
-    enable_skip_intro: bool = False,
 ) -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
-
-    Default view is a folder list (configurable via toggle to grid).
 
     Default view is a folder list (configurable via toggle to grid).
     Clicking a folder navigates deeper into the hierarchy.  Leaf folders
@@ -89,9 +68,16 @@ def render_player_js(
     back button allow navigating up.  View preference is stored in
     localStorage.
 
-    *enable_shuffle* activates the shuffle button in the player bar.
-    Long-pressing the shuffle button activates weighted shuffle (items with
-    higher ratings are more likely to play).  Works with offline downloads too.
+    *player_bar_style* is the only remaining Python parameter — it's a
+    genuinely structural choice (waveform vs. classic emits different JS
+    for the progress bar/scrubber), unlike every other former parameter
+    here. All request-varying config (``api_path``, ``enable_shuffle``,
+    ``min_rating``, ``language_groups_json``, ...) is now read at runtime
+    from the ``#ht-config`` JSON blob (``CFG.*``, rendered by
+    ``_html.py::_render_player_config_json``) — see "Vite/TypeScript
+    migration" Phase 3 in docs/IMPLEMENTATION_PLAN.md. Long-pressing the
+    shuffle button activates weighted shuffle (items with higher ratings
+    are more likely to play). Works with offline downloads too.
     """
     # -- waveform/thumbnail JS (only for waveform mode) -----------------------
     if player_bar_style == "waveform":
@@ -254,12 +240,9 @@ def render_player_js(
   }
 """
     else:
-        waveform_setup_js = (
-            """
+        waveform_setup_js = """
   /* ── classic mode: cached stereo waveform overlay ── */
-  var WAVEFORM_API_PATH = '"""
-            + api_path.rsplit("/", 1)[0]
-            + """/waveform';
+  var WAVEFORM_API_PATH = _apiBase() + '/waveform';
 
   function generateWaveform(url, relativePath) {
     if (!isAudioMode || !waveformCanvas) return;
@@ -369,24 +352,25 @@ def render_player_js(
     drawWaveform(p);
   });
 """
-        )
 
     return (
         """
 (function () {
   var INITIAL = JSON.parse(document.getElementById('initial-data').textContent);
-  var ITEM_NOUN = '"""
-        + (item_noun)
-        + """';
-  var FILE_EMOJI = '"""
-        + (file_emoji)
-        + """';
-  var API_PATH = '"""
-        + (api_path)
-        + """';
-  var OFFLINE_ENABLED = """
-        + ("true" if enable_offline else "false")
-        + """;
+  /* Vite/TS migration Phase 3 (docs/IMPLEMENTATION_PLAN.md): runtime config
+     read from the #ht-config JSON blob (_html.py::_render_player_config_json).
+     Falls back to {} if the tag is missing (e.g. render_player_js() output
+     used standalone in tests without a full render_media_page() document). */
+  var _cfgEl = document.getElementById('ht-config');
+  var CFG = JSON.parse((_cfgEl && _cfgEl.textContent) || '{}');
+  var ITEM_NOUN = CFG.itemNoun || 'track';
+  var FILE_EMOJI = CFG.fileEmoji || '';
+  var API_PATH = CFG.apiPath || '';
+  /* Derive sibling API endpoints from API_PATH (e.g. "/api/audio/tracks" ->
+     "/api/audio"), replacing the former Python-side api_path.rsplit("/", 1)[0]
+     string concatenation for every *_API_PATH var below. */
+  function _apiBase() { return API_PATH.split('/').slice(0, -1).join('/'); }
+  var OFFLINE_ENABLED = !!CFG.enableOffline;
 
   /* Placeholder SVG thumbnails — same dimensions as real thumbs so layout never shifts.
      Simple dark-grey squares with a subtle icon silhouette. */
@@ -435,94 +419,42 @@ def render_player_js(
         + """';
   var IC_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   var IC_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-  var SHUFFLE_ENABLED = """
-        + ("true" if enable_shuffle else "false")
-        + """;
-  var REPEAT_ENABLED = """
-        + ("true" if enable_repeat else "false")
-        + """;
-  var SKIP_INTRO_ENABLED = """
-        + ("true" if enable_skip_intro else "false")
-        + """;
-  var INTRO_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/intro';
-  var RATING_WRITE_ENABLED = """
-        + ("true" if enable_rating_write else "false")
-        + """;
-  var MIN_RATING_THRESHOLD = """
-        + (str(min_rating))
-        + """;
+  var SHUFFLE_ENABLED = !!CFG.enableShuffle;
+  var REPEAT_ENABLED = !!CFG.enableRepeat;
+  var SKIP_INTRO_ENABLED = !!CFG.enableSkipIntro;
+  var INTRO_API_PATH = _apiBase() + '/intro';
+  var RATING_WRITE_ENABLED = !!CFG.enableRatingWrite;
+  var MIN_RATING_THRESHOLD = CFG.minRating || 0;
   /* When ratings are enabled but no explicit threshold is configured,
      treat 1-star tracks as "ausgeblendet" (threshold=2, used with < comparison: r < 2 hides 1★).
      Setting min_rating=0 explicitly disables the feature entirely. */
   var _effectiveThreshold = MIN_RATING_THRESHOLD > 0 ? MIN_RATING_THRESHOLD : (RATING_WRITE_ENABLED ? 2 : 0);
-  var DEBUG_FILTER = """
-        + ("true" if debug_filter else "false")
-        + """;
-  var RATING_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/rating';
-  var AUDIT_UNDO_PATH = '"""
-        + (api_path.rsplit("/", 1)[0].replace("/api/", "/api/"))
-        + """/audit/undo';
-  var RECENT_ENABLED = """
-        + ("true" if enable_recent else "false")
-        + """;
-  var RECENT_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/recent';
-  var AUTO_RESUME_ENABLED = """
-        + ("true" if enable_auto_resume else "false")
-        + """;
-  var CROSSFADE_DURATION = """
-        + (str(crossfade_duration))
-        + """;
-  var METADATA_EDIT_ENABLED = """
-        + ("true" if enable_metadata_edit else "false")
-        + """;
-  var METADATA_EDIT_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/metadata/edit';
+  var DEBUG_FILTER = !!CFG.debugFilter;
+  var RATING_API_PATH = _apiBase() + '/rating';
+  var AUDIT_UNDO_PATH = _apiBase() + '/audit/undo';
+  var RECENT_ENABLED = !!CFG.enableRecent;
+  var RECENT_API_PATH = _apiBase() + '/recent';
+  var AUTO_RESUME_ENABLED = !!CFG.enableAutoResume;
+  var CROSSFADE_DURATION = CFG.crossfadeDuration || 0;
+  var METADATA_EDIT_ENABLED = !!CFG.enableMetadataEdit;
+  var METADATA_EDIT_PATH = _apiBase() + '/metadata/edit';
   var IC_EDIT = '"""
         + (SVG_EDIT.replace("'", "\\'"))
         + """';
   var IC_LYRICS = '"""
         + (SVG_LYRICS.replace("'", "\\'"))
         + """';
-  var LYRICS_ENABLED = """
-        + ("true" if enable_lyrics else "false")
-        + """;
-  var LYRICS_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/lyrics';
-  var PLAYLISTS_ENABLED = """
-        + ("true" if enable_playlists else "false")
-        + """;
-  var PLAYLISTS_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/playlists';
-  var PLAYLISTS_VERSION_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/playlists/version';
-  var PLAYLISTS_SMART_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/playlists/smart';
-  var FOLDER_ORDER_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/folder-order';
-  var MOVE_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/move-file';
-  var DELETE_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/delete-file';
-  var REVEAL_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/reveal';
-  var FOLDERS_API_PATH = '"""
-        + (api_path.rsplit("/", 1)[0])
-        + """/folders';
+  var LYRICS_ENABLED = !!CFG.enableLyrics;
+  var LYRICS_API_PATH = _apiBase() + '/lyrics';
+  var PLAYLISTS_ENABLED = !!CFG.enablePlaylists;
+  var PLAYLISTS_API_PATH = _apiBase() + '/playlists';
+  var PLAYLISTS_VERSION_PATH = _apiBase() + '/playlists/version';
+  var PLAYLISTS_SMART_PATH = _apiBase() + '/playlists/smart';
+  var FOLDER_ORDER_API_PATH = _apiBase() + '/folder-order';
+  var MOVE_API_PATH = _apiBase() + '/move-file';
+  var DELETE_API_PATH = _apiBase() + '/delete-file';
+  var REVEAL_API_PATH = _apiBase() + '/reveal';
+  var FOLDERS_API_PATH = _apiBase() + '/folders';
   var IC_PLAYLIST = '"""
         + (SVG_PLAYLIST.replace("'", "\\'"))
         + """';
@@ -574,22 +506,24 @@ def render_player_js(
         + (SVG_FLAG_RU.replace("'", "\\'"))
         + """'
   };
-  var AUDIOBOOK_DIRS = """
-        + (__import__("json").dumps(__import__("hometools.config", fromlist=["get_audiobook_dirs"]).get_audiobook_dirs()))
-        + """;
-  var LANG_GROUPS = """
-        + (language_groups_json)
-        + """;
-  var DEFAULT_LANG = '"""
-        + (default_language)
-        + """';
+  var AUDIOBOOK_DIRS = CFG.audiobookDirs || [];
+  var LANG_GROUPS = CFG.languageGroups || {};
+  var DEFAULT_LANG = CFG.defaultLanguage || 'de';
+  /* BPM pill (audio only) — display/heatmap range, configurable server-side
+     (default 60-180, HOMETOOLS_BPM_MIN/HOMETOOLS_BPM_MAX). The "calculate"
+     affordance (yellow-glow clickable "?") is additionally gated by the
+     Tools-panel "BPM berechnen" toggle (_toolState.bpmCalc) — see
+     player_js/_track_render.py / _search_filter.py. */
+  var BPM_MIN = CFG.bpmMin || 60;
+  var BPM_MAX = CFG.bpmMax || 180;
+  var BPM_CALC_API_PATH = _apiBase() + '/bpm/calculate';
 """
         + render_core_js(waveform_js=waveform_js)
         + render_queue_js(sprite_preview_js=sprite_preview_js, waveform_setup_js=waveform_setup_js)
         + render_folder_browse_js()
         + render_search_filter_js()
         + render_track_render_js()
-        + render_library_tools_js(playlist_sync_interval_ms=playlist_sync_interval_ms)
+        + render_library_tools_js()
         + render_playlists_js()
         + render_smart_playlists_js()
         + render_drag_drop_init_js()

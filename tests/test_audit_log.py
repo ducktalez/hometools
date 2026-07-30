@@ -554,22 +554,39 @@ def test_render_audit_panel_has_back_link():
 def test_player_js_has_undo_rating_function():
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "undoRating" in js
     assert "showRatingToastWithUndo" in js
     assert "AUDIT_UNDO_PATH" in js
 
 
 def test_player_js_audit_undo_path_injected():
+    """AUDIT_UNDO_PATH is now derived at runtime from CFG.apiPath via
+    _apiBase() (Vite/TS migration Phase 3) instead of a Python-interpolated
+    literal path. Verify the derivation expression is present, and that a
+    real render with a concrete api_path resolves to the expected path via
+    the live audio server (end-to-end check)."""
+    import json
+    import re
+
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
-    assert "AUDIT_UNDO_PATH = '/api/audio/audit/undo'" in js
+    js = render_player_js()
+    assert "AUDIT_UNDO_PATH = _apiBase() + '/audit/undo'" in js
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["apiPath"] == "/api/audio/tracks"
 
 
 def test_player_js_rating_toast_uses_entry_id():
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track", enable_rating_write=True)
+    js = render_player_js()
     assert "entry_id" in js
     assert "showRatingToastWithUndo" in js

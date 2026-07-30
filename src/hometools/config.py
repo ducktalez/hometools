@@ -316,6 +316,36 @@ def get_debug_filter() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# BPM (beats per minute) display range
+# ---------------------------------------------------------------------------
+
+
+def get_bpm_min() -> int:
+    """Return the lower bound of the BPM display/heatmap range (audio only).
+
+    Used to normalize the BPM pill's fill/heatmap-color in the streaming UI
+    (a track at or below this value renders as "slowest"). Purely a display
+    range — does **not** hide or filter tracks whose BPM falls outside it.
+    Set ``HOMETOOLS_BPM_MIN`` to override.  Default: ``60``.
+    """
+    val = _get_int_from_env("HOMETOOLS_BPM_MIN", 60)
+    return max(1, val)
+
+
+def get_bpm_max() -> int:
+    """Return the upper bound of the BPM display/heatmap range (audio only).
+
+    A track at or above this value renders as "fastest". See
+    :func:`get_bpm_min`.  Set ``HOMETOOLS_BPM_MAX`` to override.
+    Default: ``180``.  Always clamped to be greater than ``get_bpm_min()``
+    (falls back to ``min + 1`` if misconfigured, never crashes the caller).
+    """
+    val = _get_int_from_env("HOMETOOLS_BPM_MAX", 180)
+    lower = get_bpm_min()
+    return val if val > lower else lower + 1
+
+
+# ---------------------------------------------------------------------------
 # Default language
 # ---------------------------------------------------------------------------
 

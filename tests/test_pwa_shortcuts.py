@@ -196,7 +196,7 @@ class TestDeepLinking:
         """The JS must render pin buttons per track."""
         from hometools.streaming.core.server_utils import render_player_js
 
-        js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+        js = render_player_js()
         assert "track-pin-btn" in js
         assert "IC_PIN" in js
         assert "toggleFavorite" in js

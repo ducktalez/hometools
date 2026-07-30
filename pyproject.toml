@@ -44,6 +44,14 @@ ui-test = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Vite/TS migration Phase 4 (docs/IMPLEMENTATION_PLAN.md): the built webui
+# bundle (streaming/core/static/, git-ignored) must be included in the wheel
+# if present at build time — see Dockerfile's webui-builder stage. Absent in
+# local editable installs unless `npm run build` was run first; server_utils/
+# _static.py degrades gracefully (logs a warning) when it's missing.
+"hometools.streaming.core" = ["static/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

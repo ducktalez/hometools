@@ -7,11 +7,11 @@ def render_table_view_css() -> str:
     """Return the table view section of the dark-theme CSS."""
     return """/* ── Track detail/table view (audio only) ──────────────────────────────────
    Toggled via the view-toggle button while a folder/playlist is open.
-   Columns: num | thumb | title | artist | duration | genre | rating | actions */
+   Columns: num | thumb | title | artist | duration | genre | bpm | rating | actions */
 .track-duration-cell, .track-genre-cell { display: none; }
 .track-table-header {
   display: grid;
-  grid-template-columns: 2.5rem 2.75rem 2fr 1.3fr 4rem 6rem 5.5rem 4.5rem;
+  grid-template-columns: 2.5rem 2.75rem 2fr 1.3fr 4rem 6rem 3.5rem 5.5rem 4.5rem;
   gap: 0.6rem; align-items: center;
   padding: 0.5rem max(1rem, var(--sar)) 0.5rem max(1rem, var(--sal));
   font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em;
@@ -21,7 +21,7 @@ def render_table_view_css() -> str:
 .track-list.table-mode { }
 .track-list.table-mode .track-item {
   display: grid;
-  grid-template-columns: 2.5rem 2.75rem 2fr 1.3fr 4rem 6rem 5.5rem 4.5rem;
+  grid-template-columns: 2.5rem 2.75rem 2fr 1.3fr 4rem 6rem 3.5rem 5.5rem 4.5rem;
   gap: 0.6rem; align-items: center;
   padding-top: 0.4rem; padding-bottom: 0.4rem;
 }
@@ -36,7 +36,8 @@ def render_table_view_css() -> str:
   display: block; order: 5; font-size: 0.78rem; color: var(--sub);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.track-list.table-mode .track-inline-rating { display: flex !important; order: 6; margin-left: 0; }
+.track-list.table-mode .track-bpm-cell { order: 6; justify-content: center; margin-left: 0; }
+.track-list.table-mode .track-inline-rating { display: flex !important; order: 7; margin-left: 0; }
 .track-list.table-mode .rating-bar { display: none; }
 .track-list.table-mode .track-dl-btn,
 .track-list.table-mode .track-pin-btn,
@@ -44,8 +45,8 @@ def render_table_view_css() -> str:
 .track-list.table-mode .track-playlist-btn,
 .track-list.table-mode .track-edit-btn,
 .track-list.table-mode .track-move-widget { display: none; }
-.track-list.table-mode .track-reveal-btn { order: 7; }
-.track-list.table-mode .track-kebab-btn { order: 8; }
+.track-list.table-mode .track-reveal-btn { order: 8; }
+.track-list.table-mode .track-kebab-btn { order: 9; }
 /* Inline-editable title/artist cells (tools mode active) */
 .track-title-text[contenteditable="true"],
 .track-artist[contenteditable="true"] {
@@ -107,13 +108,6 @@ def render_table_view_css() -> str:
 /* Deleted item in dupe panel */
 .dupe-group-item--deleted { opacity: 0.35; cursor: default; pointer-events: none; }
 .dupe-group-item--deleted .dupe-group-item-title { text-decoration: line-through; }
-.hidden-badge {
-  display: inline-flex; align-items: center; font-size: 0.6rem;
-  color: #fff; background: rgba(120,120,120,0.7);
-  padding: 1px 5px; border-radius: 8px; margin-left: 5px;
-  vertical-align: middle; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
-  flex-shrink: 0;
-}
 /* refresh-info label in the header */
 .refresh-info {
   font-size: 0.68rem; color: var(--sub); margin-left: 0.5rem; white-space: nowrap;

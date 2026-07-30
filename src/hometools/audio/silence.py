@@ -73,23 +73,19 @@ def plot_waveform(p: Path, trimmed_p: Path):
 
 
 def analyze_bpm(p: Path):
-    """Analyse BPM and store in metadata (requires librosa)."""
-    import librosa
-    import librosa.beat
+    """Analyse BPM and store it in the file's metadata (requires librosa).
 
-    from hometools.audio.metadata import _open_audio
+    Deprecated re-export — the actual implementation moved to
+    ``hometools.audio.bpm.analyze_and_save_bpm`` (also fixes a pre-existing
+    bug here: M4A/MP4 files were written with a non-standard ``"bpm"`` dict
+    key instead of the ``tmpo`` atom, so mutagen silently dropped the value
+    on save — never actually persisted for that format). Kept for backward
+    compatibility; new code should call
+    :func:`hometools.audio.bpm.analyze_and_save_bpm` directly.
+    """
+    from hometools.audio.bpm import analyze_and_save_bpm
 
-    y, sr = librosa.load(p, sr=None)
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    bpm = round(tempo[0])
-
-    try:
-        audio = _open_audio(p)
-        audio["bpm"] = str(bpm)
-        audio.save()
-        logger.info(f"BPM ({bpm}) saved for {p.name}")
-    except Exception:
-        logger.warning(f"Unsupported format for BPM storage: {p}")
+    analyze_and_save_bpm(p)
 
 
 # ---------------------------------------------------------------------------

@@ -252,7 +252,6 @@ def render_search_filter_js() -> str:
           var hClone = {}; for (var k in t) { if (t.hasOwnProperty(k)) hClone[k] = t[k]; }
           if (showHidden) {
             hClone._hiddenShown = true;
-            hClone._hiddenReason = 'Bewertung: ' + r + '\u2605';
             return hClone;
           } else {
             hClone._debugReason = 'Rating ' + r + '\\u2605 < Schwelle ' + _effectiveThreshold;
@@ -292,7 +291,7 @@ def render_search_filter_js() -> str:
          Unrated tracks (rating 0) are always shown regardless of threshold.
          showHidden=false  → hidden songs filtered out entirely.
          showHidden=true   → hidden songs kept at their natural position, grayed
-                             out with a reason label so the full list is visible. */
+                             out so the full list is visible. */
       if (_effectiveThreshold > 0) {
         if (!showHidden) {
           items = items.filter(function(t) {
@@ -305,7 +304,6 @@ def render_search_filter_js() -> str:
             if (r > 0 && r < _effectiveThreshold) {
               var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
               clone._hiddenShown = true;
-              clone._hiddenReason = 'Bewertung: ' + r + '\u2605';
               return clone;
             }
             return t;
@@ -397,6 +395,9 @@ def render_search_filter_js() -> str:
     var end = Math.min(_renderBatchOffset + _RENDER_BATCH_SIZE, _renderAllItems.length);
     if (end <= _renderBatchOffset) { _stopRenderObserver(); return; }
     var showOrig = _anyToolActive();
+    /* BPM "calculate" affordance (yellow-glow clickable "?") is gated by the
+       Tools-panel "BPM berechnen" toggle — see _track_render.py::_applyToolState. */
+    var bpmCalcEnabled = !!(_toolState.active && _toolState.bpmCalc);
     var html = '';
     for (var i = _renderBatchOffset; i < end; i++) {
       var t = _renderAllItems[i];
@@ -436,7 +437,6 @@ def render_search_filter_js() -> str:
       var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
       var subtitle = t.artist || t.relative_path;
       var extraCls = (idx === currentIndex ? ' active' : '') + (t._hiddenShown ? ' track-item--hidden-shown' : '');
-      var hiddenBadge = t._hiddenShown ? '<span class="hidden-badge">' + escHtml(t._hiddenReason || 'ausgeblendet') + '</span>' : '';
       var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
       var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
       var convertBadge = needsConversion(t.relative_path) ? '<span class="convert-badge" title="Wird on-the-fly konvertiert">\\u26A1</span>' : '';
@@ -457,6 +457,15 @@ def render_search_filter_js() -> str:
       var editAttrs = tableEditable
         ? ' contenteditable="true" spellcheck="false" data-relative-path="' + escHtml(t.relative_path || '') + '"'
         : '';
+      /* BPM pill (audio only) — same markup serves both the always-visible
+         list-view pill and the table-view column (CSS alone repositions it
+         via .track-bpm-cell); see webui/src/metricPill.ts + docs/architecture.md
+         "Metric Pill Architecture" for the generalized design (future fields:
+         genre/mood/key can follow the same pattern). */
+      var bpmPillHtml = (isVideoMode || typeof window.renderBpmPill !== 'function')
+        ? ''
+        : '<span class="track-bpm-cell">' + window.renderBpmPill(t.bpm, BPM_MIN, BPM_MAX,
+            { index: idx, relativePath: t.relative_path, calcEnabled: bpmCalcEnabled }) + '</span>';
       html += '<li class="track-item' + extraCls +
         '" data-index="' + idx + '">' +
         '<span class="track-num"><span class="num-text">' + numLabel + '</span></span>' +
@@ -465,9 +474,10 @@ def render_search_filter_js() -> str:
         '<button class="track-play-btn" data-index="' + idx + '" title="Abspielen">' + IC_FOLDER_PLAY + '</button>' +
         ratingBar + '</div>' +
         '<div class="track-info">' +
-          '<div class="track-title"><span class="track-title-text"' + (tableEditable ? editAttrs + ' data-field="title"' : '') + '>' + escHtml(displayTitle) + '</span>' + convertBadge + dupeBadge + hiddenBadge + '</div>' +
+          '<div class="track-title"><span class="track-title-text"' + (tableEditable ? editAttrs + ' data-field="title"' : '') + '>' + escHtml(displayTitle) + '</span>' + convertBadge + dupeBadge + '</div>' +
           '<div class="track-artist"' + (tableEditable ? editAttrs + ' data-field="artist"' : '') + '>' + escHtml(subtitle) + '</div>' +
         '</div>' +
+        bpmPillHtml +
         '<span class="track-duration-cell">' + (t.duration ? fmtTime(t.duration) : '') + '</span>' +
         '<span class="track-genre-cell">' + escHtml(t.genre || '') + '</span>' +
         '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
@@ -712,6 +722,13 @@ def render_search_filter_js() -> str:
         var _cur = Math.round((_t && _t.rating) || 0);
         var _clicked = Number(ratingStar.dataset.star);
         setInlineRating(_idx, _clicked === _cur ? 0 : _clicked);
+        return;
+      }
+      /* BPM "calculate" pill (Tools-panel "BPM berechnen" must be active) */
+      var bpmCalcBtn = e.target.closest('.meta-pill--calc[data-action="calc-bpm"]');
+      if (bpmCalcBtn) {
+        e.stopPropagation(); e.preventDefault();
+        _calculateBpmForTrack(Number(bpmCalcBtn.dataset.index), bpmCalcBtn);
         return;
       }
       /* Download button */

@@ -696,7 +696,11 @@ class TestRepeatParity:
         assert 'id="btn-repeat"' in video_html
 
     def test_both_home_pages_include_repeat_js(self, tmp_path):
-        """Both UIs must have REPEAT_ENABLED and repeat functions."""
+        """Both UIs must have REPEAT_ENABLED (runtime CFG-driven, Vite/TS
+        migration Phase 3) and repeat functions."""
+        import json
+        import re
+
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
@@ -706,7 +710,10 @@ class TestRepeatParity:
         video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
 
         for html in [audio_html, video_html]:
-            assert "REPEAT_ENABLED = true" in html
+            assert "REPEAT_ENABLED = !!CFG.enableRepeat" in html
+            m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+            assert m
+            assert json.loads(m.group(1))["enableRepeat"] is True
             assert "cycleRepeat" in html
             assert "updateRepeatBtn" in html
             assert "repeatMode" in html

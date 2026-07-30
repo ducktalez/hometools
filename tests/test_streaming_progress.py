@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 
 from hometools.streaming.core.progress import (
@@ -12,6 +13,14 @@ from hometools.streaming.core.progress import (
     load_progress,
     save_progress,
 )
+
+
+def _extract_ht_config(page):
+    """Parse the `#ht-config` JSON blob out of a rendered page (Vite/TS
+    migration Phase 3 — see docs/IMPLEMENTATION_PLAN.md)."""
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', page, re.S)
+    assert m, "ht-config script tag missing"
+    return json.loads(m.group(1))
 
 
 class TestSaveAndLoad:
@@ -259,32 +268,55 @@ def test_recent_section_starts_hidden():
 
 
 def test_recent_api_path_injected_in_js():
+    """RECENT_API_PATH is derived at runtime via _apiBase() (Phase 3);
+    verify the derivation expression + the actual value via a live server."""
+    import re
+
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.audio.server import create_app
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
-    assert "RECENT_API_PATH = '/api/audio/recent'" in js
+    js = render_player_js()
+    assert "RECENT_API_PATH = _apiBase() + '/recent'" in js
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    import json
+
+    assert json.loads(m.group(1))["apiPath"] == "/api/audio/tracks"
 
 
 def test_recent_api_path_video():
-    from hometools.streaming.core.server_utils import render_player_js
+    """Same derivation, verified against the live video server."""
+    import json
+    import re
 
-    js = render_player_js(api_path="/api/video/items", item_noun="video")
-    assert "RECENT_API_PATH = '/api/video/recent'" in js
+    from fastapi.testclient import TestClient
+
+    from hometools.streaming.video.server import create_app
+
+    client = TestClient(create_app())
+    html = client.get("/").text
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["apiPath"] == "/api/video/items"
 
 
 def test_audiobook_dirs_injected_in_js():
-    from hometools.streaming.core.server_utils import render_player_js
+    """AUDIOBOOK_DIRS is now sourced from CFG.audiobookDirs (Phase 3);
+    verify via the real #ht-config JSON blob (populated from
+    hometools.config.get_audiobook_dirs())."""
+    from hometools.streaming.core.server_utils import render_media_page, render_player_js
 
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
-    assert "AUDIOBOOK_DIRS = " in js
-    # Should be a JSON array
-    import re
+    js = render_player_js()
+    assert "AUDIOBOOK_DIRS = CFG.audiobookDirs" in js
 
-    m = re.search(r"AUDIOBOOK_DIRS = (\[.*?\]);", js)
-    assert m, "AUDIOBOOK_DIRS must be a JS array literal"
-    import json
-
-    dirs = json.loads(m.group(1))
+    page = render_media_page(title="T", emoji="", items_json="[]", media_element_tag="audio", api_path="/api/audio/tracks")
+    cfg = _extract_ht_config(page)
+    dirs = cfg["audiobookDirs"]
     assert isinstance(dirs, list)
     assert len(dirs) > 0
 
@@ -292,7 +324,7 @@ def test_audiobook_dirs_injected_in_js():
 def test_load_recently_played_js_function():
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js(api_path="/api/audio/tracks", item_noun="track")
+    js = render_player_js()
     assert "loadRecentlyPlayed" in js
     assert "RECENT_API_PATH" in js
     assert "recent-card" in js

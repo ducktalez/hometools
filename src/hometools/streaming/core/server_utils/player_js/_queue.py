@@ -987,7 +987,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
         hdr.innerHTML =
           '<span></span><span></span>' +
           '<span>Titel</span><span>Interpret</span>' +
-          '<span>Dauer</span><span>Genre</span><span>\u2605</span><span></span>';
+          '<span>Dauer</span><span>Genre</span><span>BPM</span><span>\u2605</span><span></span>';
         trackList.parentNode.insertBefore(hdr, trackList);
       }
     } else if (hdr) {

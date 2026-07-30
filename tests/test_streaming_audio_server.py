@@ -493,17 +493,31 @@ def test_refresh_ratings_patches_index_cache(tmp_path):
 
 
 def test_debug_filter_js_variable_injected(tmp_path, monkeypatch):
-    """When HOMETOOLS_DEBUG_FILTER=true, the rendered page contains DEBUG_FILTER = true."""
+    """When HOMETOOLS_DEBUG_FILTER=true, the rendered page's #ht-config
+    blob has debugFilter: true (Vite/TS migration Phase 3 — DEBUG_FILTER is
+    now read at runtime via CFG.debugFilter, not a Python-interpolated
+    literal)."""
+    import json
+    import re
+
     monkeypatch.setenv("HOMETOOLS_DEBUG_FILTER", "true")
     html = render_audio_index_html([])
-    assert "DEBUG_FILTER = true" in html
+    assert "DEBUG_FILTER = !!CFG.debugFilter" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["debugFilter"] is True
 
 
 def test_debug_filter_default_is_false(tmp_path, monkeypatch):
-    """By default, DEBUG_FILTER should be false."""
+    """By default, CFG.debugFilter should be false."""
+    import json
+    import re
+
     monkeypatch.delenv("HOMETOOLS_DEBUG_FILTER", raising=False)
     html = render_audio_index_html([])
-    assert "DEBUG_FILTER = false" in html
+    m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
+    assert m
+    assert json.loads(m.group(1))["debugFilter"] is False
 
 
 def test_debug_filter_css_present(tmp_path, monkeypatch):

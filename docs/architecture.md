@@ -244,6 +244,43 @@ for file locations.
 - **Skip-intro**: button visible only within `[intro_start, intro_end]`.
   Precedence: manual UI marker → YAML override → ffprobe chapters.
   `GET/POST/DELETE /api/video/intro`.
+- **BPM (audio only)**: `MediaItem.bpm` (`0.0` = unknown), read via
+  `hometools.audio.metadata.get_bpm()` at catalog-build time
+  (`streaming/audio/catalog.py`). Format coverage: MP3 native ID3 `TBPM`
+  **and** a `TXXX:BPM`/`TXXX:TEMPO`/`TXXX:BEATS PER MINUTE` user-defined
+  text-frame fallback (case-insensitive desc match via `_find_txxx_tag()`
+  — many taggers/DJ tools write BPM this way instead of the native frame),
+  M4A/MP4 `tmpo` atom, FLAC/OGG `BPM` Vorbis comment, WMA/ASF
+  `WM/BeatsPerMinute`. Writing uses `set_bpm()` (rejects `<= 0`); optional
+  on-demand analysis via `hometools.audio.bpm.calculate_bpm()` (librosa,
+  `audio-analysis` extra) + `analyze_and_save_bpm()`, exposed as
+  `POST /api/audio/bpm/calculate` (the Tools-panel "BPM berechnen" feature,
+  gated by `#tool-bpm-calc`).
+  **Metric Pill architecture** (generalizes past BPM to future numeric
+  metadata like mood/key): `webui/src/metricPill.ts` → `renderMetricPill()`
+  / `renderBpmPill()` is a pure, dependency-free render function (Vite/TS
+  migration Phase 5 "leaf function" slice) bridged onto
+  `window.renderBpmPill` by `main.ts`. It renders one shared markup for
+  both list view (inline pill) and table/detail view (CSS repositions it
+  into a column via `.track-bpm-cell`) — unknown values (`<= 0`) render a
+  grey `?`, or a clickable pulsing-yellow `<button>` when the Tools-panel
+  calc feature is active. The **click-to-calculate interaction**
+  (`_calculateBpmForTrack`/`_patchAllItemsBpm` in
+  `player_js/_track_render.py`) deliberately stays in the legacy
+  Python-generated script — it needs `filteredItems`/`allItems`/`showToast`,
+  identifiers private to that script's shared closure and not reachable
+  from the separate TS bundle. This is an intentional, documented module
+  boundary (see IMPLEMENTATION_PLAN.md Design Discussion
+  "Player-JS-Modulkopplung"), **not** a leftover TODO — do not port it
+  without first introducing the shared "Player State" contract that
+  discussion calls for.
+  **Bugfix (2026-07-30):** `get_bpm()` only checked the native `TBPM`/`BPM`
+  tag keys, so files whose BPM was written as a `TXXX:BPM` (or similarly
+  named) custom text frame — common with several taggers and DJ software —
+  always reported `0.0`, rendering the grey "?" pill for every track even
+  though the metadata was present. Fixed via `_find_txxx_tag()`; also added
+  the missing WMA/ASF `WM/BeatsPerMinute` key. See
+  `tests/test_metadata.py::TestGetBpmMp3`/`TestFindTxxxTag`.
 
 ## Native client layer (`clients/`)
 
@@ -474,4 +511,276 @@ change first (splitting config out into a separate JSON payload). See
 "TypeScript/bundler switch" in `docs/IMPLEMENTATION_PLAN.md` — Design
 Discussions for the full trade-off analysis and revisit conditions.
 
+## Vite/TypeScript migration scaffold (`streaming/core/webui/`, Phase 1 — 2026-07-30)
+
+The "TypeScript/bundler switch" rejection above is being revisited via a
+**gradual, test-safe migration** rather than a single big-bang rewrite (see
+"Vite/TypeScript migration" in `docs/IMPLEMENTATION_PLAN.md` for the full
+5-phase plan). Phase 1 only adds tooling — **no server behaviour changed**:
+
+- `src/hometools/streaming/core/webui/` is a standalone Vite + TypeScript
+  project (`package.json`, `vite.config.ts`, `tsconfig.json`).
+- `src/main.ts` defines the `PlayerConfig` TypeScript interface — the future
+  contract for a `<script id="ht-config" type="application/json">` blob that
+  will replace the current direct-interpolation of `api_path`,
+  `enable_shuffle`, `language_groups_json`, etc. into `render_player_js()`.
+  It is a no-op today (the tag does not exist yet in any served HTML).
+- `npm run build` outputs to `src/hometools/streaming/core/static/`
+  (git-ignored); `node_modules/` is also git-ignored. Nothing here is
+  imported by Python yet, nothing is served by FastAPI yet.
+- **Not wired up yet.** Do not mount `StaticFiles` or change `_html.py` /
+  `_player_js.py` until Phase 2 (config extraction) lands as its own
+  reviewed change — it touches the signature of `render_player_js()` and
+  ~20 direct test call sites across `tests/test_audit_log.py`,
+  `tests/test_pwa_shortcuts.py`, `tests/test_streaming_progress.py`, and
+  `tests/test_streaming_player_ui.py`.
+
+### Phase 2 (2026-07-30): `#ht-config` JSON blob (additive, non-breaking)
+
+`_html.py::_render_player_config_json()` builds a JSON dict (camelCase keys
+mirroring `PlayerConfig` in `webui/src/main.ts`) and embeds it as
+`<script id="ht-config" type="application/json">` right next to the
+existing `#initial-data` tag. **Nothing reads it yet** — `render_player_js()`
+still generates its flat top-level vars (`SHUFFLE_ENABLED`, `API_PATH`, ...)
+exactly as before via direct Python-string interpolation, so this step is
+purely additive and changed zero existing test assertions.
+
+- `language_groups_json` is parsed with `json.loads` inside a `try/except`;
+  malformed input degrades to `{}` instead of raising (never crash the
+  caller — Rule 5).
+- `</` is escaped to `<\/` in the dumped JSON to avoid premature
+  `</script>` termination — a plain, standard mitigation; still valid JSON
+  (`\/` is a legal escape for solidus).
+- `audiobookDirs` is read from `hometools.config.get_audiobook_dirs()`
+  wrapped in `try/except Exception` (defensive; matches how `_player_js.py`
+  already called it inline before this change).
+- New tests: `tests/test_streaming_player_ui.py::TestHtConfigJson`.
+- **Next (Phase 3):** switch `render_player_js()`'s flat vars to read from
+  the parsed `CFG` object one at a time. Each switch changes the literal JS
+  text and **will** break the corresponding brittle
+  `"SHUFFLE_ENABLED = true" in js`-style test assertions — fix those in the
+  same commit as the variable's switch-over, not as a separate big-bang
+  change.
+
+### Phase 3 (2026-07-30): first switch-over slice — `enable_shuffle`
+
+`render_player_js()` no longer accepts `enable_shuffle` at all — it never
+gated *which* JS got generated (shuffle functions are always emitted
+unconditionally), only the `SHUFFLE_ENABLED` literal's value. The JS now
+resolves `CFG` right after parsing `#initial-data`:
+
+```js
+var _cfgEl = document.getElementById('ht-config');
+var CFG = JSON.parse((_cfgEl && _cfgEl.textContent) || '{}');
+...
+var SHUFFLE_ENABLED = !!CFG.enableShuffle;
+```
+
+`_html.py::render_media_page()` still takes `enable_shuffle` (drives the
+`#btn-shuffle` markup + the `#ht-config` blob's `enableShuffle` field) but no
+longer forwards it to `render_player_js(...)`. This is the template for
+migrating every remaining flag in Phase 3 — see the per-variable checklist
+in `docs/IMPLEMENTATION_PLAN.md`.
+
+**Test fallout fixed in the same change:** `render_player_js()`-level tests
+that asserted a literal `"SHUFFLE_ENABLED = true/false"` were merged into
+one structural assertion (`SHUFFLE_ENABLED = !!CFG.enableShuffle`);
+server-level tests (`test_audio_server_enables_shuffle`,
+`test_video_server_does_not_enable_shuffle`) now parse the real
+`#ht-config` JSON from the HTTP response instead of grepping the HTML for a
+literal boolean; `test_js_syntax.py`'s `CONFIGS` dicts no longer pass
+`enable_shuffle` (would now raise `TypeError`).
+
+### Phase 3 second slice (2026-07-30): `enable_repeat`
+
+Same mechanical pattern as `enable_shuffle`: `render_player_js()` no longer
+accepts `enable_repeat`; `_html.py` no longer forwards it. JS now does
+`var REPEAT_ENABLED = !!CFG.enableRepeat;`.
+
+**Lesson learned mid-migration:** the initial Phase 3 scoping only listed
+`test_audit_log.py`/`test_pwa_shortcuts.py`/`test_streaming_progress.py`/
+`test_streaming_player_ui.py` as call sites to check per variable. The
+`enable_repeat` switch-over also broke
+`tests/test_feature_parity.py::TestRepeatParity::test_both_home_pages_include_repeat_js`,
+which literally grepped `"REPEAT_ENABLED = true"` from the rendered HTML —
+not in the originally-scoped file list. **Updated rule for every remaining
+variable in this migration:** grep the *entire* `tests/` directory for
+`<FLAG>_ENABLED = (true|false)` (and any other literal-value assertion tied
+to that flag) before starting the switch-over, not just the four
+historically-known files.
+
+### Phase 3 third slice (2026-07-30): `enable_skip_intro`
+
+Same mechanical pattern again: `render_player_js()` no longer accepts
+`enable_skip_intro`; `_html.py` no longer forwards it. JS now does
+`var SKIP_INTRO_ENABLED = !!CFG.enableSkipIntro;`. Following the lesson
+above, a full `tests/`-directory grep for `SKIP_INTRO_ENABLED` was done
+before starting — found only `tests/test_intro_markers.py::TestSkipIntroUI`
+(2 tests, updated to parse `#ht-config` JSON) and `test_js_syntax.py`'s
+`CONFIGS` (kwarg removed). `_html.py`'s own `enable_skip_intro` parameter
+(drives the `.video-skip-intro-btn` markup and the `#ht-config` blob's
+`enableSkipIntro` field) is untouched.
+
+### Phase 3 completion (2026-07-30): all remaining variables + `api_path`
+
+The remaining twelve boolean/scalar flags (`enable_rating_write`,
+`min_rating`, `debug_filter`, `enable_recent`, `enable_auto_resume`,
+`crossfade_duration`, `enable_metadata_edit`, `enable_lyrics`,
+`enable_playlists`, `playlist_sync_interval_ms`, `language_groups_json`/
+`default_language`, `item_noun`, `file_emoji`) were migrated in one pass,
+plus — the structurally biggest piece — **`api_path` itself**.
+
+`render_player_js()`'s signature is now just:
+
+```python
+def render_player_js(player_bar_style: str = "classic") -> str:
+```
+
+Every derived API endpoint that used to be built in Python via
+`api_path.rsplit("/", 1)[0] + "/xxx"` (there were 14 of these:
+`INTRO_API_PATH`, `RATING_API_PATH`, `AUDIT_UNDO_PATH`,
+`RECENT_API_PATH`, `METADATA_EDIT_PATH`, `LYRICS_API_PATH`,
+`PLAYLISTS_API_PATH`, `PLAYLISTS_VERSION_PATH`, `PLAYLISTS_SMART_PATH`,
+`FOLDER_ORDER_API_PATH`, `MOVE_API_PATH`, `DELETE_API_PATH`,
+`REVEAL_API_PATH`, `FOLDERS_API_PATH`, plus classic-mode
+`WAVEFORM_API_PATH`) now uses one JS helper defined once, right after `CFG`
+is parsed:
+
+```js
+var API_PATH = CFG.apiPath || '';
+function _apiBase() { return API_PATH.split('/').slice(0, -1).join('/'); }
+...
+var RATING_API_PATH = _apiBase() + '/rating';
+```
+
+`AUDIOBOOK_DIRS` also lost its Python-side hack
+(`__import__("hometools.config", fromlist=[...]).get_audiobook_dirs()`
+called *inside* `_player_js.py`) — it's now `CFG.audiobookDirs`, computed
+once in `_html.py::_render_player_config_json` (the same
+`get_audiobook_dirs()` call, just in one place instead of two).
+`render_library_tools_js()` similarly dropped its `playlist_sync_interval_ms`
+parameter; the fragment reads `CFG.playlistSyncIntervalMs` directly (`CFG`
+is in scope for every fragment — they all concatenate into one IIFE).
+
+**Test fallout (large — ~80 call sites):** grepped the *entire* `tests/`
+directory first (the Phase 3 lesson-learned rule), then used a one-off
+paren-balanced Python script to strip every now-invalid kwarg
+(`api_path=...`, `item_noun=...`, `enable_*=...`, `min_rating=...`, etc.)
+from every `render_player_js(...)` call site across six test files,
+keeping only `player_bar_style=...` where present. `test_js_syntax.py`'s
+`CONFIGS` dict collapsed from five verbose per-server kwarg sets to just
+`player_bar_style` per entry — every other kwarg is runtime-only now, so
+`audio_classic`/`video_classic` (and the two waveform variants) produce
+byte-identical JS; the distinct dict keys exist purely as readable
+`pytest.mark.parametrize` IDs.
+
+Remaining literal-value assertions (e.g.
+`"RATING_WRITE_ENABLED = true" in js`, `"MIN_RATING_THRESHOLD = 2" in js`,
+`"RECENT_API_PATH = '/api/audio/recent'" in js`) were rewritten to either:
+
+1. assert the new structural `CFG.xxx`/`_apiBase()`-based JS expression, or
+2. render a real page (`render_media_page(...)`) or hit a live
+   `TestClient` and parse the actual `#ht-config` JSON for the value.
+
+New shared helper `_extract_ht_config(page)` in both
+`test_streaming_player_ui.py` and `test_streaming_progress.py` for (2);
+`TestHtConfigJson._config` in `test_streaming_player_ui.py` now delegates
+to the module-level helper instead of duplicating the regex/`json.loads`.
+
+Verified end-to-end with live `TestClient` requests against both servers:
+every `CFG.*` field and every `_apiBase()`-derived path is present and
+correctly populated. 1388 tests passing, `ruff` clean,
+`test_feature_parity.py` green (51/51).
+
+**What's left of the Vite/TS migration:** Phase 4 (static serving via
+FastAPI `StaticFiles`), Phase 5 (module-by-module port to real `.ts`
+files), Phase 6 (delete the Python JS generators + the `esprima`-based
+`test_js_syntax.py`). See `docs/IMPLEMENTATION_PLAN.md`.
+
+### Phase 4 (2026-07-30): FastAPI static serving + Phase 5 first slice
+
+**Static serving (`server_utils/_static.py`):** two small, defensive
+functions, both designed to never break a running server:
+
+- `mount_static_assets(app)` — mounts `streaming/core/static/` (the Vite
+  build output; git-ignored, produced by `npm run build` in
+  `streaming/core/webui/` or by the Docker build) at `/static` via FastAPI's
+  `StaticFiles`. If the directory doesn't exist (unbuilt local dev
+  checkout), it logs one `logger.warning(...)` and returns `False` instead
+  of raising — matches Rule 5/6 (never crash, instant startup). Wired into
+  `audio/server.py`, `video/server.py` and `channel/server_playlist.py`'s
+  `create_app()` (the only three apps that render a full
+  `render_media_page()` UI).
+- `get_static_script_tag()` — reads Vite's `build.manifest: true` output
+  (`static/.vite/manifest.json`), looks up the `src/main.ts` entry, and
+  returns `<script src="/static/player.<hash>.js"></script>`. Returns `""`
+  (never raises) if the manifest or its `src/main.ts` key is missing. The
+  manifest is cached in a module-level dict after the first successful read
+  (small, read-only, no invalidation needed — the hash changes on every
+  rebuild, and rebuilds require a server restart anyway).
+
+`_html.py::render_media_page()` renders this tag **immediately before** the
+remaining inline `<script>{js}</script>` — this ordering is load-bearing:
+the bundle is built with `format: "iife"` (a classic, blocking script, not
+`type="module"`), so the browser executes it synchronously before moving
+on to the next `<script>` tag in document order, exactly like two inline
+`<script>` tags would behave today.
+
+**Phase 5 first slice — `fmtTime`/`escHtml`/`formatBytes`
+(`webui/src/main.ts`):** these three were `player_js/_core.py`'s only
+top-level helpers with **zero references to any other identifier** in the
+~8900-line concatenated script — the one precondition that made porting
+them safe without first solving the module-coupling problem described
+below. They are now:
+
+1. Real, typed, exported TypeScript functions in `main.ts` (byte-for-byte
+   identical behavior to the deleted Python string versions — verified via
+   `tests/test_streaming_static.py` + the full `test_js_syntax.py`/
+   `test_streaming_player_ui.py`/`test_feature_parity.py` suites, which all
+   still pass because every remaining fragment only *calls*
+   `fmtTime(...)`/`escHtml(...)`/`formatBytes(...)`, never redefines them).
+2. Assigned onto `window` (`window.fmtTime = fmtTime;` etc.) at the bottom
+   of `main.ts` — the bridge pattern for as long as the remaining
+   `player_js/*.py` fragments still concatenate into one shared, non-strict
+   inline `<script>` function scope. A bare `fmtTime(...)` call inside that
+   legacy IIFE resolves through the normal JS scope chain (no local
+   declaration exists anymore) up to `window.fmtTime`.
+3. Deleted from `player_js/_core.py` (single source of truth per
+   `copilot-instructions.md` Rule 1) — only a comment pointing at
+   `webui/src/main.ts` remains.
+
+**Graceful degradation when unbuilt:** if `static/` is missing (`npm run
+build` never ran), `get_static_script_tag()` returns `""`, so the page
+renders with no static `<script>` tag at all — meaning `fmtTime`/`escHtml`/
+`formatBytes` are genuinely undefined and any code path calling them throws
+a `ReferenceError` in the browser. This is a real, accepted regression risk
+for that scenario, mitigated by:
+
+- `mount_static_assets()`'s startup warning (loud, impossible to miss in
+  server logs).
+- The Dockerfile's new `webui-builder` stage (Node 20, `npm ci && npm run
+  build`), which fails the whole image build if the frontend build fails
+  — the only path most users take (`docker compose up`). Its output is
+  copied into the python-builder stage's source tree before `pip install .`.
+- `pyproject.toml`'s new `[tool.setuptools.package-data]` entry
+  (`"hometools.streaming.core" = ["static/**/*"]`) so a built `static/`
+  directory is actually included in the installed package/wheel.
+- `streaming/core/webui/README.md`'s local build instructions for anyone
+  running the server directly from a source checkout (not Docker).
+
+**Design Discussion — module coupling blocks further easy ports:** see
+`docs/IMPLEMENTATION_PLAN.md` → Design Discussions →
+"Player-JS-Modulkopplung blockiert einfachen Modul-für-Modul-Port". In
+short: virtually every other `player_js/*.py` fragment reads/writes
+identifiers declared in a *different* fragment file (they all rely on
+being concatenated into one shared scope), so porting any of them requires
+either an ambient `.d.ts` contract for the cross-fragment globals first, or
+picking another dependency-free leaf function. One concrete code smell
+found along the way (not fixed — not unambiguous, and it currently works
+as intended): `_drag_drop_init.py` assigns `_dndCleanup = function() {...}`
+without ever declaring it with `var` anywhere — it only works because
+non-strict mode turns that into an implicit `window._dndCleanup` global,
+which `destroyPlaylistDragDrop()` in `_smart_playlists.py` then reads. A
+real ES-module/strict-mode port of either fragment would need an explicit
+shared declaration for this first.
 

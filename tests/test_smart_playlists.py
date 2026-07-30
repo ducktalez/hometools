@@ -435,7 +435,7 @@ class TestApiVideo:
 def _js() -> str:
     from hometools.streaming.core.server_utils import render_player_js
 
-    return render_player_js(api_path="/api/audio/items", enable_playlists=True)
+    return render_player_js()
 
 
 class TestJsInjection:

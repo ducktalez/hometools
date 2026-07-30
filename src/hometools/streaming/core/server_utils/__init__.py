@@ -36,6 +36,7 @@ from ._pwa import (  # noqa: F401
     render_pwa_manifest,
     render_pwa_service_worker,
 )
+from ._static import get_static_script_tag, mount_static_assets  # noqa: F401
 from ._svg import *  # noqa: F403
 
 logger = logging.getLogger(__name__)
