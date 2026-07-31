@@ -216,27 +216,18 @@ def render_smart_playlists_js() -> str:
   }
 
   function showUserPlaylistView(plId) {
-    /* Show playlist content without auto-playing (browse mode) */
+    /* Show playlist content without auto-playing (browse mode).
+       Header/toolbar state is set via _enterTrackListView() (_folder_browse.py)
+       — same shared entry point showPlaylist()/playDuplicates() use, so this
+       view is indistinguishable from any other track list (see
+       docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2). */
     if (plId === '__alltitles__') {
       if (allItems.length === 0) { showToast('Keine Titel in der Bibliothek vorhanden'); return; }
       _currentPlaylistId = '__alltitles__';
       playlistItems = allItems.slice();
       inPlaylist = true;
       currentPath = '';
-      var hdr0 = document.getElementById('header-title');
-      if (hdr0) hdr0.textContent = 'Titel';
-      backBtn.style.display = 'inline-block';
-      folderGrid.classList.add('view-hidden');
-      trackView.classList.remove('view-hidden');
-      filterBar.classList.remove('view-hidden');
-      filterBar.classList.add('fb-scroll-hidden');
-      playerBar.classList.remove('view-hidden');
-      _hideGlobalSearch();
-      _initFilterBarScrollReveal();
-      searchInput.value = '';
-      renderBreadcrumb();
-      applyFilter();
-      if (typeof _router !== 'undefined') _router.update();
+      _enterTrackListView({ title: 'Titel' });
       return;
     }
     if (plId === '__favorites__') {
@@ -246,19 +237,7 @@ def render_smart_playlists_js() -> str:
       playlistItems = _sortFavoritesByOrder(favItems);
       inPlaylist = true;
       currentPath = '';
-      var hdr = document.getElementById('header-title');
-      if (hdr) hdr.textContent = 'Favoriten';
-      backBtn.style.display = 'inline-block';
-      folderGrid.classList.add('view-hidden');
-      trackView.classList.remove('view-hidden');
-      filterBar.classList.remove('view-hidden');
-      filterBar.classList.add('fb-scroll-hidden');
-      playerBar.classList.remove('view-hidden');
-      _hideGlobalSearch();
-      _initFilterBarScrollReveal();
-      searchInput.value = '';
-      renderBreadcrumb();
-      applyFilter();
+      _enterTrackListView({ title: 'Favoriten' });
       /* Pre-warm: fetch server-side favorites order and re-sort if different */
       _loadFavoritesOrderAsync(function(serverOrder) {
         if (!serverOrder.length) return;
@@ -268,7 +247,6 @@ def render_smart_playlists_js() -> str:
         playlistItems = _sortFavoritesByOrder(favItems);
         applyFilter();
       });
-      if (typeof _router !== 'undefined') _router.update();
       return;
     }
     var data = _resolvePlaylistItems(plId);
@@ -277,62 +255,19 @@ def render_smart_playlists_js() -> str:
     playlistItems = data.resolved;
     inPlaylist = true;
     currentPath = '';
-    var hdr = document.getElementById('header-title');
-    if (hdr) hdr.textContent = data.pl.name;
-    backBtn.style.display = 'inline-block';
-    folderGrid.classList.add('view-hidden');
-    trackView.classList.remove('view-hidden');
-    filterBar.classList.remove('view-hidden');
-    filterBar.classList.add('fb-scroll-hidden');
-    playerBar.classList.remove('view-hidden');
-    _hideGlobalSearch();
-    _initFilterBarScrollReveal();
-    searchInput.value = '';
-    renderBreadcrumb();
-    applyFilter();
-    if (typeof _router !== 'undefined') _router.update();
+    _enterTrackListView({ title: data.pl.name });
   }
 
+
   function playUserPlaylist(plId) {
-    if (plId === '__alltitles__') {
-      if (allItems.length === 0) { showToast('Keine Titel in der Bibliothek vorhanden'); return; }
-      _currentPlaylistId = '__alltitles__';
-      playlistItems = allItems.slice();
-      filteredItems = allItems.slice();
-      inPlaylist = true;
-      currentPath = '';
-      var hdr2 = document.getElementById('header-title');
-      if (hdr2) hdr2.textContent = 'Titel';
-      renderTracks(filteredItems, true);
-      playTrack(0);
-      return;
-    }
-    if (plId === '__favorites__') {
-      var favItems = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; });
-      if (favItems.length === 0) { showToast('Keine Favoriten vorhanden'); return; }
-      _currentPlaylistId = '__favorites__';
-      var sorted = _sortFavoritesByOrder(favItems);
-      playlistItems = sorted;
-      filteredItems = sorted;
-      inPlaylist = true;
-      currentPath = '';
-      var hdr = document.getElementById('header-title');
-      if (hdr) hdr.textContent = 'Favoriten';
-      renderTracks(favItems, true);
-      playTrack(0);
-      return;
-    }
-    var data = _resolvePlaylistItems(plId);
-    if (!data) { showToast('Keine Titel in dieser Playlist gefunden'); return; }
-    _currentPlaylistId = plId;
-    playlistItems = data.resolved;
-    filteredItems = data.resolved;
-    inPlaylist = true;
-    currentPath = '';
-    var hdr = document.getElementById('header-title');
-    if (hdr) hdr.textContent = data.pl.name;
-    renderTracks(data.resolved, true);
-    playTrack(0);
+    /* Delegate to showUserPlaylistView() so header/breadcrumb/toolbar state
+       stays identical to the browse-mode entry point (same
+       _enterTrackListView() path) — only difference is auto-play. Never
+       duplicate header DOM manipulation here (see
+       docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung"). */
+    var before = playlistItems;
+    showUserPlaylistView(plId);
+    if (playlistItems !== before && playlistItems.length > 0) playTrack(0);
   }
 
   function deleteUserPlaylist(plId) {

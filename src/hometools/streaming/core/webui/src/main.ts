@@ -35,6 +35,11 @@
  */
 
 import { renderBpmPill } from "./metricPill";
+import { needsConversion, filenameFromPath, parentPath, leafName, currentFolderOf } from "./pathUtils";
+import { _fmtDuration, _fmtFileSize, _fmtDate, _normalizeStem, _dupeKey, _isDupeGroupSafe } from "./dupeUtils";
+import { cleanFolderName, renderBreadcrumbHtml } from "./breadcrumb";
+import { evaluateSmartPlaylist } from "./smartPlaylist";
+import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
 
 export interface PlayerConfig {
   itemNoun: string;
@@ -138,13 +143,54 @@ declare global {
     escHtml: typeof escHtml;
     formatBytes: typeof formatBytes;
     renderBpmPill: typeof renderBpmPill;
+    needsConversion: typeof needsConversion;
+    filenameFromPath: typeof filenameFromPath;
+    parentPath: typeof parentPath;
+    leafName: typeof leafName;
+    _currentFolderOf: typeof currentFolderOf;
+    _fmtDuration: typeof _fmtDuration;
+    _fmtFileSize: typeof _fmtFileSize;
+    _fmtDate: typeof _fmtDate;
+    _normalizeStem: typeof _normalizeStem;
+    _dupeKey: typeof _dupeKey;
+    _isDupeGroupSafe: typeof _isDupeGroupSafe;
+    cleanFolderName: typeof cleanFolderName;
+    renderBreadcrumbHtml: typeof renderBreadcrumbHtml;
+    _evaluateSmartPlaylist: typeof evaluateSmartPlaylist;
+    _getRecentMoveTargets: typeof getRecentMoveTargets;
+    _saveRecentMoveTarget: typeof saveRecentMoveTarget;
   }
 }
 
 // Bridge for the legacy Python-generated inline <script> (still one shared
 // non-strict function scope, not an ES module) — see header comment.
+// Phase 5 opportunistic-migration slice (docs/IMPLEMENTATION_PLAN.md):
+// needsConversion/filenameFromPath (pathUtils.ts), the five dupe-detection
+// helpers (dupeUtils.ts), and cleanFolderName/renderBreadcrumbHtml
+// (breadcrumb.ts) were ported alongside this file's existing three leaf
+// helpers — see each module's header comment for why they qualified as
+// safe, dependency-free ports. evaluateSmartPlaylist (smartPlaylist.ts) is
+// a deliberate, larger slice (not opportunistic) — see that module's
+// header comment for why it stayed pure (explicit params instead of
+// reading the mutable allItems/_userPlaylists/_savedFavorites globals).
 window.fmtTime = fmtTime;
 window.escHtml = escHtml;
 window.formatBytes = formatBytes;
 window.renderBpmPill = renderBpmPill;
+window.needsConversion = needsConversion;
+window.filenameFromPath = filenameFromPath;
+window.parentPath = parentPath;
+window.leafName = leafName;
+window._currentFolderOf = currentFolderOf;
+window._fmtDuration = _fmtDuration;
+window._fmtFileSize = _fmtFileSize;
+window._fmtDate = _fmtDate;
+window._normalizeStem = _normalizeStem;
+window._dupeKey = _dupeKey;
+window._isDupeGroupSafe = _isDupeGroupSafe;
+window.cleanFolderName = cleanFolderName;
+window.renderBreadcrumbHtml = renderBreadcrumbHtml;
+window._evaluateSmartPlaylist = evaluateSmartPlaylist;
+window._getRecentMoveTargets = getRecentMoveTargets;
+window._saveRecentMoveTarget = saveRecentMoveTarget;
 

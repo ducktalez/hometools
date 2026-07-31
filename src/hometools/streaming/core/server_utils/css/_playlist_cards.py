@@ -8,8 +8,20 @@ def render_playlist_cards_css() -> str:
     return """/* ── Playlist pseudo-folder cards ── */
 .playlist-folder-card { position: relative; }
 .fav-folder.playlist-folder-card,
-.playlist-folder-card:not(.smart-playlist-card):not(.playlist-new-card) { border: 1px solid var(--accent); border-radius: 8px; }
-.smart-playlist-card { border: 1px solid #a259e6; border-radius: 8px; }
+.playlist-folder-card:not(.smart-playlist-card):not(.playlist-new-card) {
+  border: 1px solid var(--accent); border-radius: 8px;
+}
+.fav-folder.playlist-folder-card::after,
+.playlist-folder-card:not(.smart-playlist-card):not(.playlist-new-card)::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+  height: 2px; background: var(--accent); border-radius: 0 0 8px 8px;
+}
+.smart-playlist-card {
+  border: none; border-radius: 8px;
+}
+.smart-playlist-card::after {
+  display: none;
+}
 
 .playlist-folder-icon {
   width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;

@@ -17,6 +17,7 @@ from ._svg import (
     SVG_EXPAND,
     SVG_FULLSCREEN,
     SVG_HISTORY,
+    SVG_HOME,
     SVG_LYRICS,
     SVG_MENU,
     SVG_NEXT,
@@ -570,8 +571,10 @@ def render_media_page(
 <body>
   <header>
     <button class="back-btn" id="back-btn" title="Back to folders">{SVG_BACK}</button>
-    <button class="logo-home-btn" id="header-logo" title="Zurück zur Startseite">{emoji}</button>
+    <button class="logo-home-btn" id="header-logo" title="Zurück zur Startseite">{SVG_HOME}</button>
     <span class="logo-title" id="header-title"></span>
+    <nav class="breadcrumb" id="breadcrumb"></nav>
+    <span class="header-spacer"></span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
     <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
     {mode_controls_html}
@@ -579,8 +582,6 @@ def render_media_page(
     <input id="global-search-input" class="header-search view-hidden" type="search" autocomplete="off" />
   </header>
 
-  <!-- breadcrumb navigation -->
-  <nav class="breadcrumb" id="breadcrumb"></nav>
 
   <!-- folder filter bar (kept for test compatibility, always hidden) -->
   <div class="folder-filter-bar" id="folder-filter-bar" hidden></div>
@@ -604,9 +605,7 @@ def render_media_page(
       <option value="path">Path &#x21C5;</option>
       <option value="recent">Neueste &#x21C5;</option>
     </select>
-    <button class="filter-chip" id="filter-rating" title="Nach Bewertung filtern"></button>
-    <button class="filter-chip" id="filter-fav" title="Nur Favoriten anzeigen"></button>
-    <button class="filter-chip" id="filter-genre" title="Nach Genre filtern"></button>
+    <button class="filter-chip" id="filter-combined" title="Filtern (Bewertung, Favoriten, Genre)"></button>
     <button class="filter-chip" id="filter-hidden" title="Ausgeblendete Songs anzeigen" style="display:none"></button>
   </div>
 

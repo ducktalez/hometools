@@ -76,8 +76,8 @@ def render_search_filter_js() -> str:
     playerBar.classList.remove('view-hidden');
     var totalCount = folderMatches.length + results.length;
     headerTitle.textContent = totalCount + ' Ergebnis' + (totalCount !== 1 ? 'se' : '');
-    backBtn.style.display = 'inline-block';
-    playAllBtn.style.display = 'none';
+    backBtn.classList.remove('disabled');
+    playAllBtn.classList.add('disabled');
     var trackCountLabel = results.length + ' ' + (results.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
     if (folderMatches.length) {
       trackCountLabel = folderMatches.length + ' Ordner · ' + trackCountLabel;
@@ -171,48 +171,29 @@ def render_search_filter_js() -> str:
   }
 
   /* ── filter / sort within playlist ── */
-  /* ── Quick-filter chips ── */
+  /* ── Quick-filter chips ──
+     Bewertung + Favorit + Genre live in ONE combined "Filtern" popover
+     button (filter-combined) instead of three separate chips — see
+     docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2.
+     "Ausgeblendet" (filterHiddenBtn) stays its own toggle-slot chip. */
+  function _collectPlaylistGenres() {
+    var genres = {};
+    (playlistItems || []).forEach(function(t) { if (t.genre) genres[t.genre] = true; });
+    return Object.keys(genres).sort();
+  }
+
   function updateFilterChips() {
-    if (filterRatingBtn) {
-      if (filterRating > 0) {
-        filterRatingBtn.innerHTML = IC_STAR_FILLED + ' ' + filterRating + '+';
-        filterRatingBtn.classList.add('active');
-        filterRatingBtn.title = filterRating + '+ Sterne — klicken zum Weiterschalten';
-      } else {
-        filterRatingBtn.innerHTML = IC_STAR_EMPTY + ' Bewertung';
-        filterRatingBtn.classList.remove('active');
-        filterRatingBtn.title = 'Nach Bewertung filtern';
-      }
+    if (filterCombinedBtn) {
+      var activeCount = (filterRating > 0 ? 1 : 0) + (filterFav ? 1 : 0) + (filterGenre ? 1 : 0);
+      filterCombinedBtn.innerHTML = IC_FILTER + ' Filtern' + (activeCount ? ' (' + activeCount + ')' : '');
+      filterCombinedBtn.classList.toggle('active', activeCount > 0);
+      filterCombinedBtn.title = activeCount
+        ? activeCount + ' Filter aktiv \u2014 klicken zum Anpassen'
+        : 'Filtern (Bewertung, Favoriten, Genre)';
     }
-    if (filterFavBtn) {
-      filterFavBtn.innerHTML = IC_PIN + ' Favoriten';
-      filterFavBtn.classList.toggle('active', filterFav);
-      filterFavBtn.title = filterFav
-        ? 'Favoriten-Filter aktiv — klicken zum Aufheben'
-        : 'Nur Favoriten anzeigen';
-    }
-    if (filterGenreBtn) {
-      /* Collect genres from current playlist items */
-      var genres = {};
-      (playlistItems || []).forEach(function(t) {
-        if (t.genre) genres[t.genre] = true;
-      });
-      var genreList = Object.keys(genres).sort();
-      if (genreList.length === 0) {
-        filterGenreBtn.style.display = 'none';
-      } else {
-        filterGenreBtn.style.display = '';
-        if (filterGenre) {
-          filterGenreBtn.textContent = filterGenre;
-          filterGenreBtn.classList.add('active');
-          filterGenreBtn.title = 'Genre: ' + filterGenre + ' — klicken zum Weiterschalten';
-        } else {
-          filterGenreBtn.textContent = 'Genre';
-        filterGenreBtn.classList.remove('active');
-        filterGenreBtn.title = 'Nach Genre filtern';
-        }
-      }
-    }
+    /* Keep an already-open popover's contents (star state, genre <select>)
+       in sync — e.g. after navigating into a folder whose genre list differs. */
+    if (document.getElementById('ht-filter-popover')) _renderFilterPopoverBody();
     if (filterHiddenBtn) {
       if (_effectiveThreshold > 0) {
         var _hiddenCount = playlistItems.filter(function(t) {
@@ -230,6 +211,133 @@ def render_search_filter_js() -> str:
         filterHiddenBtn.style.display = 'none';
       }
     }
+  }
+
+  /* ── Combined "Filtern" popover (Bewertung + Favorit + Genre) ──────────
+     Mirrors the generic _openCtxMenu() pattern (_library_tools.py) —
+     fixed-position card anchored to the trigger button, closes on outside
+     click / Escape — but hosts interactive controls (star buttons,
+     checkbox, <select>) instead of a static action list, so it gets its
+     own small open/close/wire trio here rather than reusing _openCtxMenu's
+     items schema (label+onClick only). */
+  function _filterPopoverBodyHtml() {
+    var genreList = _collectPlaylistGenres();
+    var starsHtml = '';
+    for (var i = 1; i <= 5; i++) {
+      starsHtml += '<button type="button" class="filter-popover-star' + (i <= filterRating ? ' active' : '') +
+        '" data-star="' + i + '" title="' + i + (i === 1 ? '+ Stern' : '+ Sterne') + '">' +
+        (i <= filterRating ? IC_STAR_FILLED : IC_STAR_EMPTY) + '</button>';
+    }
+    var genreSectionHtml = genreList.length
+      ? '<div class="filter-popover-section">' +
+          '<div class="filter-popover-label">Genre</div>' +
+          '<select class="filter-popover-genre-select" id="filter-popover-genre-select">' +
+            '<option value="">Alle Genres</option>' +
+            genreList.map(function(g) {
+              return '<option value="' + escHtml(g) + '"' + (g === filterGenre ? ' selected' : '') + '>' + escHtml(g) + '</option>';
+            }).join('') +
+          '</select>' +
+        '</div>'
+      : '';
+    return (
+      '<div class="filter-popover-section">' +
+        '<div class="filter-popover-label">Bewertung</div>' +
+        '<div class="filter-popover-stars">' + starsHtml + '</div>' +
+      '</div>' +
+      '<div class="filter-popover-section">' +
+        '<label class="filter-popover-toggle">' +
+          '<input type="checkbox" id="filter-popover-fav"' + (filterFav ? ' checked' : '') + '> Nur Favoriten' +
+        '</label>' +
+      '</div>' +
+      genreSectionHtml +
+      '<button type="button" class="filter-popover-reset" id="filter-popover-reset">Zur\u00fccksetzen</button>'
+    );
+  }
+
+  function _wireFilterPopoverBody(pop) {
+    pop.querySelectorAll('.filter-popover-star').forEach(function(starBtn) {
+      starBtn.addEventListener('click', function() {
+        var val = Number(starBtn.dataset.star);
+        filterRating = (filterRating === val) ? 0 : val;
+        localStorage.setItem('ht-filter-rating', String(filterRating));
+        updateFilterChips();
+        applyFilter();
+        if (typeof _router !== 'undefined') _router.update();
+      });
+    });
+    var favCb = pop.querySelector('#filter-popover-fav');
+    if (favCb) {
+      favCb.addEventListener('change', function() {
+        filterFav = favCb.checked;
+        localStorage.setItem('ht-filter-fav', filterFav ? '1' : '0');
+        updateFilterChips();
+        applyFilter();
+        if (typeof _router !== 'undefined') _router.update();
+      });
+    }
+    var genreSel = pop.querySelector('#filter-popover-genre-select');
+    if (genreSel) {
+      genreSel.addEventListener('change', function() {
+        filterGenre = genreSel.value;
+        localStorage.setItem('ht-filter-genre', filterGenre);
+        updateFilterChips();
+        applyFilter();
+        if (typeof _router !== 'undefined') _router.update();
+      });
+    }
+    var resetBtn = pop.querySelector('#filter-popover-reset');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() {
+        filterRating = 0; filterFav = false; filterGenre = '';
+        localStorage.setItem('ht-filter-rating', '0');
+        localStorage.setItem('ht-filter-fav', '0');
+        localStorage.setItem('ht-filter-genre', '');
+        updateFilterChips();
+        applyFilter();
+        if (typeof _router !== 'undefined') _router.update();
+      });
+    }
+  }
+
+  function _renderFilterPopoverBody() {
+    var pop = document.getElementById('ht-filter-popover');
+    if (!pop) return;
+    pop.innerHTML = _filterPopoverBodyHtml();
+    _wireFilterPopoverBody(pop);
+  }
+
+  function _closeFilterPopover() {
+    if (_filterPopoverCleanup) { _filterPopoverCleanup(); _filterPopoverCleanup = null; }
+    var old = document.getElementById('ht-filter-popover');
+    if (old) old.remove();
+  }
+
+  function _toggleFilterPopover(btn) {
+    if (document.getElementById('ht-filter-popover')) { _closeFilterPopover(); return; }
+    var pop = document.createElement('div');
+    pop.id = 'ht-filter-popover';
+    pop.className = 'filter-popover';
+    pop.innerHTML = _filterPopoverBodyHtml();
+    document.body.appendChild(pop);
+    var rect = btn.getBoundingClientRect();
+    pop.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
+    var spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow >= pop.offsetHeight + 8) {
+      pop.style.top = (rect.bottom + 6) + 'px';
+    } else {
+      pop.style.top = Math.max(4, rect.top - pop.offsetHeight - 6) + 'px';
+    }
+    _wireFilterPopoverBody(pop);
+    function _onOutside(e) { if (!pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) _closeFilterPopover(); }
+    function _onEsc(e) { if (e.key === 'Escape') _closeFilterPopover(); }
+    setTimeout(function() {
+      document.addEventListener('click', _onOutside);
+      document.addEventListener('keydown', _onEsc);
+    }, 0);
+    _filterPopoverCleanup = function() {
+      document.removeEventListener('click', _onOutside);
+      document.removeEventListener('keydown', _onEsc);
+    };
   }
 
   function applyFilter() {
@@ -363,20 +471,10 @@ def render_search_filter_js() -> str:
     });
     renderTracks(items);
   }
-  var NATIVE_EXT = ['.mp4','.m4v','.webm','.ogg','.ogv','.mp3','.m4a','.aac','.opus','.flac','.wav'];
-  function needsConversion(rp) {
-    if (!rp) return false;
-    var dot = rp.lastIndexOf('.');
-    if (dot < 0) return false;
-    return NATIVE_EXT.indexOf(rp.substring(dot).toLowerCase()) < 0;
-  }
-  function filenameFromPath(rp) {
-    if (!rp) return '';
-    var slash = rp.lastIndexOf('/');
-    var name = slash >= 0 ? rp.substring(slash + 1) : rp;
-    var dot = name.lastIndexOf('.');
-    return dot > 0 ? name.substring(0, dot) : name;
-  }
+  /* needsConversion()/filenameFromPath() ported to webui/src/pathUtils.ts
+     (Vite/TS migration Phase 5 opportunistic-port slice — see
+     docs/IMPLEMENTATION_PLAN.md) — bridged onto window by main.ts, bare
+     calls below still resolve via the normal JS scope chain. */
 
   /* ── Windowed rendering helpers ──────────────────────────────────────────
      _appendTrackBatch  — append the next _RENDER_BATCH_SIZE items to the DOM.
@@ -724,11 +822,16 @@ def render_search_filter_js() -> str:
         setInlineRating(_idx, _clicked === _cur ? 0 : _clicked);
         return;
       }
-      /* BPM "calculate" pill (Tools-panel "BPM berechnen" must be active) */
-      var bpmCalcBtn = e.target.closest('.meta-pill--calc[data-action="calc-bpm"]');
-      if (bpmCalcBtn) {
+      /* BPM pill click — opens the adjust popup (langsamer/neu berechnen/
+         schneller/manuell). Matches both the "unknown" (.meta-pill--calc)
+         and "known, editable" (.meta-pill--editable) variants — both carry
+         the same data-action attribute (see webui/src/metricPill.ts). Only
+         rendered as a <button> at all when the Tools-panel "BPM berechnen"
+         toggle is active. */
+      var bpmPillBtn = e.target.closest('.meta-pill[data-action="calc-bpm"]');
+      if (bpmPillBtn) {
         e.stopPropagation(); e.preventDefault();
-        _calculateBpmForTrack(Number(bpmCalcBtn.dataset.index), bpmCalcBtn);
+        _openBpmAdjustMenu(Number(bpmPillBtn.dataset.index), bpmPillBtn);
         return;
       }
       /* Download button */

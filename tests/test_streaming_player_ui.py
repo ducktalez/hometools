@@ -1,6 +1,7 @@
 """Tests for the configurable player bar (classic and waveform modes)."""
 
 import re as _re
+from pathlib import Path
 
 from hometools.streaming.core.server_utils import render_base_css, render_media_page, render_player_js
 
@@ -23,6 +24,15 @@ def _page(media="audio", style="classic"):
 
 def _js(style="classic"):
     return render_player_js(player_bar_style=style)
+
+
+def _webui_src(filename):
+    """Read a ported TypeScript source from the Vite/TS migration scaffold
+    (`src/hometools/streaming/core/webui/src/`) — used by tests that assert
+    on functions/logic already ported out of the Python-generated JS (see
+    `webui/README.md` → "Opportunistic migration rule")."""
+    path = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / filename
+    return path.read_text(encoding="utf-8")
 
 
 def _extract_ht_config(page):
@@ -1226,7 +1236,9 @@ def test_svg_history_constant_defined():
 
 
 def test_genre_filter_chip_in_html():
-    """The genre filter chip button must be present in the rendered HTML."""
+    """The combined "Filtern" popover trigger (Bewertung+Favorit+Genre —
+    see docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2)
+    must be present in the rendered HTML."""
     from hometools.streaming.core.server_utils import render_media_page
 
     html = render_media_page(
@@ -1236,15 +1248,16 @@ def test_genre_filter_chip_in_html():
         media_element_tag="audio",
         api_path="/api/test",
     )
-    assert 'id="filter-genre"' in html
+    assert 'id="filter-combined"' in html
 
 
 def test_genre_filter_js_variable():
-    """The JS must declare filterGenre variable and persist in localStorage."""
+    """The JS must declare filterGenre variable and persist in localStorage,
+    and wire the combined filter-popover trigger."""
     from hometools.streaming.core.server_utils import render_player_js
 
     js = render_player_js()
-    assert "filterGenreBtn" in js
+    assert "filterCombinedBtn" in js
     assert "filterGenre" in js
     assert "ht-filter-genre" in js
 
@@ -1255,6 +1268,39 @@ def test_genre_filter_apply_logic():
 
     js = render_player_js()
     assert "t.genre === filterGenre" in js
+
+
+def test_combined_filter_popover_present():
+    """Bewertung + Favorit + Genre must live in ONE combined "Filtern"
+    popover instead of three separate chip buttons — see
+    docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2.
+    The old per-filter chip IDs (filter-rating/filter-fav/filter-genre)
+    must be gone; "Ausgeblendet" stays its own toggle-slot chip."""
+    from hometools.streaming.core.server_utils import render_media_page, render_player_js
+
+    html = render_media_page(
+        title="Test",
+        emoji="\U0001f3b5",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+    )
+    assert 'id="filter-combined"' in html
+    assert 'id="filter-hidden"' in html
+    assert 'id="filter-rating"' not in html
+    assert 'id="filter-fav"' not in html
+    assert 'id="filter-genre"' not in html
+
+    js = render_player_js()
+    assert "function _toggleFilterPopover(" in js
+    assert "function _closeFilterPopover(" in js
+    assert "ht-filter-popover" in js
+    # Reset must clear all three quick-filters, not just one.
+    reset_fn = js.split("function _wireFilterPopoverBody(", 1)[1]
+    reset_body = reset_fn.split("#filter-popover-reset", 1)[1]
+    assert "filterRating = 0" in reset_body
+    assert "filterFav = false" in reset_body
+    assert "filterGenre = ''" in reset_body
 
 
 def test_genre_field_on_media_item():
@@ -1558,14 +1604,98 @@ def test_global_search_debounce():
 
 
 # ---------------------------------------------------------------------------
+# Header global search consistency across all track-list entry points
+# (docs/IMPLEMENTATION_PLAN.md -> "UI-Template-Vereinheitlichung" Phase 2:
+# the header-level #global-search-input must behave identically regardless
+# of which function opened the track list — folder-leaf playlist, user
+# playlist, smart playlist or the duplicates view all reuse the same rule).
+# ---------------------------------------------------------------------------
+
+
+def test_enter_track_list_view_hides_global_search():
+    """_enterTrackListView() — the shared toolbar/header entry point every
+    track-list view (folder-leaf playlist, user/smart playlist, favorites,
+    duplicates) delegates to — must hide the header global search bar."""
+    js = render_player_js()
+    assert "function _enterTrackListView(opts)" in js
+    fn = js.split("function _enterTrackListView(opts)", 1)[1]
+    body = fn.split("function showPlaylist(", 1)[0]
+    assert "_hideGlobalSearch();" in body
+
+
+def test_show_playlist_uses_shared_track_list_entry_point():
+    """showPlaylist() (leaf-folder playlist) must delegate its header/toolbar
+    setup to _enterTrackListView() instead of re-inlining the class toggles
+    — previously it hand-rolled its own subset, which is exactly what let
+    the header drift out of sync between folder browsing and playlist
+    views (missing global-search-hide, stale fb-scroll-hidden, ...)."""
+    js = render_player_js()
+    playlist_fn = js.split("function showPlaylist(", 1)[1]
+    body = playlist_fn.split("function _restoreLastEpisode", 1)[0]
+    assert "_enterTrackListView({" in body
+    assert "folderGrid.classList.add('view-hidden')" not in body
+
+
+def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
+    """The folder-grid branches of showFolderView() (empty library + normal)
+    must (re)show the global search bar when the catalog is loaded, and
+    hide it otherwise — this must NOT run for the leaf-folder branch,
+    which now delegates hiding to _enterTrackListView() via showPlaylist()."""
+    js = render_player_js()
+    folder_view_fn = js.split("function showFolderView(", 1)[1]
+    body = folder_view_fn.split("function showPlaylist(", 1)[0]
+    assert body.count("if (allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();") == 2
+
+
+def test_smart_and_user_playlist_view_uses_shared_track_list_entry_point():
+    """showUserPlaylistView() (favorites/all-titles/custom/smart playlists —
+    same code path for every playlist type) must delegate to
+    _enterTrackListView() for all three branches, matching
+    showPlaylist()/playDuplicates()."""
+    js = render_player_js()
+    assert "function showUserPlaylistView(plId)" in js
+    view_fn = js.split("function showUserPlaylistView(plId)", 1)[1]
+    body = view_fn.split("function playUserPlaylist(", 1)[0]
+    assert body.count("_enterTrackListView({") == 3  # __alltitles__, __favorites__, custom/smart
+
+
+def test_play_duplicates_uses_shared_track_list_entry_point():
+    """playDuplicates() must delegate to _enterTrackListView() too, with a
+    collapsed filter bar (dupe list keeps its own compact layout)."""
+    js = render_player_js()
+    assert "function playDuplicates()" in js
+    fn = js.split("function playDuplicates()", 1)[1]
+    body = fn.split("function _deleteDuplicateFile(", 1)[0]
+    assert "_enterTrackListView({" in body
+    assert "collapseFilterBar: true" in body
+
+
+def test_enter_track_list_view_refreshes_view_toggle():
+    """_enterTrackListView() must call applyViewMode() so the header's
+    view-toggle button (list/table icon) is refreshed for every track-list
+    view — previously only showFolderView() did this, so the button kept
+    showing whatever the folder-grid had set when entering a playlist,
+    smart playlist or the duplicates view directly."""
+    js = render_player_js()
+    fn = js.split("function _enterTrackListView(opts)", 1)[1]
+    body = fn.split("function showPlaylist(", 1)[0]
+    assert "applyViewMode();" in body
+
+
+# ---------------------------------------------------------------------------
 # Language tags & cleanFolderName
 # ---------------------------------------------------------------------------
 
 
 def test_js_has_clean_folder_name():
-    """JS must contain the cleanFolderName function."""
+    """cleanFolderName is ported to webui/src/breadcrumb.ts, bridged onto
+    window (see main.ts) — the legacy Python-generated JS calls the bare
+    identifier, it no longer defines the function itself."""
+    ts = _webui_src("breadcrumb.ts")
+    assert "export function cleanFolderName" in ts
     js = _js()
-    assert "function cleanFolderName" in js
+    assert "function cleanFolderName" not in js
+    assert "window.cleanFolderName = cleanFolderName" in _webui_src("main.ts")
 
 
 def test_js_has_lang_badges_html():
@@ -1596,9 +1726,11 @@ def test_js_clean_folder_name_strips_hash():
 
 
 def test_js_clean_folder_name_strips_lang_tag():
-    """cleanFolderName should strip language tags via _LANG_TAG_RE."""
-    js = _js()
-    assert "_LANG_TAG_RE" in js
+    """cleanFolderName should strip language tags via LANG_TAG_RE (ported
+    to webui/src/breadcrumb.ts, no leading underscore there — see that
+    module's naming)."""
+    ts = _webui_src("breadcrumb.ts")
+    assert "LANG_TAG_RE" in ts
 
 
 def test_js_folder_card_renders_lang_badges():
@@ -1614,15 +1746,44 @@ def test_js_contents_at_aggregates_languages():
 
 
 def test_js_leaf_name_uses_clean_folder_name():
-    """leafName must use cleanFolderName for display."""
+    """leafName is ported to webui/src/pathUtils.ts, bridged onto window
+    (see main.ts) — it must use cleanFolderName for display, and the
+    legacy Python-generated JS no longer defines the function itself."""
+    ts = _webui_src("pathUtils.ts")
+    assert "export function leafName" in ts
+    assert "cleanFolderName(raw)" in ts
     js = _js()
-    assert "cleanFolderName(raw)" in js
+    assert "function leafName" not in js
+    assert "window.leafName = leafName" in _webui_src("main.ts")
+
+
+def test_js_parent_path_ported_to_ts():
+    """parentPath (fully pure — no other identifier references) is ported
+    to webui/src/pathUtils.ts alongside leafName."""
+    ts = _webui_src("pathUtils.ts")
+    assert "export function parentPath" in ts
+    js = _js()
+    assert "function parentPath" not in js
+    assert "window.parentPath = parentPath" in _webui_src("main.ts")
+
+
+def test_core_js_bridges_original_title_onto_window():
+    """originalTitle is a `var` scoped to the legacy IIFE, not a real
+    global — _core.py must bridge it onto window so the ported
+    leafName() (a separate .ts closure) can read it."""
+    js = _js()
+    assert "window.originalTitle = originalTitle;" in js
 
 
 def test_js_breadcrumb_uses_clean_folder_name():
-    """renderBreadcrumb must use cleanFolderName for folder labels."""
+    """renderBreadcrumb must delegate to the ported renderBreadcrumbHtml
+    (webui/src/breadcrumb.ts) instead of re-inlining segment/label markup
+    building — that ported function uses cleanFolderName for folder
+    labels internally."""
     js = _js()
-    assert "cleanFolderName(parts[i])" in js
+    assert "renderBreadcrumbHtml(currentPath, escHtml)" in js
+    ts = _webui_src("breadcrumb.ts")
+    assert "cleanFolderName(part)" in ts
 
 
 def test_css_has_lang_badge():
@@ -1944,31 +2105,41 @@ class TestDupeKeyTrueDuplicatesDetected:
 
 
 class TestDupeKeyGeneratedJsIntegrity:
-    """Sanity-check the generated JS string itself."""
+    """Sanity-check the normalizeStem/dupeKey regexes.
+
+    `_normalizeStem`/`_dupeKey` were ported to `webui/src/dupeUtils.ts`
+    (Vite/TS migration Phase 5 opportunistic-port slice — see
+    docs/IMPLEMENTATION_PLAN.md); they no longer appear in
+    `render_player_js()`'s output, so these checks now read the TS source
+    directly (same pattern as any other ported-module assertion once the
+    Python generator function is deleted)."""
+
+    @staticmethod
+    def _dupe_utils_ts() -> str:
+        path = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "dupeUtils.ts"
+        return path.read_text(encoding="utf-8")
 
     def test_js_does_not_strip_remix_aggressively(self):
-        """The old aggressive strip list must be gone from the generated JS."""
-        js = render_player_js()
-        # The new code must NOT strip 'remix' or 'live' or 'extended' from parts
-        assert "remix|mix|version" not in js and "extended|radio|vocal|edit|remix" not in js, (
-            "Old aggressive version-strip regex still present in generated JS"
+        """The old aggressive strip list must be gone."""
+        ts = self._dupe_utils_ts()
+        assert "remix|mix|version" not in ts and "extended|radio|vocal|edit|remix" not in ts, (
+            "Old aggressive version-strip regex still present in dupeUtils.ts"
         )
 
     def test_js_strips_only_promo_markers(self):
         """New strip regex must target only official/explicit/clean."""
-        js = render_player_js()
-        assert r"\bofficial\b|\bexplicit\b|\bclean\b" in js
+        ts = self._dupe_utils_ts()
+        assert r"\bofficial\b|\bexplicit\b|\bclean\b" in ts
 
     def test_js_normalizestem_has_broad_official_pattern(self):
         """normalizeStem must strip ALL (Official ...) blocks, not only (Official*Video)."""
-        js = render_player_js()
-        # In the generated JS the regex appears as /\(Official[^)]*\)/gi
-        assert r"\(Official[^)]*\)" in js
+        ts = self._dupe_utils_ts()
+        assert r"\(Official[^)]*\)" in ts
 
     def test_js_normalizestem_strips_audio_video_tags(self):
         """normalizeStem must strip standalone (Audio) and (Video) platform tags."""
-        js = render_player_js()
-        assert "Audio|Video|Music" in js  # part of the new promo-tag pattern
+        ts = self._dupe_utils_ts()
+        assert "Audio|Video|Music" in ts  # part of the new promo-tag pattern
 
 
 class TestPlayerBugfixes2026_06:

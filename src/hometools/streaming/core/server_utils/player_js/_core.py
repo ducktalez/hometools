@@ -60,15 +60,16 @@ def render_core_js(waveform_js) -> str:
   var timeDur      = document.getElementById('time-dur');
   var searchInput  = document.getElementById('search-input');
   var sortField    = document.getElementById('sort-field');
-  var filterRatingBtn = document.getElementById('filter-rating');
-  var filterFavBtn    = document.getElementById('filter-fav');
-  var filterGenreBtn  = document.getElementById('filter-genre');
+  var filterCombinedBtn = document.getElementById('filter-combined');
   var filterHiddenBtn = document.getElementById('filter-hidden');
   /* Persisted quick-filter state */
   var filterRating = parseInt(localStorage.getItem('ht-filter-rating') || '0', 10) || 0;
   var filterFav    = localStorage.getItem('ht-filter-fav') === '1';
   var filterGenre  = localStorage.getItem('ht-filter-genre') || '';
   var showHidden   = localStorage.getItem('ht-show-hidden') !== '0'; /* default true = ausgeblendet werden ausgegraut angezeigt */
+  /* Combined "Filtern" popover (Bewertung + Favorit + Genre) — see
+     docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2. */
+  var _filterPopoverCleanup = null;
   var folderGrid   = document.getElementById('folder-grid');
   var folderFilterBar = document.getElementById('folder-filter-bar');
   var trackView    = document.getElementById('track-view');
@@ -111,6 +112,11 @@ def render_core_js(waveform_js) -> str:
   var offlineStorageDetail = document.getElementById('offline-storage-detail');
   var downloadedPill = document.getElementById('downloaded-pill');
   var originalTitle = headerTitle.textContent;
+  /* Bridge onto window — read by the ported leafName() (webui/src/pathUtils.ts,
+     bridged via main.ts). A plain `var` here is scoped to this IIFE, not a
+     real global, so the .ts module (a separate closure) can't see it
+     otherwise; see legacy-globals.d.ts's header comment on this pattern. */
+  window.originalTitle = originalTitle;
   var breadcrumb  = document.getElementById('breadcrumb');
   var viewToggle  = document.getElementById('view-toggle');
   var _savedViewMode = localStorage.getItem('ht-view-mode');

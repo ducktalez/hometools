@@ -382,7 +382,7 @@ def render_track_render_js() -> str:
       currentPath = '__offline__';
       showPlaylist(items, false);
       headerTitle.textContent = 'Downloaded';
-      backBtn.style.display = 'inline-block';
+      backBtn.classList.remove('disabled');
       if (typeof _router !== 'undefined') _router.update();
       estimateOfflineStorage(ready).then(function(info) {
         if (info && info.appUsage > 0) {
@@ -1052,13 +1052,16 @@ def render_track_render_js() -> str:
     .catch(function() {});
   }
 
-  /* ── BPM calculate (Tools-panel "BPM berechnen") ──────────────────────────
-     Click handler for the .meta-pill--calc button rendered by
-     window.renderBpmPill() (webui/src/metricPill.ts) when a track's BPM is
-     unknown and the tool is active. Stays Python-generated (not ported to
-     TS) because it needs filteredItems/allItems/showToast — identifiers
-     private to this script's own closure, not reachable from the separate
-     static bundle. See docs/IMPLEMENTATION_PLAN.md Design Discussions
+  /* ── BPM adjust popup (Tools-panel "BPM berechnen") ───────────────────────
+     Click handler for the BPM pill rendered by window.renderBpmPill()
+     (webui/src/metricPill.ts) — both the "unknown" (.meta-pill--calc) and
+     "known, editable" (.meta-pill--editable) variants, whenever the tool
+     is active. Opens a small popup with four actions: langsamer (÷2),
+     neu berechnen (reload), schneller (×2), and a manual numeric entry.
+     Stays Python-generated (not ported to TS) because it needs
+     filteredItems/allItems/showToast — identifiers private to this
+     script's own closure, not reachable from the separate static bundle.
+     See docs/IMPLEMENTATION_PLAN.md Design Discussions
      ("Player-JS-Modulkopplung") for why that boundary exists. */
   function _patchAllItemsBpm(relativePath, bpm) {
     for (var i = 0; i < allItems.length; i++) {
@@ -1069,49 +1072,144 @@ def render_track_render_js() -> str:
     }
   }
 
-  function _calculateBpmForTrack(idx, btnEl) {
+  var _bpmMenuCleanup = null;
+
+  function _closeBpmAdjustMenu() {
+    if (_bpmMenuCleanup) { _bpmMenuCleanup(); _bpmMenuCleanup = null; }
+    var old = document.getElementById('bpm-adjust-menu');
+    if (old) old.remove();
+  }
+
+  /* langsamer/schneller: halves/doubles the value in one click AND biases
+     every future "neu berechnen" via streaming/core/bpm_hints.py, so a
+     known octave mis-detection (e.g. 85 erkannt, eigentlich 170) isn't
+     reproduced by the next automatic analysis. */
+  function _openBpmAdjustMenu(idx, btnEl) {
+    _closeBpmAdjustMenu();
     var t = filteredItems[idx];
     if (!t || !t.relative_path) return;
-    if (btnEl) {
-      btnEl.classList.add('meta-pill--calculating');
-      btnEl.disabled = true;
-      btnEl.textContent = '\u2026';
+    var curBpm = t.bpm || 0;
+
+    var menu = document.createElement('div');
+    menu.id = 'bpm-adjust-menu';
+    menu.className = 'ht-ctx-menu bpm-adjust-menu';
+    menu.innerHTML =
+      '<div class="bpm-adjust-current">' + (curBpm > 0 ? Math.round(curBpm) + ' BPM' : 'BPM unbekannt') + '</div>' +
+      '<div class="bpm-adjust-actions">' +
+        '<button type="button" class="bpm-adjust-btn" data-action="slower"' + (curBpm > 0 ? '' : ' disabled') +
+          ' title="Wert halbieren \u2014 falls doppelt so schnell erkannt wurde">' + IC_CHEVRONS_DOWN + '<span>Langsamer</span></button>' +
+        '<button type="button" class="bpm-adjust-btn" data-action="reload" title="BPM neu berechnen">' +
+          IC_REFRESH + '<span>Neu berechnen</span></button>' +
+        '<button type="button" class="bpm-adjust-btn" data-action="faster"' + (curBpm > 0 ? '' : ' disabled') +
+          ' title="Wert verdoppeln \u2014 falls halb so schnell erkannt wurde">' + IC_CHEVRONS_UP + '<span>Schneller</span></button>' +
+      '</div>' +
+      '<div class="bpm-adjust-manual">' +
+        '<input type="number" class="bpm-adjust-input" min="0" max="400" step="1" inputmode="numeric" ' +
+          'value="' + (curBpm > 0 ? Math.round(curBpm) : '') + '" placeholder="BPM manuell">' +
+        '<button type="button" class="bpm-adjust-apply">\u00dcbernehmen</button>' +
+      '</div>';
+    document.body.appendChild(menu);
+
+    var rect = btnEl.getBoundingClientRect();
+    menu.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
+    var spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow >= menu.offsetHeight + 8) {
+      menu.style.top = (rect.bottom + 4) + 'px';
+    } else {
+      menu.style.top = Math.max(4, rect.top - menu.offsetHeight - 4) + 'px';
     }
-    fetch(BPM_CALC_API_PATH, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: t.relative_path })
-    })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(d) {
-        if (!d || !d.ok) {
-          showToast((d && d.error) || 'BPM-Berechnung fehlgeschlagen');
-          if (btnEl) {
-            btnEl.classList.remove('meta-pill--calculating');
-            btnEl.disabled = false;
-            btnEl.textContent = '?';
-          }
-          return;
-        }
-        t.bpm = d.bpm;
-        _patchAllItemsBpm(t.relative_path, d.bpm);
-        if (btnEl && btnEl.parentNode && typeof window.renderBpmPill === 'function') {
-          var wrap = document.createElement('span');
-          wrap.innerHTML = window.renderBpmPill(d.bpm, BPM_MIN, BPM_MAX,
-            { index: idx, relativePath: t.relative_path, calcEnabled: false });
-          var newPill = wrap.firstChild;
-          if (newPill) btnEl.parentNode.replaceChild(newPill, btnEl);
-        }
-        showToast('BPM berechnet: ' + Math.round(d.bpm));
-      })
-      .catch(function() {
-        showToast('BPM-Berechnung fehlgeschlagen (Netzwerkfehler)');
-        if (btnEl) {
-          btnEl.classList.remove('meta-pill--calculating');
-          btnEl.disabled = false;
-          btnEl.textContent = '?';
-        }
+
+    function _busy(isBusy) {
+      menu.querySelectorAll('button, input').forEach(function(el) { el.disabled = isBusy; });
+    }
+
+    function _applyResult(d, fallbackErr) {
+      _busy(false);
+      if (!d || !d.ok) {
+        showToast((d && d.error) || fallbackErr);
+        return;
+      }
+      t.bpm = d.bpm;
+      _patchAllItemsBpm(t.relative_path, d.bpm);
+      if (btnEl.parentNode && typeof window.renderBpmPill === 'function') {
+        var wrap = document.createElement('span');
+        wrap.innerHTML = window.renderBpmPill(d.bpm, BPM_MIN, BPM_MAX,
+          { index: idx, relativePath: t.relative_path, calcEnabled: !!(_toolState.active && _toolState.bpmCalc) });
+        var newPill = wrap.firstChild;
+        if (newPill) btnEl.parentNode.replaceChild(newPill, btnEl);
+      }
+      showToast('BPM: ' + Math.round(d.bpm));
+      _closeBpmAdjustMenu();
+    }
+
+    var reloadBtn = menu.querySelector('[data-action="reload"]');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function() {
+        _busy(true);
+        fetch(BPM_CALC_API_PATH, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: t.relative_path })
+        })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(d) { _applyResult(d, 'BPM-Berechnung fehlgeschlagen'); })
+          .catch(function() { _busy(false); showToast('BPM-Berechnung fehlgeschlagen (Netzwerkfehler)'); });
       });
+    }
+
+    ['slower', 'faster'].forEach(function(action) {
+      var actionBtn = menu.querySelector('[data-action="' + action + '"]');
+      if (!actionBtn) return;
+      actionBtn.addEventListener('click', function() {
+        if (actionBtn.disabled) return;
+        _busy(true);
+        fetch(BPM_ADJUST_API_PATH, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: t.relative_path, factor: action === 'slower' ? 0.5 : 2 })
+        })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(d) { _applyResult(d, 'Anpassung fehlgeschlagen'); })
+          .catch(function() { _busy(false); showToast('Anpassung fehlgeschlagen (Netzwerkfehler)'); });
+      });
+    });
+
+    var manualInput = menu.querySelector('.bpm-adjust-input');
+    var applyBtn = menu.querySelector('.bpm-adjust-apply');
+    function _submitManual() {
+      var val = parseFloat(manualInput.value);
+      if (!val || val <= 0) { showToast('Bitte einen g\u00fcltigen BPM-Wert eingeben'); return; }
+      _busy(true);
+      fetch(BPM_SET_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: t.relative_path, bpm: val })
+      })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) { _applyResult(d, 'Speichern fehlgeschlagen'); })
+        .catch(function() { _busy(false); showToast('Speichern fehlgeschlagen (Netzwerkfehler)'); });
+    }
+    if (applyBtn) applyBtn.addEventListener('click', _submitManual);
+    if (manualInput) {
+      manualInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); _submitManual(); }
+      });
+      manualInput.addEventListener('click', function(e) { e.stopPropagation(); });
+    }
+
+    /* Close on outside click or Escape — same pattern as _openCtxMenu()
+       in _library_tools.py (not reused directly: this popup needs a live
+       <input>, not just a list of click-only rows). */
+    function _onOutside(e) { if (!menu.contains(e.target) && e.target !== btnEl && !btnEl.contains(e.target)) _closeBpmAdjustMenu(); }
+    function _onEsc(e) { if (e.key === 'Escape') _closeBpmAdjustMenu(); }
+    setTimeout(function() {
+      document.addEventListener('click', _onOutside);
+      document.addEventListener('keydown', _onEsc);
+    }, 0);
+    _bpmMenuCleanup = function() {
+      document.removeEventListener('click', _onOutside);
+      document.removeEventListener('keydown', _onEsc);
+    };
   }
 
   /* ── Duplicate detection (client-side) ── */
@@ -1119,110 +1217,15 @@ def render_track_render_js() -> str:
   var _dupeMap = null;   /* Map<key, [itemIndex, ...]> — only groups with 2+ items */
   var _dupePaths = null;  /* Set<relative_path> — all paths that belong to a dupe group */
   var _dupeSafety = null; /* {relative_path: bool} — true=safe(≤2% deviation), false=warn(>2%) */
-  var _DUPE_SAFE_THRESHOLD = 0.02; /* 2 % — max allowed relative deviation in size & duration */
-
-  /* Return true when ALL pairs in the group have file_size AND duration within threshold.
-     Returns false if any metric is missing (0) for any item, or if any pair exceeds the
-     threshold in either metric. */
-  function _isDupeGroupSafe(groupItems) {
-    if (groupItems.length < 2) return true;
-    for (var a = 0; a < groupItems.length; a++) {
-      for (var b = a + 1; b < groupItems.length; b++) {
-        var sA = groupItems[a].file_size || 0;
-        var sB = groupItems[b].file_size || 0;
-        var dA = groupItems[a].duration  || 0;
-        var dB = groupItems[b].duration  || 0;
-        /* Both values must be present and within threshold */
-        if (!sA || !sB || Math.abs(sA - sB) / Math.max(sA, sB) > _DUPE_SAFE_THRESHOLD) return false;
-        if (!dA || !dB || Math.abs(dA - dB) / Math.max(dA, dB) > _DUPE_SAFE_THRESHOLD) return false;
-      }
-    }
-    return true;
-  }
+  /* _isDupeGroupSafe() (incl. its 2% threshold) ported to
+     webui/src/dupeUtils.ts (opportunistic port, see
+     docs/IMPLEMENTATION_PLAN.md), bridged onto window by main.ts. */
 
   /* ── Dupe-panel metadata formatters ── */
-  function _fmtDuration(secs) {
-    if (!secs) return '';
-    var s = Math.round(secs);
-    var h = Math.floor(s / 3600);
-    var m = Math.floor((s % 3600) / 60);
-    var sec = s % 60;
-    if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
-    return m + ':' + (sec < 10 ? '0' : '') + sec;
-  }
-  function _fmtFileSize(bytes) {
-    if (!bytes) return '';
-    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + '\u00a0GB';
-    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + '\u00a0MB';
-    if (bytes >= 1024) return Math.round(bytes / 1024) + '\u00a0KB';
-    return bytes + '\u00a0B';
-  }
-  function _fmtDate(ts) {
-    if (!ts) return '';
-    var d = new Date(ts * 1000);
-    return d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
-  }
-
-  function _normalizeStem(s) {
-    if (!s) return '';
-    s = s.replace(/&amp;/g, '&');
-    s = s.replace(/\\(\\d{1,3}kbit_[A-Za-z]+\\)/gi, '');
-    /* Strip ALL parenthesised Official-... blocks, not just "Official * Video" */
-    s = s.replace(/\\(Official[^)]*\\)/gi, '');
-    /* Strip common platform/promo tags that don't identify the song version */
-    s = s.replace(/\\((?:Audio|Video|Music\\s+Video|Lyric\\s+Video|Lyrics|Lyric|Visualizer|Topic|HD|HQ)\\)/gi, '');
-    s = s.replace(/\\(\\w*\\.[a-zA-Z]{2,5}\\)/gi, '');
-    s = s.replace(/\\w*\\.(?:com|net|org|co\\.uk|de|vu|ru|pl)/gi, '');
-    s = s.replace(/(?<=\\W)(?:featuring|feat\\.|feat)\\W/gi, 'feat. ');
-    s = s.replace(/(?<=\\W)(?:produced by|produced|prod\\. by|prod by|prod\\.|prod)\\W/gi, 'prod. ');
-    s = s.replace(/(?<=(?:\\W|\\(|\\[))(?:vs\\.|vs|versus)/gi, 'vs. ');
-    s = s.replace(/\\(\\s*\\)|\\[\\s*\\]/g, '');
-    s = s.replace(/ {2,}/g, ' ');
-    return s.trim().toLowerCase();
-  }
-
-  function _dupeKey(item) {
-    /* Build a stable key from artist + title.
-       Version/mix descriptors (Remix, Extended, Live, Acoustic, etc.) are kept in the key
-       so that different versions are NOT flagged as duplicates.
-       Only strip markers that are purely promotional and don't identify a song version.
-       Artist is included so that "Blümchen - Nur Geträumt" and "Nena - Nur Geträumt"
-       are NOT considered duplicates. */
-    var raw = item.title || '';
-    if (!raw) {
-      var rp = item.relative_path || '';
-      var sl = rp.lastIndexOf('/');
-      raw = sl >= 0 ? rp.substring(sl + 1) : rp;
-      var dot = raw.lastIndexOf('.');
-      if (dot > 0) raw = raw.substring(0, dot);
-    }
-    var cleaned = _normalizeStem(raw);
-    /* Strip common download-duplicate suffixes: _2, (2), -2, _copy, - Copy, (copy) etc. */
-    cleaned = cleaned.replace(/[\\s_-]*\\(?(?:copy|kopie)\\)?\\s*$/i, '');
-    cleaned = cleaned.replace(/[\\s_-]+\\d{1,2}\\s*$/, '');
-    cleaned = cleaned.replace(/\\s*\\(\\d{1,2}\\)\\s*$/, '');
-    cleaned = cleaned.replace(/\\s*\\[\\d{1,2}\\]\\s*$/, '');
-    /* Split on common separators */
-    var parts = cleaned.split(/feat\\.|prod\\.|vs\\.|\\(|\\[| - |, | & |\\)|\\]/i);
-    /* Strip ONLY purely promotional/label markers that don't differentiate song versions.
-       Version keywords (remix, mix, extended, live, acoustic, instrumental, remaster, etc.)
-       are intentionally kept so that e.g. "Song" and "Song - Remix" get different keys. */
-    parts = parts.map(function(p) {
-      return p.replace(/\\bofficial\\b|\\bexplicit\\b|\\bclean\\b/gi, '');
-    });
-    /* Strip non-word characters and filter short parts */
-    parts = parts.map(function(p) { return p.replace(/[^a-z0-9]/gi, ''); });
-    parts = parts.filter(function(p) { return p.length > 2; });
-    /* Deduplicate and sort for stable key */
-    var seen = {};
-    var unique = [];
-    parts.forEach(function(p) { if (!seen[p]) { seen[p] = true; unique.push(p); } });
-    unique.sort();
-    var titleKey = unique.join('|');
-    /* Include the artist to prevent false positives across different artists */
-    var artistRaw = (item.artist || '').toLowerCase().replace(/[^a-z0-9]/gi, '');
-    if (artistRaw.length > 2) titleKey = artistRaw + '::' + titleKey;
-    return titleKey;
-  }
+  /* _fmtDuration/_fmtFileSize/_fmtDate/_normalizeStem/_dupeKey ported to
+     webui/src/dupeUtils.ts (Vite/TS migration Phase 5 opportunistic-port
+     slice — see docs/IMPLEMENTATION_PLAN.md) — bridged onto window by
+     main.ts, bare calls elsewhere in this fragment still resolve via the
+     normal JS scope chain. */
 
 """

@@ -5,10 +5,18 @@ Vite + TypeScript build for the streaming player UI. This directory is
 JS/CSS in `server_utils/_player_js.py` / `_css.py` / `player_js/*.py` /
 `css/*.py`.
 
-**Current status (2026-07-30):** Phase 1-4 done, Phase 5 in progress (first
-slice done — `fmtTime`/`escHtml`/`formatBytes` are real TS functions here,
-bridged onto `window` for the remaining Python-generated inline script to
-consume). FastAPI mounts this build's output at `/static`
+**Current status (2026-07-31):** Phase 1-4 done, Phase 5 in progress
+(first slice: `fmtTime`/`escHtml`/`formatBytes`/`renderBpmPill`; opportunistic
+slices since: `needsConversion`/`filenameFromPath`/`parentPath`/`leafName`/
+`currentFolderOf` (`pathUtils.ts`), `_fmtDuration`/`_fmtFileSize`/`_fmtDate`/
+`_normalizeStem`/`_dupeKey`/`_isDupeGroupSafe` (`dupeUtils.ts`),
+`cleanFolderName`/`renderBreadcrumbHtml` (`breadcrumb.ts`),
+`getRecentMoveTargets`/`saveRecentMoveTarget` (`recentMoveTargets.ts`) — all
+dependency-free leaf helpers, bridged onto `window` for the remaining
+Python-generated inline script to consume). The ambient `.d.ts` contract
+for the *stateful* cross-fragment globals (`allItems`, `filteredItems`,
+`showFolderView`, ...) also now exists (`legacy-globals.d.ts`) — see
+"Opportunistic migration rule" below. FastAPI mounts this build's output at `/static`
 (`server_utils/_static.py`) and `_html.py` renders its `<script src="...">`
 tag before the remaining inline `<script>{js}</script>`. See
 `docs/architecture.md` → "Phase 4: FastAPI static serving + Phase 5 first
@@ -100,6 +108,30 @@ browser and throw a `ReferenceError` when called.
   `player_js/` directory for every identifier it defines — if any other
   fragment reads/writes one of them, you need an ambient `.d.ts` contract
   for the shared globals first (see `docs/IMPLEMENTATION_PLAN.md` Design
-  Discussions → "Player-JS-Modulkopplung").
+  Discussions → "Player-JS-Modulkopplung"). That contract now exists at
+  `src/legacy-globals.d.ts` — extend it (don't duplicate) as more of
+  `_core.py`'s state gets bridged onto `window` by a future port.
 
+### Opportunistic migration rule
 
+Don't schedule a big dedicated "port fragment X" task for every remaining
+`player_js/*.py` file. Instead: whenever *any* unrelated change (bugfix,
+feature) touches a `player_js/*.py` fragment, check the function(s) you're
+already editing/near:
+
+1. Is it pure (no read/write of any identifier from `legacy-globals.d.ts`
+   or another fragment) or does it only need types already declared there?
+2. If yes — port it to a `.ts` module in the same change: delete the
+   Python string version, add a one-line comment pointing at the new file
+   (see `pathUtils.ts`/`dupeUtils.ts` for the pattern), bridge it onto
+   `window` in `main.ts`, and update any test that asserted the function's
+   presence/behavior in `render_player_js()`'s output to instead read the
+   `.ts` source (or, once available, the built bundle).
+3. If no (it reads/writes stateful globals not yet in the ambient
+   contract) — leave it, but add the missing identifiers to
+   `legacy-globals.d.ts` if you now know their type, so the *next*
+   opportunistic port has one less blocker.
+
+This keeps the migration moving without a dedicated migration sprint, and
+each slice stays small enough to review and test in isolation — mirroring
+how `needsConversion`/`filenameFromPath`/`dupeUtils.ts` were ported.

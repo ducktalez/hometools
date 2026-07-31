@@ -6,12 +6,15 @@ from ._svg import (  # noqa: F401
     SVG_BACK,
     SVG_CAST,
     SVG_CHECK,
+    SVG_CHEVRONS_DOWN,
+    SVG_CHEVRONS_UP,
     SVG_CLOSE_X,
     SVG_DOTS,
     SVG_DOWNLOAD,
     SVG_DUPLICATE,
     SVG_EDIT,
     SVG_EXPAND,
+    SVG_FILTER,
     SVG_FLAG_DE,
     SVG_FLAG_EN,
     SVG_FLAG_ES,
@@ -419,6 +422,9 @@ def render_player_js(
         + """';
   var IC_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   var IC_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  var IC_FILTER = '"""
+        + (SVG_FILTER.replace("'", "\\'"))
+        + """';
   var SHUFFLE_ENABLED = !!CFG.enableShuffle;
   var REPEAT_ENABLED = !!CFG.enableRepeat;
   var SKIP_INTRO_ENABLED = !!CFG.enableSkipIntro;
@@ -510,13 +516,24 @@ def render_player_js(
   var LANG_GROUPS = CFG.languageGroups || {};
   var DEFAULT_LANG = CFG.defaultLanguage || 'de';
   /* BPM pill (audio only) — display/heatmap range, configurable server-side
-     (default 60-180, HOMETOOLS_BPM_MIN/HOMETOOLS_BPM_MAX). The "calculate"
-     affordance (yellow-glow clickable "?") is additionally gated by the
-     Tools-panel "BPM berechnen" toggle (_toolState.bpmCalc) — see
+     (default 0-180, HOMETOOLS_BPM_MIN/HOMETOOLS_BPM_MAX). The "calculate"
+     affordance (yellow-glow clickable "?") and the editable/clickable
+     known-value pill are additionally gated by the Tools-panel "BPM
+     berechnen" toggle (_toolState.bpmCalc) — see
      player_js/_track_render.py / _search_filter.py. */
-  var BPM_MIN = CFG.bpmMin || 60;
+  var BPM_MIN = CFG.bpmMin || 0;
   var BPM_MAX = CFG.bpmMax || 180;
   var BPM_CALC_API_PATH = _apiBase() + '/bpm/calculate';
+  /* BPM-adjust popup (slower/faster/manual — see
+     player_js/_track_render.py::_openBpmAdjustMenu). */
+  var BPM_ADJUST_API_PATH = _apiBase() + '/bpm/adjust';
+  var BPM_SET_API_PATH = _apiBase() + '/bpm/set';
+  var IC_CHEVRONS_DOWN = '"""
+        + (SVG_CHEVRONS_DOWN.replace("'", "\\'"))
+        + """';
+  var IC_CHEVRONS_UP = '"""
+        + (SVG_CHEVRONS_UP.replace("'", "\\'"))
+        + """';
 """
         + render_core_js(waveform_js=waveform_js)
         + render_queue_js(sprite_preview_js=sprite_preview_js, waveform_setup_js=waveform_setup_js)

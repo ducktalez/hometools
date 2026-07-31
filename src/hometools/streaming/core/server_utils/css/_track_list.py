@@ -127,10 +127,9 @@ body.tool-show-file-mover .track-edit-btn,
 body.tool-show-file-mover .track-playlist-btn,
 body.tool-show-file-mover .track-queue-btn { display: none; }
 .move-quick-grid {
-  display: flex; flex-wrap: nowrap; gap: 2px; flex-shrink: 1;
-  overflow-x: auto; max-width: 160px; scrollbar-width: none;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px; flex-shrink: 1;
+  max-width: 160px;
 }
-.move-quick-grid::-webkit-scrollbar { display: none; }
 .move-quick-btn {
   background: var(--surface2); color: var(--sub); border: 1px solid transparent;
   border-radius: 4px; padding: 1px 6px; cursor: pointer; font-size: 0.62rem;
@@ -410,6 +409,46 @@ body.modal-open { overflow: hidden; }
 .filter-chip:hover { border-color: var(--accent); color: var(--text); }
 .filter-chip.active { border-color: var(--accent); color: var(--accent); }
 .filter-chip svg { width: 11px; height: 11px; fill: currentColor; flex-shrink: 0; }
+
+/* ── Combined "Filtern" popover (Bewertung + Favorit + Genre) ──
+   Mirrors .ht-ctx-menu's fixed-position anchored-card look (see
+   css/_table_view.py) but hosts form controls instead of a menu list. */
+.filter-popover {
+  position: fixed; z-index: 9999; min-width: 220px;
+  background: #1e1e1e; border: 1px solid #333; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  padding: 0.75rem 0.9rem;
+  display: flex; flex-direction: column; gap: 0.65rem;
+}
+.filter-popover-section { display: flex; flex-direction: column; gap: 0.35rem; }
+.filter-popover-label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--sub);
+}
+.filter-popover-stars { display: flex; gap: 4px; }
+.filter-popover-star {
+  background: none; border: none; padding: 2px; cursor: pointer; color: #555;
+  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  transition: color 0.12s; -webkit-tap-highlight-color: transparent;
+}
+.filter-popover-star svg { width: 16px; height: 16px; }
+.filter-popover-star.active { color: #ffd700; }
+.filter-popover-star:hover { color: #ffd700; }
+.filter-popover-toggle {
+  display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.filter-popover-genre-select {
+  background: var(--surface2); color: var(--text); border: 1px solid #444;
+  border-radius: 6px; padding: 0.35rem 0.5rem; font-size: 0.85rem; outline: none;
+  color-scheme: dark;
+}
+.filter-popover-genre-select:focus { border-color: var(--accent); }
+.filter-popover-reset {
+  background: none; border: 1px solid #444; color: var(--sub); cursor: pointer;
+  border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.8rem;
+  transition: border-color 0.12s, color 0.12s;
+}
+.filter-popover-reset:hover { border-color: var(--text); color: var(--text); }
 
 /* ── Item list ── */
 .track-list-wrap { flex: 1 1 0; overflow-y: auto; }

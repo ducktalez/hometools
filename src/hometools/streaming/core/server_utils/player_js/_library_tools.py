@@ -161,27 +161,23 @@ def render_library_tools_js() -> str:
     });
     if (!dupeItems.length) return;
     closeDupePanel();
-    /* Show as virtual playlist */
+    /* Show as virtual playlist. Header/toolbar state via _enterTrackListView()
+       (_folder_browse.py) — same shared entry point as showPlaylist()/
+       showUserPlaylistView(); collapseFilterBar keeps the sort/filter row
+       initially hidden (dupe list has its own compact layout). */
     destroyPlaylistDragDrop();
     inPlaylist = true;
     _currentPlaylistId = '__duplicates__';
     currentPath = '';
     playlistItems = dupeItems;
-    headerTitle.textContent = 'Duplikate (' + keys.length + ' Gruppen)';
-    backBtn.style.display = 'inline-block';
-    playAllBtn.style.display = 'none';
-    folderGrid.classList.add('view-hidden');
-    trackView.classList.remove('view-hidden');
-    filterBar.classList.remove('view-hidden');
-    filterBar.classList.add('fb-scroll-hidden');
-    playerBar.classList.remove('view-hidden');
-    _hideGlobalSearch();
-    _initFilterBarScrollReveal();
-    searchInput.value = '';
-    currentIndex = -1;
-    renderBreadcrumb();
-    applyFilter();
+    _enterTrackListView({
+      title: 'Duplikate (' + keys.length + ' Gruppen)',
+      playAllDisabled: true,
+      collapseFilterBar: true,
+      resetIndex: true
+    });
     if (shuffleMode) rebuildShuffleQueue(0);
+
   }
 
   function _deleteDuplicateFile(allIndex) {
@@ -334,20 +330,10 @@ def render_library_tools_js() -> str:
   }
 
   /* ── File mover (move to folder) ── */
-  var _MOVE_RECENT_KEY = 'ht-move-recent';
   var _allFoldersCache = null;
 
-  function _getRecentMoveTargets() {
-    try { return JSON.parse(localStorage.getItem(_MOVE_RECENT_KEY) || '[]').slice(0, 4); }
-    catch(e) { return []; }
-  }
-
-  function _saveRecentMoveTarget(folder) {
-    var recent = _getRecentMoveTargets().filter(function(f) { return f !== folder; });
-    recent.unshift(folder);
-    if (recent.length > 4) recent = recent.slice(0, 4);
-    try { localStorage.setItem(_MOVE_RECENT_KEY, JSON.stringify(recent)); } catch(e) {}
-  }
+  /* _getRecentMoveTargets()/_saveRecentMoveTarget() ported to
+     webui/src/recentMoveTargets.ts, bridged onto window by main.ts. */
 
   function _getAllFolders() {
     if (_allFoldersCache) return _allFoldersCache;
@@ -362,11 +348,8 @@ def render_library_tools_js() -> str:
 
   function _invalidateFolderCache() { _allFoldersCache = null; }
 
-  function _currentFolderOf(item) {
-    var rp = item.relative_path || '';
-    var sl = rp.indexOf('/');
-    return sl > 0 ? rp.substring(0, sl) : '';
-  }
+  /* _currentFolderOf() ported to webui/src/pathUtils.ts (opportunistic
+     port, see docs/IMPLEMENTATION_PLAN.md), bridged onto window by main.ts. */
 
   function renderMoveWidget(t, idx) {
     var curFolder = _currentFolderOf(t);
@@ -773,9 +756,7 @@ def render_library_tools_js() -> str:
       m.pause();
       if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
     });
-    navigator.mediaSession.setActionHandler('previoustrack', function() {
-      playTrack(currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1);
-    });
+    navigator.mediaSession.setActionHandler('previoustrack', handlePreviousTrack);
     navigator.mediaSession.setActionHandler('nexttrack', function() {
       playNextItem();
     });
@@ -1034,6 +1015,24 @@ def render_library_tools_js() -> str:
     return pi;
   }
 
+  function handlePreviousTrack() {
+    /* Smart previous: restart current track if already playing for >= 3s,
+       unless the track is very short (< 10s, then go to previous). */
+    var currentTime = player.currentTime || 0;
+    var PREV_THRESHOLD_S = 3;
+    var SHORT_TRACK_S = 10;
+    var duration = _currentItemDuration || 0;
+    var isShortTrack = duration > 0 && duration < SHORT_TRACK_S;
+    
+    if (currentTime >= PREV_THRESHOLD_S && !isShortTrack) {
+      /* Restart current track */
+      playTrack(currentIndex);
+    } else {
+      /* Go to previous track */
+      playTrack(prevIndex());
+    }
+  }
+
   /* Toggle shuffle mode: off → normal → weighted → off */
   function cycleShuffle() {
     if (!shuffleMode) {
@@ -1283,7 +1282,7 @@ def render_library_tools_js() -> str:
   }
 
   btnPlay.addEventListener('click', togglePlay);
-  btnPrev.addEventListener('click', function() { playTrack(prevIndex()); });
+  btnPrev.addEventListener('click', handlePreviousTrack);
   btnNext.addEventListener('click', playNextItem);
   /* Album cover click → jump to current track in list */
   if (playerThumb) playerThumb.addEventListener('click', jumpToCurrentTrack);
@@ -1877,40 +1876,10 @@ def render_library_tools_js() -> str:
     }, 150);
   });
   sortField.addEventListener('change', function() { applyFilter(); if (typeof _router !== 'undefined') _router.update(); });
-  if (filterRatingBtn) {
-    filterRatingBtn.addEventListener('click', function() {
-      /* cycle 0 → 1 → 2 → 3 → 4 → 5 → 0 */
-      filterRating = (filterRating + 1) % 6;
-      localStorage.setItem('ht-filter-rating', String(filterRating));
-      updateFilterChips();
-      applyFilter();
-      if (typeof _router !== 'undefined') _router.update();
-    });
-  }
-  if (filterFavBtn) {
-    filterFavBtn.addEventListener('click', function() {
-      filterFav = !filterFav;
-      localStorage.setItem('ht-filter-fav', filterFav ? '1' : '0');
-      updateFilterChips();
-      applyFilter();
-      if (typeof _router !== 'undefined') _router.update();
-    });
-  }
-  if (filterGenreBtn) {
-    filterGenreBtn.addEventListener('click', function() {
-      /* Collect genres from current playlist, cycle through them */
-      var genres = {};
-      (playlistItems || []).forEach(function(t) {
-        if (t.genre) genres[t.genre] = true;
-      });
-      var genreList = Object.keys(genres).sort();
-      if (!genreList.length) return;
-      var idx = filterGenre ? genreList.indexOf(filterGenre) : -1;
-      filterGenre = (idx + 1 < genreList.length) ? genreList[idx + 1] : '';
-      localStorage.setItem('ht-filter-genre', filterGenre);
-      updateFilterChips();
-      applyFilter();
-      if (typeof _router !== 'undefined') _router.update();
+  if (filterCombinedBtn) {
+    filterCombinedBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      _toggleFilterPopover(filterCombinedBtn);
     });
   }
   if (filterHiddenBtn) {

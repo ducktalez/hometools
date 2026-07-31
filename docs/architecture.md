@@ -1,786 +1,183 @@
-# Architecture
+# hometools – Architecture Reference
 
-Concise, English, current-state documentation. History and dated bugfix
-narratives live in `CHANGELOG.md` — this file describes *what exists today*,
-not how it evolved. Keep sections short (3–6 sentences); link to code instead
-of re-explaining it.
+> Framework overview for developers and AI assistants.
+> Behavioral rules: `.github/copilot-instructions.md` + `.github/instructions/*.instructions.md`.
+> Open tasks: `docs/IMPLEMENTATION_PLAN.md`.
 
-## Layout
+---
 
-- `src/hometools/cli.py` — CLI entry point (`hometools = hometools.cli:main`).
-- `src/hometools/config.py` — all paths/ports from `HOMETOOLS_*` env vars.
-- `src/hometools/streaming/core/` — shared catalog, sync, UI generation, caching.
-- `src/hometools/streaming/audio/`, `streaming/video/` — thin per-media wrappers
-  (`catalog.py`, `server.py`, `sync.py`).
-- `src/hometools/streaming/channel/` — HLS "TV channel" server (see below).
-- `clients/` — native apps consuming the JSON API (Android TV active).
-- `docs/architecture.md` (this file), `docs/CHANGELOG.md` (history),
-  `docs/IMPLEMENTATION_PLAN.md` (backlog + open design discussions).
+## 1. What is hometools?
 
-## `MediaItem` and the catalog
+CLI tool collection + two local FastAPI **streaming servers** (audio &
+video) sharing one core, plus a dark-theme PWA UI and native clients.
 
-`MediaItem` (`streaming/core/models.py`) is a **frozen dataclass** — every
-mutation creates a new instance. Key fields: `relative_path`, `title`,
-`artist` (audio: real artist; video: folder name — handle empty strings),
-`season`/`episode` (from `parse_season_episode()`, `(0, 0)` if undetected),
-`language`/`subtitle_language`, `genre`, `rating`, `duration`, `bitrate`,
-`file_size`, `mtime`, `intro_start`/`intro_end`. `build_video_index()` /
-`build_audio_index()` populate the catalog; `sort_items()` orders by
-`(season, episode, title)` within a folder so episodes stay chronological.
-All API responses use the `items` key, never `tracks`/`videos`.
-
-`hometools_overrides.yaml` (per folder, `media_overrides.py`) lets users
-correct display names, season/episode numbers and the series title without
-renaming files — applied before sorting, never mutates originals.
-
-## `server_utils` — UI generation
-
-`streaming/core/server_utils/` generates all HTML/CSS/JS as Python strings
-(no separate frontend build). Originally one ~9000-line file, now a package:
-
-| Module | Content |
-|---|---|
-| `__init__.py` | Re-exports — the only supported import path stays unchanged |
-| `_svg.py` | `SVG_*` icon/flag constants (see Rule 13 below) |
-| `_css.py` + `css/` | `render_base_css()`, concatenating themed fragments |
-| `_player_js.py` + `player_js/` | `render_player_js()`, concatenating themed fragments |
-| `_html.py` | `render_media_page()` — single HTML skeleton for audio + video |
-| `_pwa.py` | Manifest, service worker, icons |
-| `_audit.py` | Audit-log panel |
-| `_board.py` | `/board` missing-episodes page (video only) |
-| `_library.py` | Status/error pages, `check_library_accessible` |
-| `_paths.py` | Path traversal validation |
-
-### CSS/JS package split (agent-context optimization)
-
-`_css.py` (1858 lines) and `_player_js.py` (8908 lines) were pure Python
-string blobs with no internal tooling boundary, which made them expensive to
-read/edit for agents. Both were split **mechanically** (AST- and
-text-slice-based, verified byte-identical against the pre-split output) into
-themed fragment modules that each expose one `render_<name>_css()` /
-`render_<name>_js()` function; the top-level `render_base_css()` /
-`render_player_js()` just concatenate them in a fixed order. **No runtime
-behaviour changed.**
-
-- `css/`: `_root.py`, `_tools_panel.py`, `_track_list.py`, `_table_view.py`,
-  `_modals.py`, `_playlist_cards.py`, `_player_bar.py`, `_video_overlay.py`.
-- `player_js/`: `_core.py` (bootstrap, header vars, waveform/video-overlay
-  setup, skip-intro, cast, float-player), `_queue.py` (queue state + DnD),
-  `_folder_browse.py` (`showFolderView` and friends), `_search_filter.py`
-  (`globalSearch`, `applyFilter`), `_track_render.py` (`renderTracks`,
-  player-bar actions), `_library_tools.py` (duplicates, file-mover,
-  delete/reveal — still the largest fragment at ~2300 lines, a candidate for
-  a further split), `_playlists.py`, `_smart_playlists.py`,
-  `_drag_drop_init.py` (playlist DnD + the closing bootstrap IIFE call).
-- A handful of fragments take parameters (`waveform_js`,
-  `waveform_setup_js`, `sprite_preview_js`, `playlist_sync_interval_ms`)
-  because the original code interpolated Python values at those exact
-  points; `render_player_js()`/`render_base_css()` still have the same
-  public signature as before.
-- **Design rule:** the browser-side JS is one big IIFE closure — this split
-  is purely at the Python-source level. Don't add real JS module boundaries
-  (`import`/`export`) — there is no bundler and none is planned (see
-  `IMPLEMENTATION_PLAN.md`).
-
-### Bugfix: duplicate top-level `showToast`/`formatBytes` (2026-07-25)
-
-**Symptom:** Creating a new playlist ("Neue Playlist…" card) sometimes
-showed "Fehler beim Erstellen" even though the backend had created the
-playlist successfully — a client-only false negative.
-
-**Root cause:** The single-file `_player_js.py` (pre-dating the CSS/JS
-split above) accumulated **two** independent top-level
-`function showToast(msg, ...) {}` declarations (one in the section that
-became `_core.py`, one in the section that became `_library_tools.py`) and
-**two** `function formatBytes(...) {}` declarations (`_core.py` /
-`_track_render.py`). Because the whole script is one IIFE, JS function
-declarations are hoisted and the **textually later** declaration silently
-wins — no `SyntaxError`, no console warning, just a quietly overridden
-function. This is invisible to `esprima.parseScript()` (both versions are
-valid JS) and to every existing test, which only asserted parseability and
-feature-presence via substring checks — none of them asserted uniqueness
-of top-level declarations. The concrete regression: any caller passing a
-custom `durationMs` to `showToast(msg, durationMs)` (e.g. the "Weiter
-bei …" resume toast, 3000/5000 ms) silently got the wrong 3500 ms default,
-because the winning `showToast(msg)` definition ignored the second
-argument entirely.
-
-The playlist-creation error itself was not reproducible from this
-duplication alone (backend + full jsdom simulation both succeeded), but
-the fetch chains for playlist creation (`_folder_browse.py`'s
-`newCard` handler and `_smart_playlists.py`'s `createAndAddToPlaylist()`)
-also had no `response.ok` check — a non-2xx response with a non-JSON body
-(e.g. a proxy error page, or the server restarting mid-request) would
-throw inside `r.json()` and fall into `.catch()`, showing "Fehler beim
-Erstellen" even in cases where surfacing the real HTTP status would have
-been more useful. Both fetch chains now check `r.ok` and throw explicitly
-so the `.catch()` always fires for a well-defined reason, and an explicit
-`else { showToast('Fehler beim Erstellen'); }` branch covers the case
-where the response is `200 OK` but doesn't contain a `playlist` key.
-
-**Fix:**
-- `showToast`/`formatBytes` now exist exactly once, in `_core.py` (the
-  first-loaded fragment, the natural home for shared helpers). The
-  duplicates in `_library_tools.py`/`_track_render.py` were removed and
-  replaced with a one-line comment pointing back to `_core.py`.
-- `_folder_browse.py` and `_smart_playlists.py`: playlist-creation
-  `fetch(...).then(r => r.json())` now check `r.ok` first.
-- New regression test `test_no_duplicate_top_level_function_declarations`
-  in `tests/test_js_syntax.py` walks the esprima AST of the concatenated
-  output and fails if any top-level `FunctionDeclaration` name appears
-  twice. Nested functions (e.g. `initPlaylistDragDrop`'s local
-  `startDrag()` vs. `initQueueDragDrop`'s own `startDrag()`, both
-  legitimate per Rule 14) are intentionally excluded — only declarations
-  directly inside the outer IIFE body are checked.
-
-### Bugfix (follow-up, same day): `SVG_EDIT is not defined` broke both playlist types
-
-The `showToast`/`formatBytes` fix above did **not** fully resolve the
-"Fehler beim Erstellen" report — the actual runtime crash was a second,
-unrelated bug in the same area, only visible as a real
-`ReferenceError: SVG_EDIT is not defined` when interacting with a **smart**
-playlist.
-
-**Root cause:** `_folder_browse.py`'s playlist-folder-card renderer built
-the smart-playlist "edit rules" button with
-`'<button ...>' + SVG_EDIT + '</button>'`. `SVG_EDIT` is a **Python-only**
-constant from `_svg.py` (imported by `_player_js.py` for other purposes);
-no JS variable of that name was ever declared — the actual JS variable is
-`IC_EDIT` (`var IC_EDIT = '<svg>...'` in `_player_js.py`'s header). The
-typo is syntactically valid JS (a bare identifier reference), so
-`esprima.parseScript()` — the project's only JS safety net (see above) —
-could not catch it; it only surfaces as a browser `ReferenceError` the
-moment `showFolderView()` tries to render a smart-playlist card.
-
-This explains **both** reported symptoms with a single root cause:
-- Creating/opening a **smart** playlist hit the broken card renderer
-  directly → `ReferenceError: SVG_EDIT is not defined`.
-- Creating a **plain** playlist calls `showFolderView()` afterwards to
-  refresh the root view. If the user already had *any* smart playlist,
-  re-rendering its card threw the same `ReferenceError` — inside the
-  success `.then()` of the plain-playlist fetch chain, so it landed in the
-  generic `.catch()` and showed "Fehler beim Erstellen", even though the
-  plain playlist itself had already been created successfully server-side.
-
-**Fix:** `SVG_EDIT` → `IC_EDIT` in `_folder_browse.py`. New regression test
-`test_no_leaked_python_svg_constant_names` in `tests/test_js_syntax.py`
-regex-scans the concatenated JS output for any bare `SVG_[A-Z_]+`
-identifier — `SVG_*` names must only ever appear as Python-side constants
-interpolated into an `IC_*` JS variable or an inline SVG string, never as
-a literal identifier reference in the generated JS text.
-
-## Streaming UI feature areas
-
-Short reference for what lives where; see `player_js/` module table above
-for file locations.
-
-- **Generic kebab / three-dot menu** (`_library_tools.py`: `_openCtxMenu(btn,
-  items)` + CSS `.ht-ctx-menu`/`.ht-ctx-item`): a single shared dropdown
-  component used by *every* three-dot menu in the UI — track rows
-  (`_openTrackCtxMenu`), the player bar (`#player-bar-kebab`), and playlist
-  cards (`_openPlaylistCtxMenu` in `_folder_browse.py`). `items` is
-  `[{ icon, label, onClick, danger }]`; the menu is anchored right-aligned
-  to the triggering button (flips above if there's no room below).
-  **Rule: any new three-dot menu must reuse `_openCtxMenu()` and sit at the
-  same right-aligned position as its trigger button** — never invent a new
-  bespoke dropdown or place a kebab button anywhere but the right edge of
-  its card/row. Destructive items use `danger: true` (`.ht-ctx-item--danger`,
-  red text/hover).
-  Track rows keep `track-reveal-btn` immediately left of `track-kebab-btn`
-  in both list and table mode; the duplicate-trash icon remains inside
-  `.dupe-badge` near the title and is not part of the trailing action cluster.
-
-- **Playlists** (`streaming/core/playlists.py`): CRUD, pseudo-folder cards
-  on the root screen, drag-and-drop reorder (`initPlaylistDragDrop`),
-  cross-device sync via `revision` + changelog, 50 playlists / 500 items
-  per playlist limit, atomic JSON writes under `<cache_dir>/playlists/`.
-  Card UI: the cover doubles as the play button (`.playlist-cover-play-btn`,
-  a centered circular overlay inside `.playlist-thumb-wrap`, revealed on
-  hover — same pattern as `.track-play-btn`). All modification actions
-  (Umbenennen, Regeln bearbeiten, Aktualisieren, Löschen) live behind a
-  single top-right `.playlist-folder-kebab` button (`_openPlaylistCtxMenu()`
-  in `_folder_browse.py`), never as separate always-visible buttons.
-- **Smart Playlists** (`streaming/core/smart_playlists.py`): store a rule
-  group instead of an item list; evaluated **client-side** only
-  (`_evaluateSmartPlaylist()` mirrors `evaluate_smart()`). Operators: `eq`,
-  `contains`, `starts_with`, `matches`, `gte`, `lte`, `between`, `in`,
-  `within_days`, `before`, `after`, `any_of`/`all_of`/`none_of` (for
-  `in_playlist`). `in_playlist` never resolves against other smart
-  playlists (cycle-safe by construction; DAG resolution is a Phase-2 idea,
-  see IMPLEMENTATION_PLAN.md).
-- **Queue**: bottom-drawer panel, `#queue-peek-handle` (drag-up or click to
-  open/close, visible only when non-empty), DnD reorder
-  (`initQueueDragDrop`/`destroyQueueDragDrop`).
-- **Tools panel**: user-togglable UI features stored in `localStorage`
-  (`ht-tools`): inline ratings, download buttons, playlist buttons,
-  duplicate detection, file mover. CSS-only visibility via `body.tool-*`
-  classes — no per-element JS toggling.
-- **Duplicate detection**: pure client-side, `_normalizeStem()` +
-  `_dupeKey()` (artist + normalized title) build a `Map<key, [indices]>`
-  lazily from `allItems`; no backend endpoint. Soft-delete via
-  `POST /api/<media>/delete-file` moves files to `HOMETOOLS_DELETE_DIR`.
-- **File mover**: `POST /api/audio/move-file` + `GET /api/audio/folders`;
-  MRU target folders in `localStorage`.
-- **Windowed track rendering**: render guard (`_rgKey` fingerprint skips
-  full re-render when nothing changed), batched DOM insertion
-  (`_appendTrackBatch`, 100 items/batch via `IntersectionObserver`),
-  single delegated click/change listener per render
-  (`_wireTrackListDelegation`), 150 ms search debounce. Needed once
-  libraries exceed ~6000 items.
-- **Catalog cache (stale-while-revalidate)**: `localStorage` snapshot per
-  `API_PATH`, max age 5 minutes (`_CATALOG_MAX_AGE_MS`). Fresh snapshot →
-  render immediately, silent background fetch reconciles. Explicit refresh
-  clears the cache. Client-side mutation tracking (`_locallyDeletedPaths`)
-  filters just-deleted items out of background fetches until the server
-  catches up. **Do not** reintroduce `fetch(..., {cache:'no-store'})` as the
-  *first* load path — that was the original bug (see CHANGELOG 2026-07).
-- **Video overlay / mobile player**: tap-and-drag-to-seek
-  (`initTrackSeek`), `_currentItemDuration` fallback when
-  `player.duration` is not finite yet, spurious-`ended` guard
-  (`reachedEnd` check before advancing), iOS auto-PiP via
-  `autopictureinpicture` (never calls `player.pause()` while
-  transitioning into PiP on iOS), Cast button using only standard
-  `Remote Playback API` / `webkitShowPlaybackTargetPicker` (no SDK).
-- **Skip-intro**: button visible only within `[intro_start, intro_end]`.
-  Precedence: manual UI marker → YAML override → ffprobe chapters.
-  `GET/POST/DELETE /api/video/intro`.
-- **BPM (audio only)**: `MediaItem.bpm` (`0.0` = unknown), read via
-  `hometools.audio.metadata.get_bpm()` at catalog-build time
-  (`streaming/audio/catalog.py`). Format coverage: MP3 native ID3 `TBPM`
-  **and** a `TXXX:BPM`/`TXXX:TEMPO`/`TXXX:BEATS PER MINUTE` user-defined
-  text-frame fallback (case-insensitive desc match via `_find_txxx_tag()`
-  — many taggers/DJ tools write BPM this way instead of the native frame),
-  M4A/MP4 `tmpo` atom, FLAC/OGG `BPM` Vorbis comment, WMA/ASF
-  `WM/BeatsPerMinute`. Writing uses `set_bpm()` (rejects `<= 0`); optional
-  on-demand analysis via `hometools.audio.bpm.calculate_bpm()` (librosa,
-  `audio-analysis` extra) + `analyze_and_save_bpm()`, exposed as
-  `POST /api/audio/bpm/calculate` (the Tools-panel "BPM berechnen" feature,
-  gated by `#tool-bpm-calc`).
-  **Metric Pill architecture** (generalizes past BPM to future numeric
-  metadata like mood/key): `webui/src/metricPill.ts` → `renderMetricPill()`
-  / `renderBpmPill()` is a pure, dependency-free render function (Vite/TS
-  migration Phase 5 "leaf function" slice) bridged onto
-  `window.renderBpmPill` by `main.ts`. It renders one shared markup for
-  both list view (inline pill) and table/detail view (CSS repositions it
-  into a column via `.track-bpm-cell`) — unknown values (`<= 0`) render a
-  grey `?`, or a clickable pulsing-yellow `<button>` when the Tools-panel
-  calc feature is active. The **click-to-calculate interaction**
-  (`_calculateBpmForTrack`/`_patchAllItemsBpm` in
-  `player_js/_track_render.py`) deliberately stays in the legacy
-  Python-generated script — it needs `filteredItems`/`allItems`/`showToast`,
-  identifiers private to that script's shared closure and not reachable
-  from the separate TS bundle. This is an intentional, documented module
-  boundary (see IMPLEMENTATION_PLAN.md Design Discussion
-  "Player-JS-Modulkopplung"), **not** a leftover TODO — do not port it
-  without first introducing the shared "Player State" contract that
-  discussion calls for.
-  **Bugfix (2026-07-30):** `get_bpm()` only checked the native `TBPM`/`BPM`
-  tag keys, so files whose BPM was written as a `TXXX:BPM` (or similarly
-  named) custom text frame — common with several taggers and DJ software —
-  always reported `0.0`, rendering the grey "?" pill for every track even
-  though the metadata was present. Fixed via `_find_txxx_tag()`; also added
-  the missing WMA/ASF `WM/BeatsPerMinute` key. See
-  `tests/test_metadata.py::TestGetBpmMp3`/`TestFindTxxxTag`.
-
-## Native client layer (`clients/`)
-
-Native apps (Android TV active; iOS/Android phone reserved) are **thin REST
-clients** — no business logic duplicated. They implement only the
-read/playback subset (`items`, `continue`, `metadata`, `progress`, `intro`,
-`/video/stream`, `/thumb`); admin writes (rating/tag/move/delete/playlists)
-stay web-only. Contract = OpenAPI, exported via
-`hometools export-openapi --server {video,audio}` to
-`clients/shared/openapi/*.json`; both servers also expose a live, filtered
-`/openapi.json` + `/docs` (Swagger UI) via
-`streaming/core/openapi_schema.py`. `GET /api/video/continue` joins
-`get_continue_watching()` (unfinished, >30 s watched, <95 % of duration)
-with the catalog.
-
-**Android TV** (`clients/androidtv/`): Kotlin + Jetpack Compose for TV +
-Media3/ExoPlayer (handles MP4/MKV/AVI + HTTP Range without server
-transcoding). Three screens: server setup → browse → player. Data layer
-mirrors `MediaItem.to_dict()`, tolerates unknown fields. Build/test via
-`clients/androidtv/scripts/build.ps1` and `make android-*` targets; JVM unit
-tests (`ApiClientTest`, `ModelsTest`) run without an emulator.
-
-## Issue pipeline & CLI dashboard
-
-Both streaming servers feed warnings/errors into
-`streaming/core/issue_registry.py` in addition to logging:
-`issues/open_issues.json` (open), `issues/issue_events.jsonl` (append-only
-log), `issues/todo_candidates.json` (bundled task families), cooldown state
-in `issues/todo_state.json` (also stores manual `acknowledged`/`snoozed`).
-`GET /api/<media>/status` exposes a `todos` summary (monitoring/CLI only,
-never shown in the browser UI); `POST /api/<media>/todos/state` accepts
-`acknowledge`/`snooze`/`clear`. `_NOISE_RULES` suppress low-signal repeats;
-`_ROOT_CAUSE_PATTERNS` merge related issues (e.g. `library-unreachable`)
-into one TODO. `hometools stream-dashboard` renders issues + TODOs + the
-last scheduler run as a table (`--json`, `--fail-on-match` for CI-style
-gating). Design rule: the scheduler only ever produces *candidates* — no
-destructive/automatic actions yet.
-
-## Missing-episodes board (video only)
-
-`streaming/core/episode_gaps.py:find_missing_episodes()` is a pure function
-over the already-built catalog (no I/O): groups `MediaItem`s by
-`(parent folder, season)`, requires ≥2 present episodes per season before
-reporting gaps, and never flags an entirely-missing season (no reliable
-inner range). `GET /api/video/board` returns `missing_episodes` (from the
-in-memory catalog, instant) plus best-effort `issues` from
-`scan_video_library()`. UI: `/board` (`server_utils/_board.py`, same
-dark-theme family as `/audit`), entry point is the `#board-btn` in the
-tools-panel header (video only). CLI: `hometools missing-episodes`.
-
-## Library scan
-
-`streaming/core/library_scan.py` — read-only, filesystem-only analysis (no
-ffprobe, no network) for `hometools scan-library`. Video checks:
-`episode_naming` (warning), `oversized_folder`, `untagged_language`
-(info). Audio: `oversized_folder`. `ScanReport.to_dict()` is
-JSON-serializable; `--fail-on-warning` sets exit code 1. Always
-exception-safe (returns an empty report on any failure).
-
-## Index caching
-
-`/api/<media>/items` checks the cache first and only calls
-`check_library_accessible()` (up to ~3 s on NAS paths) when no cached items
-exist yet — never blocks delivery of already-available data. A persisted
-snapshot's age (`saved_at`) is honored as-is on load: a snapshot younger
-than `HOMETOOLS_STREAM_INDEX_CACHE_TTL` (default 900 s) is *not* rebuilt at
-startup; only older snapshots trigger a background rescan. Explicit
-`POST /api/<media>/refresh` always forces a full rebuild
-(`IndexCache.invalidate()`).
-
-## Shadow cache (`.hometools-cache/`)
-
-Mirrors the library layout for all generated artefacts (default:
-`.hometools-cache/` in the repo root, override via `HOMETOOLS_CACHE_DIR`).
-**Never modifies original media files.** Subdirectories: `audio/`, `video/`
-(thumbnails, small 120px + large 480px; waveform `*.waveform.json` files;
-faststart/remux MP4 caches), `indexes/` (persisted snapshots),
-`progress/`, `issues/`, `logs/`, plus `thumbnail_failures.json` and
-`video_metadata_cache.json`. `make clean` removes all of the above; the
-audit log lives separately under `HOMETOOLS_AUDIT_DIR` and is untouched.
-
-Thumbnails and faststart/remux caches use **mtime-based invalidation**
-(`source.st_mtime > cache.st_mtime` triggers regeneration) and run only in
-background daemon threads — never on the request path or at startup.
-Failure registries (`thumbnail_failures.json`) skip known-bad sources
-unless the source mtime advanced.
-
-### Waveform cache (audio)
-
-`streaming/core/waveform.py` extracts stereo peak data via ffmpeg
-(`-ac 2 -f f32le -ar 1000`, 256 segments/channel), stored as
-`<cache_dir>/audio/<relative_path>.waveform.json`
-(`{"peaks_l": [...], "peaks_r": [...], "segments": 256}`, with a
-mono-only legacy format still supported for old caches).
-`GET /api/audio/waveform?path=` serves from cache or generates on demand;
-`start_background_waveform_generation()` warms the whole library at
-startup. Classic player-bar canvas renders stereo (L above/R below
-centerline) or falls back to mono/plain-progress if no data is available.
-
-## On-the-fly remux, faststart & the iOS streaming cache
-
-`streaming/core/remux.py` solves two separate problems for `GET
-/video/stream`:
-
-1. **Non-native containers** (MKV/AVI/FLV, `needs_remux()`): copy-remuxed
-   to fragmented MP4 if codecs are browser-compatible
-   (`can_copy_codecs()`), else transcoded (H.264/AAC).
-2. **Non-faststart MP4s** (`moov` atom at the end): iOS Safari requires
-   HTTP Range (`206 Partial Content`), which a live ffmpeg pipe cannot
-   provide. Both cases get a **cached, range-capable MP4 copy**
-   (`ensure_faststart_cache()` / `ensure_remux_cache()`,
-   `{cache_dir}/video/{relative_path}.{faststart,remux}.mp4`) served via
-   `FileResponse`; only as a last-resort fallback does the endpoint use a
-   live `StreamingResponse`. Codec-copy caches build in seconds; codec
-   transcodes are triggered in the background and served once ready
-   (`HOMETOOLS_PRETRANSCODE` opts into eager whole-library
-   pre-transcoding, default off — the cache would otherwise grow to
-   double-digit GB). Temp files use an atomic tmp→rename pattern with
-   `try/finally` cleanup; a startup sweep thread removes any stale
-   `*.tmp.mp4` left over from crashes.
-
-Design rules: originals are never modified; faststart conversion is
-`-c copy` (no re-encode); ffmpeg/ffprobe failures fall back gracefully
-(never crash the request).
-
-## Channel streaming (`streaming/channel/`)
-
-A continuous HLS "TV channel" fed by a YAML programme schedule
-(`channel_schedule.yaml`), fundamentally different from the on-demand
-audio/video servers:
-
-- **Pre-transcode, never live-transcode into the stream.** All videos for
-  an upcoming block are transcoded to a uniform H.264/AAC 1280×720@25fps
-  MP4 in `.hometools-cache/channel/tmp/` *before* being fed to ffmpeg;
-  temp files are deleted after playback.
-- **Concat demuxer, single ffmpeg process.** One `-f concat -i list.txt -f
-  hls` process per block (slot or filler period) — never one process per
-  video. Per-video processes caused unavoidable segment-transition gaps
-  and 404s for hls.js; that architecture (and its workarounds — segment
-  counter sync, manifest cleanup) has been removed.
-- **Block lifecycle:** pre-transcode → write `concat.txt` → start ffmpeg →
-  wait for completion or interruption (stop/slot change) → delete temp
-  files.
-
-## Docker deployment
-
-Multi-stage image (Python 3.12-slim + ffmpeg + tini, non-root user with
-configurable UID/GID). `docker-compose.yml` runs one container per service
-from the same image: `audio` (8010, behind the `audio` Compose profile,
-optional), `video` (8011), `channel` (8012, optional). Shared named volumes
-`hometools-cache` / `hometools-audit` map to `/data/cache` / `/data/audit`
-and survive rebuilds. Library mounts default to `:ro`; write features
-(ratings, tag edit, move, soft-delete) need an explicit `rw` mount.
-`HOMETOOLS_STREAM_HOST=0.0.0.0`, `HOMETOOLS_CACHE_DIR=/data/cache`,
-`HOMETOOLS_AUDIT_DIR=/data/audit` are fixed in the image. Healthchecks use
-`/health` per container port. Tests are excluded from the build via
-`.dockerignore`. See `docs/docker.md` for the full `.env` reference.
-
-## PWA & offline downloads
-
-`_pwa.py` renders the manifest, service worker and icons. The service
-worker caches static assets (HTML/CSS/JS) and serves IndexedDB blobs for
-offline playback; **API responses are never cached** by the service
-worker — always fetched fresh. Offline downloads use IndexedDB for blob
-storage; PWA shortcuts support deep-linking (pin a folder to the home
-screen).
-
-## SVG icons (Design Rule 13)
-
-No Unicode/emoji for UI controls — iOS renders them as coloured emojis.
-Every icon is an inline SVG constant. `SVG_*` (Python, `_svg.py`) and
-`IC_*` (JS, injected by `_player_js.py`/fragments) constants currently
-cover: play/pause/prev/next/pip/back/menu/download/check/folder-play/
-pin/star (+empty)/shuffle/repeat/history/board/edit/lyrics/playlist/
-smart-playlist/queue/refresh/duplicate/move/trash/dots/cast, plus flags
-for de/en/fr/es/it/ja/ko/zh/pt/ru. New constants always go in `_svg.py`
-(Python side), never inline in a fragment module.
-The favorite star now uses a more pointed 5-point silhouette and the edit
-icon is a pencil/diagonal-pen glyph instead of the earlier document-style
-mark so button semantics read more clearly at small sizes.
-
-### Bugfix: `_svg.py` edits had no visible effect (2026-07-25)
-
-**Symptom:** Updating `SVG_STAR`/`SVG_STAR_EMPTY`/`SVG_EDIT` in `_svg.py`
-did not change the rendered icons at all — the old shapes kept showing up.
-
-**Root cause:** `_player_js.py`'s JS header defines its own `var IC_PLAY`,
-`IC_PAUSE`, `IC_DL`, `IC_CHECK`, `IC_FOLDER_PLAY`, `IC_PIN`, `IC_STAR`,
-`IC_STAR_FILLED`, `IC_STAR_EMPTY`, `IC_SHUFFLE`, `IC_REPEAT`, `IC_EDIT`,
-`IC_LYRICS` as **hardcoded literal SVG strings**, even though the matching
-`SVG_*` constants were already imported from `_svg.py` at the top of the
-file (masked by a blanket `# noqa: F401`). `_audit.py`'s separate
-`_AUDIT_PANEL_JS` script had the exact same problem for `IC_STAR_FILLED`/
-`IC_STAR_EMPTY`. Editing `_svg.py` alone therefore never reached the
-browser — the duplicated literals silently won.
-
-**Fix:** All of the above `IC_*` variables in `_player_js.py` and
-`_audit.py` now reference the imported `SVG_*` constant (same
-`.replace("'", "\\'")` escaping pattern already used for `IC_PLAYLIST`,
-`IC_TRASH`, `IC_DOTS`, etc.), so `_svg.py` is once again the single
-source of truth for these icons. `IC_REPEAT_ONE`, `IC_EYE`, `IC_EYE_OFF`
-have no `_svg.py` equivalent and stay as local literals (not duplicated
-elsewhere, so no drift risk).
-
-**Why no test caught it:** parseability (`esprima`) and the "no bare
-`SVG_*` identifier" regex test both passed — the bug wasn't a leaked
-identifier or invalid syntax, just two *valid*, independently-authored
-copies of the same JS string literal. No existing test asserted that the
-`IC_*` header block matches `_svg.py`'s `SVG_*` constants byte-for-byte.
-
-## Known follow-ups
-
-See `docs/IMPLEMENTATION_PLAN.md` for the maintained backlog (including a
-further split of `player_js/_library_tools.py`, ~2300 lines) and open
-design discussions (Smart Playlist cascades, `added_at` field, etc.).
-
-## JS syntax safety net (no TypeScript/bundler)
-
-`tests/test_js_syntax.py` parses the fully concatenated
-`render_player_js()` output (several audio/video × classic/waveform
-configs) with the pure-Python `esprima` parser and fails the build on
-invalid JS — the most likely breakage from editing one of the split
-`player_js/_*.py` fragments. This is a deliberate alternative to a
-TypeScript/bundler migration: server config values are interpolated
-directly into the JS text at render time, which is fundamentally
-incompatible with a build-time bundler without a bigger architecture
-change first (splitting config out into a separate JSON payload). See
-"TypeScript/bundler switch" in `docs/IMPLEMENTATION_PLAN.md` — Design
-Discussions for the full trade-off analysis and revisit conditions.
-
-## Vite/TypeScript migration scaffold (`streaming/core/webui/`, Phase 1 — 2026-07-30)
-
-The "TypeScript/bundler switch" rejection above is being revisited via a
-**gradual, test-safe migration** rather than a single big-bang rewrite (see
-"Vite/TypeScript migration" in `docs/IMPLEMENTATION_PLAN.md` for the full
-5-phase plan). Phase 1 only adds tooling — **no server behaviour changed**:
-
-- `src/hometools/streaming/core/webui/` is a standalone Vite + TypeScript
-  project (`package.json`, `vite.config.ts`, `tsconfig.json`).
-- `src/main.ts` defines the `PlayerConfig` TypeScript interface — the future
-  contract for a `<script id="ht-config" type="application/json">` blob that
-  will replace the current direct-interpolation of `api_path`,
-  `enable_shuffle`, `language_groups_json`, etc. into `render_player_js()`.
-  It is a no-op today (the tag does not exist yet in any served HTML).
-- `npm run build` outputs to `src/hometools/streaming/core/static/`
-  (git-ignored); `node_modules/` is also git-ignored. Nothing here is
-  imported by Python yet, nothing is served by FastAPI yet.
-- **Not wired up yet.** Do not mount `StaticFiles` or change `_html.py` /
-  `_player_js.py` until Phase 2 (config extraction) lands as its own
-  reviewed change — it touches the signature of `render_player_js()` and
-  ~20 direct test call sites across `tests/test_audit_log.py`,
-  `tests/test_pwa_shortcuts.py`, `tests/test_streaming_progress.py`, and
-  `tests/test_streaming_player_ui.py`.
-
-### Phase 2 (2026-07-30): `#ht-config` JSON blob (additive, non-breaking)
-
-`_html.py::_render_player_config_json()` builds a JSON dict (camelCase keys
-mirroring `PlayerConfig` in `webui/src/main.ts`) and embeds it as
-`<script id="ht-config" type="application/json">` right next to the
-existing `#initial-data` tag. **Nothing reads it yet** — `render_player_js()`
-still generates its flat top-level vars (`SHUFFLE_ENABLED`, `API_PATH`, ...)
-exactly as before via direct Python-string interpolation, so this step is
-purely additive and changed zero existing test assertions.
-
-- `language_groups_json` is parsed with `json.loads` inside a `try/except`;
-  malformed input degrades to `{}` instead of raising (never crash the
-  caller — Rule 5).
-- `</` is escaped to `<\/` in the dumped JSON to avoid premature
-  `</script>` termination — a plain, standard mitigation; still valid JSON
-  (`\/` is a legal escape for solidus).
-- `audiobookDirs` is read from `hometools.config.get_audiobook_dirs()`
-  wrapped in `try/except Exception` (defensive; matches how `_player_js.py`
-  already called it inline before this change).
-- New tests: `tests/test_streaming_player_ui.py::TestHtConfigJson`.
-- **Next (Phase 3):** switch `render_player_js()`'s flat vars to read from
-  the parsed `CFG` object one at a time. Each switch changes the literal JS
-  text and **will** break the corresponding brittle
-  `"SHUFFLE_ENABLED = true" in js`-style test assertions — fix those in the
-  same commit as the variable's switch-over, not as a separate big-bang
-  change.
-
-### Phase 3 (2026-07-30): first switch-over slice — `enable_shuffle`
-
-`render_player_js()` no longer accepts `enable_shuffle` at all — it never
-gated *which* JS got generated (shuffle functions are always emitted
-unconditionally), only the `SHUFFLE_ENABLED` literal's value. The JS now
-resolves `CFG` right after parsing `#initial-data`:
-
-```js
-var _cfgEl = document.getElementById('ht-config');
-var CFG = JSON.parse((_cfgEl && _cfgEl.textContent) || '{}');
-...
-var SHUFFLE_ENABLED = !!CFG.enableShuffle;
+```
+Input:  media library on disk (audio/video files, optional NAS mount)
+Output: browsable/streamable catalog via REST API + generated web UI
 ```
 
-`_html.py::render_media_page()` still takes `enable_shuffle` (drives the
-`#btn-shuffle` markup + the `#ht-config` blob's `enableShuffle` field) but no
-longer forwards it to `render_player_js(...)`. This is the template for
-migrating every remaining flag in Phase 3 — see the per-variable checklist
-in `docs/IMPLEMENTATION_PLAN.md`.
+---
 
-**Test fallout fixed in the same change:** `render_player_js()`-level tests
-that asserted a literal `"SHUFFLE_ENABLED = true/false"` were merged into
-one structural assertion (`SHUFFLE_ENABLED = !!CFG.enableShuffle`);
-server-level tests (`test_audio_server_enables_shuffle`,
-`test_video_server_does_not_enable_shuffle`) now parse the real
-`#ht-config` JSON from the HTTP response instead of grepping the HTML for a
-literal boolean; `test_js_syntax.py`'s `CONFIGS` dicts no longer pass
-`enable_shuffle` (would now raise `TypeError`).
+## 2. Module overview
 
-### Phase 3 second slice (2026-07-30): `enable_repeat`
-
-Same mechanical pattern as `enable_shuffle`: `render_player_js()` no longer
-accepts `enable_repeat`; `_html.py` no longer forwards it. JS now does
-`var REPEAT_ENABLED = !!CFG.enableRepeat;`.
-
-**Lesson learned mid-migration:** the initial Phase 3 scoping only listed
-`test_audit_log.py`/`test_pwa_shortcuts.py`/`test_streaming_progress.py`/
-`test_streaming_player_ui.py` as call sites to check per variable. The
-`enable_repeat` switch-over also broke
-`tests/test_feature_parity.py::TestRepeatParity::test_both_home_pages_include_repeat_js`,
-which literally grepped `"REPEAT_ENABLED = true"` from the rendered HTML —
-not in the originally-scoped file list. **Updated rule for every remaining
-variable in this migration:** grep the *entire* `tests/` directory for
-`<FLAG>_ENABLED = (true|false)` (and any other literal-value assertion tied
-to that flag) before starting the switch-over, not just the four
-historically-known files.
-
-### Phase 3 third slice (2026-07-30): `enable_skip_intro`
-
-Same mechanical pattern again: `render_player_js()` no longer accepts
-`enable_skip_intro`; `_html.py` no longer forwards it. JS now does
-`var SKIP_INTRO_ENABLED = !!CFG.enableSkipIntro;`. Following the lesson
-above, a full `tests/`-directory grep for `SKIP_INTRO_ENABLED` was done
-before starting — found only `tests/test_intro_markers.py::TestSkipIntroUI`
-(2 tests, updated to parse `#ht-config` JSON) and `test_js_syntax.py`'s
-`CONFIGS` (kwarg removed). `_html.py`'s own `enable_skip_intro` parameter
-(drives the `.video-skip-intro-btn` markup and the `#ht-config` blob's
-`enableSkipIntro` field) is untouched.
-
-### Phase 3 completion (2026-07-30): all remaining variables + `api_path`
-
-The remaining twelve boolean/scalar flags (`enable_rating_write`,
-`min_rating`, `debug_filter`, `enable_recent`, `enable_auto_resume`,
-`crossfade_duration`, `enable_metadata_edit`, `enable_lyrics`,
-`enable_playlists`, `playlist_sync_interval_ms`, `language_groups_json`/
-`default_language`, `item_noun`, `file_emoji`) were migrated in one pass,
-plus — the structurally biggest piece — **`api_path` itself**.
-
-`render_player_js()`'s signature is now just:
-
-```python
-def render_player_js(player_bar_style: str = "classic") -> str:
+```
+src/hometools/
+├── cli.py                    # entry point (`hometools` console script)
+├── config.py                 # HOMETOOLS_* env vars, single source of paths/ports
+├── audio/, video/             # standalone file CLI tools (sanitize, metadata,
+│                              #   compare, merger, silence, organizer)
+├── streaming/
+│   ├── core/                 # shared by audio+video servers (~80%)
+│   │   ├── models.py         # MediaItem, build_*_index, sort_items
+│   │   ├── catalog cache     # IndexCache — GET/refresh, TTL
+│   │   ├── media_overrides.py, playlists.py, smart_playlists.py
+│   │   ├── issue_registry.py, episode_gaps.py, library_scan.py
+│   │   ├── thumbnailer.py, waveform.py, remux.py
+│   │   ├── bpm_hints.py, openapi_schema.py
+│   │   └── server_utils/     # generates HTML/CSS/JS as Python strings (legacy)
+│   │       ├── css/, player_js/   # split fragments, concatenated at render time
+│   │       └── webui/             # Vite/TypeScript migration target (in progress)
+│   ├── audio/                # catalog.py, server.py, sync.py (thin wrapper)
+│   ├── video/                 # catalog.py, server.py, sync.py (thin wrapper)
+│   └── channel/               # HLS "TV channel" server (own architecture)
+└── clients/                   # native apps consuming the JSON API
+    └── androidtv/              # Kotlin + Compose for TV + Media3 (active)
 ```
 
-Every derived API endpoint that used to be built in Python via
-`api_path.rsplit("/", 1)[0] + "/xxx"` (there were 14 of these:
-`INTRO_API_PATH`, `RATING_API_PATH`, `AUDIT_UNDO_PATH`,
-`RECENT_API_PATH`, `METADATA_EDIT_PATH`, `LYRICS_API_PATH`,
-`PLAYLISTS_API_PATH`, `PLAYLISTS_VERSION_PATH`, `PLAYLISTS_SMART_PATH`,
-`FOLDER_ORDER_API_PATH`, `MOVE_API_PATH`, `DELETE_API_PATH`,
-`REVEAL_API_PATH`, `FOLDERS_API_PATH`, plus classic-mode
-`WAVEFORM_API_PATH`) now uses one JS helper defined once, right after `CFG`
-is parsed:
+---
 
-```js
-var API_PATH = CFG.apiPath || '';
-function _apiBase() { return API_PATH.split('/').slice(0, -1).join('/'); }
-...
-var RATING_API_PATH = _apiBase() + '/rating';
+## 3. Core concepts
+
+- **`MediaItem`** (`streaming/core/models.py`) — frozen dataclass, the single
+  item shape shared by audio+video. Never mutated; every transform returns a
+  new instance. Fields: `relative_path`, `title`, `artist` (video: folder
+  name), `season`/`episode`, `language`/`subtitle_language`, `genre`,
+  `rating`, `duration`, `bitrate`, `file_size`, `mtime`, `intro_start/end`,
+  `bpm`. All API responses expose items under `"items"`.
+- **Index cache** — catalog build is expensive (filesystem scan + ffprobe),
+  so each server keeps an in-memory + on-disk (`indexes/`) snapshot with a
+  TTL (`HOMETOOLS_STREAM_INDEX_CACHE_TTL`). Only `POST /refresh` forces a
+  full rebuild.
+- **Shadow cache (`.hometools-cache/`, `HOMETOOLS_CACHE_DIR`)** — mirrors the
+  library layout for every *generated* artefact (thumbnails, waveforms,
+  faststart/remux MP4s, index snapshots, issues, logs). Original media files
+  are never touched; invalidation is mtime-based.
+- **`#ht-config` bridge** — `_html.py` embeds one JSON blob (`CFG`) per page;
+  the generated JS reads config/API paths from `CFG` instead of Python
+  string-interpolating each value individually (`_apiBase()` derives every
+  `*_API_PATH` from `CFG.apiPath`). This is the seam the Vite/TS migration
+  is peeling outward from (see §7).
+- **Issue pipeline** — background scans/servers feed warnings into
+  `issue_registry.py` (`issues/open_issues.json` + append-only event log);
+  bundled into `todos`, exposed for monitoring/CLI only, never in the
+  browser UI.
+
+---
+
+## 4. Request lifecycle (audio/video server)
+
+```
+startup            → mount static assets, load cached index if fresh, start
+                      background thumbnail/waveform generation (daemon threads)
+GET /               → render_media_page() (HTML skeleton + #ht-config + JS)
+GET /api/.../items  → IndexCache (rebuild only if stale/missing/forced)
+GET /thumb          → shadow cache lookup → background-generate if missing
+GET /video/stream   → direct file, or faststart/remux cache, or live fallback
+POST /refresh       → IndexCache.invalidate() → full rebuild
 ```
 
-`AUDIOBOOK_DIRS` also lost its Python-side hack
-(`__import__("hometools.config", fromlist=[...]).get_audiobook_dirs()`
-called *inside* `_player_js.py`) — it's now `CFG.audiobookDirs`, computed
-once in `_html.py::_render_player_config_json` (the same
-`get_audiobook_dirs()` call, just in one place instead of two).
-`render_library_tools_js()` similarly dropped its `playlist_sync_interval_ms`
-parameter; the fragment reads `CFG.playlistSyncIntervalMs` directly (`CFG`
-is in scope for every fragment — they all concatenate into one IIFE).
+Client side: `localStorage` catalog cache (stale-while-revalidate, 5 min) →
+instant render → silent background fetch reconciles → Service Worker caches
+static assets only (never API responses) → IndexedDB stores offline blobs.
 
-**Test fallout (large — ~80 call sites):** grepped the *entire* `tests/`
-directory first (the Phase 3 lesson-learned rule), then used a one-off
-paren-balanced Python script to strip every now-invalid kwarg
-(`api_path=...`, `item_noun=...`, `enable_*=...`, `min_rating=...`, etc.)
-from every `render_player_js(...)` call site across six test files,
-keeping only `player_bar_style=...` where present. `test_js_syntax.py`'s
-`CONFIGS` dict collapsed from five verbose per-server kwarg sets to just
-`player_bar_style` per entry — every other kwarg is runtime-only now, so
-`audio_classic`/`video_classic` (and the two waveform variants) produce
-byte-identical JS; the distinct dict keys exist purely as readable
-`pytest.mark.parametrize` IDs.
+---
 
-Remaining literal-value assertions (e.g.
-`"RATING_WRITE_ENABLED = true" in js`, `"MIN_RATING_THRESHOLD = 2" in js`,
-`"RECENT_API_PATH = '/api/audio/recent'" in js`) were rewritten to either:
+## 5. Channel server (different architecture)
 
-1. assert the new structural `CFG.xxx`/`_apiBase()`-based JS expression, or
-2. render a real page (`render_media_page(...)`) or hit a live
-   `TestClient` and parse the actual `#ht-config` JSON for the value.
+Continuous HLS "TV channel" driven by `channel_schedule.yaml`. Unlike the
+on-demand servers: videos are **pre-transcoded** to a uniform H.264/AAC
+1280×720@25fps MP4 before ffmpeg ever sees them, and a **single** ffmpeg
+process per block reads them via the concat demuxer
+(`-f concat -i list.txt -f hls`). No live transcoding into the stream, no
+per-video ffmpeg process (both were tried and removed — see git log).
 
-New shared helper `_extract_ht_config(page)` in both
-`test_streaming_player_ui.py` and `test_streaming_progress.py` for (2);
-`TestHtConfigJson._config` in `test_streaming_player_ui.py` now delegates
-to the module-level helper instead of duplicating the regex/`json.loads`.
+---
 
-Verified end-to-end with live `TestClient` requests against both servers:
-every `CFG.*` field and every `_apiBase()`-derived path is present and
-correctly populated. 1388 tests passing, `ruff` clean,
-`test_feature_parity.py` green (51/51).
+## 6. Native clients
 
-**What's left of the Vite/TS migration:** Phase 4 (static serving via
-FastAPI `StaticFiles`), Phase 5 (module-by-module port to real `.ts`
-files), Phase 6 (delete the Python JS generators + the `esprima`-based
-`test_js_syntax.py`). See `docs/IMPLEMENTATION_PLAN.md`.
+Thin REST clients over the same API — no business logic duplicated.
+Read/playback subset only (`items`, `continue`, `metadata`, `progress`,
+`intro`, `/video/stream`, `/thumb`); admin writes (rating/tag/move/delete/
+playlists) stay web-only. Contract = `clients/shared/openapi/*.json`
+(`hometools export-openapi`) + live `/openapi.json`/`/docs`.
 
-### Phase 4 (2026-07-30): FastAPI static serving + Phase 5 first slice
+Android TV (`clients/androidtv/`): Kotlin + Jetpack Compose for TV +
+Media3/ExoPlayer, three screens (setup → browse → player), data layer
+mirrors `MediaItem.to_dict()`.
 
-**Static serving (`server_utils/_static.py`):** two small, defensive
-functions, both designed to never break a running server:
+---
 
-- `mount_static_assets(app)` — mounts `streaming/core/static/` (the Vite
-  build output; git-ignored, produced by `npm run build` in
-  `streaming/core/webui/` or by the Docker build) at `/static` via FastAPI's
-  `StaticFiles`. If the directory doesn't exist (unbuilt local dev
-  checkout), it logs one `logger.warning(...)` and returns `False` instead
-  of raising — matches Rule 5/6 (never crash, instant startup). Wired into
-  `audio/server.py`, `video/server.py` and `channel/server_playlist.py`'s
-  `create_app()` (the only three apps that render a full
-  `render_media_page()` UI).
-- `get_static_script_tag()` — reads Vite's `build.manifest: true` output
-  (`static/.vite/manifest.json`), looks up the `src/main.ts` entry, and
-  returns `<script src="/static/player.<hash>.js"></script>`. Returns `""`
-  (never raises) if the manifest or its `src/main.ts` key is missing. The
-  manifest is cached in a module-level dict after the first successful read
-  (small, read-only, no invalidation needed — the hash changes on every
-  rebuild, and rebuilds require a server restart anyway).
+## 7. Vite/TypeScript migration (in progress)
 
-`_html.py::render_media_page()` renders this tag **immediately before** the
-remaining inline `<script>{js}</script>` — this ordering is load-bearing:
-the bundle is built with `format: "iife"` (a classic, blocking script, not
-`type="module"`), so the browser executes it synchronously before moving
-on to the next `<script>` tag in document order, exactly like two inline
-`<script>` tags would behave today.
+Goal: replace the Python-string JS/CSS generators
+(`server_utils/_player_js.py` + `player_js/*.py` + `_css.py` + `css/*.py`,
+~8900 lines) module-by-module with real `.ts`/`.css`, built by Vite, served
+as static assets. Backend is unaffected.
 
-**Phase 5 first slice — `fmtTime`/`escHtml`/`formatBytes`
-(`webui/src/main.ts`):** these three were `player_js/_core.py`'s only
-top-level helpers with **zero references to any other identifier** in the
-~8900-line concatenated script — the one precondition that made porting
-them safe without first solving the module-coupling problem described
-below. They are now:
+- `streaming/core/webui/` — Vite project (`src/main.ts` defines `PlayerConfig`
+  and hosts already-ported leaf modules: `pathUtils.ts`, `dupeUtils.ts`,
+  `metricPill.ts`; `legacy-globals.d.ts` types the shared cross-fragment
+  globals still owned by the legacy script).
+- `server_utils/_static.py` mounts the Vite build output at `/static` and
+  injects its script tag right before the legacy inline `<script>` — same
+  execution order as before, zero behavior change.
+- Only dependency-free leaf functions have been ported so far; the
+  stateful fragments (`_core.py`, `_library_tools.py`, ...) are blocked by
+  cross-fragment coupling (see `docs/IMPLEMENTATION_PLAN.md` → Design
+  Discussions → "Player-JS-Modulkopplung").
+- Safety net until the migration is complete: `tests/test_js_syntax.py`
+  parses the concatenated legacy JS with `esprima`.
 
-1. Real, typed, exported TypeScript functions in `main.ts` (byte-for-byte
-   identical behavior to the deleted Python string versions — verified via
-   `tests/test_streaming_static.py` + the full `test_js_syntax.py`/
-   `test_streaming_player_ui.py`/`test_feature_parity.py` suites, which all
-   still pass because every remaining fragment only *calls*
-   `fmtTime(...)`/`escHtml(...)`/`formatBytes(...)`, never redefines them).
-2. Assigned onto `window` (`window.fmtTime = fmtTime;` etc.) at the bottom
-   of `main.ts` — the bridge pattern for as long as the remaining
-   `player_js/*.py` fragments still concatenate into one shared, non-strict
-   inline `<script>` function scope. A bare `fmtTime(...)` call inside that
-   legacy IIFE resolves through the normal JS scope chain (no local
-   declaration exists anymore) up to `window.fmtTime`.
-3. Deleted from `player_js/_core.py` (single source of truth per
-   `copilot-instructions.md` Rule 1) — only a comment pointing at
-   `webui/src/main.ts` remains.
+---
 
-**Graceful degradation when unbuilt:** if `static/` is missing (`npm run
-build` never ran), `get_static_script_tag()` returns `""`, so the page
-renders with no static `<script>` tag at all — meaning `fmtTime`/`escHtml`/
-`formatBytes` are genuinely undefined and any code path calling them throws
-a `ReferenceError` in the browser. This is a real, accepted regression risk
-for that scenario, mitigated by:
+## 8. Feature location index
 
-- `mount_static_assets()`'s startup warning (loud, impossible to miss in
-  server logs).
-- The Dockerfile's new `webui-builder` stage (Node 20, `npm ci && npm run
-  build`), which fails the whole image build if the frontend build fails
-  — the only path most users take (`docker compose up`). Its output is
-  copied into the python-builder stage's source tree before `pip install .`.
-- `pyproject.toml`'s new `[tool.setuptools.package-data]` entry
-  (`"hometools.streaming.core" = ["static/**/*"]`) so a built `static/`
-  directory is actually included in the installed package/wheel.
-- `streaming/core/webui/README.md`'s local build instructions for anyone
-  running the server directly from a source checkout (not Docker).
+Quick "where does X live" lookup — one line each, grouped by area.
 
-**Design Discussion — module coupling blocks further easy ports:** see
-`docs/IMPLEMENTATION_PLAN.md` → Design Discussions →
-"Player-JS-Modulkopplung blockiert einfachen Modul-für-Modul-Port". In
-short: virtually every other `player_js/*.py` fragment reads/writes
-identifiers declared in a *different* fragment file (they all rely on
-being concatenated into one shared scope), so porting any of them requires
-either an ambient `.d.ts` contract for the cross-fragment globals first, or
-picking another dependency-free leaf function. One concrete code smell
-found along the way (not fixed — not unambiguous, and it currently works
-as intended): `_drag_drop_init.py` assigns `_dndCleanup = function() {...}`
-without ever declaring it with `var` anywhere — it only works because
-non-strict mode turns that into an implicit `window._dndCleanup` global,
-which `destroyPlaylistDragDrop()` in `_smart_playlists.py` then reads. A
-real ES-module/strict-mode port of either fragment would need an explicit
-shared declaration for this first.
+**UI/rendering** (`server_utils/`): header `<header>` (`_html.py`, always
+zurück|Home|Breadcrumb|spacer|Tools|Suche, `renderBreadcrumb()` in
+`_queue.py` — inline in header, no separate nav row, no unicode icons) ·
+kebab menu `_openCtxMenu()`
+(`player_js/_library_tools.py`) · playlists `playlists.py` +
+`_folder_browse.py` · smart playlists `smart_playlists.py` +
+`_smart_playlists.py` · queue `_queue.py` · tools panel `localStorage['ht-tools']`
++ `body.tool-*` · duplicate detection `dupeUtils.ts` · file mover
+`POST /api/audio/move-file` · windowed rendering `_track_render.py` ·
+catalog cache `localStorage` (`_CATALOG_MAX_AGE_MS`) · skip-intro
+`GET/POST/DELETE /api/video/intro` · BPM `audio/metadata.py` +
+`audio/bpm.py` + `bpm_hints.py` + `metricPill.ts`.
+
+**Backend features**: missing-episodes board `episode_gaps.py` +
+`GET /api/video/board` + `/board` · library scan `library_scan.py` +
+`hometools scan-library` · issue dashboard `issue_registry.py` +
+`hometools stream-dashboard` · waveform `waveform.py` +
+`GET /api/audio/waveform` · remux/faststart `remux.py` +
+`GET /video/stream`.
+
+**Ops**: Docker `Dockerfile` (multi-stage incl. `webui-builder`) +
+`docker-compose.yml` (services `audio`/`video`/`channel`) · PWA `_pwa.py`
+(manifest/SW/icons) + IndexedDB offline downloads.
+
+**Icons**: `_svg.py` (`SVG_*`, Python) ↔ `IC_*` (JS, `player_js/_core.py`
+header) — always keep 1:1, no independent literals (past bug, see git log).
+
+---
+
+## 9. Adding a new media type
+
+1. `streaming/<type>/catalog.py` → `list[MediaItem]`
+2. `streaming/<type>/sync.py` → delegate to `core.sync`
+3. `streaming/<type>/server.py` → call `render_media_page()`
+4. CLI in `cli.py`, config in `config.py`, tests in `tests/`
+
 

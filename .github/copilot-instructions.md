@@ -31,7 +31,7 @@ Always run commands from the repo root. The virtualenv is `hometools-env/`.
 10. **Sync only on explicit CLI command.** Never auto-pull from NAS.
 11. **Logging, not print.** `logging.getLogger(__name__)` in library code.
 12. **ffmpeg/ffprobe** are optional runtime deps (thumbnail extraction, silence trimming). Always handle `FileNotFoundError` gracefully.
-13. **No Unicode/Emoji for UI controls.** All buttons use inline SVGs (defined as `SVG_*` constants in `server_utils.py` and `IC_*` JS variables). Never use Unicode chars like `▶ ◄ ► ⏸ ⊞ ↓` or HTML entities like `&#9733;` — iOS renders them as coloured emojis. Current SVG constants: `SVG_PLAY`, `SVG_PAUSE`, `SVG_PREV`, `SVG_NEXT`, `SVG_PIP`, `SVG_BACK`, `SVG_MENU`, `SVG_DOWNLOAD`, `SVG_CHECK`, `SVG_FOLDER_PLAY`, `SVG_PIN`, `SVG_STAR`, `SVG_STAR_EMPTY`, `SVG_SHUFFLE`, `SVG_REPEAT`, `SVG_HISTORY`, `SVG_BOARD`, `SVG_EDIT`, `SVG_LYRICS`, `SVG_PLAYLIST`, `SVG_SMART_PLAYLIST`, `SVG_QUEUE`, `SVG_REFRESH`, `SVG_DUPLICATE`, `SVG_MOVE`, `SVG_TRASH`, `SVG_DOTS`, `SVG_CAST`, `SVG_FLAG_DE`, `SVG_FLAG_EN`, `SVG_FLAG_FR`, `SVG_FLAG_ES`, `SVG_FLAG_IT`, `SVG_FLAG_JA`, `SVG_FLAG_KO`, `SVG_FLAG_ZH`, `SVG_FLAG_PT`, `SVG_FLAG_RU`.
+13. **No Unicode/Emoji for UI controls.** All buttons use inline SVGs (defined as `SVG_*` constants in `server_utils.py` and `IC_*` JS variables). Never use Unicode chars like `▶ ◄ ► ⏸ ⊞ ↓` or HTML entities like `&#9733;`.
 14. **Event-listener lifecycle.** Any feature that registers `document`-level or long-lived DOM event listeners (e.g. Drag-and-Drop) **must** provide a cleanup/destroy function that removes all listeners via `removeEventListener` (requires named handler references, not anonymous functions). The cleanup must be called **before re-initializing** the feature and **when leaving the view** (e.g. `showFolderView`, `showPlaylist`). Pattern: `var _cleanup = null; function init() { destroy(); ... _cleanup = function() { removeEventListener(...); }; } function destroy() { if (_cleanup) { _cleanup(); _cleanup = null; } }`. Current instances: `initPlaylistDragDrop` / `destroyPlaylistDragDrop` / `_dndCleanup`, `initQueueDragDrop` / `destroyQueueDragDrop` / `_queueDndCleanup`.
 
 ## Validation Checklist
@@ -43,19 +43,27 @@ After any change, run in this order:
 4. If you changed streaming UI or API: also run `python -m pytest tests/test_feature_parity.py -v` — catches audio↔video drift
 
 ## Working Behaviour
+
 - **Proactive code review**: When working on a task, report any **bugs**, **code smells**, or **questionable patterns** discovered along the way — even if unrelated to the current task. Include a brief suggestion for each finding.
 - **Don't silently fix ambiguous findings**: Only fix a discovered issue directly if it is **unambiguously wrong** (missing import, typo, off-by-one). If the intent is unclear, or a comment/print suggests ongoing work — **ask first** or add a `# TODO` instead of removing/rewriting it. Debug prints or markers like `# discuss` are investigation aids, not dead code.
-- **Open tasks → implementation plan**: Add new TODOs to `docs/implementation-plan.md` instead of writing `# TODO` in source code.
-- **Design discussions → implementation plan**: Open architectural questions and trade-off decisions go into the **Design Discussions** section of `docs/implementation-plan.md`. Do not embed them inline in source code.
+- **Open tasks → implementation plan**: Add new TODOs to `docs/IMPLEMENTATION_PLAN.md` instead of writing `# TODO` in source code.
+- **Design discussions → implementation plan**: Open architectural questions and trade-off decisions go into the **Design Discussions** section of `docs/IMPLEMENTATION_PLAN.md`. Do not embed them inline in source code.
 - **Raise concerns**: If an approach seems risky, fragile, or architecturally problematic, voice the concern explicitly before or alongside the implementation.
+
 ## Maintaining these docs
 
-**MANDATORY: Every code change must be documented. No exceptions.**
-
-- **When implementing a feature or fix**, immediately update `docs/architecture.md` with a new section describing the design, modules involved, and design rules.
-- **When moving a task to "Done" in `IMPLEMENTATION_PLAN.md`**, always add or update the corresponding section in `docs/architecture.md`. No Done-item without architecture entry.
-- **When you identify fundamental changes** (new modules, new fields on MediaItem, new endpoints, changed CSS conventions), update `docs/architecture.md`.
-- **When you identify an open task**, add it to `docs/IMPLEMENTATION_PLAN.md`.
-- **When adding new SVG constants** (`SVG_*` / `IC_*`), update the list in Architecture Rule 13 in this file AND in the SVG-Icons section of `docs/architecture.md`.
-- **After every session**, verify that `docs/IMPLEMENTATION_PLAN.md` Done-section and `docs/architecture.md` are in sync with the actual code.
+- **`docs/architecture.md` is the architecture reference, not a rule file.**
+  It gives a fast conceptual overview (module map, core concepts, request
+  lifecycle) *and* a compact "where does X live" location index (its §8).
+  Short explanatory lines are fine when they convey a relationship or
+  concept; avoid step-by-step bugfix narratives, root-cause deep-dives, or
+  "lessons learned" — those belong in `git log`/PR descriptions.
+- **After every feature or fix**, update the relevant section: concept text
+  if it changes a relationship, the location index (§8) if it's a new
+  file/endpoint. Never leave an implemented feature unlisted; never leave a
+  removed one listed.
+- **When a task in `docs/IMPLEMENTATION_PLAN.md` is done**, remove it (history only in `git log`).
+- **Instruction files (`.github/instructions/*.instructions.md`) stay
+  behavior rules scoped to a path glob** — never re-describe architecture
+  there; link to the relevant `docs/architecture.md` section instead. 
 

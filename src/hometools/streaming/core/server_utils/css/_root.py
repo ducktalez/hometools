@@ -32,15 +32,24 @@ header {
 }
 .logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); user-select: none; }
 .logo-home-btn {
-  background: none; border: none; font-size: 1.4rem; line-height: 1;
+  background: none; border: none; line-height: 1;
   cursor: pointer; padding: 0 2px; color: inherit; flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+.logo-home-btn svg { width: 20px; height: 20px; }
 .logo-home-btn:hover { opacity: 0.75; }
+.logo-home-btn:disabled, .logo-home-btn.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.back-btn:disabled, .back-btn.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.play-all-btn:disabled, .play-all-btn.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 .logo-title {
   font-size: 1.1rem; font-weight: 700; color: var(--accent);
-  user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 0; min-width: 0;
+  user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0;
 }
+/* Flexible spacer — pushes play-all/view-toggle/tools/search to the right,
+   keeping the header structure constant regardless of which leading
+   elements (logo-title vs. breadcrumb) are currently visible. */
+.header-spacer { flex: 1 1 auto; min-width: 0.5rem; }
 .offline-close, .offline-action-btn {
   background: var(--surface2); color: var(--text); border: 1px solid #444;
   border-radius: 999px; cursor: pointer; padding: 0.4rem 0.8rem;

@@ -712,20 +712,26 @@ def create_app(
         """Estimate a track's BPM (librosa) and write it to the file's tags.
 
         Body: ``{"path": "..."}``. This is an **edit tool** — the client
-        only exposes it (as a clickable pill) when the Tools-panel "BPM
-        berechnen" toggle is active; the endpoint itself has no separate
-        feature flag since BPM calculation is inherently harmless to expose
-        (it estimates + writes one numeric tag, same trust level as rating
-        writes).  Requires the optional ``audio-analysis`` extra (librosa);
-        returns ``{"ok": false, "error": "..."}`` (never a 5xx) when that
-        dependency is missing or analysis fails, so the UI can show a toast
-        instead of a broken request.
+        only exposes it (via the BPM-adjust popup) when the Tools-panel
+        "BPM berechnen" toggle is active; the endpoint itself has no
+        separate feature flag since BPM calculation is inherently harmless
+        to expose (it estimates + writes one numeric tag, same trust level
+        as rating writes). Requires the optional ``audio-analysis`` extra
+        (librosa); returns ``{"ok": false, "error": "..."}`` (never a 5xx)
+        when that dependency is missing or analysis fails, so the UI can
+        show a toast instead of a broken request.
+
+        The raw librosa estimate is biased by any stored octave-correction
+        hint (``streaming/core/bpm_hints.py``) before being rounded/saved —
+        set previously via a "Langsamer"/"Schneller" BPM-adjust action, so
+        a known half/double-tempo mis-detection isn't reproduced here.
         """
         import asyncio
 
         from hometools.audio.bpm import calculate_bpm
         from hometools.audio.metadata import get_bpm, set_bpm
         from hometools.streaming.core.audit_log import log_bpm_write
+        from hometools.streaming.core.bpm_hints import get_octave_multiplier
 
         path = str(payload.get("path") or "").strip()
         if not path:
@@ -737,13 +743,117 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         old_bpm = get_bpm(file_path)
-        bpm = await asyncio.to_thread(calculate_bpm, file_path)
-        if bpm is None:
+        raw_bpm = await asyncio.to_thread(calculate_bpm, file_path)
+        if raw_bpm is None:
             return {
                 "ok": False,
                 "error": "BPM-Berechnung nicht verf\u00fcgbar (librosa fehlt oder Analyse fehlgeschlagen).",
             }
+        multiplier = get_octave_multiplier(resolved_cache_dir, "audio", path)
+        bpm = raw_bpm * multiplier
 
+        ok = set_bpm(file_path, bpm)
+        if not ok:
+            return {"ok": False, "error": "BPM konnte nicht gespeichert werden."}
+
+        rounded = float(round(bpm))
+        _audio_index_cache.patch_items({path: {"bpm": rounded}})
+        _audio_index_cache.invalidate()
+        entry = log_bpm_write(
+            resolved_audit_dir,
+            server="audio",
+            path=path,
+            old_bpm=old_bpm,
+            new_bpm=rounded,
+        )
+        return {"ok": True, "bpm": rounded, "entry_id": entry.entry_id}
+
+    @app.post("/api/audio/bpm/adjust")
+    async def audio_bpm_adjust(payload: dict[str, object]) -> dict[str, object]:
+        """Halve/double a track's stored BPM and remember the correction.
+
+        Body: ``{"path": "...", "factor": 0.5 | 2}``. Beat-tracking
+        sometimes locks onto half/double the true tempo (an "octave
+        error") — this fixes a mis-detected value in one click AND biases
+        every future "neu berechnen" (``/api/audio/bpm/calculate``) call
+        the same way via ``streaming/core/bpm_hints.py``, so the same
+        mistake isn't repeated. Requires an existing positive BPM value
+        (nothing to scale otherwise); rejects results outside a sane
+        1-400 BPM range. Never a 5xx for a "nothing to adjust" case —
+        returns ``{"ok": false, "error": "..."}`` instead.
+        """
+        from hometools.audio.metadata import get_bpm, set_bpm
+        from hometools.streaming.core.audit_log import log_bpm_write
+        from hometools.streaming.core.bpm_hints import adjust_octave_multiplier
+
+        path = str(payload.get("path") or "").strip()
+        try:
+            factor = float(payload.get("factor") or 0)
+        except (TypeError, ValueError):
+            factor = 0.0
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        if factor not in (0.5, 2.0):
+            raise HTTPException(status_code=400, detail="factor must be 0.5 or 2")
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        old_bpm = get_bpm(file_path)
+        if old_bpm <= 0:
+            return {"ok": False, "error": "Kein BPM-Wert vorhanden, der angepasst werden k\u00f6nnte."}
+        new_bpm = old_bpm * factor
+        if not (1.0 <= new_bpm <= 400.0):
+            return {"ok": False, "error": "Angepasster BPM-Wert liegt au\u00dferhalb des g\u00fcltigen Bereichs."}
+
+        ok = set_bpm(file_path, new_bpm)
+        if not ok:
+            return {"ok": False, "error": "BPM konnte nicht gespeichert werden."}
+
+        adjust_octave_multiplier(resolved_cache_dir, "audio", path, factor)
+        rounded = float(round(new_bpm))
+        _audio_index_cache.patch_items({path: {"bpm": rounded}})
+        _audio_index_cache.invalidate()
+        entry = log_bpm_write(
+            resolved_audit_dir,
+            server="audio",
+            path=path,
+            old_bpm=old_bpm,
+            new_bpm=rounded,
+        )
+        return {"ok": True, "bpm": rounded, "entry_id": entry.entry_id}
+
+    @app.post("/api/audio/bpm/set")
+    async def audio_bpm_set(payload: dict[str, object]) -> dict[str, object]:
+        """Manually set a track's BPM to an explicit value ("Analoge Werteingabe").
+
+        Body: ``{"path": "...", "bpm": <number>}``. Unlike ``bpm/adjust``
+        this does **not** touch the stored octave-correction hint
+        (``streaming/core/bpm_hints.py``) — a one-off manual value doesn't
+        tell us anything about *why* the last automatic estimate was
+        wrong, only what the correct value is right now.
+        """
+        from hometools.audio.metadata import get_bpm, set_bpm
+        from hometools.streaming.core.audit_log import log_bpm_write
+
+        path = str(payload.get("path") or "").strip()
+        try:
+            bpm = float(payload.get("bpm") or 0)
+        except (TypeError, ValueError):
+            bpm = 0.0
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        if not (1.0 <= bpm <= 400.0):
+            return {"ok": False, "error": "BPM muss zwischen 1 und 400 liegen."}
+
+        try:
+            file_path = resolve_audio_path(resolved_library_dir, path)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        old_bpm = get_bpm(file_path)
         ok = set_bpm(file_path, bpm)
         if not ok:
             return {"ok": False, "error": "BPM konnte nicht gespeichert werden."}

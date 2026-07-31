@@ -257,7 +257,7 @@ def test_render_media_page_contains_expected_elements():
         item_noun="item",
     )
     assert "<audio" in page
-    assert "🎵" in page
+    assert 'id="header-logo"' in page  # emoji removed from header (Rule 13: no unicode UI controls)
     assert 'id="folder-grid"' in page
     assert 'id="play-all-btn"' in page
     assert "item" in page

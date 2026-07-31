@@ -326,10 +326,10 @@ def get_bpm_min() -> int:
     Used to normalize the BPM pill's fill/heatmap-color in the streaming UI
     (a track at or below this value renders as "slowest"). Purely a display
     range — does **not** hide or filter tracks whose BPM falls outside it.
-    Set ``HOMETOOLS_BPM_MIN`` to override.  Default: ``60``.
+    Set ``HOMETOOLS_BPM_MIN`` to override.  Default: ``0``.
     """
-    val = _get_int_from_env("HOMETOOLS_BPM_MIN", 60)
-    return max(1, val)
+    val = _get_int_from_env("HOMETOOLS_BPM_MIN", 0)
+    return max(0, val)
 
 
 def get_bpm_max() -> int:

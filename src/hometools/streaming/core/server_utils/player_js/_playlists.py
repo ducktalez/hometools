@@ -70,7 +70,7 @@ def render_playlists_js() -> str:
     if (!pl) return null;
     /* Smart playlist: evaluate rules against allItems. */
     if (pl.smart && pl.smart.rules) {
-      var resolvedSmart = _evaluateSmartPlaylist(pl);
+      var resolvedSmart = _evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites);
       if (!resolvedSmart || resolvedSmart.length === 0) return null;
       return { pl: pl, resolved: resolvedSmart };
     }
@@ -84,157 +84,11 @@ def render_playlists_js() -> str:
     return { pl: pl, resolved: resolved };
   }
 
-  /* ── Smart playlist evaluator (mirror of Python smart_playlists.py) ── */
-  var _smartRegexCache = Object.create(null);
-  function _smartCompile(pat) {
-    if (typeof pat !== 'string' || pat.length > 256) return null;
-    if (pat in _smartRegexCache) return _smartRegexCache[pat];
-    var rx = null;
-    try { rx = new RegExp(pat, 'i'); } catch (e) { rx = null; }
-    _smartRegexCache[pat] = rx;
-    return rx;
-  }
-  function _smartGetField(it, field) {
-    if (field === 'added_at') return Number(it.mtime || 0);
-    if (field === 'is_favorite') {
-      return !!(_savedFavorites && _savedFavorites[it.relative_path]);
-    }
-    if (field === 'in_folder') {
-      var rp = String(it.relative_path || '');
-      var i = rp.lastIndexOf('/');
-      return i >= 0 ? rp.substring(0, i) : '';
-    }
-    return it[field];
-  }
-  function _smartEvalRule(rule, it, plIndex) {
-    try {
-      var field = String(rule.field || '');
-      var op = String(rule.op || '');
-      var value = rule.value;
-      if (field === 'in_playlist') {
-        var rp = String(it.relative_path || '');
-        var ids = Array.isArray(value) ? value : [value];
-        var hits = ids.map(function(pid) {
-          var set = plIndex[String(pid)];
-          return !!(set && set[rp]);
-        });
-        if (op === 'any_of') return hits.some(function(h) { return h; });
-        if (op === 'all_of') return hits.length > 0 && hits.every(function(h) { return h; });
-        if (op === 'none_of') return !hits.some(function(h) { return h; });
-        return false;
-      }
-      var actual = _smartGetField(it, field);
-      if (field === 'added_at') {
-        var ts = Number(actual);
-        var v = Number(value);
-        if (!isFinite(ts) || !isFinite(v) || ts <= 0) return false;
-        if (op === 'within_days') return (Date.now() / 1000 - ts) <= v * 86400;
-        if (op === 'before')      return ts < v;
-        if (op === 'after')       return ts > v;
-        return false;
-      }
-      var na, nv;
-      switch (op) {
-        case 'eq':
-          if (typeof actual === 'string' && typeof value === 'string') {
-            return actual.toLowerCase() === value.toLowerCase();
-          }
-          return actual === value;
-        case 'contains':
-          if (actual == null || value == null) return false;
-          return String(actual).toLowerCase().indexOf(String(value).toLowerCase()) >= 0;
-        case 'starts_with':
-          if (actual == null || value == null) return false;
-          return String(actual).toLowerCase().indexOf(String(value).toLowerCase()) === 0;
-        case 'matches':
-          var rx = _smartCompile(String(value || ''));
-          return !!(rx && rx.test(String(actual == null ? '' : actual)));
-        case 'gte':
-          na = Number(actual); nv = Number(value);
-          return isFinite(na) && isFinite(nv) && na >= nv;
-        case 'lte':
-          na = Number(actual); nv = Number(value);
-          return isFinite(na) && isFinite(nv) && na <= nv;
-        case 'between':
-          if (!Array.isArray(value) || value.length !== 2) return false;
-          var lo = Number(value[0]), hi = Number(value[1]);
-          if (lo > hi) { var t = lo; lo = hi; hi = t; }
-          na = Number(actual);
-          return isFinite(na) && lo <= na && na <= hi;
-        case 'in':
-          if (!Array.isArray(value)) return false;
-          return value.some(function(v) {
-            if (typeof actual === 'string' && typeof v === 'string') {
-              return actual.toLowerCase() === v.toLowerCase();
-            }
-            return actual === v;
-          });
-        default:
-          return false;
-      }
-    } catch (e) { return false; }
-  }
-  function _buildSmartPlIndex() {
-    var idx = Object.create(null);
-    _userPlaylists.forEach(function(pl) {
-      if (pl.smart && pl.smart.rules) return; /* skip smart, no cascades */
-      var pid = String(pl.id || '');
-      if (!pid) return;
-      var set = Object.create(null);
-      (pl.items || []).forEach(function(rp) { set[String(rp)] = true; });
-      idx[pid] = set;
-    });
-    return idx;
-  }
-  function _smartApplySort(items, sortKey) {
-    if (!sortKey) return items;
-    var arr = items.slice();
-    if (sortKey === 'random') {
-      for (var i = arr.length - 1; i > 0; i--) {
-        var j = Math.floor(Math.random() * (i + 1));
-        var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-      }
-      return arr;
-    }
-    var desc = sortKey.indexOf('_desc') === sortKey.length - 5 && sortKey.length > 5;
-    var base = desc ? sortKey.substring(0, sortKey.length - 5) : sortKey;
-    var keyFn = null;
-    if (base === 'title')    keyFn = function(x) { return String(x.title || '').toLowerCase(); };
-    if (base === 'rating')   keyFn = function(x) { return Number(x.rating || 0); };
-    if (base === 'added_at') keyFn = function(x) { return Number(x.mtime || 0); };
-    if (base === 'duration') keyFn = function(x) { return Number(x.duration || 0); };
-    if (!keyFn) return items;
-    arr.sort(function(a, b) {
-      var ka = keyFn(a), kb = keyFn(b);
-      if (ka < kb) return desc ?  1 : -1;
-      if (ka > kb) return desc ? -1 :  1;
-      return 0;
-    });
-    return arr;
-  }
-  function _evaluateSmartPlaylist(pl) {
-    try {
-      var smart = pl && pl.smart;
-      if (!smart || !Array.isArray(smart.rules) || smart.rules.length === 0) return [];
-      var match = (smart.match === 'any') ? 'any' : 'all';
-      var idx = _buildSmartPlIndex();
-      var matched = [];
-      allItems.forEach(function(it) {
-        var results = smart.rules.map(function(r) {
-          return _smartEvalRule(r, it, idx);
-        });
-        var keep = (match === 'all')
-          ? results.every(function(v) { return v; })
-          : results.some(function(v) { return v; });
-        if (keep) matched.push(it);
-      });
-      if (smart.sort) matched = _smartApplySort(matched, String(smart.sort));
-      if (typeof smart.limit === 'number' && smart.limit > 0) {
-        matched = matched.slice(0, smart.limit);
-      }
-      return matched;
-    } catch (e) { return []; }
-  }
+  /* Smart playlist evaluator: ported to webui/src/smartPlaylist.ts,
+     bridged onto window (see main.ts) as window._evaluateSmartPlaylist —
+     called here with the current allItems/_userPlaylists/_savedFavorites
+     since the ported module takes them as explicit parameters instead of
+     reading mutable globals (see that file's header comment). */
 
   /* Refresh smart playlist: re-evaluate locally and re-render. */
   function refreshSmartPlaylist(plId) {
@@ -242,7 +96,7 @@ def render_playlists_js() -> str:
     if (!pl || !pl.smart) return;
     /* If currently viewing this playlist, re-render in place. */
     if (typeof inPlaylist !== 'undefined' && inPlaylist && _currentPlaylistId === plId) {
-      var resolved = _evaluateSmartPlaylist(pl);
+      var resolved = _evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites);
       playlistItems = resolved;
       applyFilter();
       showToast('Aktualisiert: ' + resolved.length + ' Titel');

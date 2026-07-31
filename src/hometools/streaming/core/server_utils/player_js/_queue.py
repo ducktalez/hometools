@@ -600,7 +600,6 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
 
   /* compute direct sub-folders and loose files at a path level */
   var IGNORED_FOLDERS = {'#recycle': true, '@eaDir': true};
-  var _LANG_TAG_RE = /\\s*\\(\\s*(?:engl(?:ish)?|eng|en|german|deutsch|ger|de|french|fran[c\u00e7]ais(?:e)?|fr|spanish|espa[n\u00f1]ol|es|italian(?:o)?|it|japanese|jap|jpn?|ja|korean|kor?|ko|chinese|zh|portuguese|pt|russian|ru)(?:\\s*,\\s*(?:ger|de|eng|en)(?:\\s*sub(?:s)?)?)?\\s*\\)/gi;
   var _LANG_DETECT_MAP = [
     [/\\(\\s*engl(?:ish)?\\s*(?:,\\s*(?:ger|de)(?:\\s*sub(?:s)?)?)?\\s*\\)/i, 'en'],
     [/\\(\\s*eng\\s*\\)/i, 'en'], [/\\(\\s*en\\s*\\)/i, 'en'],
@@ -623,13 +622,9 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     return '';
   }
 
-  function cleanFolderName(name) {
-    /* Strip # favourite prefix */
-    if (name.charAt(0) === '#') name = name.substring(1);
-    /* Strip language tags */
-    name = name.replace(_LANG_TAG_RE, '');
-    return name.replace(/\\s{2,}/g, ' ').trim();
-  }
+  /* cleanFolderName() now lives in webui/src/breadcrumb.ts, bridged onto
+     window (see main.ts) — this bare identifier resolves through the
+     normal JS scope chain to window.cleanFolderName. */
 
   function langBadgesHtml(langs) {
     if (!langs || !langs.length) return '';
@@ -778,25 +773,16 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     return { folders: merged, files: files };
   }
 
-  function leafName(path) {
-    if (!path) return originalTitle;
-    var i = path.lastIndexOf('/');
-    var raw = i >= 0 ? path.substring(i + 1) : path;
-    return cleanFolderName(raw);
-  }
-
-  function parentPath(path) {
-    if (!path) return '';
-    var i = path.lastIndexOf('/');
-    return i >= 0 ? path.substring(0, i) : '';
-  }
+  /* leafName()/parentPath() now live in webui/src/pathUtils.ts, bridged
+     onto window (see main.ts) — these bare identifiers resolve through
+     the normal JS scope chain to window.leafName/window.parentPath. */
 
   function showLoadingState(message) {
     folderGrid.classList.remove('view-hidden');
     trackView.classList.add('view-hidden');
     filterBar.classList.add('view-hidden');
-    playAllBtn.style.display = 'none';
-    backBtn.style.display = currentPath ? 'inline-block' : 'none';
+    playAllBtn.classList.add('disabled');
+    backBtn.classList.toggle('disabled', !currentPath);
     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
     trackCount.textContent = 'Loading…';
     if (!player.currentSrc) playerBar.classList.add('view-hidden');
@@ -809,10 +795,11 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     folderGrid.classList.remove('view-hidden');
     trackView.classList.add('view-hidden');
     filterBar.classList.add('view-hidden');
-    playAllBtn.style.display = 'none';
+    playAllBtn.classList.add('disabled');
     if (!player.currentSrc) playerBar.classList.add('view-hidden');
     trackCount.textContent = 'Library unavailable';
     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
+    backBtn.classList.toggle('disabled', !currentPath);
     backBtn.style.display = currentPath ? 'inline-block' : 'none';
     folderGrid.innerHTML = '<div class="empty-hint">' + escHtml(detail || 'Library could not be loaded.') + '</div>';
     renderBreadcrumb();
@@ -924,36 +911,26 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
       });
   }
 
-  /* ── breadcrumb ── */
+  /* ── breadcrumb ──────────────────────────────────────────────────────
+     Lives inline in the header (between the Home button and the flexible
+     spacer, see docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung").
+     Only the path segments are rendered — no redundant "Home" entry, since
+     the header-logo button already covers that. When visible, hides
+     `.logo-title` so the current folder name isn't shown twice.
+     Markup building (segments, offline special-case, escaping) is ported
+     to `webui/src/breadcrumb.ts::renderBreadcrumbHtml()`, bridged onto
+     `window` (see main.ts) — this bare identifier resolves through the
+     normal JS scope chain to window.renderBreadcrumbHtml. Do not re-inline
+     that logic here; extend breadcrumb.ts instead. */
   function renderBreadcrumb() {
-    if (!currentPath) { breadcrumb.classList.remove('visible'); return; }
-    breadcrumb.classList.add('visible');
-    /* Special offline playlist breadcrumb */
-    if (currentPath === '__offline__') {
-      breadcrumb.innerHTML = '<a data-path="">\\u{1F3E0} Home</a>' +
-        '<span class="sep">\\u203A</span>' +
-        '<span class="current">Downloaded</span>';
-      breadcrumb.querySelectorAll('a').forEach(function(a) {
-        a.addEventListener('click', function() {
-          currentPath = a.dataset.path;
-          showFolderView();
-        });
-      });
+    if (!currentPath) {
+      breadcrumb.classList.remove('visible');
+      headerTitle.style.display = '';
       return;
     }
-    var parts = currentPath.split('/');
-    var h = '<a data-path="">\\u{1F3E0} Home</a>';
-    for (var i = 0; i < parts.length; i++) {
-      h += '<span class="sep">\\u203A</span>';
-      var p = parts.slice(0, i + 1).join('/');
-      var label = cleanFolderName(parts[i]);
-      if (i < parts.length - 1) {
-        h += '<a data-path="' + escHtml(p) + '">' + escHtml(label) + '</a>';
-      } else {
-        h += '<span class="current">' + escHtml(label) + '</span>';
-      }
-    }
-    breadcrumb.innerHTML = h;
+    breadcrumb.classList.add('visible');
+    headerTitle.style.display = 'none';
+    breadcrumb.innerHTML = renderBreadcrumbHtml(currentPath, escHtml);
     breadcrumb.querySelectorAll('a').forEach(function(a) {
       a.addEventListener('click', function() {
         currentPath = a.dataset.path;

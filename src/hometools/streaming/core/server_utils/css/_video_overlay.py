@@ -80,14 +80,14 @@ def render_video_overlay_css() -> str:
 .file-card .folder-icon { font-size: 1.6rem; }
 .view-hidden { display: none !important; }
 
-/* ── Breadcrumb navigation ── */
+/* ── Breadcrumb navigation (inline in header, see architecture.md §UI-Template) ── */
 .breadcrumb {
-  display: none; padding: 0.4rem max(1rem, var(--sal)) 0.4rem max(1rem, var(--sar));
-  background: var(--surface);
-  border-bottom: 1px solid #333; font-size: 0.82rem; flex-shrink: 0;
-  overflow-x: auto; white-space: nowrap;
+  display: none; font-size: 0.82rem; flex-shrink: 1;
+  overflow-x: auto; white-space: nowrap; min-width: 0;
+  align-items: center; scrollbar-width: none;
 }
-.breadcrumb.visible { display: block; }
+.breadcrumb::-webkit-scrollbar { display: none; }
+.breadcrumb.visible { display: flex; }
 .breadcrumb a {
   color: var(--accent); text-decoration: none; cursor: pointer;
 }

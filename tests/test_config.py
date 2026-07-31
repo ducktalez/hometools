@@ -5,6 +5,8 @@ from pathlib import Path
 from hometools.config import (
     get_audio_library_dir,
     get_audio_nas_dir,
+    get_bpm_max,
+    get_bpm_min,
     get_min_rating,
     get_playlist_insert_position,
     get_playlist_sync_interval,
@@ -145,3 +147,32 @@ def test_min_rating_clamped_to_max_5(monkeypatch):
 def test_min_rating_clamped_to_min_0(monkeypatch):
     monkeypatch.setenv("HOMETOOLS_MIN_RATING", "-3")
     assert get_min_rating() == 0
+
+
+def test_bpm_min_default_is_zero():
+    assert get_bpm_min() == 0
+
+
+def test_bpm_max_default_is_180():
+    assert get_bpm_max() == 180
+
+
+def test_bpm_min_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_BPM_MIN", "40")
+    assert get_bpm_min() == 40
+
+
+def test_bpm_min_clamped_to_0(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_BPM_MIN", "-10")
+    assert get_bpm_min() == 0
+
+
+def test_bpm_max_from_env(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_BPM_MAX", "200")
+    assert get_bpm_max() == 200
+
+
+def test_bpm_max_falls_back_above_min_when_misconfigured(monkeypatch):
+    monkeypatch.setenv("HOMETOOLS_BPM_MIN", "100")
+    monkeypatch.setenv("HOMETOOLS_BPM_MAX", "50")
+    assert get_bpm_max() == 101

@@ -19,31 +19,30 @@ def render_folder_browse_js() -> str:
     var isRoot = !currentPath;
     var showOrigNames = _anyToolActive();
 
-    /* Global search bar — always visible when catalog loaded */
-    if (allItems.length > 0) {
-      initGlobalSearch();
-    } else {
-      _hideGlobalSearch();
-    }
-
-    /* empty library */
+    /* empty library — still the folder-grid view, so the global search bar
+       follows the same "folder-grid visible" rule as the normal branch below. */
     if (c.folders.length === 0 && c.files.length === 0) {
       folderGrid.classList.remove('view-hidden');
       trackView.classList.add('view-hidden');
       filterBar.classList.add('view-hidden');
-      playAllBtn.style.display = 'none';
+      playAllBtn.classList.add('disabled');
       headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
-      backBtn.style.display = currentPath ? 'inline-block' : 'none';
+      backBtn.classList.toggle('disabled', !currentPath);
       if (!player.currentSrc) playerBar.classList.add('view-hidden');
       folderGrid.innerHTML = '<div class="empty-hint">No items found. Run a sync first.</div>';
       trackCount.textContent = '';
+      if (allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
       renderBreadcrumb();
       applyViewMode();
       if (typeof _router !== 'undefined') _router.update();
       return;
     }
 
-    /* leaf folder (no sub-folders) → playlist */
+    /* leaf folder (no sub-folders) → playlist. Global search bar is a
+       folder-grid-only control (see docs/IMPLEMENTATION_PLAN.md
+       "UI-Template-Vereinheitlichung" Phase 2) — showPlaylist() hides it,
+       same as showUserPlaylistView() does for user/smart playlists, so
+       every track-list view behaves identically regardless of entry point. */
     if (c.folders.length === 0) {
       showPlaylist(c.files, false);
       return;
@@ -53,10 +52,13 @@ def render_folder_browse_js() -> str:
     trackView.classList.add('view-hidden');
     filterBar.classList.add('view-hidden');
     if (!player.currentSrc) playerBar.classList.add('view-hidden');
+    /* Global search bar — folder-grid view only, visible whenever the
+       catalog is loaded (see comment above the leaf-folder branch). */
+    if (allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
 
-    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
-    backBtn.style.display = currentPath ? 'inline-block' : 'none';
-    playAllBtn.style.display = '';
+     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
+    backBtn.classList.toggle('disabled', !currentPath);
+    playAllBtn.classList.remove('disabled');
 
     var label = c.folders.length + ' folder' + (c.folders.length !== 1 ? 's' : '');
     if (c.files.length > 0) {
@@ -145,7 +147,7 @@ def render_folder_browse_js() -> str:
       _playlistCardsRendered = true;
       _userPlaylists.forEach(function(pl) {
         var isSmart = !!(pl.smart && pl.smart.rules);
-        var cnt = isSmart ? _evaluateSmartPlaylist(pl).length : (pl.items || []).length;
+        var cnt = isSmart ? _evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites).length : (pl.items || []).length;
         var iconHtml = IC_PLAYLIST +
           (isSmart ? '<span class="smart-pl-badge" title="Intelligente Playlist">' + IC_SMART_PLAYLIST + '</span>' : '');
         html += '<div class="folder-card playlist-folder-card' + (isSmart ? ' smart-playlist-card' : '') + '" data-playlist-id="' + escHtml(pl.id) + '">' +
@@ -468,6 +470,45 @@ def render_folder_browse_js() -> str:
     showPlaylist(items, true);
   }
 
+  /* ── Shared track-list view entry point ───────────────────────────────
+     Consolidates the header/toolbar DOM state that every "flat list of
+     tracks" view must set up identically (folder-leaf playlist, user
+     playlist, favorites, "Titel", smart playlist, duplicates) — see
+     docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2.
+     Before this refactor each of the ~5 call sites (spread across
+     _folder_browse.py/_smart_playlists.py/_library_tools.py) hand-rolled
+     its own subset of these class toggles, which is exactly what caused
+     the header/toolbar to drift out of sync between views (missing
+     global-search-hide, stale fb-scroll-hidden, ...).
+     Caller must set playlistItems/currentPath/_currentPlaylistId/
+     inPlaylist BEFORE calling this — applyFilter() reads playlistItems. */
+  function _enterTrackListView(opts) {
+    opts = opts || {};
+    headerTitle.textContent = opts.title != null ? opts.title : (currentPath ? leafName(currentPath) : originalTitle);
+    backBtn.classList.toggle('disabled', !!opts.backDisabled);
+    if (opts.playAllDisabled != null) playAllBtn.classList.toggle('disabled', !!opts.playAllDisabled);
+    folderGrid.classList.add('view-hidden');
+    trackView.classList.remove('view-hidden');
+    filterBar.classList.remove('view-hidden');
+    filterBar.classList.toggle('fb-scroll-hidden', !!opts.collapseFilterBar);
+    _initFilterBarScrollReveal();
+    playerBar.classList.remove('view-hidden');
+    /* Global search bar is folder-grid-only (see showFolderView) — every
+       track-list view hides it the same way, regardless of entry point. */
+    _hideGlobalSearch();
+    searchInput.value = '';
+    if (opts.resetIndex) currentIndex = -1;
+    renderBreadcrumb();
+    /* View-toggle button (table/list icon) — showFolderView() always
+       refreshes it (see its trailing renderBreadcrumb()/applyViewMode()
+       pair); track-list entry points must do the same or the button is
+       left showing whatever the previous (folder-grid) view set, which
+       is exactly the kind of header drift this function exists to fix. */
+    applyViewMode();
+    applyFilter();
+    if (typeof _router !== 'undefined') _router.update();
+  }
+
   /* ── playlist view ── */
   function showPlaylist(items, autoplay, startIdx) {
     destroyPlaylistDragDrop();
@@ -476,19 +517,8 @@ def render_folder_browse_js() -> str:
     _moveGhosts = {};  /* clear move ghosts when entering a new playlist */
     playlistItems = _sortByFolderOrder(currentPath, items);
 
-    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
-    backBtn.style.display = currentPath ? 'inline-block' : 'none';
-    playAllBtn.style.display = 'none';
+    _enterTrackListView({ backDisabled: !currentPath, resetIndex: true });
 
-    folderGrid.classList.add('view-hidden');
-    trackView.classList.remove('view-hidden');
-    filterBar.classList.remove('view-hidden');
-    playerBar.classList.remove('view-hidden');
-
-    searchInput.value = '';
-    currentIndex = -1;
-    renderBreadcrumb();
-    applyFilter();
     /* Lazy refresh: re-read ratings from filesystem for visible items */
     refreshFolderRatings(items);
     /* Rebuild shuffle queue for the new playlist */

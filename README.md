@@ -24,20 +24,11 @@ Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
 
 
 ---
-(Generell gilt: Wird code geändert, der migriert werden könnte, dann soll dieser code migriert werden.)
-- BPM-Anzeige Für Lieder (und Listen)
-  - Die BPM eines Liedes sollen als Pille beim Lied angezeigt werden ("160", "160bpm").
-  - Zusätzlich soll man visuell als Erkennungshilfe sehen, ob ein Lied schnell oder langsam ist. Ich suche noch nach der besten Lösung, bin aber für Vorschläge offen. Eine Option wäre, einen Balken, der von rechts nach links bei gleicher Pillengröße die Pille füllt und so zeigt, ob es langsam oder schnell ist. Die zweite Option wäre, die Pille mit einer Heatmap-Farbe zu füllen. 
-  - Die BPMs sollten von Haus aus auf ein Minimum und Maximum limitiert sein (Einstellbar, default 60-180). Wenn keine BPM im Lead eingetragen sind, erscheint es grau mit einem Fragezeichen. 
-  - Bei fehlenden BPM sollte auch eine Möglichkeit bestehen, diese auszurechnen und einzutragen. Diese Option ist Teil der Edit-Tools und muss aktiviert werden. Ist sie aktiviert dann erscheint der graue Button mit gelb leuchtendem Glow. Dieser soll implizieren, dass man per Klick auf die BPM diese eintragen kann.
 
-Allgemeine Zusatzinfo: Die "Detailansicht" / "Listenansicht" sollen beide alle Metadaten anzeigen können. In der Listenansicht -> Pille, Detailansicht (=Tabellenansicht mit Spalten) -> Spalte. (Instructions evtl. anpassen). In Zukunft werden ähnliche erweiterungen (Genre, Stimmung, Tonart, ...) implementiert werden, deshalb soll die Architektur in diesem BPM-Beispiel bereits ausgearbeitet werden.
 
-- Für Wiedergabelisten als auch generell für Feldelemente sollte es Templates oder Klassen oder Ähnliches geben, an die sich gehalten werden muss. 
-  - Zum Beispiel sollte am rechten Rand immer die drei-Punkte-Optionen zu finden sein. Aktuell ist das bei den Playlists nicht der Fall (fehlt bei "Intelligente Playlisten"). 
-  - Auch Ordner sollen diese Punkteoptionen haben. Optionale Einträge wären: 
-    - In Explorer anzeigen
-    - Thumbnail neu generieren
+
+
+
 
 - DJ-Mix Warteschlange (DJ-Alternative zur normalen Warteschlange)
   - Tracks in der Warteschlange werden als zusammenhängendes DJ-Set interpretiert
@@ -82,16 +73,13 @@ Allgemeine Zusatzinfo: Die "Detailansicht" / "Listenansicht" sollen beide alle M
   - Zusätzlich erscheint diese neue Playlist als kleiner Hint in den Playlisten, aus denen sie besteht. 
   Beispiel: Die Songs mit +4 Sternen aus 'HipHip -2000s'/'Pop -2000s' werden mit Schlagern kombiniert. Dann erscheint ein "used in"-Hinweis.
   Eventuell könnte man auch eine Art Vernetzung der Playlisten einführen (Graph). 
-- Klickt man im Player unten auf das Thumbnail, soll man direkt zum Track in der Liste kommen (hinspringen + markieren). Außerdem soll als Hint über dem Thumbnail der Haupt-Speicherort-Ordnername erscheinen.  
-- In Playlisten gibt es einen Trackcount. Dieser soll auch als Aktualisierungsbutton dienen. Achtung, das erfordert Anpassungen an zwei Stellen: 1. bei der Listenübersicht 2. gibt es diesen Track Count auch in der Suchleiste
-- Ordner ohne Lieder werden nicht angezeigt. Das soll geändert werden.
+
 - Beim hovern über den "Aktualisieren"-button soll erscheinen, wie weit die Aktualisierung ist.
-- Die Shortcut-buttons (zum verschieben von Liedern) sind kein 2x2-grid mehr, sondern ein 1x4-grid. Bitte wieder auf 2x2 ändern.
-- Bug/Layout: Der grüne/lila Rand um Playlisten hat keine bottom-line.
-- Bug: Beim Klick auf eine intelligente Wiedergabeliste ändert sich die Kopfzeile. Sie wird auch teilweise unfunktional. Diese soll aber immer gleich sein.
-- Die Toolsfunktion "verschieben" wird nur in der Listenansicht korrekt ein/ausgeblendet. Im Player (unten) bleibt sie eingeblendet. Gleiches gilt für den "Lösch"-button, auch dieser soll bei deaktivierten Tools verschwinden.
-- Bei Klick im Player auf den `Previous`-button wird direkt das vorherige Lied abgespielt. Dies sollte nur passieren, wenn noch nicht zu viel abgespielt wurde. Bei besonders kurzen liedern sollte aber dennoch das vorherige Lied abgespielt werden. Bitte halte dich hierbei an übliche Grenzen. 
-- Bug: In intelligenten Wiedergabelisten ist die Anzeige der Kopfleiste und Layout anders. Wie kann das sein? Diese sollte überall gleich sein. (zB.: Die Suchfunktionen fehlen, "Tools"-Pille wird angezeigt, aber kann nicht angeklickt werden)
+- Ordner ohne Lieder werden nicht angezeigt/berücksichtigt. Das soll geändert werden. (wirklich?)
+
+
+- Die Toolsfunktion "verschieben" wird nur in der Listenansicht korrekt ein/ausgeblendet. Im Player (unten) bleibt sie eingeblendet. Gleiches gilt für den "Lösch"-button, auch dieser soll bei deaktivierten Tools verschwinden. 
+
 - Bei serien (ducktales: staffel 1) erschienen die Folgen in der Liste mit unterschiedlichem Format links als Nummern (1-17), danach ging es weiter als „S01E12“. Das Problem waren falsche Dateinamen ("S01.E01" statt "S01E02"). Die Einrückung sollte aber trotzdem passen. Für solche Fälle sollte im Dashboard zusätzlich eine Warnung für die Datei erscheinen. Auch eine bessere Staffel/Folgeerkennung aus Strings über Regex wäre denkbar. 
 - Layout: Es gibt drei Listentypen: Ordner, normale Wiedergabeliste, intelligente Wiedergabeliste. Diese sollen erkennbar sein. Intelligente Wiedergabelisten haben bereits ein Symbol. 
   - Wiedergabelisten sollen auch ein Cover haben (Wie bei Ordnern).
@@ -122,7 +110,7 @@ Allgemeine Zusatzinfo: Die "Detailansicht" / "Listenansicht" sollen beide alle M
   - Die Bewertungs-Sterne sollten weniger Sättigung haben als bisher. dennoch passt die Farbe Gelb, da diese Info wichtig ist.
   - Bitte frage bei konkreten Ideen oder Problemen nach
 - Strg+Z um die letzte Aktion rückgängig machen zu können? (Gute Idee? Zu komplex?)
-- Ich hätte gerne eine zusätzliche Funktion: die Möglichkeit, Clips zu erstellen. Die Idee ist, dass man einfach eine normale Serie schaut und Momente sieht, die sich gut für einen Clip eignen, ausgeschneiden werden können. Auch das Markieren interessanter Momente wäre hilfreich. Es handelt sich um eine etwas separate Entwicklung. Das ist mir klar.
+- Ich hätte gerne eine zusätzliche Funktion bei Videos: die Möglichkeit, Clips zu erstellen. Die Idee ist, dass man einfach eine normale Serie schaut und Momente sieht, die sich gut für einen Clip eignen, ausgeschneiden werden können. Auch das Markieren interessanter Momente wäre hilfreich. Es handelt sich um eine etwas separate Entwicklung. Das ist mir klar.
 - Im tools-modus sollen die anderen Metadaten wysiwig geändert werden können (z.B. Album, Interpret, Genre, Jahr, etc.). Das ist teilweise schon möglich, aber noch nicht vollständig umgesetzt.
 - Es soll eine Listenansicht für Titel geben, in der (wie im windows ordner) die Metadaten Spaltenmäßig angezeigt werden. Die Spalten sollen auch ausgewählt werden können.
 - wav/mp3 Organisation für DJs.
@@ -137,6 +125,7 @@ Allgemeine Zusatzinfo: Die "Detailansicht" / "Listenansicht" sollen beide alle M
 - Tests haben immer eine Auswirkung auf den Serverzustand. Kann man tests iwie besser mocken?
 - Musik abspielen, während man ein Hörbuch hört?
 - Layout Erweiterung: In Spotify und iTunes sind Wiedergabelisten üblicherweise an der linken Seite und die Titel in einem Fenster an der rechten. Dieses Design soll hier auch so umgesetzt werden. 
+- alle docs ins englische überseetzen.
 
 - Funktion: Metadaten zu Liedern/Serien aus bestimmten Schnittstellen laden und in die Datenbank eintragen. (zB. Albumcover, Interpret, Genre, Jahr, ...). Metadaten nicht automatisch ändern (Eintrag im Dashboard)
 

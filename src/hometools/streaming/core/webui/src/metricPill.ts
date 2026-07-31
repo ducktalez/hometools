@@ -65,7 +65,11 @@ export interface MetricPillOptions {
   index?: number;
   /** `relative_path` of the track — forwarded as `data-relative-path`. */
   relativePath?: string;
-  /** When the value is missing (`<= 0`) AND this is true, render a clickable "calculate" affordance instead of a static "?". */
+  /** When true, render a clickable `<button>` instead of a static `<span>`
+   * — a grey "?" calculate affordance when the value is missing (`<= 0`),
+   * or the normal colored pill made clickable (`.meta-pill--editable`)
+   * when a value is already known, so a click opens the BPM-adjust popup
+   * (`player_js/_track_render.py::_openBpmAdjustMenu`) either way. */
   calcEnabled?: boolean;
 }
 
@@ -135,6 +139,13 @@ export function interpolateColor(stops: MetricPillColorStop[], t: number): strin
  * `value <= 0` (or `null`/`undefined`) is treated as "unknown" — matches
  * the `MediaItem` convention used across the codebase (`0.0` = unset) for
  * every optional numeric field (rating, bpm, intro markers, ...).
+ *
+ * `opts.calcEnabled` gates a clickable affordance in **both** branches
+ * (not just "unknown"): when true, a *known* value also renders as a
+ * `<button>` (`.meta-pill--editable`, same `data-action="calc-<key>"`
+ * attribute as the "unknown" button) so the player UI's BPM-adjust popup
+ * (`player_js/_track_render.py::_openBpmAdjustMenu`) can open from a
+ * click on an already-analyzed pill, not only an unanalyzed one.
  */
 export function renderMetricPill(value: number | null | undefined, cfg: MetricPillConfig, opts: MetricPillOptions = {}): string {
   const idxAttr = opts.index != null ? ` data-index="${opts.index}"` : "";
@@ -160,6 +171,16 @@ export function renderMetricPill(value: number | null | undefined, cfg: MetricPi
   const decimals = cfg.decimals || 0;
   const display = decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
   const style = `--pill-fill:${fillPct}%;--pill-color:${color};`;
+
+  if (opts.calcEnabled) {
+    const title = `${cfg.label}: ${display}${cfg.unit} \u2014 klicken zum Anpassen`;
+    return (
+      `<button type="button" class="meta-pill meta-pill--${cfg.key} meta-pill--editable" style="${style}" ` +
+      `data-action="calc-${cfg.key}"${idxAttr}${pathAttr} title="${escAttr(title)}">` +
+      `${escAttr(display)}${escAttr(cfg.unit)}</button>`
+    );
+  }
+
   const title = `${cfg.label}: ${display}${cfg.unit}`;
 
   return (

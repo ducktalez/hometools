@@ -438,11 +438,29 @@ def _js() -> str:
     return render_player_js()
 
 
+def _webui_src(filename: str) -> str:
+    """Read a ported TypeScript source from the Vite/TS migration scaffold
+    (mirrors the helper of the same name in test_streaming_player_ui.py)."""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / filename
+    return path.read_text(encoding="utf-8")
+
+
 class TestJsInjection:
     def test_evaluator_present(self):
+        """The smart playlist evaluator is ported to webui/src/smartPlaylist.ts
+        (bridged onto window as window._evaluateSmartPlaylist, see main.ts) —
+        the legacy Python-generated JS only calls it, it no longer defines
+        `_smartEvalRule`/`_smartGetField`/`_smartCompile`/`_buildSmartPlIndex`/
+        `_smartApplySort` itself."""
         js = _js()
-        assert "_evaluateSmartPlaylist" in js
-        assert "_smartEvalRule" in js
+        assert "_evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites)" in js
+        assert "function _smartEvalRule" not in js
+        ts = _webui_src("smartPlaylist.ts")
+        assert "export function smartEvalRule" in ts
+        assert "export function evaluateSmartPlaylist" in ts
+        assert "window._evaluateSmartPlaylist = evaluateSmartPlaylist" in _webui_src("main.ts")
 
     def test_editor_modal_helpers_present(self):
         js = _js()
