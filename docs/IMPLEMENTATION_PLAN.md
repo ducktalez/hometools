@@ -14,10 +14,10 @@ built via Vite, served as FastAPI static assets. Backend untouched.
 **Rule:** port one pure, dependency-free function/module at a time (proven:
 `pathUtils.ts`, `dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`,
 `recentMoveTargets.ts`, `catalogCache.ts`, `offlineDownloads.ts`,
-`langDetect.ts`, `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`).
-Never bulk-port via `eval()` — tried once, broke prod (see git log
-2026-08-06). `legacy.ts` sits unused in tree as raw material — don't
-re-enable as-is.
+`langDetect.ts`, `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`,
+`toast.ts`, `folderCache.ts`). Never bulk-port via `eval()` — tried once,
+broke prod (see git log 2026-08-06). `legacy.ts` sits unused in tree as raw
+material — don't re-enable as-is.
 
 Third pattern (since `clickGuard.ts`): if a stateful block's state is
 *private* to it (no other fragment reads it), move state + listeners along
@@ -88,7 +88,7 @@ sich auf gemeinsame nicht-strikte Konkatenation, kein echtes Modul.
 Zwei Bridging-Muster etabliert:
 - **`window`-Bridge** (read-only/einmalig gesetzte Globals wie `originalTitle`) — Contract in `legacy-globals.d.ts`
 - **Explizite Parameter** (häufig mutierte Globals wie `allItems`) — siehe `smartPlaylist.ts`: nimmt Daten als Parameter statt `window`-Read, Call-Sites reichen lokale Variablen durch
-- **State mitnehmen** (Zustand nur fragment-intern, z.B. `_mdX`/`_mdY`) — siehe `clickGuard.ts`: State + Listener wandern ins TS-Modul, gar kein Bridge nötig
+- **State mitnehmen** (Zustand nur fragment-intern, z.B. `_mdX`/`_mdY`, `_allFoldersCache`) — siehe `clickGuard.ts`/`folderCache.ts`: State + Listener wandern ins TS-Modul, gar kein Bridge nötig
 
 Vor jedem Port eines gekoppelten Fragments: welches Muster passt an der
 jeweiligen Grenze besser?

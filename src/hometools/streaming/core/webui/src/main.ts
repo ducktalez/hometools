@@ -14,7 +14,11 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: clickGuard.ts (wasDrag + its private pointer state and
+ * Latest slice: toast.ts (showToast, from _core.py) and folderCache.ts
+ * (_getAllFolders/_invalidateFolderCache + its cache var, from
+ * _library_tools.py) — both had module-private state, moved with the code.
+ *
+ * Previous slice: clickGuard.ts (wasDrag + its private pointer state and
  * capture listeners, from _core.py) and collectGenres in catalogQuery.ts
  * (from _search_filter.py, playlistItems now explicit param).
  *
@@ -96,6 +100,8 @@ import {
 import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
 import { itemsUnder, collectGenres } from "./catalogQuery";
 import { installClickGuard, wasDrag } from "./clickGuard";
+import { showToast } from "./toast";
+import { getAllFolders, invalidateFolderCache } from "./folderCache";
 import {
   saveCatalogCache,
   loadCatalogCache,
@@ -249,6 +255,8 @@ declare global {
     _itemsUnder(path: string, allItems: LegacyMediaItem[]): LegacyMediaItem[];
     _collectGenres: typeof collectGenres;
     wasDrag: typeof wasDrag;
+    _getAllFoldersFrom: typeof getAllFolders;
+    _invalidateFolderCache: typeof invalidateFolderCache;
   }
 }
 
@@ -326,6 +334,10 @@ window.withMissingEpisodes = withMissingEpisodes;
 window._itemsUnder = itemsUnder;
 window._collectGenres = collectGenres;
 window.wasDrag = wasDrag;
+// showToast already typed in legacy-globals.d.ts — no re-declare here.
+window.showToast = showToast;
+window._getAllFoldersFrom = getAllFolders;
+window._invalidateFolderCache = invalidateFolderCache;
 
 // Click-guard owns its own pointer state now (was _mdX/_mdY in _core.py) —
 // listeners must be live before the legacy script wires any click handler.

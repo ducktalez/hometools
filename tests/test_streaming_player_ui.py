@@ -1811,6 +1811,49 @@ def test_js_wasdrag_call_sites_still_present():
     assert js.count("wasDrag(e)") >= 5
 
 
+def test_js_toast_ported_to_ts():
+    """showToast moved to webui/src/toast.ts (element-local state moved with
+    it). The legacy script must not re-declare it: a second top-level
+    `function showToast(...)` would shadow the ported one and silently drop
+    the custom durationMs — exactly the bug the fragment split once caused."""
+    ts = _webui_src("toast.ts")
+    assert "export function showToast(" in ts
+    js = _js()
+    assert "function showToast" not in js
+    assert "window.showToast = showToast" in _webui_src("main.ts")
+
+
+def test_js_toast_call_sites_still_present():
+    """The ported showToast must still be called by the legacy script."""
+    js = _js()
+    assert js.count("showToast(") >= 10
+
+
+def test_js_folder_cache_ported_to_ts():
+    """_getAllFolders + _invalidateFolderCache + their cache var moved to
+    webui/src/folderCache.ts. The cache var was module-private, so it moved
+    along; allItems stays an explicit param (reassigned all over the legacy
+    script, mirroring it onto window would need every mutation site synced)."""
+    ts = _webui_src("folderCache.ts")
+    assert "export function getAllFolders(allItems:" in ts
+    assert "export function invalidateFolderCache(" in ts
+    js = _js()
+    assert "var _allFoldersCache" not in js
+    assert "function _invalidateFolderCache" not in js
+    assert "window._getAllFoldersFrom(allItems)" in js
+    main_ts = _webui_src("main.ts")
+    assert "window._getAllFoldersFrom = getAllFolders" in main_ts
+    assert "window._invalidateFolderCache = invalidateFolderCache" in main_ts
+
+
+def test_js_invalidate_folder_cache_call_sites_still_present():
+    """Regression guard: cache invalidation after move/delete/refresh must
+    still happen — a stale folder list would show deleted folders as move
+    targets."""
+    js = _js()
+    assert js.count("_invalidateFolderCache()") >= 8
+
+
 def test_js_breadcrumb_uses_clean_folder_name():
     """renderBreadcrumb must delegate to the ported renderBreadcrumbHtml
     (webui/src/breadcrumb.ts) instead of re-inlining segment/label markup

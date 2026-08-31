@@ -128,8 +128,9 @@ as static assets. Backend is unaffected.
   and hosts already-ported leaf modules: `pathUtils.ts`, `dupeUtils.ts`,
   `metricPill.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `recentMoveTargets.ts`,
   `catalogCache.ts`, `offlineDownloads.ts`, `langDetect.ts`, `episodeGaps.ts`,
-  `catalogQuery.ts`, `clickGuard.ts`; `legacy-globals.d.ts` types the shared
-  cross-fragment globals still owned by the legacy script).
+  `catalogQuery.ts`, `clickGuard.ts`, `toast.ts`, `folderCache.ts`;
+  `legacy-globals.d.ts` types the shared cross-fragment globals still owned
+  by the legacy script).
 - `server_utils/_static.py` mounts the Vite build output at `/static` and
   injects its script tag right before the legacy inline `<script>` — same
   execution order as before, zero behavior change.

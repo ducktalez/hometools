@@ -330,23 +330,15 @@ def render_library_tools_js() -> str:
   }
 
   /* ── File mover (move to folder) ── */
-  var _allFoldersCache = null;
-
   /* _getRecentMoveTargets()/_saveRecentMoveTarget() ported to
      webui/src/recentMoveTargets.ts, bridged onto window by main.ts. */
 
+  /* _getAllFolders/_invalidateFolderCache + their cache var ported to
+     webui/src/folderCache.ts. Wrapper keeps the bare name and feeds the
+     current allItems; _invalidateFolderCache resolves straight to window. */
   function _getAllFolders() {
-    if (_allFoldersCache) return _allFoldersCache;
-    var set = {};
-    allItems.forEach(function(it) {
-      var sl = it.relative_path.indexOf('/');
-      if (sl > 0) set[it.relative_path.substring(0, sl)] = true;
-    });
-    _allFoldersCache = Object.keys(set).sort(function(a, b) { return a.localeCompare(b); });
-    return _allFoldersCache;
+    return window._getAllFoldersFrom(allItems);
   }
-
-  function _invalidateFolderCache() { _allFoldersCache = null; }
 
   /* _currentFolderOf() ported to webui/src/pathUtils.ts (opportunistic
      port, see docs/IMPLEMENTATION_PLAN.md), bridged onto window by main.ts. */

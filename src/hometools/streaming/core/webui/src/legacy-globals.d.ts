@@ -126,6 +126,7 @@ interface Window {
   renderTracks(tracks: LegacyMediaItem[], force?: boolean): void;
   applyFilter(): void;
   markActive(): void;
+  /** Owned by `toast.ts` now (bridged in main.ts), not by the legacy script. */
   showToast(msg: string, durationMs?: number): void;
   rebuildShuffleQueue(startIndex: number): void;
   itemsUnder(path: string): LegacyMediaItem[];

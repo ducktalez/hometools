@@ -647,27 +647,11 @@ def render_core_js(waveform_js) -> str:
      chain — do NOT re-add local definitions here (that would silently
      shadow the ported TS version, defeating the whole point of the port —
      see the "single source of truth" rule in copilot-instructions.md). */
-  /* Single canonical toast implementation. Was accidentally duplicated in
-     _library_tools.py / _track_render.py during the module split — a second
-     top-level `function showToast(...)`/`function formatBytes(...)` later in
-     the concatenated script silently shadowed this one (last declaration
-     wins), which meant callers passing a custom `durationMs` (e.g. the
-     "Weiter bei ..." resume toast) had it silently ignored. Keep this the
-     only definition — see test_js_syntax.py::test_no_duplicate_top_level_functions. */
-  function showToast(msg, durationMs) {
-    var t = document.getElementById('ht-toast');
-    if (!t) {
-      t = document.createElement('div');
-      t.id = 'ht-toast';
-      t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;z-index:9999;font-size:14px;max-width:90%;text-align:center;transition:opacity .3s';
-      document.body.appendChild(t);
-    }
-    t.textContent = msg;
-    t.style.opacity = '1';
-    t.style.display = 'block';
-    clearTimeout(t._timer);
-    t._timer = setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.style.display = 'none'; }, 300); }, durationMs || 3500);
-  }
+  /* showToast: ported to webui/src/toast.ts, bridged onto window by
+     main.ts. Was duplicated in _library_tools.py/_track_render.py during
+     the fragment split (later decl shadowed this one, custom durationMs
+     silently ignored) — one module, one export now. Do NOT re-add a local
+     definition here, it would shadow the ported version. */
 
   /* click-distance guard (_mdX/_mdY/CLICK_MOVE_THRESHOLD + listeners +
      wasDrag): ported to webui/src/clickGuard.ts, installed + bridged onto
