@@ -217,34 +217,8 @@ def render_track_render_js() -> str:
   }
 
 
-  function estimateOfflineStorage(downloads) {
-    var list = downloads || [];
-    var info = {
-      downloads: list,
-      appUsage: getAppDownloadUsage(list),
-      softLimit: OFFLINE_SOFT_LIMIT,
-      browserUsage: null,
-      browserQuota: null,
-      persistent: null
-    };
-    var tasks = [];
-    if (navigator.storage && navigator.storage.estimate) {
-      tasks.push(
-        navigator.storage.estimate().then(function(estimate) {
-          info.browserUsage = estimate && estimate.usage ? estimate.usage : 0;
-          info.browserQuota = estimate && estimate.quota ? estimate.quota : 0;
-        }).catch(function() {})
-      );
-    }
-    if (navigator.storage && navigator.storage.persisted) {
-      tasks.push(
-        navigator.storage.persisted().then(function(persistent) {
-          info.persistent = !!persistent;
-        }).catch(function() {})
-      );
-    }
-    return Promise.all(tasks).then(function() { return info; });
-  }
+  /* estimateOfflineStorage: ported to webui/src/offlineDownloads.ts,
+     bridged onto window by main.ts. softLimit now explicit 2nd arg. */
 
   function renderStorageSummary(info) {
     if (!info) return;
@@ -331,7 +305,7 @@ def render_track_render_js() -> str:
         });
         playlistItems = items;
         applyFilter();
-        estimateOfflineStorage(ready).then(function(info) {
+        estimateOfflineStorage(ready, OFFLINE_SOFT_LIMIT).then(function(info) {
           if (info && info.appUsage > 0) {
             trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +
               ' · ' + formatBytes(info.appUsage);
@@ -374,7 +348,7 @@ def render_track_render_js() -> str:
       _currentPlaylistId = '__offline__';
       playlistItems = items;
       _enterTrackListView({ title: 'Downloaded', backDisabled: false, resetIndex: true });
-      estimateOfflineStorage(ready).then(function(info) {
+      estimateOfflineStorage(ready, OFFLINE_SOFT_LIMIT).then(function(info) {
         if (info && info.appUsage > 0) {
           trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +
             ' · ' + formatBytes(info.appUsage);

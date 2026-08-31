@@ -35,3 +35,51 @@ export function getAppDownloadUsage(downloads: OfflineDownload[]): number {
   return (downloads || []).reduce((sum, d) => sum + (d.status === "ready" ? Number(d.size || 0) : 0), 0);
 }
 
+export interface OfflineStorageInfo {
+  downloads: OfflineDownload[];
+  appUsage: number;
+  softLimit: number;
+  browserUsage: number | null;
+  browserQuota: number | null;
+  persistent: boolean | null;
+}
+
+/** Estimate app + browser storage usage. softLimit passed in (was
+ * OFFLINE_SOFT_LIMIT constant in _track_render.py). */
+export function estimateOfflineStorage(downloads: OfflineDownload[], softLimit: number): Promise<OfflineStorageInfo> {
+  const list = downloads || [];
+  const info: OfflineStorageInfo = {
+    downloads: list,
+    appUsage: getAppDownloadUsage(list),
+    softLimit,
+    browserUsage: null,
+    browserQuota: null,
+    persistent: null,
+  };
+  const tasks: Promise<unknown>[] = [];
+  const storage = navigator.storage;
+  if (storage && storage.estimate) {
+    tasks.push(
+      storage
+        .estimate()
+        .then((estimate) => {
+          info.browserUsage = estimate && estimate.usage ? estimate.usage : 0;
+          info.browserQuota = estimate && estimate.quota ? estimate.quota : 0;
+        })
+        .catch(() => {})
+    );
+  }
+  if (storage && storage.persisted) {
+    tasks.push(
+      storage
+        .persisted()
+        .then((persistent) => {
+          info.persistent = !!persistent;
+        })
+        .catch(() => {})
+    );
+  }
+  return Promise.all(tasks).then(() => info);
+}
+
+

@@ -14,7 +14,11 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: episodeGaps.ts (withMissingEpisodes, from _search_filter.py).
+ * Latest slice: estimateOfflineStorage added to offlineDownloads.ts (from
+ * _track_render.py). softLimit now explicit param (was OFFLINE_SOFT_LIMIT
+ * global) — call sites pass it in.
+ *
+ * Previous slice: episodeGaps.ts (withMissingEpisodes, from _search_filter.py).
  * Pure array transform, no window reads.
  *
  * Previous slice: langDetect.ts (detectLangFromName/detectSubLangFromName,
@@ -64,7 +68,7 @@ import { renderBpmPill } from "./metricPill";
 import { needsConversion, filenameFromPath, parentPath, leafName, currentFolderOf } from "./pathUtils";
 import { _fmtDuration, _fmtFileSize, _fmtDate, _normalizeStem, _dupeKey, _isDupeGroupSafe } from "./dupeUtils";
 import { cleanFolderName, renderBreadcrumbHtml } from "./breadcrumb";
-import { formatDate, sortDownloads, getAppDownloadUsage } from "./offlineDownloads";
+import { formatDate, sortDownloads, getAppDownloadUsage, estimateOfflineStorage } from "./offlineDownloads";
 import { detectLangFromName, detectSubLangFromName } from "./langDetect";
 import { withMissingEpisodes } from "./episodeGaps";
 import {
@@ -220,6 +224,7 @@ declare global {
     formatDate: typeof formatDate;
     sortDownloads: typeof sortDownloads;
     getAppDownloadUsage: typeof getAppDownloadUsage;
+    estimateOfflineStorage: typeof estimateOfflineStorage;
     detectLangFromName: typeof detectLangFromName;
     detectSubLangFromName: typeof detectSubLangFromName;
     withMissingEpisodes: typeof withMissingEpisodes;
@@ -292,6 +297,7 @@ window._applyLocalMutations = function (items) {
 window.formatDate = formatDate;
 window.sortDownloads = sortDownloads;
 window.getAppDownloadUsage = getAppDownloadUsage;
+window.estimateOfflineStorage = estimateOfflineStorage;
 window.detectLangFromName = detectLangFromName;
 window.detectSubLangFromName = detectSubLangFromName;
 window.withMissingEpisodes = withMissingEpisodes;

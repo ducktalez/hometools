@@ -1,10 +1,18 @@
 """Tests for offline download feature — service worker, download list and quota UI."""
 
+from pathlib import Path
+
 from hometools.streaming.core.server_utils import render_base_css, render_media_page, render_player_js
 
 
 def _js():
     return render_player_js(player_bar_style="classic")
+
+
+def _webui_src(filename):
+    """Read a ported TypeScript source (Vite/TS migration scaffold)."""
+    path = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / filename
+    return path.read_text(encoding="utf-8")
 
 
 def _page():
@@ -282,9 +290,13 @@ class TestStorageQuotaHandling:
     """Quota UI and pruning hooks."""
 
     def test_js_has_storage_estimate_and_persist(self):
+        """estimateOfflineStorage ported to webui/src/offlineDownloads.ts,
+        bridged onto window by main.ts."""
+        ts = _webui_src("offlineDownloads.ts")
+        assert "storage.estimate" in ts
+        assert "storage.persisted" in ts
         js = _js()
-        assert "navigator.storage.estimate" in js
-        assert "navigator.storage.persist" in js
+        assert "function estimateOfflineStorage" not in js
         assert "function requestPersistentStorage" in js
 
     def test_js_has_soft_limit_and_prune_logic(self):
