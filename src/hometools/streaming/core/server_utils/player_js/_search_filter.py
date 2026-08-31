@@ -774,30 +774,8 @@ def render_search_filter_js() -> str:
   /* Re-render player bar actions when tool mode changes */
   function _onToolModeChange() { updatePlayerBarActions(); }
 
-  /* insert placeholder rows for missing episodes within the same season */
-  function withMissingEpisodes(tracks) {
-    /* Insert placeholder rows for episodes missing *between* two present
-       episodes of the same season.  Works per adjacent pair (not "all tracks
-       must be series") so mixed folders (e.g. with a bonus clip) still get gap
-       placeholders between their real episodes.  Whole missing seasons or gaps
-       before the first / after the last episode are intentionally not shown. */
-    var result = [];
-    for (var i = 0; i < tracks.length; i++) {
-      var t = tracks[i];
-      if (i > 0) {
-        var prev = tracks[i - 1];
-        var sameSeason = (prev.season || 0) > 0 && (prev.season || 0) === (t.season || 0);
-        if (sameSeason && (prev.episode || 0) > 0 && (t.episode || 0) > 0) {
-          var gap = (t.episode || 0) - (prev.episode || 0);
-          for (var g = 1; g < gap && g < 20; g++) {
-            result.push({ _missing: true, season: prev.season, episode: (prev.episode || 0) + g });
-          }
-        }
-      }
-      result.push(t);
-    }
-    return result;
-  }
+  /* withMissingEpisodes: ported to webui/src/episodeGaps.ts, bridged
+     onto window by main.ts. */
 
   /* ── Event delegation for track list ─────────────────────────────────────
      Wired once per renderTracks call, covers all items added by future
@@ -983,7 +961,7 @@ def render_search_filter_js() -> str:
     var t = filteredItems.find(function(it) { return it.relative_path === rp; }) ||
       (allItems || []).find(function(it) { return it.relative_path === rp; });
     var oldVal = t ? (t[field] || '') : '';
-    var newVal = editable.textContent.replace(/\s+/g, ' ').trim();
+    var newVal = editable.textContent.replace(/\\s+/g, ' ').trim();
     if (cancelled || newVal === oldVal) { editable.textContent = oldVal; return; }
     if (!newVal) { editable.textContent = oldVal; showToast('Feld darf nicht leer sein'); return; }
     var payload = { path: rp };

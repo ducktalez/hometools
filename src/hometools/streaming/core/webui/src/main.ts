@@ -14,7 +14,10 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: langDetect.ts (detectLangFromName/detectSubLangFromName,
+ * Latest slice: episodeGaps.ts (withMissingEpisodes, from _search_filter.py).
+ * Pure array transform, no window reads.
+ *
+ * Previous slice: langDetect.ts (detectLangFromName/detectSubLangFromName,
  * from _queue.py). Pure regex tables. langBadgesHtml/compositeFlagHtml stay
  * Python — need LANG_TO_FLAG SVG markup, single source _svg.py.
  *
@@ -63,6 +66,7 @@ import { _fmtDuration, _fmtFileSize, _fmtDate, _normalizeStem, _dupeKey, _isDupe
 import { cleanFolderName, renderBreadcrumbHtml } from "./breadcrumb";
 import { formatDate, sortDownloads, getAppDownloadUsage } from "./offlineDownloads";
 import { detectLangFromName, detectSubLangFromName } from "./langDetect";
+import { withMissingEpisodes } from "./episodeGaps";
 import {
   evaluateSmartPlaylist,
   smartFieldType,
@@ -218,6 +222,7 @@ declare global {
     getAppDownloadUsage: typeof getAppDownloadUsage;
     detectLangFromName: typeof detectLangFromName;
     detectSubLangFromName: typeof detectSubLangFromName;
+    withMissingEpisodes: typeof withMissingEpisodes;
   }
 }
 
@@ -289,4 +294,5 @@ window.sortDownloads = sortDownloads;
 window.getAppDownloadUsage = getAppDownloadUsage;
 window.detectLangFromName = detectLangFromName;
 window.detectSubLangFromName = detectSubLangFromName;
+window.withMissingEpisodes = withMissingEpisodes;
 
