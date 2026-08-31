@@ -14,9 +14,9 @@ built via Vite, served as FastAPI static assets. Backend untouched.
 **Rule:** port one pure, dependency-free function/module at a time (proven:
 `pathUtils.ts`, `dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`,
 `recentMoveTargets.ts`, `catalogCache.ts`, `offlineDownloads.ts`,
-`langDetect.ts`, `episodeGaps.ts`). Never bulk-port via `eval()` — tried
-once, broke prod (see git log 2026-08-06). `legacy.ts` sits unused in tree
-as raw material — don't re-enable as-is.
+`langDetect.ts`, `episodeGaps.ts`, `catalogQuery.ts`). Never bulk-port via
+`eval()` — tried once, broke prod (see git log 2026-08-06). `legacy.ts` sits
+unused in tree as raw material — don't re-enable as-is.
 
 Blocker for stateful fragments (`_core.py`, `_library_tools.py`, ...):
 cross-fragment coupling — see "Player-JS-Modulkopplung" below.

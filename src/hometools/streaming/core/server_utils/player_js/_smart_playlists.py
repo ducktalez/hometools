@@ -29,7 +29,7 @@ def render_smart_playlists_js() -> str:
 
   function _smartRenderEditor() {
     var s = _smartEditorState;
-    var rulesHtml = s.rules.map(function(r, i) { return _smartRenderRuleRow(r, i); }).join('');
+    var rulesHtml = s.rules.map(function(r, i) { return _smartRenderRuleRow(r, i, _userPlaylists, s.id, escHtml); }).join('');
     var html =
       '<div class="smart-editor-backdrop" id="smart-editor-backdrop">' +
         '<div class="smart-editor-modal" role="dialog" aria-modal="true">' +

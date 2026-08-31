@@ -109,56 +109,8 @@ def render_playlists_js() -> str:
 
   /* ── Smart Playlist Editor Modal ────────────────────────────────────── */
   /* SMART_FIELDS/SMART_OPS_BY_TYPE/SMART_OPS_ADDED_AT + _smartFieldType()/
-     _smartOpsFor() ported to webui/src/smartPlaylist.ts, bridged onto
-     window by main.ts — this fragment keeps calling the bare identifiers
-     below (_smartRenderRuleRow), which resolve through the scope chain to
-     window, unchanged. */
-
-  function _smartRenderRuleRow(rule, idx) {
-    var fieldOpts = SMART_FIELDS.map(function(f) {
-      return '<option value="' + f.value + '"' + (rule.field === f.value ? ' selected' : '') + '>' + escHtml(f.label) + '</option>';
-    }).join('');
-    var ops = _smartOpsFor(rule.field || 'rating');
-    var opOpts = ops.map(function(o) {
-      return '<option value="' + o[0] + '"' + (rule.op === o[0] ? ' selected' : '') + '>' + escHtml(o[1]) + '</option>';
-    }).join('');
-    var valueInput;
-    if (_smartFieldType(rule.field) === 'playlist') {
-      var ownId = _smartEditorState ? _smartEditorState.id : null;
-      var available = _userPlaylists.filter(function(p) { return !(p.smart && p.smart.rules) && p.id !== ownId; });
-      if (available.length === 0) {
-        valueInput = '<span class="smart-rule-empty">Keine regulären Playlists vorhanden</span>';
-      } else {
-        var plOpts = available.map(function(p) {
-          var sel = Array.isArray(rule.value) && rule.value.indexOf(p.id) >= 0 ? ' checked' : '';
-          return '<label class="smart-rule-pl-opt">' +
-            '<input type="checkbox" class="smart-rule-value smart-rule-pl-cb" value="' + escHtml(p.id) + '"' + sel + '> ' +
-            escHtml(p.name) +
-            '</label>';
-        }).join('');
-        valueInput = '<div class="smart-rule-pl-list">' + plOpts + '</div>';
-      }
-    } else if (_smartFieldType(rule.field) === 'bool') {
-      valueInput = '<select class="smart-rule-value">' +
-        '<option value="true"' + (rule.value === true ? ' selected' : '') + '>ja</option>' +
-        '<option value="false"' + (rule.value === false ? ' selected' : '') + '>nein</option>' +
-        '</select>';
-    } else if (rule.op === 'between') {
-      var lo = Array.isArray(rule.value) ? rule.value[0] : '';
-      var hi = Array.isArray(rule.value) ? rule.value[1] : '';
-      valueInput = '<input type="number" class="smart-rule-value smart-rule-value-lo" value="' + escHtml(String(lo)) + '" placeholder="von">' +
-                   '<input type="number" class="smart-rule-value smart-rule-value-hi" value="' + escHtml(String(hi)) + '" placeholder="bis">';
-    } else {
-      var t = _smartFieldType(rule.field) === 'number' ? 'number' : 'text';
-      valueInput = '<input type="' + t + '" class="smart-rule-value" value="' + escHtml(String(rule.value == null ? '' : rule.value)) + '">';
-    }
-    return '<div class="smart-rule-row" data-idx="' + idx + '">' +
-      '<select class="smart-rule-field">' + fieldOpts + '</select>' +
-      '<select class="smart-rule-op">' + opOpts + '</select>' +
-      valueInput +
-      '<button type="button" class="smart-rule-del" title="Regel entfernen">×</button>' +
-    '</div>';
-  }
+     _smartOpsFor()/_smartRenderRuleRow() ported to webui/src/smartPlaylist.ts,
+     bridged onto window by main.ts. */
 
   var _smartEditorState = null;
 

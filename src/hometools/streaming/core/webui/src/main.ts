@@ -14,7 +14,17 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: estimateOfflineStorage added to offlineDownloads.ts (from
+ * Latest slice: itemsUnder added to catalogQuery.ts (from _queue.py).
+ * allItems explicit param (was closure read) — _queue.py keeps a thin
+ * bare-name wrapper forwarding to window._itemsUnder(path, allItems), so
+ * all 13 existing call sites across other player_js/*.py fragments stay
+ * unchanged.
+ *
+ * Previous slice: smartRenderRuleRow added to smartPlaylist.ts (from
+ * _playlists.py). userPlaylists/ownId/escHtmlFn now explicit params (was
+ * _userPlaylists/_smartEditorState reads + bare escHtml call).
+ *
+ * Previous slice: estimateOfflineStorage added to offlineDownloads.ts (from
  * _track_render.py). softLimit now explicit param (was OFFLINE_SOFT_LIMIT
  * global) — call sites pass it in.
  *
@@ -75,10 +85,12 @@ import {
   evaluateSmartPlaylist,
   smartFieldType,
   smartOpsFor,
+  smartRenderRuleRow,
   SMART_FIELDS,
   SMART_OPS_BY_TYPE,
 } from "./smartPlaylist";
 import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
+import { itemsUnder } from "./catalogQuery";
 import {
   saveCatalogCache,
   loadCatalogCache,
@@ -211,6 +223,7 @@ declare global {
     _evaluateSmartPlaylist: typeof evaluateSmartPlaylist;
     _smartFieldType: typeof smartFieldType;
     _smartOpsFor: typeof smartOpsFor;
+    _smartRenderRuleRow: typeof smartRenderRuleRow;
     SMART_FIELDS: typeof SMART_FIELDS;
     SMART_OPS_BY_TYPE: typeof SMART_OPS_BY_TYPE;
     _getRecentMoveTargets: typeof getRecentMoveTargets;
@@ -228,6 +241,7 @@ declare global {
     detectLangFromName: typeof detectLangFromName;
     detectSubLangFromName: typeof detectSubLangFromName;
     withMissingEpisodes: typeof withMissingEpisodes;
+    _itemsUnder(path: string, allItems: LegacyMediaItem[]): LegacyMediaItem[];
   }
 }
 
@@ -269,6 +283,7 @@ window._evaluateSmartPlaylist = evaluateSmartPlaylist;
 // called by _smartRenderRuleRow in player_js/_playlists.py (not ported).
 window._smartFieldType = smartFieldType;
 window._smartOpsFor = smartOpsFor;
+window._smartRenderRuleRow = smartRenderRuleRow;
 window.SMART_FIELDS = SMART_FIELDS;
 window.SMART_OPS_BY_TYPE = SMART_OPS_BY_TYPE;
 window._getRecentMoveTargets = getRecentMoveTargets;
@@ -301,4 +316,5 @@ window.estimateOfflineStorage = estimateOfflineStorage;
 window.detectLangFromName = detectLangFromName;
 window.detectSubLangFromName = detectSubLangFromName;
 window.withMissingEpisodes = withMissingEpisodes;
+window._itemsUnder = itemsUnder;
 

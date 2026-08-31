@@ -595,11 +595,12 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
         + (sprite_preview_js)
         + """
 
-  /* items under a path prefix (recursive) */
+  /* itemsUnder: ported to webui/src/catalogQuery.ts (window._itemsUnder,
+     pure, allItems explicit param — closure read not reachable from a
+     Vite module). Thin wrapper keeps the bare name for all existing
+     call sites unchanged. */
   function itemsUnder(path) {
-    if (!path) return allItems;
-    var prefix = path + '/';
-    return allItems.filter(function(it) { return it.relative_path.startsWith(prefix); });
+    return window._itemsUnder(path, allItems);
   }
 
   /* compute direct sub-folders and loose files at a path level */

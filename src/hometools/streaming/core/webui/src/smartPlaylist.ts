@@ -99,6 +99,7 @@ export interface SmartPlaylistSpec {
  * `PLAYLISTS_API_PATH` JSON — see `streaming/core/playlists.py`). */
 export interface UserPlaylist {
   id: string;
+  name?: string;
   items?: string[];
   smart?: SmartPlaylistSpec;
 }
@@ -305,5 +306,91 @@ export function evaluateSmartPlaylist(
   } catch {
     return [];
   }
+}
+
+/** One rule-editor row's HTML (field/op selects + value input). Ported
+ * from `player_js/_playlists.py`. `escHtmlFn` passed in like
+ * `breadcrumb.ts::renderBreadcrumbHtml` — avoids a circular import back to
+ * `main.ts` (where `escHtml` lives). `userPlaylists`/`ownId` explicit
+ * params instead of reading `_userPlaylists`/`_smartEditorState` (same
+ * reason as `evaluateSmartPlaylist` — those globals mutate too often for
+ * a window-bridge). */
+export function smartRenderRuleRow(
+  rule: SmartPlaylistRule,
+  idx: number,
+  userPlaylists: UserPlaylist[],
+  ownId: string | null,
+  escHtmlFn: (s: unknown) => string
+): string {
+  const fieldOpts = SMART_FIELDS.map(
+    (f) => '<option value="' + f.value + '"' + (rule.field === f.value ? " selected" : "") + '>' + escHtmlFn(f.label) + "</option>"
+  ).join("");
+  const ops = smartOpsFor(rule.field || "rating");
+  const opOpts = ops
+    .map((o) => '<option value="' + o[0] + '"' + (rule.op === o[0] ? " selected" : "") + '>' + escHtmlFn(o[1]) + "</option>")
+    .join("");
+  let valueInput: string;
+  const fieldType = smartFieldType(rule.field);
+  if (fieldType === "playlist") {
+    const available = (userPlaylists || []).filter((p) => !(p.smart && p.smart.rules) && p.id !== ownId);
+    if (available.length === 0) {
+      valueInput = '<span class="smart-rule-empty">Keine regulären Playlists vorhanden</span>';
+    } else {
+      const plOpts = available
+        .map((p) => {
+          const sel = Array.isArray(rule.value) && (rule.value as unknown[]).indexOf(p.id) >= 0 ? " checked" : "";
+          return (
+            '<label class="smart-rule-pl-opt">' +
+            '<input type="checkbox" class="smart-rule-value smart-rule-pl-cb" value="' +
+            escHtmlFn(p.id) +
+            '"' +
+            sel +
+            "> " +
+            escHtmlFn(p.name) +
+            "</label>"
+          );
+        })
+        .join("");
+      valueInput = '<div class="smart-rule-pl-list">' + plOpts + "</div>";
+    }
+  } else if (fieldType === "bool") {
+    valueInput =
+      '<select class="smart-rule-value">' +
+      '<option value="true"' +
+      (rule.value === true ? " selected" : "") +
+      ">ja</option>" +
+      '<option value="false"' +
+      (rule.value === false ? " selected" : "") +
+      ">nein</option>" +
+      "</select>";
+  } else if (rule.op === "between") {
+    const lo = Array.isArray(rule.value) ? rule.value[0] : "";
+    const hi = Array.isArray(rule.value) ? rule.value[1] : "";
+    valueInput =
+      '<input type="number" class="smart-rule-value smart-rule-value-lo" value="' +
+      escHtmlFn(String(lo)) +
+      '" placeholder="von">' +
+      '<input type="number" class="smart-rule-value smart-rule-value-hi" value="' +
+      escHtmlFn(String(hi)) +
+      '" placeholder="bis">';
+  } else {
+    const t = fieldType === "number" ? "number" : "text";
+    valueInput =
+      '<input type="' + t + '" class="smart-rule-value" value="' + escHtmlFn(String(rule.value == null ? "" : rule.value)) + '">';
+  }
+  return (
+    '<div class="smart-rule-row" data-idx="' +
+    idx +
+    '">' +
+    '<select class="smart-rule-field">' +
+    fieldOpts +
+    "</select>" +
+    '<select class="smart-rule-op">' +
+    opOpts +
+    "</select>" +
+    valueInput +
+    '<button type="button" class="smart-rule-del" title="Regel entfernen">×</button>' +
+    "</div>"
+  );
 }
 
