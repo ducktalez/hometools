@@ -3,12 +3,16 @@
 The actual CSS text lives in themed fragments under ``server_utils/css/``
 (split from a >1800 line monolith); this module only concatenates them in
 a fixed order so ``render_base_css()`` keeps its original public signature.
+
+Vite/TS migration: fragments move out of here one at a time into real
+``.css`` files under ``webui/src/styles/``, imported by ``main.ts`` and
+linked by ``_html.py`` after this inline block. Ported so far: meta pill
+(``styles/metaPill.css``).
 """
 
 from __future__ import annotations
 
 from .css import (
-    render_meta_pill_css,
     render_modals_css,
     render_player_bar_css,
     render_playlist_cards_css,
@@ -27,7 +31,6 @@ def render_base_css() -> str:
         + render_tools_panel_css()
         + render_track_list_css()
         + render_table_view_css()
-        + render_meta_pill_css()
         + render_modals_css()
         + render_playlist_cards_css()
         + render_player_bar_css()

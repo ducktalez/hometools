@@ -133,7 +133,12 @@ as static assets. Backend is unaffected.
   by the legacy script).
 - `server_utils/_static.py` mounts the Vite build output at `/static` and
   injects its script tag right before the legacy inline `<script>` — same
-  execution order as before, zero behavior change.
+  execution order as before, zero behavior change. It also emits
+  `<link rel="stylesheet">` tags (`get_static_css_tags()`) for ported CSS,
+  placed after the inline `<style>` so ported rules win.
+- CSS ports (`webui/src/styles/*.css`, imported by `main.ts`) have no
+  coupling blocker — done: `metaPill.css`; the other eight `css/*.py`
+  fragments still render inline.
 - Only dependency-free leaf functions have been ported so far; the
   stateful fragments (`_core.py`, `_library_tools.py`, ...) are blocked by
   cross-fragment coupling (see `docs/IMPLEMENTATION_PLAN.md` → Design

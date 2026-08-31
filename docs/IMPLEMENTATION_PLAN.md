@@ -24,6 +24,13 @@ Third pattern (since `clickGuard.ts`): if a stateful block's state is
 with the function — no bridge, no param. Check that first, it beats both
 other patterns.
 
+**CSS-Teil (`css/*.py`, ~2000 Zeilen) hat keinen Blocker** — Fragmente sind
+reine Strings ohne Querverweise. Eins nach dem anderen nach
+`webui/src/styles/*.css` (Ablauf in `webui/README.md` → "CSS ports").
+Portiert: `metaPill.css`. Offen: `_root`, `_tools_panel`, `_track_list`,
+`_table_view`, `_modals`, `_playlist_cards`, `_player_bar`,
+`_video_overlay`.
+
 Blocker for stateful fragments (`_core.py`, `_library_tools.py`, ...):
 cross-fragment coupling — see "Player-JS-Modulkopplung" below.
 

@@ -159,3 +159,85 @@ def test_render_media_page_includes_static_tag_when_bundle_built(tmp_path, monke
     # Must appear before the inline legacy <script>{js}</script> tag so the
     # bridged window.fmtTime/escHtml/formatBytes are defined in time.
     assert page.index('<script src="/static/player.XYZ.js">') < page.rindex("<script>")
+
+
+def test_get_static_css_tags_reads_top_level_style_entry(tmp_path, monkeypatch):
+    """cssCodeSplit: false puts the extracted stylesheet in its own
+    top-level "style.css" manifest entry, not under the JS entry."""
+    static_dir = tmp_path / "static"
+    (static_dir / ".vite").mkdir(parents=True)
+    manifest = {
+        "src/main.ts": {"file": "player.ABC.js", "isEntry": True},
+        "style.css": {"file": "player.DEF.css", "src": "style.css"},
+    }
+    (static_dir / ".vite" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(_static, "STATIC_DIR", static_dir)
+    monkeypatch.setattr(_static, "_MANIFEST_PATH", static_dir / ".vite" / "manifest.json")
+    assert _static.get_static_css_tags() == '<link rel="stylesheet" href="/static/player.DEF.css">'
+
+
+def test_get_static_css_tags_reads_entry_css_list(tmp_path, monkeypatch):
+    """With code splitting on, Vite lists CSS under the entry's "css" key —
+    both shapes must work so a build-option change can't silently drop the
+    stylesheet."""
+    static_dir = tmp_path / "static"
+    (static_dir / ".vite").mkdir(parents=True)
+    manifest = {"src/main.ts": {"file": "player.ABC.js", "css": ["player.GHI.css"]}}
+    (static_dir / ".vite" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(_static, "STATIC_DIR", static_dir)
+    monkeypatch.setattr(_static, "_MANIFEST_PATH", static_dir / ".vite" / "manifest.json")
+    assert _static.get_static_css_tags() == '<link rel="stylesheet" href="/static/player.GHI.css">'
+
+
+def test_get_static_css_tags_empty_when_bundle_missing(tmp_path, monkeypatch):
+    missing = tmp_path / "nope"
+    monkeypatch.setattr(_static, "STATIC_DIR", missing)
+    monkeypatch.setattr(_static, "_MANIFEST_PATH", missing / ".vite" / "manifest.json")
+    assert _static.get_static_css_tags() == ""
+
+
+def test_render_media_page_links_ported_css_after_inline_style(tmp_path, monkeypatch):
+    """Ported CSS must be linked AFTER the inline <style> — at equal
+    specificity the later rule wins, so a ported rule always beats a stale
+    legacy duplicate during the migration."""
+    static_dir = tmp_path / "static"
+    (static_dir / ".vite").mkdir(parents=True)
+    manifest = {
+        "src/main.ts": {"file": "player.XYZ.js"},
+        "style.css": {"file": "player.STY.css"},
+    }
+    (static_dir / ".vite" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(_static, "STATIC_DIR", static_dir)
+    monkeypatch.setattr(_static, "_MANIFEST_PATH", static_dir / ".vite" / "manifest.json")
+
+    from hometools.streaming.core.server_utils import render_media_page
+
+    page = render_media_page(
+        title="t",
+        emoji="x",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+    )
+    assert '<link rel="stylesheet" href="/static/player.STY.css">' in page
+    assert page.index("<style>") < page.index('<link rel="stylesheet" href="/static/player.STY.css">')
+
+
+def test_meta_pill_css_ported_out_of_python():
+    """The meta-pill rules moved to webui/src/styles/metaPill.css. Keeping a
+    Python copy would silently shadow/duplicate them — render_base_css()
+    must no longer emit them."""
+    from pathlib import Path
+
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert ".meta-pill {" not in css
+    assert ".bpm-adjust-menu" not in css
+
+    ported = (
+        Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "metaPill.css"
+    )
+    text = ported.read_text(encoding="utf-8")
+    assert ".meta-pill {" in text
+    assert ".bpm-adjust-menu" in text

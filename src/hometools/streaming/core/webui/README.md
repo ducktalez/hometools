@@ -126,3 +126,25 @@ already editing/near:
 This keeps the migration moving without a dedicated migration sprint, and
 each slice stays small enough to review and test in isolation — mirroring
 how `needsConversion`/`filenameFromPath`/`dupeUtils.ts` were ported.
+
+## CSS ports (`src/styles/*.css`)
+
+CSS has none of the coupling problems JS has — a fragment is just a string,
+nothing reads identifiers from anywhere. Port one `css/*.py` fragment at a
+time:
+
+1. Copy the rules into `src/styles/<area>.css`, import it in `main.ts`.
+2. Delete the Python fragment + its `render_*_css()` export and its entry
+   in `_css.py`'s concatenation.
+3. Add a test asserting the rules are gone from `render_base_css()` and
+   present in the `.css` file (see
+   `tests/test_streaming_static.py::test_meta_pill_css_ported_out_of_python`).
+
+Build details: `cssCodeSplit: false` extracts one real stylesheet instead
+of letting Vite inject it from JS at runtime — the bundle `<script>` sits
+at the end of `<body>`, so runtime injection would flash unstyled content.
+`_html.py` links it **after** the inline `<style>`, so a ported rule wins
+over a stale legacy duplicate at equal specificity.
+
+Ported so far: `metaPill.css`.
+

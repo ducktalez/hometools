@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _MANIFEST_PATH = STATIC_DIR / ".vite" / "manifest.json"
 _ENTRY_KEY = "src/main.ts"
+_STYLE_KEY = "style.css"
 
 _manifest_cache: dict[str, Any] | None = None
 _warned_missing = False
@@ -92,3 +93,38 @@ def get_static_script_tag() -> str:
     if not file_name:
         return ""
     return f'<script src="/static/{file_name}"></script>'
+
+
+def get_static_css_tags() -> str:
+    """Return ``<link rel="stylesheet">`` tags for CSS imported by the bundle.
+
+    Two manifest shapes are handled, because Vite's depends on config:
+    with ``cssCodeSplit: false`` (our setting) the extracted stylesheet is a
+    separate top-level ``"style.css"`` entry; with code splitting on it is
+    listed under the JS entry's ``css`` key instead. Reading both keeps this
+    working if that build option ever changes.
+
+    Returns ``""`` (never raises) if unbuilt — the page then renders without
+    the ported rules, same degraded-but-alive behavior as the JS side.
+
+    ``_html.py`` places these AFTER the inline ``<style>`` so a ported rule
+    wins over a stale legacy duplicate at equal specificity.
+    """
+    manifest = _load_manifest()
+    if not manifest:
+        return ""
+    files: list[str] = []
+
+    entry = manifest.get(_ENTRY_KEY)
+    if isinstance(entry, dict):
+        entry_css = entry.get("css")
+        if isinstance(entry_css, list):
+            files.extend(f for f in entry_css if f)
+
+    style_entry = manifest.get(_STYLE_KEY)
+    if isinstance(style_entry, dict):
+        style_file = style_entry.get("file")
+        if style_file and style_file not in files:
+            files.append(style_file)
+
+    return "\n  ".join(f'<link rel="stylesheet" href="/static/{f}">' for f in files)

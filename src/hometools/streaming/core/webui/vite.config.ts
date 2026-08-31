@@ -27,8 +27,14 @@ export default defineConfig({
   root: __dirname,
   build: {
     outDir: resolve(__dirname, "../static"),
-    emptyOutDir: false,
+    // true: only the Vite build writes here (gitignored, Docker copies it
+    // fresh). false piled up 20+ orphaned hashed bundles.
+    emptyOutDir: true,
     manifest: true,
+    // false = extract to one real .css file instead of letting Vite inject
+    // it from JS at runtime. The bundle <script> sits at the end of <body>,
+    // so runtime injection would flash unstyled pills first.
+    cssCodeSplit: false,
     rollupOptions: {
       input: resolve(__dirname, "src/main.ts"),
       output: {

@@ -8,7 +8,7 @@ import json
 from ._css import render_base_css
 from ._player_js import render_player_js
 from ._pwa import render_pwa_head_tags
-from ._static import get_static_script_tag
+from ._static import get_static_css_tags, get_static_script_tag
 from ._svg import (
     SVG_BACK,
     SVG_BOARD,
@@ -186,6 +186,8 @@ def render_media_page(
     # chain. Empty string (no tag rendered) when the bundle hasn't been
     # built yet — see webui/README.md for the local build command.
     static_script_tag = get_static_script_tag()
+    # Ported CSS modules — linked after the inline <style> so they win.
+    static_css_tags = get_static_css_tags()
     is_video = media_element_tag == "video"
     pwa_tags = "" if safe_mode else render_pwa_head_tags(theme_color=theme_color, standalone=not is_video)
     shuffle_btn_html = (
@@ -567,6 +569,7 @@ def render_media_page(
   <title>{html.escape(title)}</title>
 {pwa_tags}
   <style>{css}</style>
+  {static_css_tags}
 </head>
 <body>
   <header>

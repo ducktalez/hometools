@@ -102,6 +102,10 @@ import { itemsUnder, collectGenres } from "./catalogQuery";
 import { installClickGuard, wasDrag } from "./clickGuard";
 import { showToast } from "./toast";
 import { getAllFolders, invalidateFolderCache } from "./folderCache";
+
+// CSS ports: Vite bundles these into one stylesheet, _html.py links it
+// AFTER the legacy inline <style> (later wins at equal specificity).
+import "./styles/metaPill.css";
 import {
   saveCatalogCache,
   loadCatalogCache,
