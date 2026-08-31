@@ -17,4 +17,20 @@ export function itemsUnder(path: string, allItems: LegacyMediaItem[]): LegacyMed
   return allItems.filter((it) => it.relative_path.startsWith(prefix));
 }
 
+/**
+ * Distinct, sorted genres of `items` (feeds the filter popover's `<select>`).
+ *
+ * Ported from `_search_filter.py`'s `_collectPlaylistGenres()` — read the
+ * mutable `playlistItems` global, now an explicit param (call site passes
+ * it through).
+ */
+export function collectGenres(items: LegacyMediaItem[] | null | undefined): string[] {
+  const genres: Record<string, boolean> = {};
+  (items || []).forEach((t) => {
+    if (t.genre) genres[t.genre] = true;
+  });
+  return Object.keys(genres).sort();
+}
+
+
 

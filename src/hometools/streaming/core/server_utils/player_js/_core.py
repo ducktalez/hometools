@@ -669,18 +669,9 @@ def render_core_js(waveform_js) -> str:
     t._timer = setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.style.display = 'none'; }, 300); }, durationMs || 3500);
   }
 
-  /* ── click-distance guard: suppress clicks when the mouse moved ── */
-  var _mdX = 0, _mdY = 0;
-  var CLICK_MOVE_THRESHOLD = 6; /* pixels */
-  document.addEventListener('mousedown', function(e) { _mdX = e.clientX; _mdY = e.clientY; }, true);
-  document.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 1) { _mdX = e.touches[0].clientX; _mdY = e.touches[0].clientY; }
-  }, { passive: true, capture: true });
-  function wasDrag(e) {
-    var dx = Math.abs(e.clientX - _mdX);
-    var dy = Math.abs(e.clientY - _mdY);
-    return dx > CLICK_MOVE_THRESHOLD || dy > CLICK_MOVE_THRESHOLD;
-  }
+  /* click-distance guard (_mdX/_mdY/CLICK_MOVE_THRESHOLD + listeners +
+     wasDrag): ported to webui/src/clickGuard.ts, installed + bridged onto
+     window by main.ts. Bare wasDrag(e) call sites unchanged. */
 
   /* ── playback progress persistence ── */
   var _progressTimer = 0;

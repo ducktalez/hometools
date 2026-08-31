@@ -176,11 +176,8 @@ def render_search_filter_js() -> str:
      button (filter-combined) instead of three separate chips — see
      docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2.
      "Ausgeblendet" (filterHiddenBtn) stays its own toggle-slot chip. */
-  function _collectPlaylistGenres() {
-    var genres = {};
-    (playlistItems || []).forEach(function(t) { if (t.genre) genres[t.genre] = true; });
-    return Object.keys(genres).sort();
-  }
+  /* _collectPlaylistGenres: ported to webui/src/catalogQuery.ts as
+     collectGenres(items) — playlistItems now explicit param. */
 
   function updateFilterChips() {
     if (filterCombinedBtn) {
@@ -221,7 +218,7 @@ def render_search_filter_js() -> str:
      own small open/close/wire trio here rather than reusing _openCtxMenu's
      items schema (label+onClick only). */
   function _filterPopoverBodyHtml() {
-    var genreList = _collectPlaylistGenres();
+    var genreList = _collectGenres(playlistItems);
     var starsHtml = '';
     for (var i = 1; i <= 5; i++) {
       starsHtml += '<button type="button" class="filter-popover-star' + (i <= filterRating ? ' active' : '') +

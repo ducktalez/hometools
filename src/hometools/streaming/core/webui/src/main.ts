@@ -14,7 +14,11 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: itemsUnder added to catalogQuery.ts (from _queue.py).
+ * Latest slice: clickGuard.ts (wasDrag + its private pointer state and
+ * capture listeners, from _core.py) and collectGenres in catalogQuery.ts
+ * (from _search_filter.py, playlistItems now explicit param).
+ *
+ * Previous slice: itemsUnder added to catalogQuery.ts (from _queue.py).
  * allItems explicit param (was closure read) — _queue.py keeps a thin
  * bare-name wrapper forwarding to window._itemsUnder(path, allItems), so
  * all 13 existing call sites across other player_js/*.py fragments stay
@@ -90,7 +94,8 @@ import {
   SMART_OPS_BY_TYPE,
 } from "./smartPlaylist";
 import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
-import { itemsUnder } from "./catalogQuery";
+import { itemsUnder, collectGenres } from "./catalogQuery";
+import { installClickGuard, wasDrag } from "./clickGuard";
 import {
   saveCatalogCache,
   loadCatalogCache,
@@ -242,6 +247,8 @@ declare global {
     detectSubLangFromName: typeof detectSubLangFromName;
     withMissingEpisodes: typeof withMissingEpisodes;
     _itemsUnder(path: string, allItems: LegacyMediaItem[]): LegacyMediaItem[];
+    _collectGenres: typeof collectGenres;
+    wasDrag: typeof wasDrag;
   }
 }
 
@@ -317,4 +324,10 @@ window.detectLangFromName = detectLangFromName;
 window.detectSubLangFromName = detectSubLangFromName;
 window.withMissingEpisodes = withMissingEpisodes;
 window._itemsUnder = itemsUnder;
+window._collectGenres = collectGenres;
+window.wasDrag = wasDrag;
+
+// Click-guard owns its own pointer state now (was _mdX/_mdY in _core.py) —
+// listeners must be live before the legacy script wires any click handler.
+installClickGuard();
 

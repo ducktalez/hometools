@@ -1763,6 +1763,54 @@ def test_core_js_bridges_original_title_onto_window():
     assert "window.originalTitle = originalTitle;" in js
 
 
+def test_js_items_under_ported_to_ts():
+    """itemsUnder is ported to webui/src/catalogQuery.ts with allItems as an
+    explicit param (the legacy version read the mutable allItems global from
+    its IIFE scope — unreachable from a Vite module). _queue.py keeps only a
+    thin wrapper so the ~13 bare-name call sites stay unchanged."""
+    ts = _webui_src("catalogQuery.ts")
+    assert "export function itemsUnder(path: string, allItems:" in ts
+    js = _js()
+    assert "window._itemsUnder(path, allItems)" in js
+    assert "it.relative_path.startsWith(prefix)" not in js
+    assert "window._itemsUnder = itemsUnder" in _webui_src("main.ts")
+
+
+def test_js_collect_genres_ported_to_ts():
+    """_collectPlaylistGenres is ported to catalogQuery.ts as
+    collectGenres(items) — playlistItems passed explicitly by the call site."""
+    ts = _webui_src("catalogQuery.ts")
+    assert "export function collectGenres(" in ts
+    js = _js()
+    assert "function _collectPlaylistGenres" not in js
+    assert "_collectGenres(playlistItems)" in js
+    assert "window._collectGenres = collectGenres" in _webui_src("main.ts")
+
+
+def test_js_click_guard_ported_to_ts():
+    """The whole click-distance guard (pointer state + capture listeners +
+    wasDrag) moved to webui/src/clickGuard.ts — no other fragment touched
+    _mdX/_mdY, so the state moved with it instead of being bridged. main.ts
+    must install the listeners and bridge wasDrag under its legacy name."""
+    ts = _webui_src("clickGuard.ts")
+    assert "export function wasDrag(" in ts
+    assert "export function installClickGuard(" in ts
+    assert "export function uninstallClickGuard(" in ts
+    js = _js()
+    assert "function wasDrag" not in js
+    assert "var _mdX" not in js
+    main_ts = _webui_src("main.ts")
+    assert "window.wasDrag = wasDrag" in main_ts
+    assert "installClickGuard();" in main_ts
+
+
+def test_js_wasdrag_call_sites_still_present():
+    """Regression guard: the ported wasDrag must still be *used* — the click
+    handlers that suppress clicks after a drag are the whole point."""
+    js = _js()
+    assert js.count("wasDrag(e)") >= 5
+
+
 def test_js_breadcrumb_uses_clean_folder_name():
     """renderBreadcrumb must delegate to the ported renderBreadcrumbHtml
     (webui/src/breadcrumb.ts) instead of re-inlining segment/label markup
