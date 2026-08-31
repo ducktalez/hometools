@@ -50,6 +50,33 @@ def render_core_js(waveform_js) -> str:
   var _queueOpen = false;
   var _queueDndCleanup = null;
 
+  /* ── State bridge for ported TS modules (webui/src/stateBridge.ts) ──
+     Getter/setter closures: TS reads see live values, TS writes reassign
+     the IIFE-scoped vars. Legacy mutation sites stay untouched. Extend
+     per property as ports need them — never mirror by copying values. */
+  window.htState = {
+    get allItems() { return allItems; },
+    set allItems(v) { allItems = v; },
+    get filteredItems() { return filteredItems; },
+    set filteredItems(v) { filteredItems = v; },
+    get playlistItems() { return playlistItems; },
+    set playlistItems(v) { playlistItems = v; },
+    get currentIndex() { return currentIndex; },
+    set currentIndex(v) { currentIndex = v; },
+    get currentPath() { return currentPath; },
+    set currentPath(v) { currentPath = v; },
+    get inPlaylist() { return inPlaylist; },
+    set inPlaylist(v) { inPlaylist = v; },
+    get shuffleMode() { return shuffleMode; },
+    set shuffleMode(v) { shuffleMode = v; },
+    get repeatMode() { return repeatMode; },
+    set repeatMode(v) { repeatMode = v; },
+    get shuffleQueue() { return shuffleQueue; },
+    set shuffleQueue(v) { shuffleQueue = v; },
+    get shufflePos() { return shufflePos; },
+    set shufflePos(v) { shufflePos = v; }
+  };
+
   var player       = document.getElementById('player');
   var btnPlay      = document.getElementById('btn-play');
   var btnPrev      = document.getElementById('btn-prev');

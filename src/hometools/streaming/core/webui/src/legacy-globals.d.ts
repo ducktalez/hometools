@@ -61,6 +61,12 @@ interface LegacyMediaItem {
 }
 
 interface Window {
+  /** Live getter/setter bridge over `_core.py`'s IIFE-scoped state vars —
+   * the ONLY sanctioned way for ported modules to touch shared mutable
+   * state (see stateBridge.ts). Optional: undefined until the legacy
+   * script has run. */
+  htState?: import("./stateBridge").HtState;
+
   // ── Core catalog/playback state (declared in `player_js/_core.py`) ──
   allItems: LegacyMediaItem[];
   filteredItems: LegacyMediaItem[];

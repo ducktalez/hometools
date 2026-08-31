@@ -658,10 +658,17 @@ def test_shuffle_js_has_core_functions():
 
 
 def test_shuffle_js_has_next_prev_index():
-    """nextIndex / prevIndex must exist and respect shuffle state."""
+    """nextIndex / prevIndex ported to webui/src/shuffle.ts (htState bridge).
+    Legacy script must not re-declare them, but still call them."""
+    ts = _webui_src("shuffle.ts")
+    assert "export function nextIndex(" in ts
+    assert "export function prevIndex(" in ts
     js = _js()
-    assert "function nextIndex" in js
-    assert "function prevIndex" in js
+    assert "function nextIndex" not in js
+    assert "function prevIndex" not in js
+    assert "nextIndex()" in js
+    assert "prevIndex()" in js
+    # Legacy direct state touches must keep working through the live bridge
     assert "shuffleQueue" in js
     assert "shufflePos" in js
 
@@ -856,11 +863,12 @@ def test_repeat_one_suppresses_crossfade():
 
 
 def test_repeat_nextindex_returns_minus_one_when_off():
-    """nextIndex must contain logic to return -1 (stop) when repeat is off at end of list."""
+    """nextIndex (ported to shuffle.ts) must return -1 (stop) at end of list
+    when repeat is off, wrap to 0 when repeat is 'all'."""
     js = render_player_js()
     assert "repeat" in js.lower()
-    # When repeat is 'all' → wrap to first playable; when off → return -1
-    assert "return repeatMode === 'all' ? 0 : -1" in js
+    ts = _webui_src("shuffle.ts")
+    assert 'return s.repeatMode === "all" ? 0 : -1' in ts
 
 
 def test_play_next_item_handles_repeat_one():
@@ -1852,6 +1860,64 @@ def test_js_invalidate_folder_cache_call_sites_still_present():
     targets."""
     js = _js()
     assert js.count("_invalidateFolderCache()") >= 8
+
+
+class TestHtStateBridge:
+    """window.htState — live getter/setter bridge over _core.py's IIFE vars.
+
+    Fourth migration pattern: ported modules that read AND write shared
+    reassigned globals (shuffleQueue, shufflePos, ...) go through this
+    bridge; legacy mutation sites stay untouched (closures see/produce the
+    same vars)."""
+
+    def test_core_defines_htstate_with_getter_setter_pairs(self):
+        js = _js()
+        assert "window.htState = {" in js
+        # every property needs BOTH accessors — a get without set silently
+        # drops TS writes (worst kind of bug: state fork)
+        for name in [
+            "allItems",
+            "filteredItems",
+            "playlistItems",
+            "currentIndex",
+            "currentPath",
+            "inPlaylist",
+            "shuffleMode",
+            "repeatMode",
+            "shuffleQueue",
+            "shufflePos",
+        ]:
+            assert f"get {name}()" in js, f"missing getter for {name}"
+            assert f"set {name}(v)" in js, f"missing setter for {name}"
+
+    def test_state_bridge_ts_contract_matches(self):
+        ts = _webui_src("stateBridge.ts")
+        assert "export interface HtState" in ts
+        assert "export function getState()" in ts
+
+    def test_shuffle_module_uses_bridge_not_window_globals(self):
+        """shuffle.ts must go through getState() — direct window.shuffleQueue
+        reads would hit the (nonexistent) real global, not the IIFE var."""
+        ts = _webui_src("shuffle.ts")
+        assert "getState()" in ts
+        assert "window.shuffleQueue" not in ts
+        assert "window.filteredItems" not in ts
+
+    def test_shuffle_functions_removed_from_legacy(self):
+        js = _js()
+        for fn in [
+            "function fisherYates",
+            "function buildWeightedQueue",
+            "function buildNormalQueue",
+            "function rebuildShuffleQueue",
+        ]:
+            assert fn not in js, f"{fn} must live in shuffle.ts only"
+
+    def test_shuffle_call_sites_still_present(self):
+        js = _js()
+        assert js.count("rebuildShuffleQueue(") >= 8
+        assert "nextIndex()" in js
+        assert "prevIndex()" in js
 
 
 def test_js_breadcrumb_uses_clean_folder_name():

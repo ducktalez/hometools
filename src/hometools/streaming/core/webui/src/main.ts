@@ -14,7 +14,13 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: toast.ts (showToast, from _core.py) and folderCache.ts
+ * Latest slice: shuffle.ts (fisherYates/buildWeightedQueue/buildNormalQueue/
+ * rebuildShuffleQueue/nextIndex/prevIndex, from _library_tools.py) — first
+ * consumer of the htState getter/setter bridge (stateBridge.ts): these
+ * read AND write shuffleQueue/shufflePos, so explicit params were not
+ * enough. Legacy code keeps mutating the same vars directly.
+ *
+ * Previous slice: toast.ts (showToast, from _core.py) and folderCache.ts
  * (_getAllFolders/_invalidateFolderCache + its cache var, from
  * _library_tools.py) — both had module-private state, moved with the code.
  *
@@ -102,6 +108,7 @@ import { itemsUnder, collectGenres } from "./catalogQuery";
 import { installClickGuard, wasDrag } from "./clickGuard";
 import { showToast } from "./toast";
 import { getAllFolders, invalidateFolderCache } from "./folderCache";
+import { fisherYates, buildWeightedQueue, buildNormalQueue, rebuildShuffleQueue, nextIndex, prevIndex } from "./shuffle";
 
 // CSS ports: Vite bundles these into one stylesheet, _html.py links it
 // AFTER the legacy inline <style> (later wins at equal specificity).
@@ -261,6 +268,11 @@ declare global {
     wasDrag: typeof wasDrag;
     _getAllFoldersFrom: typeof getAllFolders;
     _invalidateFolderCache: typeof invalidateFolderCache;
+    fisherYates: typeof fisherYates;
+    buildWeightedQueue: typeof buildWeightedQueue;
+    buildNormalQueue: typeof buildNormalQueue;
+    nextIndex: typeof nextIndex;
+    prevIndex: typeof prevIndex;
   }
 }
 
@@ -342,6 +354,14 @@ window.wasDrag = wasDrag;
 window.showToast = showToast;
 window._getAllFoldersFrom = getAllFolders;
 window._invalidateFolderCache = invalidateFolderCache;
+// Shuffle engine — first htState-bridge consumer (see shuffle.ts header).
+// rebuildShuffleQueue already typed in legacy-globals.d.ts.
+window.fisherYates = fisherYates;
+window.buildWeightedQueue = buildWeightedQueue;
+window.buildNormalQueue = buildNormalQueue;
+window.rebuildShuffleQueue = rebuildShuffleQueue;
+window.nextIndex = nextIndex;
+window.prevIndex = prevIndex;
 
 // Click-guard owns its own pointer state now (was _mdX/_mdY in _core.py) —
 // listeners must be live before the legacy script wires any click handler.

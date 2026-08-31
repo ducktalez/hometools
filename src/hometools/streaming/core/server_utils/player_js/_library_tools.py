@@ -928,84 +928,15 @@ def render_library_tools_js() -> str:
     }
   }
 
-  /* ── Shuffle logic ── */
-  /* Fisher-Yates shuffle of an array in place */
-  function fisherYates(arr) {
-    for (var i = arr.length - 1; i > 0; i--) {
-      var j = Math.floor(Math.random() * (i + 1));
-      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-    }
-    return arr;
-  }
-
-  /* Build a weighted shuffle queue: items with higher rating appear more often.
-     Rating 0 → weight 1, Rating 5 → weight 6. Items with no rating → weight 1. */
-  function buildWeightedQueue(items) {
-    var pool = [];
-    items.forEach(function(t, idx) {
-      var w = Math.max(1, Math.round((t.rating || 0) + 1));
-      for (var i = 0; i < w; i++) pool.push(idx);
-    });
-    return fisherYates(pool);
-  }
-
-  /* Build a simple uniform shuffle queue */
-  function buildNormalQueue(items) {
-    var indices = items.map(function(_, i) { return i; });
-    return fisherYates(indices);
-  }
-
-  /* Rebuild shuffle queue — called whenever filteredItems or shuffleMode changes */
-  function rebuildShuffleQueue(startIndex) {
-    if (!shuffleMode || !filteredItems.length) { shuffleQueue = []; shufflePos = -1; return; }
-    var rawQueue = shuffleMode === 'weighted'
-      ? buildWeightedQueue(filteredItems)
-      : buildNormalQueue(filteredItems);
-    shuffleQueue = rawQueue; /* already filteredItems indices */
-    /* Put startIndex first so current track leads */
-    if (typeof startIndex === 'number' && startIndex >= 0) {
-      var pos = shuffleQueue.indexOf(startIndex);
-      if (pos > 0) {
-        shuffleQueue.splice(pos, 1);
-        shuffleQueue.unshift(startIndex);
-      }
-    }
-    shufflePos = 0;
-  }
-
-  /* Next index respecting shuffle state */
-  function nextIndex() {
-    if (shuffleMode && shuffleQueue.length) {
-      shufflePos = (shufflePos + 1) % shuffleQueue.length;
-      /* Replenish weighted queue when exhausted */
-      if (shufflePos === 0 && shuffleMode === 'weighted') {
-        shuffleQueue = buildWeightedQueue(filteredItems);
-      }
-      return shuffleQueue[shufflePos];
-    }
-    /* Sequential */
-    var ni = currentIndex + 1;
-    if (ni >= filteredItems.length) return repeatMode === 'all' ? 0 : -1;
-    return ni;
-  }
+  /* ── Shuffle logic ──
+     fisherYates/buildWeightedQueue/buildNormalQueue/rebuildShuffleQueue/
+     nextIndex/prevIndex: ported to webui/src/shuffle.ts via the htState
+     bridge (window.htState in _core.py) — they read/write
+     shuffleQueue/shufflePos live. Bare call sites unchanged. */
 
   /* First playable index — kept for API compat, returns 0 */
   function _firstPlayableIndex() { return 0; }
 
-  /* Prev index respecting shuffle state */
-  function prevIndex() {
-    if (shuffleMode && shuffleQueue.length) {
-      shufflePos = (shufflePos - 1 + shuffleQueue.length) % shuffleQueue.length;
-      return shuffleQueue[shufflePos];
-    }
-    /* Sequential */
-    var pi = currentIndex - 1;
-    if (pi < 0) {
-      if (repeatMode === 'all') return filteredItems.length - 1;
-      return 0;
-    }
-    return pi;
-  }
 
   function handlePreviousTrack() {
     /* Smart previous: restart current track if already playing for >= 3s,

@@ -15,9 +15,9 @@ built via Vite, served as FastAPI static assets. Backend untouched.
 `pathUtils.ts`, `dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`,
 `recentMoveTargets.ts`, `catalogCache.ts`, `offlineDownloads.ts`,
 `langDetect.ts`, `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`,
-`toast.ts`, `folderCache.ts`). Never bulk-port via `eval()` — tried once,
-broke prod (see git log 2026-08-06). `legacy.ts` sits unused in tree as raw
-material — don't re-enable as-is.
+`toast.ts`, `folderCache.ts`, `shuffle.ts`). Never bulk-port via `eval()` —
+tried once, broke prod (see git log 2026-08-06). `legacy.ts` sits unused in
+tree as raw material — don't re-enable as-is.
 
 Third pattern (since `clickGuard.ts`): if a stateful block's state is
 *private* to it (no other fragment reads it), move state + listeners along
@@ -32,7 +32,9 @@ Portiert: `metaPill.css`. Offen: `_root`, `_tools_panel`, `_track_list`,
 `_video_overlay`.
 
 Blocker for stateful fragments (`_core.py`, `_library_tools.py`, ...):
-cross-fragment coupling — see "Player-JS-Modulkopplung" below.
+cross-fragment coupling — **gelöst** via `htState`-Bridge, siehe
+"Player-JS-Modulkopplung" below. Verbleibende Arbeit ist Fließband:
+Funktion für Funktion über eines der vier Muster portieren.
 
 ### Streaming UI
 - „Ähnliche Titel" vorschlagen (Artist/Genre/Album/TMDB) — zurückgestellt
@@ -86,19 +88,18 @@ Offen:
 
 ### Player-JS-Modulkopplung
 
-**Status:** offen, blockiert Modul-für-Modul-TS-Port.
+**Status:** Blocker gelöst durch `htState`-Bridge — Port-Reihenfolge bleibt
+Aufwandsfrage, keine Architekturfrage mehr.
 
 Jedes `player_js/*.py`-Fragment liest/schreibt Bezeichner aus anderen
 Fragmenten (`filteredItems`, `allItems`, `showFolderView`, ...) — verlässt
 sich auf gemeinsame nicht-strikte Konkatenation, kein echtes Modul.
 
-Zwei Bridging-Muster etabliert:
-- **`window`-Bridge** (read-only/einmalig gesetzte Globals wie `originalTitle`) — Contract in `legacy-globals.d.ts`
-- **Explizite Parameter** (häufig mutierte Globals wie `allItems`) — siehe `smartPlaylist.ts`: nimmt Daten als Parameter statt `window`-Read, Call-Sites reichen lokale Variablen durch
-- **State mitnehmen** (Zustand nur fragment-intern, z.B. `_mdX`/`_mdY`, `_allFoldersCache`) — siehe `clickGuard.ts`/`folderCache.ts`: State + Listener wandern ins TS-Modul, gar kein Bridge nötig
-
-Vor jedem Port eines gekoppelten Fragments: welches Muster passt an der
-jeweiligen Grenze besser?
+Vier Bridging-Muster etabliert (in dieser Reihenfolge prüfen):
+1. **State mitnehmen** (Zustand nur fragment-intern, z.B. `_mdX`/`_allFoldersCache`) — `clickGuard.ts`/`folderCache.ts`: State wandert mit, kein Bridge
+2. **Explizite Parameter** (nur *gelesene* mutierte Globals) — `smartPlaylist.ts`: Call-Sites reichen lokale Variablen durch
+3. **`window`-Bridge** (read-only/einmalig gesetzte Globals wie `originalTitle`) — Contract in `legacy-globals.d.ts`
+4. **`htState`-Bridge** (geteilte Globals, die der Port *schreiben* muss) — `window.htState` in `_core.py`: Getter/Setter-Closures über den IIFE-vars, TS-Writes reassignen das Original, Legacy-Mutationsstellen bleiben unangetastet. Typ-Contract `stateBridge.ts::HtState`, erster Consumer `shuffle.ts`. Pro Port nur benötigte Properties ergänzen (Getter UND Setter, Test erzwingt Paare).
 
 ### Smart-Playlist-Kaskaden (Phase 2)
 
