@@ -204,14 +204,8 @@ def render_track_render_js() -> str:
   /* formatBytes() lives in _core.py — kept as the single canonical
      definition (was accidentally duplicated here during the module split). */
 
-  function formatDate(ts) {
-    if (!ts) return 'Unbekannt';
-    try {
-      return new Date(ts).toLocaleString();
-    } catch (e) {
-      return 'Unbekannt';
-    }
-  }
+  /* formatDate/sortDownloads/getAppDownloadUsage: ported to
+     webui/src/offlineDownloads.ts, bridged onto window by main.ts. */
 
   function findItemByStreamUrl(streamUrl) {
     var idx = filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; });
@@ -222,20 +216,6 @@ def render_track_render_js() -> str:
     return null;
   }
 
-  function sortDownloads(downloads, sortBy) {
-    return downloads.slice().sort(function(a, b) {
-      if (sortBy === 'oldest') return (a.timestamp || 0) - (b.timestamp || 0);
-      if (sortBy === 'title') return String(a.title || '').localeCompare(String(b.title || ''));
-      if (sortBy === 'size') return (b.size || 0) - (a.size || 0);
-      return (b.timestamp || 0) - (a.timestamp || 0);
-    });
-  }
-
-  function getAppDownloadUsage(downloads) {
-    return (downloads || []).reduce(function(sum, d) {
-      return sum + (d.status === 'ready' ? Number(d.size || 0) : 0);
-    }, 0);
-  }
 
   function estimateOfflineStorage(downloads) {
     var list = downloads || [];
@@ -380,10 +360,20 @@ def render_track_render_js() -> str:
         };
       });
       currentPath = '__offline__';
-      showPlaylist(items, false);
-      headerTitle.textContent = 'Downloaded';
-      backBtn.classList.remove('disabled');
-      if (typeof _router !== 'undefined') _router.update();
+      /* Enter via _enterTrackListView() directly (same shared entry point as
+         showPlaylist()/showUserPlaylistView()/playDuplicates() — see
+         docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung") instead
+         of calling showPlaylist() and patching headerTitle.textContent
+         afterward. The previous patch-after approach raced _enterTrackListView's
+         own title logic (currentPath='__offline__' would otherwise render as
+         the literal folder name via leafName()) and duplicated the router
+         update showPlaylist() already performs. Also skips showPlaylist()'s
+         folder-order fetch/sort, which is meaningless for a virtual list. */
+      destroyPlaylistDragDrop();
+      inPlaylist = true;
+      _currentPlaylistId = '__offline__';
+      playlistItems = items;
+      _enterTrackListView({ title: 'Downloaded', backDisabled: false, resetIndex: true });
       estimateOfflineStorage(ready).then(function(info) {
         if (info && info.appUsage > 0) {
           trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +

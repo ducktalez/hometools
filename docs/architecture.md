@@ -126,8 +126,9 @@ as static assets. Backend is unaffected.
 
 - `streaming/core/webui/` — Vite project (`src/main.ts` defines `PlayerConfig`
   and hosts already-ported leaf modules: `pathUtils.ts`, `dupeUtils.ts`,
-  `metricPill.ts`; `legacy-globals.d.ts` types the shared cross-fragment
-  globals still owned by the legacy script).
+  `metricPill.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `recentMoveTargets.ts`,
+  `catalogCache.ts`, `offlineDownloads.ts`; `legacy-globals.d.ts` types the
+  shared cross-fragment globals still owned by the legacy script).
 - `server_utils/_static.py` mounts the Vite build output at `/static` and
   injects its script tag right before the legacy inline `<script>` — same
   execution order as before, zero behavior change.
@@ -153,7 +154,8 @@ kebab menu `_openCtxMenu()`
 `_smart_playlists.py` · queue `_queue.py` · tools panel `localStorage['ht-tools']`
 + `body.tool-*` · duplicate detection `dupeUtils.ts` · file mover
 `POST /api/audio/move-file` · windowed rendering `_track_render.py` ·
-catalog cache `localStorage` (`_CATALOG_MAX_AGE_MS`) · skip-intro
+catalog cache `localStorage` (`webui/src/catalogCache.ts`, bridged onto
+`window` by `main.ts`, TTL `CATALOG_MAX_AGE_MS`) · skip-intro
 `GET/POST/DELETE /api/video/intro` · BPM `audio/metadata.py` +
 `audio/bpm.py` + `bpm_hints.py` + `metricPill.ts`.
 

@@ -82,6 +82,11 @@ interface Window {
    * `leafName()`, see pathUtils.ts). */
   originalTitle: string;
 
+  /** Bridged onto `window` by `_core.py` right after declaration — read/
+   * mutated by `applyLocalMutations()` (webui/src/catalogCache.ts). Object
+   * identity matters: `_core.py`/`_queue.py`/`_library_tools.py` must only
+   * ever mutate keys in place, never reassign the local `_locallyDeletedPaths`
+   * var with a fresh `{}` (would desync from this window reference). */
   _locallyDeletedPaths: Record<string, boolean>;
   _currentPlaylistId: string;
   _globalSearchActive: boolean;

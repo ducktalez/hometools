@@ -824,7 +824,6 @@ class TestGlobalSearchParity:
         for html in [audio_html, video_html]:
             assert "function globalSearch" in html
             assert "function initGlobalSearch" in html
-            assert 'id="folder-filter-bar"' in html
 
     def test_both_uis_have_search_result_css(self, tmp_path):
         """Both UIs must include the search-result-folder CSS class."""

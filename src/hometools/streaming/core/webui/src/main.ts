@@ -10,9 +10,28 @@
  *   that used to be defined in `player_js/_core.py`. They were chosen
  *   first because they have zero references to any other identifier in
  *   the (still Python-generated) legacy script — a precondition for a
- *   safe module boundary given how tightly the remaining `player_js/*.py`
- *   fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
- *   Discussions for the follow-up plan on that).
+ * safe module boundary given how tightly the remaining `player_js/*.py`
+ * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
+ * Discussions for the follow-up plan on that).
+ *
+ * Latest slice: offlineDownloads.ts (formatDate/sortDownloads/
+ * getAppDownloadUsage, from _track_render.py). Pure data helpers, no window
+ * reads.
+ *
+ * Previous slice: `_smartFieldType`/`_smartOpsFor` + `SMART_FIELDS`/
+ * `SMART_OPS_BY_TYPE` (formerly in `player_js/_playlists.py`), added to the
+ * existing `smartPlaylist.ts` module. Read-only constants/pure lookups —
+ * bridged with a plain assignment (like `originalTitle`), not the explicit-
+ * parameter pattern `evaluateSmartPlaylist` uses, since nothing mutates them.
+ *
+ * Previous slice: catalogCache.ts (`_saveCatalogCache`/`_loadCatalogCache`/
+ * `_clearCatalogCache`/`_saveLastPlayedLocal`/`_loadLastPlayedLocal`/
+ * `_applyLocalMutations`, formerly in `player_js/_core.py`). These read the
+ * `#ht-config` `apiPath` (already parsed as `cfg` below) instead of the
+ * legacy `API_PATH` var, and `_applyLocalMutations` takes
+ * `window._locallyDeletedPaths` explicitly — `_core.py` now bridges that
+ * object onto `window` right after declaring it (see that file and
+ * `legacy-globals.d.ts`).
  *
  * Bridge pattern while the migration is incomplete: this bundle is built
  * in IIFE format (see vite.config.ts), NOT as an ES module, and every
@@ -38,8 +57,23 @@ import { renderBpmPill } from "./metricPill";
 import { needsConversion, filenameFromPath, parentPath, leafName, currentFolderOf } from "./pathUtils";
 import { _fmtDuration, _fmtFileSize, _fmtDate, _normalizeStem, _dupeKey, _isDupeGroupSafe } from "./dupeUtils";
 import { cleanFolderName, renderBreadcrumbHtml } from "./breadcrumb";
-import { evaluateSmartPlaylist } from "./smartPlaylist";
+import { formatDate, sortDownloads, getAppDownloadUsage } from "./offlineDownloads";
+import {
+  evaluateSmartPlaylist,
+  smartFieldType,
+  smartOpsFor,
+  SMART_FIELDS,
+  SMART_OPS_BY_TYPE,
+} from "./smartPlaylist";
 import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
+import {
+  saveCatalogCache,
+  loadCatalogCache,
+  clearCatalogCache,
+  saveLastPlayedLocal,
+  loadLastPlayedLocal,
+  applyLocalMutations,
+} from "./catalogCache";
 
 export interface PlayerConfig {
   itemNoun: string;
@@ -85,6 +119,11 @@ if (cfg) {
   // eslint-disable-next-line no-console
   console.debug("[hometools webui] config loaded", cfg.apiPath);
 }
+
+// Initialize legacy player JS (from player_js/*.py modules)
+// eval() bulk-port was tried and reverted 2026-08-06 (broke prod, see
+// git log). Do not add a legacy.ts import/call here again without first
+// reading docs/IMPLEMENTATION_PLAN.md → Vite/TypeScript migration.
 
 /**
  * Format a duration in seconds as `m:ss` or `h:mm:ss`.
@@ -157,10 +196,27 @@ declare global {
     cleanFolderName: typeof cleanFolderName;
     renderBreadcrumbHtml: typeof renderBreadcrumbHtml;
     _evaluateSmartPlaylist: typeof evaluateSmartPlaylist;
+    _smartFieldType: typeof smartFieldType;
+    _smartOpsFor: typeof smartOpsFor;
+    SMART_FIELDS: typeof SMART_FIELDS;
+    SMART_OPS_BY_TYPE: typeof SMART_OPS_BY_TYPE;
     _getRecentMoveTargets: typeof getRecentMoveTargets;
     _saveRecentMoveTarget: typeof saveRecentMoveTarget;
+    _saveCatalogCache(items: LegacyMediaItem[]): void;
+    _loadCatalogCache(): LegacyMediaItem[] | null;
+    _clearCatalogCache(): void;
+    _saveLastPlayedLocal(rp: string, pos: number): void;
+    _loadLastPlayedLocal(): ReturnType<typeof loadLastPlayedLocal>;
+    _applyLocalMutations(items: LegacyMediaItem[]): LegacyMediaItem[];
+    formatDate: typeof formatDate;
+    sortDownloads: typeof sortDownloads;
+    getAppDownloadUsage: typeof getAppDownloadUsage;
   }
 }
+
+// `apiPath` used to derive the cache keys below — falls back to '' exactly
+// like the legacy `var API_PATH = CFG.apiPath || '';` in _player_js.py.
+const _apiPathForCache = (cfg && cfg.apiPath) || "";
 
 // Bridge for the legacy Python-generated inline <script> (still one shared
 // non-strict function scope, not an ES module) — see header comment.
@@ -191,6 +247,37 @@ window._isDupeGroupSafe = _isDupeGroupSafe;
 window.cleanFolderName = cleanFolderName;
 window.renderBreadcrumbHtml = renderBreadcrumbHtml;
 window._evaluateSmartPlaylist = evaluateSmartPlaylist;
+// _smartFieldType/_smartOpsFor + their backing constants: read-only after
+// init, so the plain-assignment bridge (like originalTitle) is safe — still
+// called by _smartRenderRuleRow in player_js/_playlists.py (not ported).
+window._smartFieldType = smartFieldType;
+window._smartOpsFor = smartOpsFor;
+window.SMART_FIELDS = SMART_FIELDS;
+window.SMART_OPS_BY_TYPE = SMART_OPS_BY_TYPE;
 window._getRecentMoveTargets = getRecentMoveTargets;
 window._saveRecentMoveTarget = saveRecentMoveTarget;
+// Bridged with apiPath baked in via closure — see _apiPathForCache above and
+// catalogCache.ts's header comment on why the module itself stays pure
+// (explicit apiPath parameter instead of a window/global read).
+window._saveCatalogCache = function (items) {
+  saveCatalogCache(items, _apiPathForCache);
+};
+window._loadCatalogCache = function () {
+  return loadCatalogCache(_apiPathForCache);
+};
+window._clearCatalogCache = function () {
+  clearCatalogCache(_apiPathForCache);
+};
+window._saveLastPlayedLocal = function (rp, pos) {
+  saveLastPlayedLocal(rp, pos, _apiPathForCache);
+};
+window._loadLastPlayedLocal = function () {
+  return loadLastPlayedLocal(_apiPathForCache);
+};
+window._applyLocalMutations = function (items) {
+  return applyLocalMutations(items, window._locallyDeletedPaths);
+};
+window.formatDate = formatDate;
+window.sortDownloads = sortDownloads;
+window.getAppDownloadUsage = getAppDownloadUsage;
 

@@ -13,6 +13,7 @@ TV_IP ?=
 .PHONY: help lint format test parity streaming-config issues issues-json issues-errors todos todos-json scheduler-once todo-state dashboard dashboard-json \
 	serve-audio serve-video serve-all \
 	serve-audio-safe serve-video-safe serve-all-safe \
+	stop-all \
 	reset reset-hard reset-all-hard \
 	prewarm prewarm-full audio-prewarm video-prewarm audio-reindex video-reindex \
 	clean \
@@ -40,6 +41,9 @@ help:
 	@echo "  serve-audio-safe    - start audio server in safe mode"
 	@echo "  serve-video-safe    - start video server in safe mode"
 	@echo "  serve-all-safe      - start both servers in safe mode"
+	@echo "  stop-all            - cleanly stop all hometools streaming server"
+	@echo "                        processes (matches by command line, not by"
+	@echo "                        process name — safe for detached/background runs)"
 	@echo "  reset               - remove generated artifacts for SERVER=audio|video|all"
 	@echo "  reset-hard          - remove generated artifacts incl. thumbs/logs for SERVER=..."
 	@echo "  reset-all-hard      - hard reset for both servers"
@@ -125,6 +129,9 @@ serve-video-safe:
 
 serve-all-safe:
 	$(PYTHON) -m hometools serve-all --safe-mode
+
+stop-all:
+	powershell -ExecutionPolicy Bypass -File scripts/stop-streaming.ps1
 
 reset:
 	$(PYTHON) -m hometools stream-reset --server $(SERVER)

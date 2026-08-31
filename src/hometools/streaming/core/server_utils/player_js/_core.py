@@ -27,6 +27,13 @@ def render_core_js(waveform_js) -> str:
      Applied as a filter in every background catalog fetch so deleted items never
      reappear before the server has rebuilt its index. Cleared on full manual refresh. */
   var _locallyDeletedPaths = {};
+  /* Bridge onto window — read/mutated by _applyLocalMutations() (ported to
+     webui/src/catalogCache.ts, bridged via main.ts). Object reference only:
+     any in-place clear (delete/assign keys) elsewhere in this script stays
+     visible through window._locallyDeletedPaths; never reassign this var
+     with `= {}` (that would silently break the bridge — see refreshCatalog()
+     in _queue.py which clears keys in place instead). */
+  window._locallyDeletedPaths = _locallyDeletedPaths;
   var filteredItems = [];
   var currentIndex = -1;
   var inPlaylist = false;
@@ -71,7 +78,6 @@ def render_core_js(waveform_js) -> str:
      docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2. */
   var _filterPopoverCleanup = null;
   var folderGrid   = document.getElementById('folder-grid');
-  var folderFilterBar = document.getElementById('folder-filter-bar');
   var trackView    = document.getElementById('track-view');
   var filterBar    = document.querySelector('.filter-bar');
   var backBtn      = document.getElementById('back-btn');
@@ -146,92 +152,27 @@ def render_core_js(waveform_js) -> str:
   var _searchDebounceTimer = null; /* debounce timer for search-input */
 
   /* ── Catalog cache (localStorage, stale-while-revalidate) ──────────────────
-     Persists the full catalog so that page reloads show content immediately
-     without a loading spinner.  A silent background fetch always follows to
-     pick up any changes since the cache was written.
-     Key is unique per API endpoint so audio and video never clash.
+     Ported to webui/src/catalogCache.ts (_saveCatalogCache/_loadCatalogCache/
+     _clearCatalogCache), bridged onto window by main.ts. This IIFE keeps
+     calling the bare identifiers (e.g. `_saveCatalogCache(allItems)`) — they
+     resolve through the normal scope chain to window, unchanged call sites.
      Rule: _saveCatalogCache after every successful items fetch;
            _clearCatalogCache before any user-triggered forced refresh.        */
-  var _CATALOG_CACHE_KEY = 'ht-catalog-' + API_PATH.replace(/\\W+/g, '_');
-  var _CATALOG_MAX_AGE_MS = 5 * 60 * 1000;  /* 5 min — discard if older */
-
-  function _saveCatalogCache(items) {
-    if (!items || !items.length) return;
-    try {
-      localStorage.setItem(_CATALOG_CACHE_KEY, JSON.stringify({
-        items: items, savedAt: Date.now(), count: items.length
-      }));
-    } catch (e) { /* QuotaExceededError on large libraries or private-mode — ignore */ }
-  }
-
-  function _loadCatalogCache() {
-    try {
-      var raw = localStorage.getItem(_CATALOG_CACHE_KEY);
-      if (!raw) return null;
-      var data = JSON.parse(raw);
-      if (!data || !Array.isArray(data.items) || !data.savedAt) return null;
-      if (Date.now() - data.savedAt > _CATALOG_MAX_AGE_MS) {
-        localStorage.removeItem(_CATALOG_CACHE_KEY);
-        return null;  /* expired */
-      }
-      return data.items;
-    } catch (e) { return null; }
-  }
-
-  function _clearCatalogCache() {
-    try { localStorage.removeItem(_CATALOG_CACHE_KEY); } catch (e) {}
-  }
 
   /* ── Last-played position (localStorage) ────────────────────────────────────
+     Ported to webui/src/catalogCache.ts (_saveLastPlayedLocal/
+     _loadLastPlayedLocal) alongside the catalog cache above — same bridge
+     pattern, same reasoning.
      Saved on every playItem() start and every saveProgressNow() tick.
      Survives server restarts and page reloads, unlike the in-memory currentIndex.
-     Used as the primary (fast, offline) source for _restoreLastEpisode().
-     Key is unique per server so audio and video don't clash.
-     TTL: 30 days.                                                              */
-  var _LAST_PLAYED_KEY = 'ht-last-' + API_PATH.replace(/\\W+/g, '_');
+     Used as the primary (fast, offline) source for _restoreLastEpisode().     */
 
-  function _saveLastPlayedLocal(rp, pos) {
-    if (!rp) return;
-    try {
-      localStorage.setItem(_LAST_PLAYED_KEY, JSON.stringify({
-        path: rp,
-        position_seconds: pos,
-        folder: rp.lastIndexOf('/') > 0 ? rp.substring(0, rp.lastIndexOf('/')) : '',
-        timestamp: Date.now()
-      }));
-    } catch (e) {}
-  }
-
-  function _loadLastPlayedLocal() {
-    try {
-      var raw = localStorage.getItem(_LAST_PLAYED_KEY);
-      if (!raw) return null;
-      var data = JSON.parse(raw);
-      if (!data || !data.path) return null;
-      if (Date.now() - (data.timestamp || 0) > 30 * 24 * 60 * 60 * 1000) return null; /* 30 days */
-      return data;
-    } catch (e) { return null; }
-  }
-
-  /* Filter items returned by a background/silent fetch: remove paths that were
-     deleted client-side this session so they don't reappear before the server
-     has rescanned. Also prunes the set once the server confirms the deletion. */
-  function _applyLocalMutations(items) {
-    if (!items || !items.length) return items;
-    var deletedKeys = Object.keys(_locallyDeletedPaths);
-    if (!deletedKeys.length) return items;
-    var freshSet = null;
-    /* Prune confirmed deletions: if server no longer has the path, it's safe to
-       remove from the local tracking set (no risk of re-adding). */
-    deletedKeys.forEach(function(rp) {
-      if (!freshSet) {
-        freshSet = {};
-        items.forEach(function(it) { freshSet[it.relative_path] = true; });
-      }
-      if (!freshSet[rp]) delete _locallyDeletedPaths[rp];
-    });
-    return items.filter(function(it) { return !_locallyDeletedPaths[it.relative_path]; });
-  }
+  /* _applyLocalMutations: ported to webui/src/catalogCache.ts, bridged onto
+     window by main.ts (passes window._locallyDeletedPaths explicitly — see
+     that file's header comment and the bridge assignment above). Filters
+     items returned by a background/silent fetch: removes paths deleted
+     client-side this session so they don't reappear before the server has
+     rescanned. Also prunes the set once the server confirms the deletion. */
 
   var currentStreamUrl = '';
   var currentOfflineUrl = null;

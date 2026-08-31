@@ -52,6 +52,9 @@ Audio auf Port 8010, Video auf Port 8011. Details und Synology-Anleitung in
   - Klickt man in einer Liste auf "reload", während der Indizierungsprozess am Laufen ist, so soll dieser Ordner in der quene sofort abgearbeitet werden
   - Der Reload-Button bei Listen soll nur die angezeigten Lieder neu laden. 
 
+- Die videostreaming-umrandung in lila hat noch den Fehler, dass der unterste Listeneintrag keine Bottom-Umrandung hat. Dieses Problem wurde bereits für Audio behoben, die Lösung ist allerdings falsch. 
+  1. Es wurde eine nicht-bündige Linie zusätzlich hinzugefügt. das ist unsauber.
+  2. Das soll nicht nur behoben werden, ich würde auch gerne wissen, warum diese Funktion nicht für beide Server (Audio+Video) einheitlich implementiert wurde. Genau dafür wären eigentlich Instructions da.
 - Klangart/Tonart Mit Python herausfinden 
 - Allen Ordnern im Audio-Tool soll beim Start entsprechend des Regenbogens eine Farbe zugeordnet werden. Diese hat lediglich eine Bedeutung bei der Umrandung des Covers und bei den Buttons zum Verschieben der Tracks. 
 - "Tools"-funktionen immer am rechten Song-rand. 

@@ -514,7 +514,11 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   function refreshCatalog() {
     var _rb = _getRefreshBtn(); if (_rb) _rb.classList.add('spinning');
     _clearCatalogCache();  /* force fresh data — user explicitly requested a reload */
-    _locallyDeletedPaths = {};  /* clear session-deletions — user wants the real server state */
+    /* Clear in place (never reassign `= {}`) — window._locallyDeletedPaths
+       (bridged in _core.py for webui/src/catalogCache.ts) must keep pointing
+       at this same object, or _applyLocalMutations() silently stops seeing
+       future deletions. */
+    Object.keys(_locallyDeletedPaths).forEach(function(k) { delete _locallyDeletedPaths[k]; });
     _ratingRefreshPath = null;
 
     var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));

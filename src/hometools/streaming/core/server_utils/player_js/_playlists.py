@@ -108,35 +108,11 @@ def render_playlists_js() -> str:
   }
 
   /* ── Smart Playlist Editor Modal ────────────────────────────────────── */
-  var SMART_FIELDS = [
-    { value: 'rating',        label: 'Bewertung',     type: 'number' },
-    { value: 'genre',         label: 'Genre',         type: 'text'   },
-    { value: 'artist',        label: 'Artist',        type: 'text'   },
-    { value: 'title',         label: 'Titel',         type: 'text'   },
-    { value: 'relative_path', label: 'Dateipfad',     type: 'text'   },
-    { value: 'language',      label: 'Sprache',       type: 'text'   },
-    { value: 'added_at',      label: 'Hinzugefügt',   type: 'number' },
-    { value: 'duration',      label: 'Dauer (Sek.)',  type: 'number' },
-    { value: 'in_playlist',   label: 'In Playlist',   type: 'playlist' },
-    { value: 'is_favorite',   label: 'Favorit',       type: 'bool'   }
-  ];
-  var SMART_OPS_BY_TYPE = {
-    'number':   [['gte','≥'], ['lte','≤'], ['eq','='], ['between','zwischen']],
-    'text':     [['contains','enthält'], ['eq','='], ['starts_with','beginnt mit'], ['matches','regex']],
-    'bool':     [['eq','=']],
-    'playlist': [['any_of','in einer von'], ['all_of','in allen von'], ['none_of','in keiner von']]
-  };
-  /* added_at gets its own op set (overrides number defaults) */
-  var SMART_OPS_ADDED_AT = [['within_days','letzte N Tage']];
-
-  function _smartFieldType(field) {
-    var f = SMART_FIELDS.find(function(x) { return x.value === field; });
-    return f ? f.type : 'text';
-  }
-  function _smartOpsFor(field) {
-    if (field === 'added_at') return SMART_OPS_ADDED_AT;
-    return SMART_OPS_BY_TYPE[_smartFieldType(field)] || SMART_OPS_BY_TYPE['text'];
-  }
+  /* SMART_FIELDS/SMART_OPS_BY_TYPE/SMART_OPS_ADDED_AT + _smartFieldType()/
+     _smartOpsFor() ported to webui/src/smartPlaylist.ts, bridged onto
+     window by main.ts — this fragment keeps calling the bare identifiers
+     below (_smartRenderRuleRow), which resolve through the scope chain to
+     window, unchanged. */
 
   function _smartRenderRuleRow(rule, idx) {
     var fieldOpts = SMART_FIELDS.map(function(f) {

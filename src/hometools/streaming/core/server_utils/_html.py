@@ -583,8 +583,6 @@ def render_media_page(
   </header>
 
 
-  <!-- folder filter bar (kept for test compatibility, always hidden) -->
-  <div class="folder-filter-bar" id="folder-filter-bar" hidden></div>
 
   <!-- recently played (root view only, hidden until JS populates) -->
   {recent_section_html}

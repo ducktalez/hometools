@@ -1576,21 +1576,6 @@ def test_global_search_respects_min_rating():
     assert "r < _effectiveThreshold" in js
 
 
-def test_folder_filter_bar_in_html():
-    """The HTML must contain the folder-filter-bar element."""
-    from hometools.streaming.core.server_utils import render_media_page
-
-    html = render_media_page(
-        title="T",
-        emoji="X",
-        items_json="[]",
-        media_element_tag="audio",
-        api_path="/api/t",
-        item_noun="track",
-    )
-    assert 'id="folder-filter-bar"' in html
-
-
 def test_global_search_shows_folder_path():
     """Search results must show the folder path for context."""
     js = render_player_js()
@@ -2201,25 +2186,38 @@ class TestCatalogLocalStorageCache:
     def _js(self):
         return render_player_js()
 
-    # ── Helper functions must be present ─────────────────────────────────────
+    # ── Helper functions must be present (ported to webui/src/catalogCache.ts,
+    #    bridged onto window by main.ts — see that file's header comment) ────
 
     def test_save_catalog_cache_function_defined(self):
-        assert "function _saveCatalogCache(" in self._js()
+        ts = _webui_src("catalogCache.ts")
+        assert "export function saveCatalogCache(" in ts
+        assert "function _saveCatalogCache(" not in self._js()
+        assert "window._saveCatalogCache = function" in _webui_src("main.ts")
 
     def test_load_catalog_cache_function_defined(self):
-        assert "function _loadCatalogCache(" in self._js()
+        ts = _webui_src("catalogCache.ts")
+        assert "export function loadCatalogCache(" in ts
+        assert "function _loadCatalogCache(" not in self._js()
+        assert "window._loadCatalogCache = function" in _webui_src("main.ts")
 
     def test_clear_catalog_cache_function_defined(self):
-        assert "function _clearCatalogCache(" in self._js()
+        ts = _webui_src("catalogCache.ts")
+        assert "export function clearCatalogCache(" in ts
+        assert "function _clearCatalogCache(" not in self._js()
+        assert "window._clearCatalogCache = function" in _webui_src("main.ts")
 
     def test_catalog_cache_key_uses_api_path(self):
-        """Key must be derived from API_PATH so audio and video never share a slot."""
-        js = self._js()
-        assert "_CATALOG_CACHE_KEY" in js
-        assert "API_PATH" in js
+        """Key must be derived from apiPath so audio and video never share a
+        slot. Ported: the Python-generated JS no longer computes this key
+        itself (see catalogCache.ts's `keyFor()`, fed from `#ht-config`'s
+        apiPath via main.ts's `_apiPathForCache`)."""
+        ts = _webui_src("catalogCache.ts")
+        assert 'keyFor("ht-catalog-", apiPath)' in ts
+        assert "_CATALOG_CACHE_KEY" not in self._js()
 
     def test_catalog_max_age_defined(self):
-        assert "_CATALOG_MAX_AGE_MS" in self._js()
+        assert "CATALOG_MAX_AGE_MS" in _webui_src("catalogCache.ts")
 
     # ── loadInitialCatalog must use the cache ─────────────────────────────────
 
@@ -2300,13 +2298,13 @@ class TestCatalogLocalStorageCache:
         """The cache key must be unique per server so that the audio catalog
         never overwrites the video catalog or vice versa.
 
-        _CATALOG_CACHE_KEY is derived at runtime from API_PATH (= CFG.apiPath,
-        Vite/TS migration Phase 3) — the JS expression itself is now
+        The key-derivation logic itself now lives in webui/src/catalogCache.ts
+        (`keyFor()`, ported from the former `_CATALOG_CACHE_KEY` var) — it's
         identical for every server, so uniqueness is verified end-to-end via
         the actual #ht-config apiPath values of the two live servers.
         """
-        js = render_player_js()
-        assert "_CATALOG_CACHE_KEY = 'ht-catalog-' + API_PATH.replace" in js
+        ts = _webui_src("catalogCache.ts")
+        assert 'keyFor("ht-catalog-", apiPath)' in ts
 
         audio_page = render_media_page(title="T", emoji="", items_json="[]", media_element_tag="audio", api_path="/api/audio/tracks")
         video_page = render_media_page(title="T", emoji="", items_json="[]", media_element_tag="video", api_path="/api/video/items")

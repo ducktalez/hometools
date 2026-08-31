@@ -154,9 +154,6 @@ body.tool-show-file-mover .track-queue-btn { display: none; }
 }
 .move-delete-btn svg { width: 11px; height: 11px; flex-shrink: 0; }
 .move-delete-btn:hover { color: #e57373; background: rgba(229,115,115,0.08); }
-.folder-filter-bar {
-  padding: 0 16px 4px; display: flex; align-items: center; gap: 8px;
-}
 #global-search-input {
   flex: 1; padding: 8px 12px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--surface2); color: var(--text);

@@ -24,6 +24,62 @@
  * this module verifiably pure — no `window` reads at all.
  */
 
+/** Field metadata for the smart-playlist rule editor (`_smartRenderRuleRow`
+ * in `player_js/_playlists.py`, still Python — reads these bare identifiers
+ * via the window bridge in `main.ts`, same scope-chain trick as everywhere
+ * else in this migration). Read-only after module init, so a single
+ * `window.SMART_FIELDS = SMART_FIELDS;`-style assignment is safe (see
+ * `legacy-globals.d.ts` header on the read-only-global bridge pattern). */
+export const SMART_FIELDS = [
+  { value: "rating", label: "Bewertung", type: "number" },
+  { value: "genre", label: "Genre", type: "text" },
+  { value: "artist", label: "Artist", type: "text" },
+  { value: "title", label: "Titel", type: "text" },
+  { value: "relative_path", label: "Dateipfad", type: "text" },
+  { value: "language", label: "Sprache", type: "text" },
+  { value: "added_at", label: "Hinzugefügt", type: "number" },
+  { value: "duration", label: "Dauer (Sek.)", type: "number" },
+  { value: "in_playlist", label: "In Playlist", type: "playlist" },
+  { value: "is_favorite", label: "Favorit", type: "bool" },
+] as const;
+
+export const SMART_OPS_BY_TYPE: Record<string, [string, string][]> = {
+  number: [
+    ["gte", "≥"],
+    ["lte", "≤"],
+    ["eq", "="],
+    ["between", "zwischen"],
+  ],
+  text: [
+    ["contains", "enthält"],
+    ["eq", "="],
+    ["starts_with", "beginnt mit"],
+    ["matches", "regex"],
+  ],
+  bool: [["eq", "="]],
+  playlist: [
+    ["any_of", "in einer von"],
+    ["all_of", "in allen von"],
+    ["none_of", "in keiner von"],
+  ],
+};
+
+/** `added_at` gets its own op set (overrides the `number` defaults). */
+export const SMART_OPS_ADDED_AT: [string, string][] = [["within_days", "letzte N Tage"]];
+
+/** Look up a smart-playlist field's editor input type. Defaults to `"text"`
+ * for an unknown field (mirrors the original fallback). */
+export function smartFieldType(field: string | undefined): string {
+  const f = SMART_FIELDS.find((x) => x.value === field);
+  return f ? f.type : "text";
+}
+
+/** The rule-editor operator dropdown options for a given field. */
+export function smartOpsFor(field: string | undefined): [string, string][] {
+  if (field === "added_at") return SMART_OPS_ADDED_AT;
+  return SMART_OPS_BY_TYPE[smartFieldType(field)] || SMART_OPS_BY_TYPE["text"];
+}
+
 /** One smart-playlist filter rule, as stored in the playlist JSON. */
 export interface SmartPlaylistRule {
   field: string;

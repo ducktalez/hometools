@@ -249,7 +249,43 @@ def serve_all(
 # PyCharm run-configuration generator
 # ---------------------------------------------------------------------------
 
-_PYCHARM_SDK = "Python 3.10 (hometools-env)"
+_PYCHARM_SDK_FALLBACK = "Python 3 (hometools)"
+
+
+def _detect_pycharm_sdk_name(project_root: Path) -> str:
+    """Return the Python SDK name PyCharm currently has bound to this project.
+
+    Reads ``jdkName`` from ``.idea/<module>.iml`` — the same value PyCharm
+    itself maintains whenever the interpreter is changed via
+    Settings > Project > Python Interpreter. This must match an entry in
+    PyCharm's (per-user, per-machine) ``jdk.table.xml`` for a generated run
+    configuration's ``SDK_NAME`` to resolve; that table is user/machine-local
+    and PyCharm often names path-based interpreters after their relative
+    path (e.g. ``~\\PycharmProjects\\hometools\\.venv``), not a friendly
+    name — so this must never be hardcoded here. Falls back to a generic
+    placeholder (and logs a warning) if no ``.iml`` file is found yet, e.g.
+    on a machine that hasn't opened the project in PyCharm at all.
+    """
+    idea_dir = project_root / ".idea"
+    if idea_dir.is_dir():
+        for iml_path in idea_dir.glob("*.iml"):
+            try:
+                import re
+
+                text = iml_path.read_text(encoding="utf-8")
+                match = re.search(r'jdkName="([^"]+)"', text)
+                if match:
+                    return match.group(1)
+            except OSError:
+                continue
+    logger.warning(
+        "Could not detect PyCharm SDK name from %s/*.iml — using fallback %r. "
+        "Open the project in PyCharm once (so it writes the .iml file), then "
+        "re-run 'hometools setup-pycharm'.",
+        idea_dir,
+        _PYCHARM_SDK_FALLBACK,
+    )
+    return _PYCHARM_SDK_FALLBACK
 
 
 def _make_python_config(
@@ -257,6 +293,7 @@ def _make_python_config(
     module: str,
     parameters: str,
     *,
+    sdk_name: str,
     env_vars: dict[str, str] | None = None,
 ) -> Element:
     """Build an XML element for a PyCharm Python run configuration."""
@@ -282,7 +319,7 @@ def _make_python_config(
             SubElement(envs, "env", attrib={"name": k, "value": v})
 
     SubElement(cfg, "option", attrib={"name": "SDK_HOME", "value": ""})
-    SubElement(cfg, "option", attrib={"name": "SDK_NAME", "value": _PYCHARM_SDK})
+    SubElement(cfg, "option", attrib={"name": "SDK_NAME", "value": sdk_name})
     SubElement(cfg, "option", attrib={"name": "WORKING_DIRECTORY", "value": "$PROJECT_DIR$"})
     SubElement(cfg, "option", attrib={"name": "IS_MODULE_SDK", "value": "true"})
     SubElement(cfg, "option", attrib={"name": "ADD_CONTENT_ROOTS", "value": "true"})
@@ -341,6 +378,7 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
     """
     run_cfg_dir = project_root / ".idea" / "runConfigurations"
     run_cfg_dir.mkdir(parents=True, exist_ok=True)
+    sdk_name = _detect_pycharm_sdk_name(project_root)
 
     # Individual Python run configurations
     python_configs = [
@@ -352,7 +390,7 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
 
     created: list[Path] = []
     for name, module, params, filename in python_configs:
-        xml_root = _make_python_config(name, module, params)
+        xml_root = _make_python_config(name, module, params, sdk_name=sdk_name)
         target = run_cfg_dir / filename
         tree = ElementTree(xml_root)
         indent(tree, space="  ")

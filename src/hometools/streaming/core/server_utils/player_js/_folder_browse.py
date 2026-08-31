@@ -647,7 +647,6 @@ def render_folder_browse_js() -> str:
   function _hideGlobalSearch() {
     var inp = document.getElementById('global-search-input');
     if (inp) { inp.classList.add('view-hidden'); inp.value = ''; }
-    if (folderFilterBar) folderFilterBar.hidden = true;
   }
 
   /* ── Filter bar scroll-reveal ── */
