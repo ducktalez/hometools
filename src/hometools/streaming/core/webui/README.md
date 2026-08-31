@@ -5,22 +5,13 @@ Vite + TypeScript build for the streaming player UI. This directory is
 JS/CSS in `server_utils/_player_js.py` / `_css.py` / `player_js/*.py` /
 `css/*.py`.
 
-**Current status (2026-07-31):** Phase 1-4 done, Phase 5 in progress
-(first slice: `fmtTime`/`escHtml`/`formatBytes`/`renderBpmPill`; opportunistic
-slices since: `needsConversion`/`filenameFromPath`/`parentPath`/`leafName`/
-`currentFolderOf` (`pathUtils.ts`), `_fmtDuration`/`_fmtFileSize`/`_fmtDate`/
-`_normalizeStem`/`_dupeKey`/`_isDupeGroupSafe` (`dupeUtils.ts`),
-`cleanFolderName`/`renderBreadcrumbHtml` (`breadcrumb.ts`),
-`getRecentMoveTargets`/`saveRecentMoveTarget` (`recentMoveTargets.ts`) — all
-dependency-free leaf helpers, bridged onto `window` for the remaining
-Python-generated inline script to consume). The ambient `.d.ts` contract
-for the *stateful* cross-fragment globals (`allItems`, `filteredItems`,
-`showFolderView`, ...) also now exists (`legacy-globals.d.ts`) — see
-"Opportunistic migration rule" below. FastAPI mounts this build's output at `/static`
-(`server_utils/_static.py`) and `_html.py` renders its `<script src="...">`
-tag before the remaining inline `<script>{js}</script>`. See
-`docs/architecture.md` → "Phase 4: FastAPI static serving + Phase 5 first
-slice" for the full design.
+**Current status (2026-08-06):** Phase 1-4 done, Phase 5 in progress
+(opportunistic slices only — see below). A prior attempt to bulk-port all
+9 `player_js/*.py` files into one `legacy.ts` via `eval()` caused a real
+production outage (catalog never rendered — see `docs/IMPLEMENTATION_PLAN.md`
+→ "Vite/TypeScript migration" for the short version). That file has been
+deleted; the proven, working ports so far are the small incremental ones
+listed below. Don't attempt a bulk `eval()` port again.
 
 ## Why this exists
 
