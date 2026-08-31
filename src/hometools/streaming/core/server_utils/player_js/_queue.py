@@ -604,27 +604,9 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
 
   /* compute direct sub-folders and loose files at a path level */
   var IGNORED_FOLDERS = {'#recycle': true, '@eaDir': true};
-  var _LANG_DETECT_MAP = [
-    [/\\(\\s*engl(?:ish)?\\s*(?:,\\s*(?:ger|de)(?:\\s*sub(?:s)?)?)?\\s*\\)/i, 'en'],
-    [/\\(\\s*eng\\s*\\)/i, 'en'], [/\\(\\s*en\\s*\\)/i, 'en'],
-    [/\\(\\s*german\\s*\\)/i, 'de'], [/\\(\\s*deutsch\\s*\\)/i, 'de'],
-    [/\\(\\s*ger\\s*\\)/i, 'de'], [/\\(\\s*de\\s*\\)/i, 'de'],
-    [/\\(\\s*french\\s*\\)/i, 'fr'], [/\\(\\s*fran[c\u00e7]ais(?:e)?\\s*\\)/i, 'fr'], [/\\(\\s*fr\\s*\\)/i, 'fr'],
-    [/\\(\\s*spanish\\s*\\)/i, 'es'], [/\\(\\s*espa[n\u00f1]ol\\s*\\)/i, 'es'], [/\\(\\s*es\\s*\\)/i, 'es'],
-    [/\\(\\s*italian(?:o)?\\s*\\)/i, 'it'], [/\\(\\s*it\\s*\\)/i, 'it'],
-    [/\\(\\s*japanese\\s*\\)/i, 'ja'], [/\\(\\s*jap\\s*\\)/i, 'ja'], [/\\(\\s*jpn?\\s*\\)/i, 'ja'],
-    [/\\(\\s*korean\\s*\\)/i, 'ko'], [/\\(\\s*kor?\\s*\\)/i, 'ko'],
-    [/\\(\\s*chinese\\s*\\)/i, 'zh'], [/\\(\\s*zh\\s*\\)/i, 'zh'],
-    [/\\(\\s*portuguese\\s*\\)/i, 'pt'], [/\\(\\s*pt\\s*\\)/i, 'pt'],
-    [/\\(\\s*russian\\s*\\)/i, 'ru'], [/\\(\\s*ru\\s*\\)/i, 'ru']
-  ];
 
-  function detectLangFromName(name) {
-    for (var i = 0; i < _LANG_DETECT_MAP.length; i++) {
-      if (_LANG_DETECT_MAP[i][0].test(name)) return _LANG_DETECT_MAP[i][1];
-    }
-    return '';
-  }
+  /* detectLangFromName/detectSubLangFromName: ported to
+     webui/src/langDetect.ts, bridged onto window by main.ts. */
 
   /* cleanFolderName() now lives in webui/src/breadcrumb.ts, bridged onto
      window (see main.ts) — this bare identifier resolves through the
@@ -642,21 +624,6 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     return html;
   }
 
-  /* Detect subtitle language hint from folder name, e.g. "(engl, gersub)" → "de" */
-  var _SUB_DETECT_MAP = [
-    [/\\(\\s*\\w+\\s*,\\s*(?:ger(?:man)?|de(?:utsch)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'de'],
-    [/\\(\\s*\\w+\\s*,\\s*(?:eng(?:l(?:ish)?)?|en)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'en'],
-    [/\\(\\s*\\w+\\s*,\\s*(?:fr(?:ench)?|fran[c\\u00e7]ais(?:e)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'fr'],
-    [/\\(\\s*\\w+\\s*,\\s*(?:es(?:pa[n\\u00f1]ol)?|spanish)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'es'],
-    [/\\(\\s*\\w+\\s*,\\s*(?:it(?:alian(?:o)?)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'it'],
-    [/\\(\\s*\\w+\\s*,\\s*(?:ja(?:p(?:anese)?|pn?)?)(?:\\s*sub(?:s|title)?(?:s)?)?\\s*\\)/i, 'ja']
-  ];
-  function detectSubLangFromName(name) {
-    for (var i = 0; i < _SUB_DETECT_MAP.length; i++) {
-      if (_SUB_DETECT_MAP[i][0].test(name)) return _SUB_DETECT_MAP[i][1];
-    }
-    return '';
-  }
 
   /* Composite flag: main language flag with optional smaller subtitle flag overlay */
   function compositeFlagHtml(mainLang, subLang) {

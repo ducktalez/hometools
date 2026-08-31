@@ -14,7 +14,11 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: offlineDownloads.ts (formatDate/sortDownloads/
+ * Latest slice: langDetect.ts (detectLangFromName/detectSubLangFromName,
+ * from _queue.py). Pure regex tables. langBadgesHtml/compositeFlagHtml stay
+ * Python — need LANG_TO_FLAG SVG markup, single source _svg.py.
+ *
+ * Previous slice: offlineDownloads.ts (formatDate/sortDownloads/
  * getAppDownloadUsage, from _track_render.py). Pure data helpers, no window
  * reads.
  *
@@ -58,6 +62,7 @@ import { needsConversion, filenameFromPath, parentPath, leafName, currentFolderO
 import { _fmtDuration, _fmtFileSize, _fmtDate, _normalizeStem, _dupeKey, _isDupeGroupSafe } from "./dupeUtils";
 import { cleanFolderName, renderBreadcrumbHtml } from "./breadcrumb";
 import { formatDate, sortDownloads, getAppDownloadUsage } from "./offlineDownloads";
+import { detectLangFromName, detectSubLangFromName } from "./langDetect";
 import {
   evaluateSmartPlaylist,
   smartFieldType,
@@ -211,6 +216,8 @@ declare global {
     formatDate: typeof formatDate;
     sortDownloads: typeof sortDownloads;
     getAppDownloadUsage: typeof getAppDownloadUsage;
+    detectLangFromName: typeof detectLangFromName;
+    detectSubLangFromName: typeof detectSubLangFromName;
   }
 }
 
@@ -280,4 +287,6 @@ window._applyLocalMutations = function (items) {
 window.formatDate = formatDate;
 window.sortDownloads = sortDownloads;
 window.getAppDownloadUsage = getAppDownloadUsage;
+window.detectLangFromName = detectLangFromName;
+window.detectSubLangFromName = detectSubLangFromName;
 

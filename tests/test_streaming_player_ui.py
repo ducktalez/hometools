@@ -1698,9 +1698,12 @@ def test_js_has_lang_to_flag_map():
 
 
 def test_js_has_detect_lang_from_name():
-    """JS must contain the detectLangFromName helper."""
-    js = _js()
-    assert "function detectLangFromName" in js
+    """detectLangFromName is ported to webui/src/langDetect.ts, bridged
+    onto window by main.ts."""
+    ts = _webui_src("langDetect.ts")
+    assert "export function detectLangFromName" in ts
+    assert "function detectLangFromName" not in _js()
+    assert "window.detectLangFromName = detectLangFromName" in _webui_src("main.ts")
 
 
 def test_js_clean_folder_name_strips_hash():
@@ -1783,9 +1786,11 @@ def test_css_has_lang_badge():
 
 
 def test_js_has_detect_sub_lang_from_name():
-    """JS must contain the detectSubLangFromName function."""
-    js = _js()
-    assert "function detectSubLangFromName" in js
+    """detectSubLangFromName is ported to webui/src/langDetect.ts, bridged
+    onto window by main.ts."""
+    ts = _webui_src("langDetect.ts")
+    assert "export function detectSubLangFromName" in ts
+    assert "function detectSubLangFromName" not in _js()
 
 
 def test_js_has_composite_flag_html():
@@ -1881,9 +1886,10 @@ def test_js_card_click_uses_default_lang():
 
 
 def test_js_detect_sub_lang_maps():
-    """detectSubLangFromName must contain detection patterns for common subtitle hints."""
-    js = _js()
-    assert "gersub" in js or "ger" in js
+    """detectSubLangFromName's patterns (ported to langDetect.ts) must
+    cover common subtitle hints."""
+    ts = _webui_src("langDetect.ts")
+    assert "gersub" in ts or "ger" in ts
 
 
 def test_config_get_default_language():
