@@ -1,11 +1,6 @@
-"""CSS fragment: player bar (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_player_bar_css() -> str:
-    """Return the player bar section of the dark-theme CSS."""
-    return """/* ── Rating bar overlay on thumbnails ── */
+/* Thumbnail rating overlay, bottom player bar (classic + waveform layouts),
+   transport controls. Ported verbatim from
+   server_utils/css/_player_bar.py::render_player_bar_css(). */
 .thumb-wrap {
   position: relative; flex-shrink: 0; overflow: hidden;
 }
@@ -219,4 +214,3 @@ def render_player_bar_css() -> str:
   -webkit-appearance: none; width: 1px; height: 1px; background: transparent;
 }
 
-"""

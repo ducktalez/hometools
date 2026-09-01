@@ -1,11 +1,6 @@
-"""CSS fragment: modals (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_modals_css() -> str:
-    """Return the modals section of the dark-theme CSS."""
-    return """/* ── Edit metadata modal ── */
+/* Edit-metadata modal, per-track playlist button, playlist drag-and-drop
+   reorder, add-to/create playlist modal. Ported verbatim from
+   server_utils/css/_modals.py::render_modals_css(). */
 .edit-modal-backdrop {
   position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.72);
   display: flex; align-items: center; justify-content: center; padding: 1rem;
@@ -126,4 +121,4 @@ body.playlist-dragging .track-list { overflow: visible; }
 }
 .playlist-modal-close button:hover { border-color: var(--text); color: var(--text); }
 /* ── Playlist library panel (removed — playlists as pseudo-folders) ── */
-"""
+

@@ -1,11 +1,5 @@
-"""CSS fragment: tools panel (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_tools_panel_css() -> str:
-    """Return the tools panel section of the dark-theme CSS."""
-    return """/* ── Tools pill + panel ── */
+/* Tools pill + panel — segmented toggle button, backdrop modal, toggle
+   switches. Ported verbatim from server_utils/css/_tools_panel.py::render_tools_panel_css(). */
 .tools-pill-wrap {
   display: inline-flex; align-items: stretch;
   border: 1px solid #3a3a3a; border-radius: 999px;
@@ -118,4 +112,4 @@ def render_tools_panel_css() -> str:
 .tools-activate-all--active {
   background: rgba(180,60,60,0.75);
 }
-"""
+

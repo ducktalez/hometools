@@ -15,7 +15,7 @@ built via Vite, served as FastAPI static assets. Backend untouched.
 `pathUtils.ts`, `dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`,
 `recentMoveTargets.ts`, `catalogCache.ts`, `offlineDownloads.ts`,
 `langDetect.ts`, `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`,
-`toast.ts`, `folderCache.ts`, `shuffle.ts`). Never bulk-port via `eval()` —
+`toast.ts`, `folderCache.ts`, `shuffle.ts`, `offlineUrl.ts`). Never bulk-port via `eval()` —
 tried once, broke prod (see git log 2026-08-06). `legacy.ts` sits unused in
 tree as raw material — don't re-enable as-is.
 
@@ -27,8 +27,8 @@ other patterns.
 **CSS-Teil (`css/*.py`, ~2000 Zeilen) hat keinen Blocker** — Fragmente sind
 reine Strings ohne Querverweise. Eins nach dem anderen nach
 `webui/src/styles/*.css` (Ablauf in `webui/README.md` → "CSS ports").
-Portiert: `metaPill.css`. Offen: `_root`, `_tools_panel`, `_track_list`,
-`_table_view`, `_modals`, `_playlist_cards`, `_player_bar`,
+Portiert: `metaPill.css`, `_root`, `_tools_panel`, `_modals`,
+`_playlist_cards`, `_player_bar`, `_table_view`. Offen: `_track_list`,
 `_video_overlay`.
 
 Blocker for stateful fragments (`_core.py`, `_library_tools.py`, ...):
@@ -67,7 +67,14 @@ Funktion für Funktion über eines der vier Muster portieren.
 
 ### UI-Template-Vereinheitlichung: Header, List-Toolbar, List-Item
 
-**Status:** Phase 1 (Header) fertig. Phase 2 (Toolbar) teilweise. Phase 3+ offen.
+**Status:** Phase 1 (Header) fertig — jede View läuft jetzt über genau
+einen von zwei Entry-Points (`_enterTrackListView` /
+`_enterFolderGridView`, beide `player_js/_folder_browse.py`). Kein
+Hand-Rolling von Header-Klassen mehr; auch `globalSearch()`,
+`showLoadingState()`, `showCatalogLoadError()` delegieren.
+`globalSearch()` aktualisiert damit erstmals Breadcrumb/View-Toggle/Router;
+Error-View nutzt disabled-Klasse statt `style.display='none'`;
+recent-section-Hide zentral. Phase 2 (Toolbar) teilweise. Phase 3+ offen.
 Offline/„Downloaded"-View (`openOfflineLibrary()`, `_track_render.py`) ging
 bisher über `showPlaylist()` + manuellen `headerTitle.textContent`-Patch
 danach (gleicher Drift-Bug wie das alte `playUserPlaylist()`) — jetzt direkt

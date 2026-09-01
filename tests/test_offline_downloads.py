@@ -317,15 +317,21 @@ class TestOfflinePlaybackIntegrationHooks:
     """Hooks needed for end-to-end offline playback flow."""
 
     def test_js_has_explicit_offline_playback_helpers(self):
+        """getOfflineUrl ported to webui/src/offlineUrl.ts, bridged onto
+        window by main.ts — the legacy fragment now just forwards to it."""
+        ts = _webui_src("offlineUrl.ts")
+        assert "export function getOfflineUrl" in ts
         js = _js()
         assert "function checkIfMediaCached" in js
-        assert "function getOfflineUrl" in js
+        assert "window.getOfflineUrl(blob)" in js
         assert "function playOfflineOrStream" in js
 
     def test_js_cleans_up_blob_urls(self):
-        js = _js()
-        assert "URL.revokeObjectURL" in js
-        assert "currentOfflineUrl" in js
+        """revokeOfflineUrl/currentOfflineUrl moved to offlineUrl.ts (module-
+        private state) — assert against the ported source, not the legacy JS."""
+        ts = _webui_src("offlineUrl.ts")
+        assert "URL.revokeObjectURL" in ts
+        assert "currentOfflineUrl" in ts
 
     def test_js_has_stream_fallback_when_blob_playback_fails(self):
         js = _js()
@@ -342,18 +348,19 @@ class TestTrackDownloadCSS:
     """CSS for track download buttons."""
 
     def test_css_has_track_dl_btn(self):
-        """CSS must style the .track-dl-btn class."""
-        css = render_base_css()
+        """CSS must style the .track-dl-btn class (ported to
+        webui/src/styles/tableView.css)."""
+        css = _webui_src("styles/tableView.css")
         assert ".track-dl-btn" in css
 
     def test_css_has_cached_state(self):
         """CSS must have a .cached state for downloaded tracks."""
-        css = render_base_css()
+        css = _webui_src("styles/tableView.css")
         assert ".track-dl-btn.cached" in css
 
     def test_css_has_downloading_state(self):
         """CSS must have a .downloading state with animation."""
-        css = render_base_css()
+        css = _webui_src("styles/tableView.css")
         assert ".track-dl-btn.downloading" in css
         assert "dl-pulse" in css
 

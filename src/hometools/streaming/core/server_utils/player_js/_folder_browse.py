@@ -22,19 +22,11 @@ def render_folder_browse_js() -> str:
     /* empty library — still the folder-grid view, so the global search bar
        follows the same "folder-grid visible" rule as the normal branch below. */
     if (c.folders.length === 0 && c.files.length === 0) {
-      folderGrid.classList.remove('view-hidden');
-      trackView.classList.add('view-hidden');
-      filterBar.classList.add('view-hidden');
-      playAllBtn.classList.add('disabled');
-      headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
-      backBtn.classList.toggle('disabled', !currentPath);
-      if (!player.currentSrc) playerBar.classList.add('view-hidden');
-      folderGrid.innerHTML = '<div class="empty-hint">No items found. Run a sync first.</div>';
-      trackCount.textContent = '';
-      if (allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
-      renderBreadcrumb();
-      applyViewMode();
-      if (typeof _router !== 'undefined') _router.update();
+      _enterFolderGridView({
+        playAllDisabled: true,
+        trackCount: '',
+        contentHtml: '<div class="empty-hint">No items found. Run a sync first.</div>'
+      });
       return;
     }
 
@@ -48,23 +40,14 @@ def render_folder_browse_js() -> str:
       return;
     }
 
-    folderGrid.classList.remove('view-hidden');
-    trackView.classList.add('view-hidden');
-    filterBar.classList.add('view-hidden');
-    if (!player.currentSrc) playerBar.classList.add('view-hidden');
-    /* Global search bar — folder-grid view only, visible whenever the
-       catalog is loaded (see comment above the leaf-folder branch). */
-    if (allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
-
-     headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
-    backBtn.classList.toggle('disabled', !currentPath);
-    playAllBtn.classList.remove('disabled');
-
     var label = c.folders.length + ' folder' + (c.folders.length !== 1 ? 's' : '');
     if (c.files.length > 0) {
       label += ', ' + c.files.length + ' ' + (c.files.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
     }
-    trackCount.textContent = label;
+    /* Header/toolbar state via the shared folder-grid entry point —
+       content HTML is built below and assigned afterwards (identical
+       result; _enterFolderGridView only touches container-level state). */
+    _enterFolderGridView({ trackCount: label });
 
     var html = '';
 
@@ -347,10 +330,8 @@ def render_folder_browse_js() -> str:
         showPlaylist(looseFiles, true, Number(card.dataset.fileIdx));
       });
     });
-
-    renderBreadcrumb();
-    applyViewMode();
-    if (typeof _router !== 'undefined') _router.update();
+    /* breadcrumb/view-toggle/router already refreshed by
+       _enterFolderGridView() above — no trailing calls needed. */
   }
 
   /* ── Playlist card kebab menu ──────────────────────────────────────────
@@ -489,13 +470,21 @@ def render_folder_browse_js() -> str:
     if (opts.playAllDisabled != null) playAllBtn.classList.toggle('disabled', !!opts.playAllDisabled);
     folderGrid.classList.add('view-hidden');
     trackView.classList.remove('view-hidden');
-    filterBar.classList.remove('view-hidden');
+    filterBar.classList.toggle('view-hidden', !!opts.hideFilterBar);
     filterBar.classList.toggle('fb-scroll-hidden', !!opts.collapseFilterBar);
     _initFilterBarScrollReveal();
     playerBar.classList.remove('view-hidden');
+    /* Recently-played strip is a root/folder-grid-only section — every
+       track-list view hides it (was previously only done by globalSearch()
+       and showFolderView(), a drift bug: entering Favoriten from root left
+       the strip visible above the track list). */
+    var _rsEl = document.getElementById('recent-section');
+    if (_rsEl) _rsEl.hidden = true;
     /* Global search bar is folder-grid-only (see showFolderView) — every
-       track-list view hides it the same way, regardless of entry point. */
-    _hideGlobalSearch();
+       track-list view hides it the same way, regardless of entry point.
+       Exception: the global-search results view itself (keepGlobalSearch)
+       — hiding would clear the input mid-typing. */
+    if (!opts.keepGlobalSearch) _hideGlobalSearch();
     searchInput.value = '';
     if (opts.resetIndex) currentIndex = -1;
     renderBreadcrumb();
@@ -505,7 +494,37 @@ def render_folder_browse_js() -> str:
        left showing whatever the previous (folder-grid) view set, which
        is exactly the kind of header drift this function exists to fix. */
     applyViewMode();
-    applyFilter();
+    /* skipFilter: views that render their own list (global search's
+       renderSearchResults) — applyFilter() would overwrite it. */
+    if (!opts.skipFilter) applyFilter();
+    if (opts.trackCount != null) trackCount.textContent = opts.trackCount;
+    if (typeof _router !== 'undefined') _router.update();
+  }
+
+  /* ── Shared folder-grid view entry point ──────────────────────────────
+     Counterpart to _enterTrackListView() for every "grid of folders" view
+     (normal browse, empty library, loading state, catalog-load error) —
+     same rationale: before this, showFolderView() (twice: empty + normal
+     branch), showLoadingState() and showCatalogLoadError() each hand-rolled
+     the identical header/toolbar toggles and drifted apart (e.g. the error
+     view hid the back button via style.display='none' — which nothing ever
+     reset — instead of the disabled class every other view uses). */
+  function _enterFolderGridView(opts) {
+    opts = opts || {};
+    headerTitle.textContent = opts.title != null ? opts.title : (currentPath ? leafName(currentPath) : originalTitle);
+    backBtn.classList.toggle('disabled', opts.backDisabled != null ? !!opts.backDisabled : !currentPath);
+    playAllBtn.classList.toggle('disabled', !!opts.playAllDisabled);
+    folderGrid.classList.remove('view-hidden');
+    trackView.classList.add('view-hidden');
+    filterBar.classList.add('view-hidden');
+    if (!player.currentSrc) playerBar.classList.add('view-hidden');
+    /* Global search bar — folder-grid view only, visible whenever the
+       catalog is loaded. Loading/error states pass disableSearch. */
+    if (!opts.disableSearch && allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
+    if (opts.trackCount != null) trackCount.textContent = opts.trackCount;
+    if (opts.contentHtml != null) folderGrid.innerHTML = opts.contentHtml;
+    renderBreadcrumb();
+    applyViewMode();
     if (typeof _router !== 'undefined') _router.update();
   }
 

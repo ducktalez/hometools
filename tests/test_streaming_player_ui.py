@@ -55,17 +55,18 @@ def _extract_ht_config(page):
 
 
 def test_css_contains_classic_player_bar():
-    css = render_base_css()
+    """Player-bar rules ported to webui/src/styles/playerBar.css."""
+    css = _webui_src("styles/playerBar.css")
     assert ".player-bar.classic" in css
 
 
 def test_css_contains_waveform_player_bar():
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".player-bar.waveform" in css
 
 
 def test_css_classic_is_single_row():
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".player-bar.classic" in css
     assert "align-items: center" in css
 
@@ -73,24 +74,24 @@ def test_css_classic_is_single_row():
 def test_css_classic_progress_wraps_on_small_screens():
     """progress-wrap must use flex-wrap and a non-zero flex-basis so it wraps below
     controls when the screen is too narrow to fit everything in one row."""
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert "flex-wrap: wrap" in css  # bar allows wrapping
     assert "1 1 160px" in css  # progress-wrap basis triggers wrap threshold
     assert "min-height" in css  # bar grows instead of clipping
 
 
 def test_css_waveform_is_column_layout():
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert "flex-direction: column" in css
 
 
 def test_css_contains_progress_track():
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".progress-track" in css
 
 
 def test_css_contains_waveform_canvas():
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".waveform-canvas" in css
 
 
@@ -150,7 +151,7 @@ def test_queue_panel_bottom_set_dynamically_by_js():
 
 
 def test_css_contains_classic_range_styling():
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".player-bar.classic input[type=range]" in css
 
 
@@ -396,7 +397,7 @@ def test_pip_js_has_enter_leave_events():
 
 
 def test_pip_css_styling():
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".ctrl-btn.pip-btn" in css
 
 
@@ -690,9 +691,7 @@ def test_shuffle_js_has_long_press_binding():
 
 def test_shuffle_css_has_active_styles():
     """CSS must include styles for both shuffle active states."""
-    from hometools.streaming.core.server_utils import render_base_css
-
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert "shuffle-active" in css
     assert "shuffle-weighted" in css
 
@@ -801,7 +800,7 @@ def test_repeat_js_restores_from_localstorage():
 
 def test_repeat_css_has_active_styles():
     """CSS must include styles for repeat active states."""
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert "repeat-active" in css
     assert "repeat-one" in css
 
@@ -1011,14 +1010,14 @@ def test_rating_js_updates_after_metadata_refresh():
 
 def test_rating_css_has_star_styles():
     """CSS must contain styles for rating stars in the player."""
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".player-rating" in css
     assert ".player-rating-star" in css
 
 
 def test_rating_css_has_active_and_hover_states():
     """CSS must include active and hover states for rating stars."""
-    css = render_base_css()
+    css = _webui_src("styles/playerBar.css")
     assert ".player-rating-star.active" in css
     assert ".player-rating-star.hover" in css
 
@@ -1074,8 +1073,13 @@ def test_rating_star_tooltip_hints_toggle():
 
 
 def test_edit_modal_rating_css_present():
-    """CSS must include styles for rating stars inside the edit modal."""
-    css = render_base_css()
+    """Rating-star styles for the edit modal moved to
+    webui/src/styles/modals.css (Vite/TS migration)."""
+    from pathlib import Path
+
+    css = (
+        Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "modals.css"
+    ).read_text(encoding="utf-8")
     assert ".edit-modal-rating" in css
     assert ".edit-modal-rating-star" in css
     assert ".edit-modal-rating-star.active" in css
@@ -1198,11 +1202,16 @@ def test_player_visibility_uses_currentSrc_not_currentIndex():
 
 
 def test_player_currentSrc_check_in_all_folder_functions():
-    """All folder-view functions must use player.currentSrc to guard player visibility."""
+    """The player-visibility guard lives ONCE in _enterFolderGridView() —
+    all folder-grid views (showFolderView both branches, showLoadingState,
+    showCatalogLoadError) delegate to it instead of re-inlining the guard
+    (the old >=4 duplicated copies were exactly the header-drift source)."""
     js = _js()
-    # Count occurrences: showFolderView (2x), showLoadingState (1x), showCatalogLoadError (1x)
     count = js.count("if (!player.currentSrc) playerBar.classList.add('view-hidden')")
-    assert count >= 4, f"Expected >=4 occurrences, got {count}"
+    assert count == 1, f"Expected exactly 1 centralized occurrence, got {count}"
+    fn = js.split("function _enterFolderGridView(opts)", 1)[1]
+    body = fn.split("\n  }", 1)[0]
+    assert "if (!player.currentSrc) playerBar.classList.add('view-hidden')" in body
 
 
 # ---------------------------------------------------------------------------
@@ -1630,14 +1639,69 @@ def test_show_playlist_uses_shared_track_list_entry_point():
 
 
 def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
-    """The folder-grid branches of showFolderView() (empty library + normal)
-    must (re)show the global search bar when the catalog is loaded, and
-    hide it otherwise — this must NOT run for the leaf-folder branch,
-    which now delegates hiding to _enterTrackListView() via showPlaylist()."""
+    """The global-search show/hide rule lives ONCE in _enterFolderGridView()
+    (`disableSearch` opt-out for loading/error states) — showFolderView()'s
+    branches delegate instead of re-inlining it."""
     js = render_player_js()
+    assert js.count("if (!opts.disableSearch && allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();") == 1
     folder_view_fn = js.split("function showFolderView(", 1)[1]
-    body = folder_view_fn.split("function showPlaylist(", 1)[0]
-    assert body.count("if (allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();") == 2
+    body = folder_view_fn.split("function _openPlaylistCtxMenu(", 1)[0]
+    assert "initGlobalSearch()" not in body
+
+
+def test_show_folder_view_uses_shared_folder_grid_entry_point():
+    """showFolderView() (both branches: empty library + normal browse) must
+    delegate its header/toolbar setup to _enterFolderGridView() instead of
+    re-inlining the class toggles — same consolidation as
+    _enterTrackListView() did for the track-list views."""
+    js = render_player_js()
+    assert "function _enterFolderGridView(opts)" in js
+    folder_view_fn = js.split("function showFolderView(", 1)[1]
+    body = folder_view_fn.split("function _openPlaylistCtxMenu(", 1)[0]
+    assert body.count("_enterFolderGridView({") == 2  # empty branch + normal branch
+    assert "folderGrid.classList.remove('view-hidden')" not in body
+
+
+def test_loading_and_error_states_use_shared_folder_grid_entry_point():
+    """showLoadingState()/showCatalogLoadError() must delegate to
+    _enterFolderGridView() — the error view previously hid the back button
+    via style.display='none' (which nothing ever reset) instead of the
+    disabled class every other view uses."""
+    js = render_player_js()
+    loading_fn = js.split("function showLoadingState(", 1)[1]
+    loading_body = loading_fn.split("function showCatalogLoadError(", 1)[0]
+    assert "_enterFolderGridView({" in loading_body
+    error_fn = js.split("function showCatalogLoadError(", 1)[1]
+    error_body = error_fn.split("function scheduleInitialCatalogRetry(", 1)[0]
+    assert "_enterFolderGridView({" in error_body
+    assert "backBtn.style.display" not in js
+
+
+def test_global_search_uses_shared_track_list_entry_point():
+    """globalSearch() must delegate to _enterTrackListView() — it was the
+    only track-list view skipping breadcrumb/view-toggle/router updates.
+    keepGlobalSearch prevents the entry point from clearing the search
+    input mid-typing; skipFilter because renderSearchResults() renders."""
+    js = render_player_js()
+    fn = js.split("function globalSearch(", 1)[1]
+    body = fn.split("function renderSearchResults(", 1)[0]
+    assert "_enterTrackListView({" in body
+    assert "keepGlobalSearch: true" in body
+    assert "skipFilter: true" in body
+    assert "hideFilterBar: true" in body
+    assert "headerTitle.textContent" not in body
+
+
+def test_enter_track_list_view_hides_recent_section():
+    """_enterTrackListView() must hide the recently-played strip — it is a
+    root/folder-grid-only section; previously only globalSearch() and
+    showFolderView() hid it, so entering e.g. Favoriten from root left it
+    visible above the track list (header/section drift)."""
+    js = render_player_js()
+    fn = js.split("function _enterTrackListView(opts)", 1)[1]
+    body = fn.split("function _enterFolderGridView(", 1)[0]
+    assert "recent-section" in body
+    assert ".hidden = true" in body
 
 
 def test_smart_and_user_playlist_view_uses_shared_track_list_entry_point():
@@ -2515,7 +2579,8 @@ class TestTrackDetailTableView:
         assert "contenteditable" in js
 
     def test_css_defines_table_mode_grid(self):
-        css = render_base_css()
+        """Table-view rules ported to webui/src/styles/tableView.css."""
+        css = _webui_src("styles/tableView.css")
         assert ".track-list.table-mode .track-item" in css
         assert ".track-table-header" in css
 

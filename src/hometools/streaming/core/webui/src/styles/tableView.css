@@ -1,13 +1,6 @@
-"""CSS fragment: table view (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_table_view_css() -> str:
-    """Return the table view section of the dark-theme CSS."""
-    return """/* ── Track detail/table view (audio only) ──────────────────────────────────
-   Toggled via the view-toggle button while a folder/playlist is open.
-   Columns: num | thumb | title | artist | duration | genre | bpm | rating | actions */
+/* Track detail/table view (audio only), track-list action buttons (download,
+   pin, kebab, reveal, edit), shared kebab-menu / path-modal overlays.
+   Ported verbatim from server_utils/css/_table_view.py::render_table_view_css(). */
 .track-duration-cell, .track-genre-cell { display: none; }
 .track-table-header {
   display: grid;
@@ -240,4 +233,4 @@ def render_table_view_css() -> str:
 }
 .track-edit-btn svg { width: 14px; height: 14px; fill: currentColor; pointer-events: none; }
 .track-edit-btn:hover { color: var(--accent); border-color: var(--accent); }
-"""
+

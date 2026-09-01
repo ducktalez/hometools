@@ -750,32 +750,28 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
      the normal JS scope chain to window.leafName/window.parentPath. */
 
   function showLoadingState(message) {
-    folderGrid.classList.remove('view-hidden');
-    trackView.classList.add('view-hidden');
-    filterBar.classList.add('view-hidden');
-    playAllBtn.classList.add('disabled');
-    backBtn.classList.toggle('disabled', !currentPath);
-    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
-    trackCount.textContent = 'Loading…';
-    if (!player.currentSrc) playerBar.classList.add('view-hidden');
-    folderGrid.innerHTML = '<div class="empty-hint">' + escHtml(message || 'Loading library…') + '</div>';
-    renderBreadcrumb();
-    applyViewMode();
+    /* Header/toolbar via the shared folder-grid entry point
+       (_folder_browse.py::_enterFolderGridView) — same structure as
+       normal browse/empty/error views. disableSearch: catalog not
+       loaded yet, search would query an empty list. */
+    _enterFolderGridView({
+      playAllDisabled: true,
+      disableSearch: true,
+      trackCount: 'Loading…',
+      contentHtml: '<div class="empty-hint">' + escHtml(message || 'Loading library…') + '</div>'
+    });
   }
 
   function showCatalogLoadError(detail) {
-    folderGrid.classList.remove('view-hidden');
-    trackView.classList.add('view-hidden');
-    filterBar.classList.add('view-hidden');
-    playAllBtn.classList.add('disabled');
-    if (!player.currentSrc) playerBar.classList.add('view-hidden');
-    trackCount.textContent = 'Library unavailable';
-    headerTitle.textContent = currentPath ? leafName(currentPath) : originalTitle;
-    backBtn.classList.toggle('disabled', !currentPath);
-    backBtn.style.display = currentPath ? 'inline-block' : 'none';
-    folderGrid.innerHTML = '<div class="empty-hint">' + escHtml(detail || 'Library could not be loaded.') + '</div>';
-    renderBreadcrumb();
-    applyViewMode();
+    /* Back button: disabled class like every other view — the old
+       style.display='none' here was the only place hiding it outright
+       (and nothing ever reset the inline style → header drift). */
+    _enterFolderGridView({
+      playAllDisabled: true,
+      disableSearch: true,
+      trackCount: 'Library unavailable',
+      contentHtml: '<div class="empty-hint">' + escHtml(detail || 'Library could not be loaded.') + '</div>'
+    });
   }
 
   function scheduleInitialCatalogRetry(reason) {

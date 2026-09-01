@@ -69,27 +69,32 @@ def render_search_filter_js() -> str:
              (t.relative_path || '').toLowerCase().indexOf(needle) >= 0;
     });
     _globalSearchActive = true;
-    /* Hide folder grid, show track view with results */
-    folderGrid.classList.add('view-hidden');
-    trackView.classList.remove('view-hidden');
-    filterBar.classList.add('view-hidden');
-    playerBar.classList.remove('view-hidden');
+    /* Use search results as current playlist so next/prev works —
+       must be set BEFORE _enterTrackListView (contract: caller sets
+       playlistItems/inPlaylist first). */
+    playlistItems = results;
+    filteredItems = results;
+    inPlaylist = true;
     var totalCount = folderMatches.length + results.length;
-    headerTitle.textContent = totalCount + ' Ergebnis' + (totalCount !== 1 ? 'se' : '');
-    backBtn.classList.remove('disabled');
-    playAllBtn.classList.add('disabled');
     var trackCountLabel = results.length + ' ' + (results.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
     if (folderMatches.length) {
       trackCountLabel = folderMatches.length + ' Ordner · ' + trackCountLabel;
     }
-    trackCount.textContent = trackCountLabel;
-    /* Hide recently played */
-    var rs = document.getElementById('recent-section');
-    if (rs) rs.hidden = true;
-    /* Use search results as current playlist so next/prev works */
-    playlistItems = results;
-    filteredItems = results;
-    inPlaylist = true;
+    /* Header/toolbar via the shared track-list entry point — search now
+       updates breadcrumb/view-toggle/router like every other list view
+       (was the only view skipping them). skipFilter: results are rendered
+       by renderSearchResults below, applyFilter() would overwrite them.
+       keepGlobalSearch: hiding the bar would clear the input mid-typing.
+       hideFilterBar: sort/filter chips don't apply to search results. */
+    _enterTrackListView({
+      title: totalCount + ' Ergebnis' + (totalCount !== 1 ? 'se' : ''),
+      backDisabled: false,
+      playAllDisabled: true,
+      hideFilterBar: true,
+      skipFilter: true,
+      keepGlobalSearch: true,
+      trackCount: trackCountLabel
+    });
     if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
     /* Render search results */
     renderSearchResults(results, folderMatches);

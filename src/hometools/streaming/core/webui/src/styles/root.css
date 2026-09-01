@@ -1,11 +1,5 @@
-"""CSS fragment: root (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_root_css() -> str:
-    """Return the root section of the dark-theme CSS."""
-    return """
+/* Root/base rules — box model reset, :root theme vars, body layout, header.
+   Ported verbatim from server_utils/css/_root.py::render_root_css(). */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
   --bg: #121212; --surface: #1e1e1e; --surface2: #282828;
@@ -66,4 +60,4 @@ header {
 }
 .downloaded-pill:hover, .downloaded-pill.has-downloads { color: var(--accent); border-color: var(--accent); }
 .downloaded-pill.is-offline { color: #ffcc00; border-color: #ffcc00; }
-"""
+

@@ -14,7 +14,14 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: shuffle.ts (fisherYates/buildWeightedQueue/buildNormalQueue/
+ * Latest slice: offlineUrl.ts (getOfflineUrl/currentOfflineUrl, from
+ * _track_render.py + the currentOfflineUrl var in _core.py). State-mitnehmen
+ * pattern: currentOfflineUrl lived in _core.py but was only read/written by
+ * these two functions in _track_render.py — moved here as module-private
+ * state, no htState bridge needed. Only getOfflineUrl is called from
+ * not-yet-ported code (playOfflineOrStream), so only it is bridged.
+ *
+ * Previous slice: shuffle.ts (fisherYates/buildWeightedQueue/buildNormalQueue/
  * rebuildShuffleQueue/nextIndex/prevIndex, from _library_tools.py) — first
  * consumer of the htState getter/setter bridge (stateBridge.ts): these
  * read AND write shuffleQueue/shufflePos, so explicit params were not
@@ -109,10 +116,17 @@ import { installClickGuard, wasDrag } from "./clickGuard";
 import { showToast } from "./toast";
 import { getAllFolders, invalidateFolderCache } from "./folderCache";
 import { fisherYates, buildWeightedQueue, buildNormalQueue, rebuildShuffleQueue, nextIndex, prevIndex } from "./shuffle";
+import { getOfflineUrl } from "./offlineUrl";
 
 // CSS ports: Vite bundles these into one stylesheet, _html.py links it
 // AFTER the legacy inline <style> (later wins at equal specificity).
 import "./styles/metaPill.css";
+import "./styles/root.css";
+import "./styles/toolsPanel.css";
+import "./styles/modals.css";
+import "./styles/playlistCards.css";
+import "./styles/playerBar.css";
+import "./styles/tableView.css";
 import {
   saveCatalogCache,
   loadCatalogCache,
@@ -273,6 +287,7 @@ declare global {
     buildNormalQueue: typeof buildNormalQueue;
     nextIndex: typeof nextIndex;
     prevIndex: typeof prevIndex;
+    getOfflineUrl: typeof getOfflineUrl;
   }
 }
 
@@ -362,6 +377,7 @@ window.buildNormalQueue = buildNormalQueue;
 window.rebuildShuffleQueue = rebuildShuffleQueue;
 window.nextIndex = nextIndex;
 window.prevIndex = prevIndex;
+window.getOfflineUrl = getOfflineUrl;
 
 // Click-guard owns its own pointer state now (was _mdX/_mdY in _core.py) —
 // listeners must be live before the legacy script wires any click handler.

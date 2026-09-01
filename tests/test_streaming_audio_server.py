@@ -521,11 +521,18 @@ def test_debug_filter_default_is_false(tmp_path, monkeypatch):
 
 
 def test_debug_filter_css_present(tmp_path, monkeypatch):
-    """Debug-filtered CSS class must be present in the rendered page."""
+    """Debug-filtered CSS class must be present — HTML markup class from
+    render_player_js(), styling itself ported to
+    webui/src/styles/tableView.css."""
+    from pathlib import Path
+
     monkeypatch.setenv("HOMETOOLS_DEBUG_FILTER", "true")
     html = render_audio_index_html([])
     assert ".debug-filtered" in html
-    assert ".debug-reason" in html
+    css = (
+        Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "tableView.css"
+    ).read_text(encoding="utf-8")
+    assert ".debug-reason" in css
 
 
 # ---------------------------------------------------------------------------

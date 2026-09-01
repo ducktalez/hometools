@@ -146,5 +146,6 @@ at the end of `<body>`, so runtime injection would flash unstyled content.
 `_html.py` links it **after** the inline `<style>`, so a ported rule wins
 over a stale legacy duplicate at equal specificity.
 
-Ported so far: `metaPill.css`.
+Ported so far: `metaPill.css`, `root.css`, `toolsPanel.css`, `modals.css`,
+`playlistCards.css`, `playerBar.css`, `tableView.css`.
 

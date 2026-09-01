@@ -1,11 +1,5 @@
-"""CSS fragment: playlist cards (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_playlist_cards_css() -> str:
-    """Return the playlist cards section of the dark-theme CSS."""
-    return """/* ── Playlist pseudo-folder cards ── */
+/* Playlist pseudo-folder cards, smart-playlist editor modal, tools-row.
+   Ported verbatim from server_utils/css/_playlist_cards.py::render_playlist_cards_css(). */
 .playlist-folder-card { position: relative; }
 .fav-folder.playlist-folder-card,
 .playlist-folder-card:not(.smart-playlist-card):not(.playlist-new-card) {
@@ -197,4 +191,4 @@ def render_playlist_cards_css() -> str:
   width: 40px; height: 40px; border-radius: 4px; object-fit: cover;
   flex-shrink: 0; background: var(--surface2);
 }
-"""
+

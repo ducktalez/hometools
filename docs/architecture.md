@@ -157,6 +157,9 @@ Quick "where does X live" lookup — one line each, grouped by area.
 **UI/rendering** (`server_utils/`): header `<header>` (`_html.py`, always
 zurück|Home|Breadcrumb|spacer|Tools|Suche, `renderBreadcrumb()` in
 `_queue.py` — inline in header, no separate nav row, no unicode icons) ·
+view entry points: every view sets header/toolbar state via exactly one of
+`_enterTrackListView(opts)` / `_enterFolderGridView(opts)` (both in
+`player_js/_folder_browse.py`) — never hand-roll header class toggles ·
 kebab menu `_openCtxMenu()`
 (`player_js/_library_tools.py`) · playlists `playlists.py` +
 `_folder_browse.py` · smart playlists `smart_playlists.py` +

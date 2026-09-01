@@ -241,3 +241,140 @@ def test_meta_pill_css_ported_out_of_python():
     text = ported.read_text(encoding="utf-8")
     assert ".meta-pill {" in text
     assert ".bpm-adjust-menu" in text
+
+
+def test_root_css_ported_out_of_python():
+    """The root/header rules moved to webui/src/styles/root.css. Keeping a
+    Python copy would silently shadow/duplicate them — render_base_css()
+    must no longer emit them."""
+    from pathlib import Path
+
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert ":root {" not in css
+    assert "\nheader {" not in css
+    assert ".logo-home-btn" not in css
+
+    ported = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "root.css"
+    text = ported.read_text(encoding="utf-8")
+    assert ":root {" in text
+    assert "header {" in text
+    assert ".logo-home-btn" in text
+
+
+def test_tools_panel_css_ported_out_of_python():
+    """The tools-pill/panel rules moved to webui/src/styles/toolsPanel.css.
+    Keeping a Python copy would silently shadow/duplicate them —
+    render_base_css() must no longer emit them."""
+    from pathlib import Path
+
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert ".tools-pill-wrap" not in css
+    assert ".tools-panel {" not in css
+    assert ".tools-activate-all" not in css
+
+    ported = (
+        Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "toolsPanel.css"
+    )
+    text = ported.read_text(encoding="utf-8")
+    assert ".tools-pill-wrap" in text
+    assert ".tools-panel {" in text
+    assert ".tools-activate-all" in text
+
+
+def test_modals_css_ported_out_of_python():
+    """The edit/playlist modal rules moved to webui/src/styles/modals.css.
+    Keeping a Python copy would silently shadow/duplicate them —
+    render_base_css() must no longer emit them."""
+    from pathlib import Path
+
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert ".edit-modal {" not in css
+    assert ".playlist-modal {" not in css
+    assert ".playlist-drag-ghost {" not in css
+
+    ported = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "modals.css"
+    text = ported.read_text(encoding="utf-8")
+    assert ".edit-modal {" in text
+    assert ".playlist-modal {" in text
+    assert ".playlist-drag-ghost {" in text
+
+
+def test_playlist_cards_css_ported_out_of_python():
+    """The playlist pseudo-folder card / smart-editor rules moved to
+    webui/src/styles/playlistCards.css. Keeping a Python copy would silently
+    shadow/duplicate them — render_base_css() must no longer emit them."""
+    from pathlib import Path
+
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert ".playlist-folder-card {" not in css
+    assert ".smart-editor-modal {" not in css
+    assert ".playlist-cover-play-btn {" not in css
+
+    ported = (
+        Path(__file__).resolve().parent.parent
+        / "src"
+        / "hometools"
+        / "streaming"
+        / "core"
+        / "webui"
+        / "src"
+        / "styles"
+        / "playlistCards.css"
+    )
+    text = ported.read_text(encoding="utf-8")
+    assert ".playlist-folder-card {" in text
+    assert ".smart-editor-modal {" in text
+    assert ".playlist-cover-play-btn {" in text
+
+
+def test_player_bar_css_ported_out_of_python():
+    """The bottom player-bar rules (classic + waveform layouts, transport
+    controls) moved to webui/src/styles/playerBar.css. Keeping a Python copy
+    would silently shadow/duplicate them — render_base_css() must no longer
+    emit them."""
+    from pathlib import Path
+
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert ".player-bar-move-select {" not in css
+    assert ".ctrl-btn.play-pause {" not in css
+    assert ".player-bar.waveform {" not in css
+
+    ported = (
+        Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "playerBar.css"
+    )
+    text = ported.read_text(encoding="utf-8")
+    assert ".player-bar-move-select {" in text
+    assert ".ctrl-btn.play-pause {" in text
+    assert ".player-bar.waveform {" in text
+
+
+def test_table_view_css_ported_out_of_python():
+    """The track detail/table view + kebab-menu/path-modal rules moved to
+    webui/src/styles/tableView.css. Keeping a Python copy would silently
+    shadow/duplicate them — render_base_css() must no longer emit them."""
+    from pathlib import Path
+
+    from hometools.streaming.core.server_utils import render_base_css
+
+    css = render_base_css()
+    assert ".track-table-header {" not in css
+    assert ".ht-ctx-menu {" not in css
+    assert ".path-modal-overlay {" not in css
+
+    ported = (
+        Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "tableView.css"
+    )
+    text = ported.read_text(encoding="utf-8")
+    assert ".track-table-header {" in text
+    assert ".ht-ctx-menu {" in text
+    assert ".path-modal-overlay {" in text

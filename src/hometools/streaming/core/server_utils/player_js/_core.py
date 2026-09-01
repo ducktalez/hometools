@@ -202,7 +202,9 @@ def render_core_js(waveform_js) -> str:
      rescanned. Also prunes the set once the server confirms the deletion. */
 
   var currentStreamUrl = '';
-  var currentOfflineUrl = null;
+  /* currentOfflineUrl: ported to webui/src/offlineUrl.ts (module-private
+     state, see that file's header comment) alongside revokeOfflineUrl/
+     getOfflineUrl — bridged onto window.getOfflineUrl by main.ts. */
 """
         + (waveform_js)
         + """

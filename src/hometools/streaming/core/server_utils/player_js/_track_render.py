@@ -108,12 +108,9 @@ def render_track_render_js() -> str:
     showToast('Download abgebrochen');
   }
 
-  function revokeOfflineUrl() {
-    if (currentOfflineUrl) {
-      URL.revokeObjectURL(currentOfflineUrl);
-      currentOfflineUrl = null;
-    }
-  }
+  /* revokeOfflineUrl/getOfflineUrl: ported to webui/src/offlineUrl.ts,
+     bridged onto window.getOfflineUrl by main.ts (see that file's header
+     comment for why currentOfflineUrl moved as private state). */
 
   function initDownloadDB() {
     return new Promise(function(resolve, reject) {
@@ -630,9 +627,7 @@ def render_track_render_js() -> str:
   }
 
   function getOfflineUrl(blob) {
-    revokeOfflineUrl();
-    currentOfflineUrl = URL.createObjectURL(blob);
-    return currentOfflineUrl;
+    return window.getOfflineUrl(blob);
   }
 
   function playOfflineOrStream(streamUrl) {
