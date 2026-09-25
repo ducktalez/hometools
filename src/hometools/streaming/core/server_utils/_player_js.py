@@ -29,7 +29,6 @@ from ._svg import (  # noqa: F401
     SVG_FULLSCREEN,
     SVG_HISTORY,
     SVG_LYRICS,
-    SVG_MENU,
     SVG_MOVE,
     SVG_NEXT,
     SVG_PAUSE,

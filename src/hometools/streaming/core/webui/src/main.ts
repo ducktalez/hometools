@@ -116,7 +116,7 @@ import { installClickGuard, wasDrag } from "./clickGuard";
 import { showToast } from "./toast";
 import { getAllFolders, invalidateFolderCache } from "./folderCache";
 import { fisherYates, buildWeightedQueue, buildNormalQueue, rebuildShuffleQueue, nextIndex, prevIndex } from "./shuffle";
-import { getOfflineUrl } from "./offlineUrl";
+import { getOfflineUrl, revokeOfflineUrl } from "./offlineUrl";
 
 // CSS ports: Vite bundles these into one stylesheet, _html.py links it
 // AFTER the legacy inline <style> (later wins at equal specificity).
@@ -288,6 +288,7 @@ declare global {
     nextIndex: typeof nextIndex;
     prevIndex: typeof prevIndex;
     getOfflineUrl: typeof getOfflineUrl;
+    revokeOfflineUrl: typeof revokeOfflineUrl;
   }
 }
 
@@ -378,6 +379,9 @@ window.rebuildShuffleQueue = rebuildShuffleQueue;
 window.nextIndex = nextIndex;
 window.prevIndex = prevIndex;
 window.getOfflineUrl = getOfflineUrl;
+// revokeOfflineUrl: still called bare from playItem() (_library_tools.py,
+// not yet ported) — must be bridged, see offlineUrl.ts header comment.
+window.revokeOfflineUrl = revokeOfflineUrl;
 
 // Click-guard owns its own pointer state now (was _mdX/_mdY in _core.py) —
 // listeners must be live before the legacy script wires any click handler.

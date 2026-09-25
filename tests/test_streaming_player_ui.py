@@ -1614,15 +1614,44 @@ def test_global_search_debounce():
 # ---------------------------------------------------------------------------
 
 
-def test_enter_track_list_view_hides_global_search():
-    """_enterTrackListView() — the shared toolbar/header entry point every
-    track-list view (folder-leaf playlist, user/smart playlist, favorites,
-    duplicates) delegates to — must hide the header global search bar."""
+def test_enter_track_list_view_shows_global_search():
+    """The header must be structurally identical in every view: the global
+    search box is a header control, so it stays reachable from track-list
+    views too (user playlist, favorites, duplicates, ...).
+
+    Regression guard: it used to be hidden by _enterTrackListView() under a
+    "folder-grid-only control" rule, which made the header visibly differ
+    between folder browsing and any playlist."""
     js = render_player_js()
-    assert "function _enterTrackListView(opts)" in js
-    fn = js.split("function _enterTrackListView(opts)", 1)[1]
-    body = fn.split("function showPlaylist(", 1)[0]
-    assert "_hideGlobalSearch();" in body
+    assert "function _applyHeaderState(opts)" in js
+    fn = js.split("function _applyHeaderState(opts)", 1)[1]
+    body = fn.split("function _enterTrackListView(", 1)[0]
+    assert "initGlobalSearch()" in body
+
+    # _enterTrackListView must not re-hide it behind the entry point's back
+    track_fn = js.split("function _enterTrackListView(opts)", 1)[1]
+    track_body = track_fn.split("function _enterFolderGridView(", 1)[0]
+    assert "_hideGlobalSearch()" not in track_body
+
+
+def test_header_controls_only_touched_by_shared_state_function():
+    """Every header control must be driven by _applyHeaderState() alone —
+    the entry points delegate, so no view can show/hide a control the
+    others don't have."""
+    js = render_player_js()
+    header_fn = js.split("function _applyHeaderState(opts)", 1)[1]
+    header_body = header_fn.split("function _enterTrackListView(", 1)[0]
+    for control in ("headerTitle.textContent", "backBtn.classList", "playAllBtn.classList", "applyViewMode()"):
+        assert control in header_body, control
+
+    # Neither entry point may set header controls itself.
+    for start, end in (
+        ("function _enterTrackListView(opts)", "function _enterFolderGridView("),
+        ("function _enterFolderGridView(opts)", "function showPlaylist("),
+    ):
+        body = js.split(start, 1)[1].split(end, 1)[0]
+        assert "headerTitle.textContent" not in body, start
+        assert "backBtn.classList" not in body, start
 
 
 def test_show_playlist_uses_shared_track_list_entry_point():
@@ -1680,13 +1709,11 @@ def test_loading_and_error_states_use_shared_folder_grid_entry_point():
 def test_global_search_uses_shared_track_list_entry_point():
     """globalSearch() must delegate to _enterTrackListView() — it was the
     only track-list view skipping breadcrumb/view-toggle/router updates.
-    keepGlobalSearch prevents the entry point from clearing the search
-    input mid-typing; skipFilter because renderSearchResults() renders."""
+    skipFilter because renderSearchResults() renders the list itself."""
     js = render_player_js()
     fn = js.split("function globalSearch(", 1)[1]
     body = fn.split("function renderSearchResults(", 1)[0]
     assert "_enterTrackListView({" in body
-    assert "keepGlobalSearch: true" in body
     assert "skipFilter: true" in body
     assert "hideFilterBar: true" in body
     assert "headerTitle.textContent" not in body
@@ -1728,15 +1755,21 @@ def test_play_duplicates_uses_shared_track_list_entry_point():
 
 
 def test_enter_track_list_view_refreshes_view_toggle():
-    """_enterTrackListView() must call applyViewMode() so the header's
-    view-toggle button (list/table icon) is refreshed for every track-list
-    view — previously only showFolderView() did this, so the button kept
-    showing whatever the folder-grid had set when entering a playlist,
-    smart playlist or the duplicates view directly."""
+    """The view-toggle icon must be refreshed on every view change —
+    otherwise the button keeps the previous view's icon (folder grid/list
+    vs track list/table). Now centralized in _applyHeaderState(), which
+    both entry points call."""
     js = render_player_js()
-    fn = js.split("function _enterTrackListView(opts)", 1)[1]
-    body = fn.split("function showPlaylist(", 1)[0]
+    fn = js.split("function _applyHeaderState(opts)", 1)[1]
+    body = fn.split("function _enterTrackListView(", 1)[0]
     assert "applyViewMode();" in body
+    # Both entry points must route through it.
+    for start, end in (
+        ("function _enterTrackListView(opts)", "function _enterFolderGridView("),
+        ("function _enterFolderGridView(opts)", "function showPlaylist("),
+    ):
+        entry_body = js.split(start, 1)[1].split(end, 1)[0]
+        assert "_applyHeaderState({" in entry_body, start
 
 
 # ---------------------------------------------------------------------------

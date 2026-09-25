@@ -251,6 +251,10 @@ def serve_all(
 
 _PYCHARM_SDK_FALLBACK = "Python 3 (hometools)"
 
+#: Name of the webui-build configuration — referenced as a before-launch
+#: task by every server config, so both sides must use this constant.
+_WEBUI_BUILD_CONFIG_NAME = "Build WebUI"
+
 
 def _detect_pycharm_sdk_name(project_root: Path) -> str:
     """Return the Python SDK name PyCharm currently has bound to this project.
@@ -295,8 +299,14 @@ def _make_python_config(
     *,
     sdk_name: str,
     env_vars: dict[str, str] | None = None,
+    before_launch: str | None = None,
 ) -> Element:
-    """Build an XML element for a PyCharm Python run configuration."""
+    """Build an XML element for a PyCharm Python run configuration.
+
+    *before_launch* is the name of another run configuration to execute
+    first (used to wire the webui build in front of every server start —
+    see :func:`generate_pycharm_configs`).
+    """
     root = Element("component", attrib={"name": "ProjectRunConfigurationManager"})
     cfg = SubElement(
         root,
@@ -325,24 +335,58 @@ def _make_python_config(
     SubElement(cfg, "option", attrib={"name": "ADD_CONTENT_ROOTS", "value": "true"})
     SubElement(cfg, "option", attrib={"name": "ADD_SOURCE_ROOTS", "value": "true"})
 
-    SubElement(cfg, "option", attrib={"name": "SCRIPT_NAME", "value": "hometools"})
+    SubElement(cfg, "option", attrib={"name": "SCRIPT_NAME", "value": module})
     SubElement(cfg, "option", attrib={"name": "PARAMETERS", "value": parameters})
     SubElement(cfg, "option", attrib={"name": "SHOW_COMMAND_LINE", "value": "false"})
     SubElement(cfg, "option", attrib={"name": "EMULATE_TERMINAL", "value": "true"})
     SubElement(cfg, "option", attrib={"name": "MODULE_MODE", "value": "true"})
 
     method = SubElement(cfg, "method", attrib={"v": "2"})
-    SubElement(
-        method,
-        "option",
+    if before_launch:
+        # Only emit the before-launch task when it has a real target — an
+        # empty run_configuration_name is a no-op task PyCharm shows as a
+        # broken "<none>" entry in the run configuration dialog.
+        SubElement(
+            method,
+            "option",
+            attrib={
+                "name": "RunConfigurationTask",
+                "enabled": "true",
+                "run_configuration_name": before_launch,
+                "run_configuration_type": "PythonConfigurationType",
+            },
+        )
+
+    return root
+
+
+def _make_pytest_config(name: str, target: str, *, sdk_name: str, parameters: str = "") -> Element:
+    """Build an XML element for a PyCharm pytest run configuration."""
+    root = Element("component", attrib={"name": "ProjectRunConfigurationManager"})
+    cfg = SubElement(
+        root,
+        "configuration",
         attrib={
-            "name": "RunConfigurationTask",
-            "enabled": "true",
-            "run_configuration_name": "",
-            "run_configuration_type": "PythonConfigurationType",
+            "default": "false",
+            "name": name,
+            "type": "tests",
+            "factoryName": "py.test",
         },
     )
-
+    SubElement(cfg, "module", attrib={"name": "hometools"})
+    SubElement(cfg, "option", attrib={"name": "INTERPRETER_OPTIONS", "value": ""})
+    SubElement(cfg, "option", attrib={"name": "PARENT_ENVS", "value": "true"})
+    SubElement(cfg, "option", attrib={"name": "SDK_HOME", "value": ""})
+    SubElement(cfg, "option", attrib={"name": "SDK_NAME", "value": sdk_name})
+    SubElement(cfg, "option", attrib={"name": "WORKING_DIRECTORY", "value": "$PROJECT_DIR$"})
+    SubElement(cfg, "option", attrib={"name": "IS_MODULE_SDK", "value": "true"})
+    SubElement(cfg, "option", attrib={"name": "ADD_CONTENT_ROOTS", "value": "true"})
+    SubElement(cfg, "option", attrib={"name": "ADD_SOURCE_ROOTS", "value": "true"})
+    SubElement(cfg, "option", attrib={"name": "SCRIPT_NAME", "value": target})
+    SubElement(cfg, "option", attrib={"name": "PARAMETERS", "value": parameters})
+    SubElement(cfg, "option", attrib={"name": "SHOW_COMMAND_LINE", "value": "false"})
+    SubElement(cfg, "option", attrib={"name": "EMULATE_TERMINAL", "value": "true"})
+    SubElement(cfg, "method", attrib={"v": "2"})
     return root
 
 
@@ -368,11 +412,21 @@ def _make_compound_config(name: str, child_configs: list[tuple[str, str]]) -> El
 
 
 def generate_pycharm_configs(project_root: Path) -> list[Path]:
-    """Write PyCharm run configurations for streaming commands.
+    """Write PyCharm run configurations for streaming + dev commands.
+
+    Covers everything the README's "PyCharm Run-Konfigurationen" table
+    lists, so a fresh clone gets the full set from one command (``.idea/``
+    is git-ignored — these files are never committed).
 
     ``Serve All`` is a **Compound** configuration so that PyCharm runs
     audio, video and channel as separate processes — each with its own
     Stop button.
+
+    Every ``Serve *`` configuration runs ``Build WebUI`` first: without a
+    current ``streaming/core/static/`` bundle the player UI silently loses
+    all ported TS/CSS modules (see ``streaming/webui_build.py``). The build
+    is a no-op when the bundle is already up to date, so this costs
+    nothing on a normal start.
 
     Returns the list of created files.
     """
@@ -380,17 +434,9 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
     run_cfg_dir.mkdir(parents=True, exist_ok=True)
     sdk_name = _detect_pycharm_sdk_name(project_root)
 
-    # Individual Python run configurations
-    python_configs = [
-        ("Serve Audio", "hometools", "serve-audio", "serve_audio.xml"),
-        ("Serve Video", "hometools", "serve-video", "serve_video.xml"),
-        ("Serve Channel", "hometools", "serve-channel", "serve_channel.xml"),
-        ("Streaming Config", "hometools", "streaming-config", "streaming_config.xml"),
-    ]
-
     created: list[Path] = []
-    for name, module, params, filename in python_configs:
-        xml_root = _make_python_config(name, module, params, sdk_name=sdk_name)
+
+    def _write(xml_root: Element, filename: str) -> None:
         target = run_cfg_dir / filename
         tree = ElementTree(xml_root)
         indent(tree, space="  ")
@@ -398,20 +444,66 @@ def generate_pycharm_configs(project_root: Path) -> list[Path]:
         created.append(target)
         logger.info("Created run configuration: %s", target)
 
-    # Compound configuration: starts all three servers as separate processes
-    compound_root = _make_compound_config(
-        "Serve All",
-        [
-            ("Serve Audio", "PythonConfigurationType"),
-            ("Serve Video", "PythonConfigurationType"),
-            ("Serve Channel", "PythonConfigurationType"),
-        ],
+    # Build the webui bundle first — referenced as a before-launch task by
+    # every server configuration below.
+    _write(
+        _make_python_config(_WEBUI_BUILD_CONFIG_NAME, "hometools", "build-webui", sdk_name=sdk_name),
+        "build_webui.xml",
     )
-    compound_target = run_cfg_dir / "serve_all.xml"
-    compound_tree = ElementTree(compound_root)
-    indent(compound_tree, space="  ")
-    compound_tree.write(str(compound_target), encoding="UTF-8", xml_declaration=True)
-    created.append(compound_target)
-    logger.info("Created compound run configuration: %s", compound_target)
+
+    # Server configurations (webui build wired in front of each).
+    for name, params, filename in (
+        ("Serve Audio", "serve-audio", "serve_audio.xml"),
+        ("Serve Video", "serve-video", "serve_video.xml"),
+        ("Serve Channel", "serve-channel", "serve_channel.xml"),
+    ):
+        _write(
+            _make_python_config(
+                name,
+                "hometools",
+                params,
+                sdk_name=sdk_name,
+                before_launch=_WEBUI_BUILD_CONFIG_NAME,
+            ),
+            filename,
+        )
+
+    # Non-server CLI helpers.
+    for name, params, filename in (
+        ("Streaming Config", "streaming-config", "streaming_config.xml"),
+        ("Dashboard", "stream-dashboard", "dashboard.xml"),
+    ):
+        _write(_make_python_config(name, "hometools", params, sdk_name=sdk_name), filename)
+
+    # Lint/format (ruff is a console script, not the hometools module).
+    _write(
+        _make_python_config("Ruff Check + Format", "ruff", "check src/ tests/ --fix", sdk_name=sdk_name),
+        "ruff_check.xml",
+    )
+
+    # Test configurations.
+    _write(_make_pytest_config("Run Tests", "$PROJECT_DIR$/tests", sdk_name=sdk_name, parameters="-q"), "run_tests.xml")
+    _write(
+        _make_pytest_config(
+            "Feature Parity Tests",
+            "$PROJECT_DIR$/tests/test_feature_parity.py",
+            sdk_name=sdk_name,
+            parameters="-v",
+        ),
+        "feature_parity_tests.xml",
+    )
+
+    # Compound configuration: starts all three servers as separate processes
+    _write(
+        _make_compound_config(
+            "Serve All",
+            [
+                ("Serve Audio", "PythonConfigurationType"),
+                ("Serve Video", "PythonConfigurationType"),
+                ("Serve Channel", "PythonConfigurationType"),
+            ],
+        ),
+        "serve_all.xml",
+    )
 
     return created

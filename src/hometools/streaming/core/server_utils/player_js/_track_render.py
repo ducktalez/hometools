@@ -29,7 +29,7 @@ def render_track_render_js() -> str:
       + (sortField ? sortField.value : '') + '\\x00'
       + String(tracks.length) + '\\x00' + filterRating + '\\x00'
       + (filterFav ? '1' : '0') + '\\x00' + (filterGenre || '') + '\\x00'
-      + _effectiveThreshold + '\\x00' + (showHidden ? '1' : '0');
+      + _effectiveThreshold + '\\x00' + (showHidden ? '1' : '0') + '\\x00' + (_justRatedPath || '');
     if (!force && guardKey === _rgKey && trackList.children.length > 0) {
       /* Nothing visually changed — just refresh active highlight */
       markActive();
@@ -976,6 +976,10 @@ def render_track_render_js() -> str:
     var t = filteredItems[idx];
     if (!t) return;
     var prevRating = t.rating || 0;
+    /* Remember the currently-playing path (not necessarily this row) so it
+       can be relocated after a re-sort/re-filter below. */
+    var playingPath = (currentIndex >= 0 && filteredItems[currentIndex])
+      ? filteredItems[currentIndex].relative_path : null;
     fetch(RATING_API_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -984,16 +988,28 @@ def render_track_render_js() -> str:
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) {
       if (!d || !d.ok) return;
-      /* Check if visibility changed before patching (was grayed, now above threshold, or vice versa) */
-      var wasHidden = !!t._hiddenShown;
       t.rating = d.rating;
       _patchAllItemsRating(t.relative_path, d.rating);
-      var nowHidden = _effectiveThreshold > 0 && d.rating > 0 && d.rating < _effectiveThreshold;
-      if (wasHidden !== nowHidden) {
-        /* Visibility changed — full re-render so gray state is removed/added */
-        if (inPlaylist) applyFilter();
+      /* Never let this rating change hide the row it was made on — gray it
+         instead so the change stays visible/undoable. Cleared (and the real
+         filter re-applied) once the undo-toast window elapses. */
+      _justRatedPath = t.relative_path;
+      clearTimeout(_justRatedTimer);
+      _justRatedTimer = setTimeout(function() {
+        _justRatedPath = null;
+        if (inPlaylist) applyFilter(true);
+      }, 5000);
+      if (inPlaylist) {
+        applyFilter(true);
+        /* Sort/filter may have reordered items — relocate currentIndex to
+           the track that is actually still playing. */
+        if (playingPath) {
+          var relocated = filteredItems.findIndex(function(fi) { return fi.relative_path === playingPath; });
+          if (relocated >= 0) currentIndex = relocated;
+        }
+        markActive();
+        if (playingPath === t.relative_path) renderPlayerRating(d.rating);
       } else {
-        /* Sync track list item (rating-bar + inline stars) and player bar */
         _updateTrackRatingBar(idx, d.rating);
         if (currentIndex === idx) renderPlayerRating(d.rating);
       }
@@ -1010,6 +1026,7 @@ def render_track_render_js() -> str:
     })
     .catch(function() {});
   }
+
 
   /* ── BPM adjust popup (Tools-panel "BPM berechnen") ───────────────────────
      Click handler for the BPM pill rendered by window.renderBpmPill()

@@ -143,21 +143,88 @@ Vollständiger Implementierungsplan mit Backlog: **[docs/IMPLEMENTATION_PLAN.md]
   - Serien: Die letzte Folge + Zeitstempel
   - Hörbücher: Das letzte Kapitel + Zeitstempel. Hörbücher müssen markiert werden, befinden sich in passenden Ordnern befinden sich in passenden Ordnern (einstellbar) oder werden erkannt (Bei abspielzeit > 15min?)
 
+## Server starten
+
+Es gibt drei Server: **Audio** (`:8010`), **Video** (`:8011`) und **Channel/TV** (`:8012`).
+
+### 1. Einmalig: Setup
+
+```powershell
+pip install -e ".[dev]"
+Copy-Item .env.example .env     # Bibliothekspfade eintragen (siehe "Streaming")
+hometools build-webui           # Web-UI-Bundle bauen (braucht Node.js/npm)
+```
+
+> **`build-webui` ist Pflicht bei lokalen Starts.** Die Player-Oberfläche wird
+> teilweise aus `streaming/core/webui/` (TypeScript/CSS via Vite) gebaut und
+> landet in `streaming/core/static/`. Ohne aktuelles Bundle startet der Server
+> zwar, aber im Browser fehlen Styles und bereits portierte JS-Module werfen
+> `ReferenceError`. Der Befehl ist inkrementell — er baut nur neu, wenn sich
+> unter `webui/src/` etwas geändert hat (`--force` erzwingt den Build).
+> Im Docker-Image passiert das automatisch in einer eigenen Build-Stage.
+
+### 2. Starten
+
+```powershell
+hometools serve-audio             # nur Audio   → http://127.0.0.1:8010
+hometools serve-video             # nur Video   → http://127.0.0.1:8011
+hometools serve-channel           # nur Channel → http://127.0.0.1:8012
+hometools serve-all               # alle drei gleichzeitig
+```
+
+Jeder `serve-*`-Befehl akzeptiert Overrides, die Vorrang vor der `.env` haben:
+
+| Option | Bedeutung | Default (aus `.env`) |
+|---|---|---|
+| `--library-dir PATH` | Medienverzeichnis | `HOMETOOLS_{AUDIO,VIDEO}_LIBRARY_DIR` |
+| `--host HOST` | Bind-Adresse | `HOMETOOLS_STREAM_HOST` (`127.0.0.1`) |
+| `--port PORT` | Port | `HOMETOOLS_{AUDIO,VIDEO,CHANNEL}_PORT` |
+| `--safe-mode` | Caches/PWA aus, minimaler Fallback | `HOMETOOLS_STREAM_SAFE_MODE` (`false`) |
+
+```powershell
+hometools serve-video --port 9000 --library-dir D:/Filme
+hometools streaming-config        # zeigt, welche Pfade/Ports gerade aktiv sind
+```
+
+Für Zugriff von anderen Geräten im LAN (Handy, TV) `HOMETOOLS_STREAM_HOST=0.0.0.0`
+setzen — sonst lauscht der Server nur lokal.
+
+### 3. Nach Änderungen an der Web-UI
+
+```powershell
+hometools build-webui             # nach jeder Änderung unter webui/src/
+```
+
+In PyCharm passiert das automatisch: die `Serve *`-Konfigurationen haben
+**Build WebUI** als Before-Launch-Task.
+
 ## PyCharm Run-Konfigurationen
 
-Im Repo unter `.idea/runConfigurations/` liegen fertige Konfigurationen:
+`.idea/` ist git-ignoriert — die Konfigurationen werden daher **generiert**,
+nicht mitgeliefert. Nach dem Klonen einmal:
+
+```powershell
+hometools setup-pycharm           # danach PyCharm neu starten
+```
 
 | Konfiguration | Beschreibung |
 |---|---|
-| **Serve All** | Audio + Video + Channel Server starten |
+| **Serve All** | Audio + Video + Channel Server starten (Compound, je eigener Stop-Button) |
 | **Serve Audio** | Nur Audio-Server |
 | **Serve Video** | Nur Video-Server |
 | **Serve Channel** | Nur Channel (TV)-Server |
+| **Build WebUI** | Vite-Bundle bauen — läuft automatisch vor jedem `Serve *` |
 | **Run Tests** | Vollständige Test-Suite (`pytest -q`) |
 | **Feature Parity Tests** | Audio↔Video Drift-Erkennung |
 | **Ruff Check + Format** | Lint + Auto-Fix |
 | **Dashboard** | CLI-Issues/TODOs Dashboard |
 | **Streaming Config** | Aktuelle Konfiguration anzeigen |
+
+Der Generator liest den aktuell in PyCharm eingestellten Interpreter aus
+`.idea/*.iml`. Wird kein Interpreter gefunden (Projekt noch nie in PyCharm
+geöffnet), setzt er einen Platzhalter — dann Projekt einmal in PyCharm öffnen
+und `hometools setup-pycharm` erneut ausführen.
+
 ## Features
 
 ### Music Library
@@ -193,8 +260,11 @@ pip install -e ".[dev]"
 Copy-Item .env.example .env
 # Edit .env with your TMDB_API_KEY and library paths
 
+hometools build-webui           # build the player UI bundle (needs Node.js)
 pytest
 ```
+
+Zum Starten der Server siehe [Server starten](#server-starten).
 
 ## Streaming
 
@@ -208,11 +278,12 @@ HOMETOOLS_VIDEO_NAS_DIR=Z:/Video
 HOMETOOLS_STREAM_HOST=0.0.0.0
 HOMETOOLS_AUDIO_PORT=8010
 HOMETOOLS_VIDEO_PORT=8011
+HOMETOOLS_CHANNEL_PORT=8012
 ```
 
 ```powershell
 hometools streaming-config        # show current config overview
-hometools serve-all               # start audio (:8010) + video (:8011)
+hometools serve-all               # start audio (:8010) + video (:8011) + channel (:8012)
 hometools sync-audio --dry-run    # preview audio sync
 hometools sync-video              # copy video files from NAS
 ```

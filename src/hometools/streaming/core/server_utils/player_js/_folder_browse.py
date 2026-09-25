@@ -463,11 +463,44 @@ def render_folder_browse_js() -> str:
      global-search-hide, stale fb-scroll-hidden, ...).
      Caller must set playlistItems/currentPath/_currentPlaylistId/
      inPlaylist BEFORE calling this — applyFilter() reads playlistItems. */
-  function _enterTrackListView(opts) {
+  /* ── Shared header state ──────────────────────────────────────────────
+     THE single place that touches header controls. Every view routes
+     through here via _enterTrackListView()/_enterFolderGridView(), so the
+     header is structurally identical everywhere: the same controls exist,
+     in the same order, in every view. Only their *content* (title,
+     breadcrumb) and enabled/disabled state may differ — a control is never
+     present in one view and absent in another.
+
+     This replaced the earlier "global search is a folder-grid-only
+     control" rule, which made the header visibly different between folder
+     browsing and any track list (user playlist, favorites, duplicates,
+     ...). Searching the whole library is a global action and must stay
+     reachable from every view. */
+  function _applyHeaderState(opts) {
     opts = opts || {};
     headerTitle.textContent = opts.title != null ? opts.title : (currentPath ? leafName(currentPath) : originalTitle);
     backBtn.classList.toggle('disabled', !!opts.backDisabled);
-    if (opts.playAllDisabled != null) playAllBtn.classList.toggle('disabled', !!opts.playAllDisabled);
+    playAllBtn.classList.toggle('disabled', !!opts.playAllDisabled);
+    renderBreadcrumb();
+    /* View-toggle icon depends on the *current* view (folder grid → grid/
+       list mode, track list → list/table mode), so it must be refreshed on
+       every view change or the button keeps the previous view's icon. */
+    applyViewMode();
+    /* Global search: present in every view once the catalog is loaded.
+       disableSearch is only for states with no catalog at all (loading,
+       load error), where a search box would be a dead control. */
+    if (!opts.disableSearch && allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
+  }
+
+  function _enterTrackListView(opts) {
+    opts = opts || {};
+    _applyHeaderState({
+      title: opts.title,
+      backDisabled: opts.backDisabled,
+      /* Track-list views default to an enabled Play-All (the list itself
+         is playable); callers opt out explicitly. */
+      playAllDisabled: opts.playAllDisabled
+    });
     folderGrid.classList.add('view-hidden');
     trackView.classList.remove('view-hidden');
     filterBar.classList.toggle('view-hidden', !!opts.hideFilterBar);
@@ -480,20 +513,11 @@ def render_folder_browse_js() -> str:
        the strip visible above the track list). */
     var _rsEl = document.getElementById('recent-section');
     if (_rsEl) _rsEl.hidden = true;
-    /* Global search bar is folder-grid-only (see showFolderView) — every
-       track-list view hides it the same way, regardless of entry point.
-       Exception: the global-search results view itself (keepGlobalSearch)
-       — hiding would clear the input mid-typing. */
-    if (!opts.keepGlobalSearch) _hideGlobalSearch();
+    /* In-list filter box (#search-input, filter bar) — distinct from the
+       header's global search. Reset so a previous list's filter doesn't
+       silently hide items here. */
     searchInput.value = '';
     if (opts.resetIndex) currentIndex = -1;
-    renderBreadcrumb();
-    /* View-toggle button (table/list icon) — showFolderView() always
-       refreshes it (see its trailing renderBreadcrumb()/applyViewMode()
-       pair); track-list entry points must do the same or the button is
-       left showing whatever the previous (folder-grid) view set, which
-       is exactly the kind of header drift this function exists to fix. */
-    applyViewMode();
     /* skipFilter: views that render their own list (global search's
        renderSearchResults) — applyFilter() would overwrite it. */
     if (!opts.skipFilter) applyFilter();
@@ -511,20 +535,18 @@ def render_folder_browse_js() -> str:
      reset — instead of the disabled class every other view uses). */
   function _enterFolderGridView(opts) {
     opts = opts || {};
-    headerTitle.textContent = opts.title != null ? opts.title : (currentPath ? leafName(currentPath) : originalTitle);
-    backBtn.classList.toggle('disabled', opts.backDisabled != null ? !!opts.backDisabled : !currentPath);
-    playAllBtn.classList.toggle('disabled', !!opts.playAllDisabled);
+    _applyHeaderState({
+      title: opts.title,
+      backDisabled: opts.backDisabled != null ? !!opts.backDisabled : !currentPath,
+      playAllDisabled: opts.playAllDisabled,
+      disableSearch: opts.disableSearch
+    });
     folderGrid.classList.remove('view-hidden');
     trackView.classList.add('view-hidden');
     filterBar.classList.add('view-hidden');
     if (!player.currentSrc) playerBar.classList.add('view-hidden');
-    /* Global search bar — folder-grid view only, visible whenever the
-       catalog is loaded. Loading/error states pass disableSearch. */
-    if (!opts.disableSearch && allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
     if (opts.trackCount != null) trackCount.textContent = opts.trackCount;
     if (opts.contentHtml != null) folderGrid.innerHTML = opts.contentHtml;
-    renderBreadcrumb();
-    applyViewMode();
     if (typeof _router !== 'undefined') _router.update();
   }
 

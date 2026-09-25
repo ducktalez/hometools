@@ -27,15 +27,25 @@ def test_streaming_config_table_contains_urls(monkeypatch):
 def test_generate_pycharm_configs_creates_files(tmp_path):
     created = generate_pycharm_configs(tmp_path)
 
-    assert len(created) == 5
+    assert len(created) == 10
     for p in created:
         assert p.exists()
 
     names = {p.name for p in created}
+    # Servers + webui build
     assert "serve_all.xml" in names
     assert "serve_audio.xml" in names
     assert "serve_video.xml" in names
     assert "serve_channel.xml" in names
+    assert "build_webui.xml" in names
+    # Dev helpers — the README's config table promises these too, so the
+    # generator must produce the full set (.idea/ is git-ignored, a fresh
+    # clone has nothing until 'hometools setup-pycharm' runs).
+    assert "streaming_config.xml" in names
+    assert "dashboard.xml" in names
+    assert "ruff_check.xml" in names
+    assert "run_tests.xml" in names
+    assert "feature_parity_tests.xml" in names
 
     # Individual configs are Python run configurations
     audio_content = (tmp_path / ".idea" / "runConfigurations" / "serve_audio.xml").read_text(encoding="utf-8")
@@ -48,6 +58,45 @@ def test_generate_pycharm_configs_creates_files(tmp_path):
     assert "Serve Audio" in compound_content
     assert "Serve Video" in compound_content
     assert "Serve Channel" in compound_content
+
+
+def test_serve_configs_build_webui_before_launch(tmp_path):
+    """Every server config must run 'Build WebUI' first — a stale/missing
+    streaming/core/static/ bundle silently drops all ported TS/CSS modules
+    from the player UI (see streaming/webui_build.py)."""
+    generate_pycharm_configs(tmp_path)
+    cfg_dir = tmp_path / ".idea" / "runConfigurations"
+    for filename in ("serve_audio.xml", "serve_video.xml", "serve_channel.xml"):
+        content = (cfg_dir / filename).read_text(encoding="utf-8")
+        assert 'run_configuration_name="Build WebUI"' in content, filename
+
+    build_content = (cfg_dir / "build_webui.xml").read_text(encoding="utf-8")
+    assert 'value="build-webui"' in build_content
+
+
+def test_generated_configs_have_no_empty_before_launch_task(tmp_path):
+    """An empty run_configuration_name is a no-op before-launch task that
+    PyCharm renders as a broken '<none>' entry — never emit one."""
+    generate_pycharm_configs(tmp_path)
+    for path in (tmp_path / ".idea" / "runConfigurations").iterdir():
+        assert 'run_configuration_name=""' not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_test_configs_use_pytest_factory(tmp_path):
+    """Run Tests / Feature Parity Tests must be pytest configurations, not
+    plain Python module runs (PyCharm needs the test-runner integration)."""
+    generate_pycharm_configs(tmp_path)
+    cfg_dir = tmp_path / ".idea" / "runConfigurations"
+    for filename in ("run_tests.xml", "feature_parity_tests.xml"):
+        content = (cfg_dir / filename).read_text(encoding="utf-8")
+        assert 'factoryName="py.test"' in content, filename
+
+
+def test_ruff_config_runs_ruff_not_hometools(tmp_path):
+    """The lint config must invoke the 'ruff' module, not the hometools CLI."""
+    generate_pycharm_configs(tmp_path)
+    content = (tmp_path / ".idea" / "runConfigurations" / "ruff_check.xml").read_text(encoding="utf-8")
+    assert '<option name="SCRIPT_NAME" value="ruff" />' in content
 
 
 def test_generate_pycharm_configs_idempotent(tmp_path):

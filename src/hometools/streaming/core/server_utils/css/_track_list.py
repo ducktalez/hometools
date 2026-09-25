@@ -368,15 +368,19 @@ body.modal-open { overflow: hidden; }
 .filter-bar.fb-scroll-hidden {
   max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0;
 }
-/* Header global search (right-aligned in the header) */
-.header-search {
-  margin-left: auto; flex: 0 1 200px; min-width: 80px;
+/* Shared search-box look — single template used by BOTH the header global
+   search (root view) and the in-folder/playlist filter search. Only one
+   class carries the visual style; context classes below only add
+   layout (flex-basis/width/margin), never repeat the look. */
+.ht-search-box {
   background: var(--surface2); color: var(--text);
   border: 1px solid #444; border-radius: 20px;
-  padding: 0.35rem 0.75rem; font-size: 0.82rem; outline: none;
+  padding: 0.4rem 0.8rem; font-size: 0.85rem; outline: none; min-width: 0;
 }
-.header-search:focus { border-color: var(--accent); }
-.header-search::placeholder { color: var(--sub); }
+.ht-search-box:focus { border-color: var(--accent); }
+.ht-search-box::placeholder { color: var(--sub); }
+/* Header global search (right-aligned in the header) — layout only */
+.header-search { margin-left: auto; flex: 0 1 200px; min-width: 80px; }
 /* search-wrap: stretchy input with embedded count label on the right */
 .search-wrap { position: relative; flex: 1 1 0; min-width: 0; }
 .search-wrap #search-input { width: 100%; box-sizing: border-box; padding-right: 4.5rem; }
@@ -385,14 +389,14 @@ body.modal-open { overflow: hidden; }
   font-size: 0.75rem; color: var(--sub); white-space: nowrap; pointer-events: none;
   max-width: 4rem; overflow: hidden; text-overflow: ellipsis;
 }
-.filter-bar input, .filter-bar select {
+.filter-bar input { flex: 1 1 0; }
+.filter-bar select {
   background: var(--surface2); color: var(--text);
   border: 1px solid #444; border-radius: 20px;
   padding: 0.4rem 0.8rem; font-size: 0.85rem; outline: none; min-width: 0;
+  color-scheme: dark;
 }
-.filter-bar input { flex: 1 1 0; }
-.filter-bar input:focus, .filter-bar select:focus { border-color: var(--accent); }
-.filter-bar select { color-scheme: dark; }
+.filter-bar select:focus { border-color: var(--accent); }
 /* Filter-Chips (Schnellfilter in der Track-Liste) */
 .filter-chip {
   background: var(--surface2); color: var(--sub);

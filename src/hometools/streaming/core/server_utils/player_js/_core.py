@@ -101,6 +101,14 @@ def render_core_js(waveform_js) -> str:
   var filterFav    = localStorage.getItem('ht-filter-fav') === '1';
   var filterGenre  = localStorage.getItem('ht-filter-genre') || '';
   var showHidden   = localStorage.getItem('ht-show-hidden') !== '0'; /* default true = ausgeblendet werden ausgegraut angezeigt */
+  /* Path of the track whose rating was JUST changed (star click). Never
+     fully hidden by any filter (auto-hide threshold OR quick "Bewertung"
+     chip) while set — rendered grayed instead, so the just-applied change
+     stays visible/undoable. Cleared (and the real filter re-applied) once
+     the undo-toast window elapses. See applyFilter()/setRating()/
+     setInlineRating() — bugfix for "rating crosses filter, song vanishes". */
+  var _justRatedPath  = null;
+  var _justRatedTimer = null;
   /* Combined "Filtern" popover (Bewertung + Favorit + Genre) — see
      docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2. */
   var _filterPopoverCleanup = null;

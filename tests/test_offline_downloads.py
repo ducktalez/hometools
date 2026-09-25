@@ -333,6 +333,20 @@ class TestOfflinePlaybackIntegrationHooks:
         assert "URL.revokeObjectURL" in ts
         assert "currentOfflineUrl" in ts
 
+    def test_revoke_offline_url_bridged_onto_window(self):
+        """Regression guard: playItem() in _library_tools.py (still legacy,
+        not-yet-ported) calls the bare identifier `revokeOfflineUrl()` twice.
+        Since offlineUrl.ts is a real ES module (not bridged, that bare call
+        throws ReferenceError — silently breaking playback for every track
+        click, before the player-bar title/artist even update. Must stay
+        exported + bridged onto window by main.ts."""
+        js = _js()
+        assert "revokeOfflineUrl();" in js
+        ts = _webui_src("offlineUrl.ts")
+        assert "export function revokeOfflineUrl" in ts
+        main_ts = _webui_src("main.ts")
+        assert "window.revokeOfflineUrl = revokeOfflineUrl;" in main_ts
+
     def test_js_has_stream_fallback_when_blob_playback_fails(self):
         js = _js()
         assert "Offline playback failed, falling back to stream" in js

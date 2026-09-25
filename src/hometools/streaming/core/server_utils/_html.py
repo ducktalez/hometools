@@ -16,10 +16,10 @@ from ._svg import (
     SVG_CLOSE_X,
     SVG_EXPAND,
     SVG_FULLSCREEN,
+    SVG_GRID,
     SVG_HISTORY,
     SVG_HOME,
     SVG_LYRICS,
-    SVG_MENU,
     SVG_NEXT,
     SVG_PAUSE,  # noqa: F401 — kept for completeness / future use
     SVG_PIP,
@@ -579,10 +579,10 @@ def render_media_page(
     <nav class="breadcrumb" id="breadcrumb"></nav>
     <span class="header-spacer"></span>
     <button class="play-all-btn" id="play-all-btn" title="Play all">{SVG_PLAY} Play All</button>
-    <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_MENU}</button>
+    <button class="view-toggle" id="view-toggle" title="Ansicht wechseln">{SVG_GRID}</button>
     {mode_controls_html}
     {playlist_pill_html}
-    <input id="global-search-input" class="header-search view-hidden" type="search" autocomplete="off" />
+    <input id="global-search-input" class="header-search ht-search-box view-hidden" type="search" autocomplete="off" />
   </header>
 
 
@@ -596,7 +596,7 @@ def render_media_page(
   <!-- filter bar (visible inside a folder) -->
   <div class="filter-bar view-hidden">
     <div class="search-wrap">
-      <input id="search-input" type="search" placeholder="Suche\u2026" autocomplete="off" />
+      <input id="search-input" class="ht-search-box" type="search" placeholder="Suche\u2026" autocomplete="off" />
       <span class="track-count" id="track-count"></span>
     </div>
     <select id="sort-field">

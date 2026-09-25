@@ -67,14 +67,18 @@ Funktion für Funktion über eines der vier Muster portieren.
 
 ### UI-Template-Vereinheitlichung: Header, List-Toolbar, List-Item
 
-**Status:** Phase 1 (Header) fertig — jede View läuft jetzt über genau
-einen von zwei Entry-Points (`_enterTrackListView` /
-`_enterFolderGridView`, beide `player_js/_folder_browse.py`). Kein
-Hand-Rolling von Header-Klassen mehr; auch `globalSearch()`,
-`showLoadingState()`, `showCatalogLoadError()` delegieren.
-`globalSearch()` aktualisiert damit erstmals Breadcrumb/View-Toggle/Router;
+**Status:** Phase 1 (Header) fertig — `_applyHeaderState()` ist der einzige
+Schreiber von Header-Controls; die zwei Entry-Points
+(`_enterTrackListView` / `_enterFolderGridView`, `player_js/_folder_browse.py`)
+delegieren dorthin. Regel: **jedes Control existiert in jedem View**, nur
+Inhalt/enabled-Zustand unterscheidet sich — kein Control darf in einem View
+fehlen. Die alte Regel „globale Suche nur in Ordneransicht" ist damit weg
+(Suche fehlte sichtbar in Playlists). `globalSearch()`,
+`showLoadingState()`, `showCatalogLoadError()` delegieren ebenfalls;
 Error-View nutzt disabled-Klasse statt `style.display='none'`;
-recent-section-Hide zentral. Phase 2 (Toolbar) teilweise. Phase 3+ offen.
+recent-section-Hide zentral. `IC_LIST`/`SVG_LIST` mit Bullets, damit der
+View-Toggle nicht mehr wie ein Hamburger-Menü aussieht.
+Phase 2 (Toolbar) teilweise. Phase 3+ offen.
 Offline/„Downloaded"-View (`openOfflineLibrary()`, `_track_render.py`) ging
 bisher über `showPlaylist()` + manuellen `headerTitle.textContent`-Patch
 danach (gleicher Drift-Bug wie das alte `playUserPlaylist()`) — jetzt direkt

@@ -157,10 +157,11 @@ Quick "where does X live" lookup — one line each, grouped by area.
 **UI/rendering** (`server_utils/`): header `<header>` (`_html.py`, always
 zurück|Home|Breadcrumb|spacer|Tools|Suche, `renderBreadcrumb()` in
 `_queue.py` — inline in header, no separate nav row, no unicode icons) ·
-view entry points: every view sets header/toolbar state via exactly one of
-`_enterTrackListView(opts)` / `_enterFolderGridView(opts)` (both in
-`player_js/_folder_browse.py`) — never hand-roll header class toggles ·
-kebab menu `_openCtxMenu()`
+header state: `_applyHeaderState()` (`player_js/_folder_browse.py`) is the
+ONLY writer of header controls; the two view entry points
+`_enterTrackListView()` / `_enterFolderGridView()` delegate to it, so every
+view shows the same controls (incl. global search) and differs only in
+content/enabled state · kebab menu `_openCtxMenu()`
 (`player_js/_library_tools.py`) · playlists `playlists.py` +
 `_folder_browse.py` · smart playlists `smart_playlists.py` +
 `_smart_playlists.py` · queue `_queue.py` · tools panel `localStorage['ht-tools']`
@@ -180,7 +181,11 @@ catalog cache `localStorage` (`webui/src/catalogCache.ts`, bridged onto
 
 **Ops**: Docker `Dockerfile` (multi-stage incl. `webui-builder`) +
 `docker-compose.yml` (services `audio`/`video`/`channel`) · PWA `_pwa.py`
-(manifest/SW/icons) + IndexedDB offline downloads.
+(manifest/SW/icons) + IndexedDB offline downloads · local webui build
+`streaming/webui_build.py` + `hometools build-webui` (mtime-based staleness
+check; wired as PyCharm before-launch task) · PyCharm run configs generated
+by `streaming/setup.py::generate_pycharm_configs` + `hometools setup-pycharm`
+(`.idea/` is git-ignored, so nothing is committed).
 
 **Icons**: `_svg.py` (`SVG_*`, Python) ↔ `IC_*` (JS, `player_js/_core.py`
 header) — always keep 1:1, no independent literals (past bug, see git log).

@@ -186,6 +186,13 @@ def build_parser() -> argparse.ArgumentParser:
     setup_pc.add_argument("--project-root", type=Path, default=Path.cwd())
     setup_pc.set_defaults(func=run_setup_pycharm)
 
+    build_webui_p = subparsers.add_parser(
+        "build-webui",
+        help="Build the Vite/TypeScript web UI bundle (skipped when already up to date).",
+    )
+    build_webui_p.add_argument("--force", action="store_true", help="Rebuild even if the bundle is up to date.")
+    build_webui_p.set_defaults(func=run_build_webui)
+
     # Video organizer
     rename_series = subparsers.add_parser(
         "rename-series",
@@ -651,6 +658,19 @@ def run_setup_pycharm(args: argparse.Namespace) -> int:
         _console_print(f"  ✓ {p.name}")
     _console_print(f"\n{len(created)} PyCharm run configuration(s) created. Restart PyCharm to see them.")
     return 0
+
+
+def run_build_webui(args: argparse.Namespace) -> int:
+    """Build the Vite/TypeScript web UI bundle."""
+    from hometools.streaming.webui_build import build_webui
+
+    setup_logging()
+    ok = build_webui(force=args.force)
+    if ok:
+        _console_print("  ✓ webui bundle ready")
+        return 0
+    _console_print("  ✗ webui build failed — see log above. Server will run with a stale/missing bundle.")
+    return 1
 
 
 # ---------------------------------------------------------------------------

@@ -1037,15 +1037,31 @@ def render_library_tools_js() -> str:
     playerRatingEl.removeAttribute('hidden');
   }
 
-  /* Patch the matching entry in allItems by relative_path.
-     Uses Object.assign to avoid mutating the frozen data pattern used elsewhere. */
+  /* Patch the matching entry in EVERY array that may hold a reference to
+     this item — allItems AND playlistItems AND filteredItems AND the user
+     queue. Uses Object.assign (new object, no in-place mutation) to avoid
+     the frozen-data-mutation pattern used elsewhere, BUT that means each
+     array's own copy of the reference must be patched individually — patching
+     allItems alone leaves playlistItems (built earlier via itemsUnder(), a
+     plain filter() that copies references, not a live view) holding the
+     stale pre-patch object. applyFilter() always rebuilds from playlistItems,
+     so a stale playlistItems entry meant the rating change (and any
+     show/hide it triggered) never showed up until an unrelated full
+     re-render happened to refresh it from allItems. Bugfix — see
+     docs/IMPLEMENTATION_PLAN.md "Rating-Filter-Sichtbarkeit". */
   function _patchAllItemsRating(relativePath, rating) {
-    for (var i = 0; i < allItems.length; i++) {
-      if (allItems[i].relative_path === relativePath) {
-        allItems[i] = Object.assign({}, allItems[i], { rating: rating });
-        break;
+    function _patchArr(arr) {
+      if (!arr) return;
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].relative_path === relativePath) {
+          arr[i] = Object.assign({}, arr[i], { rating: rating });
+        }
       }
     }
+    _patchArr(allItems);
+    _patchArr(playlistItems);
+    _patchArr(filteredItems);
+    _patchArr(_userQueue);
   }
 
   /* Update the .rating-bar inside a track list item without a full re-render.
@@ -1084,6 +1100,7 @@ def render_library_tools_js() -> str:
     var t = filteredItems[currentIndex];
     if (!t) return;
     var prevRating = t.rating || 0;
+    var ratedPath = t.relative_path;
     fetch(RATING_API_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1092,17 +1109,27 @@ def render_library_tools_js() -> str:
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
         if (!d || !d.ok) return;
-        /* Check visibility change before patching (was grayed out, now above threshold or vice versa) */
-        var wasHidden = !!t._hiddenShown;
         t.rating = d.rating;
         /* Keep allItems in sync so any re-render shows the correct rating bar */
-        _patchAllItemsRating(t.relative_path, d.rating);
-        var nowHidden = _effectiveThreshold > 0 && d.rating > 0 && d.rating < _effectiveThreshold;
-        if (wasHidden !== nowHidden && inPlaylist) {
-          /* Visibility changed — full re-render to remove or apply gray state */
-          applyFilter();
+        _patchAllItemsRating(ratedPath, d.rating);
+        renderPlayerRating(d.rating);
+        /* Never let this rating change hide the currently-playing track —
+           gray it instead so the change stays visible/undoable. Cleared
+           (and the real filter re-applied) once the undo-toast window
+           elapses. See applyFilter()/renderTracks() guardKey. */
+        _justRatedPath = ratedPath;
+        clearTimeout(_justRatedTimer);
+        _justRatedTimer = setTimeout(function() {
+          _justRatedPath = null;
+          if (inPlaylist) applyFilter(true);
+        }, 5000);
+        if (inPlaylist) {
+          applyFilter(true);
+          /* Sort/filter may have reordered items — relocate currentIndex */
+          var relocated = filteredItems.findIndex(function(fi) { return fi.relative_path === ratedPath; });
+          if (relocated >= 0) currentIndex = relocated;
+          markActive();
         } else {
-          renderPlayerRating(d.rating);
           /* Sync the track list item (rating-bar + inline stars) without re-render */
           _updateTrackRatingBar(currentIndex, d.rating);
         }
@@ -1121,6 +1148,7 @@ def render_library_tools_js() -> str:
       .catch(function() {});
   }
 
+
   function showRatingToastWithUndo(stars, prevStars, entryId, t) {
     var toast = document.getElementById('toast');
     var label = stars === 0
@@ -1136,14 +1164,14 @@ def render_library_tools_js() -> str:
     undoBtn.textContent = 'Rueckgaengig';
     undoBtn.style.cssText = 'margin-left:0.5rem;background:none;border:1px solid #888;'
       + 'color:inherit;border-radius:4px;padding:1px 8px;cursor:pointer;font-size:0.8rem;';
-    undoBtn.addEventListener('click', function() { undoRating(undoBtn, entryId, prevStars); });
+    undoBtn.addEventListener('click', function() { undoRating(undoBtn, entryId, prevStars, t); });
     toast.appendChild(undoBtn);
     toast.classList.add('show');
     clearTimeout(toast._hideTimer);
     toast._hideTimer = setTimeout(function() { toast.classList.remove('show'); }, 5000);
   }
 
-  function undoRating(btn, entryId, prevStars) {
+  function undoRating(btn, entryId, prevStars, t) {
     btn.disabled = true; btn.textContent = '…';
     fetch(AUDIT_UNDO_PATH, {
       method: 'POST',
@@ -1152,12 +1180,35 @@ def render_library_tools_js() -> str:
     })
       .then(function(r) { return r.json(); })
       .then(function(d) {
-        var t2 = filteredItems[currentIndex];
+        /* Prefer the exact rated item (passed in) over currentIndex — the
+           undo may target a track that isn't the one currently playing
+           (inline list rating). Falls back to currentIndex for compat. */
+        var t2 = t || filteredItems[currentIndex];
         if (d.ok && t2) {
           t2.rating = prevStars;
           _patchAllItemsRating(t2.relative_path, prevStars);
-          renderPlayerRating(prevStars);
-          _updateTrackRatingBar(currentIndex, prevStars);
+          if (currentIndex >= 0 && filteredItems[currentIndex] && filteredItems[currentIndex].relative_path === t2.relative_path) {
+            renderPlayerRating(prevStars);
+          }
+          /* Undo keeps the just-rated protection alive for the same track
+             so it doesn't vanish either, mirroring setRating/setInlineRating. */
+          _justRatedPath = t2.relative_path;
+          clearTimeout(_justRatedTimer);
+          _justRatedTimer = setTimeout(function() {
+            _justRatedPath = null;
+            if (inPlaylist) applyFilter(true);
+          }, 5000);
+          if (inPlaylist) {
+            applyFilter(true);
+            var relocated = filteredItems.findIndex(function(fi) { return fi.relative_path === t2.relative_path; });
+            if (currentIndex >= 0 && relocated < 0) {
+              /* playing track no longer resolvable this way — leave currentIndex untouched */
+            }
+            markActive();
+          } else {
+            var idx2 = filteredItems.indexOf(t2);
+            if (idx2 >= 0) _updateTrackRatingBar(idx2, prevStars);
+          }
           if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
         }
         var toast = document.getElementById('toast');
@@ -1169,6 +1220,7 @@ def render_library_tools_js() -> str:
       })
       .catch(function() { showToast('Netzwerkfehler beim Rückgängig'); });
   }
+
 
   if (playerRatingEl) {
     /* hover preview */

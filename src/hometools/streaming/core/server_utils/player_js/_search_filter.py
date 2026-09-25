@@ -84,15 +84,15 @@ def render_search_filter_js() -> str:
        updates breadcrumb/view-toggle/router like every other list view
        (was the only view skipping them). skipFilter: results are rendered
        by renderSearchResults below, applyFilter() would overwrite them.
-       keepGlobalSearch: hiding the bar would clear the input mid-typing.
-       hideFilterBar: sort/filter chips don't apply to search results. */
+       hideFilterBar: sort/filter chips don't apply to search results.
+       The header search box stays visible on its own — _applyHeaderState()
+       shows it in every view, so typing is never interrupted. */
     _enterTrackListView({
       title: totalCount + ' Ergebnis' + (totalCount !== 1 ? 'se' : ''),
       backDisabled: false,
       playAllDisabled: true,
       hideFilterBar: true,
       skipFilter: true,
-      keepGlobalSearch: true,
       trackCount: trackCountLabel
     });
     if (shuffleMode) rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
@@ -342,7 +342,7 @@ def render_search_filter_js() -> str:
     };
   }
 
-  function applyFilter() {
+  function applyFilter(force) {
     var needle = searchInput.value.trim().toLowerCase();
     var sortBy = sortField.value;
     /* Safety net: always strip locally-deleted paths regardless of how
@@ -357,10 +357,11 @@ def render_search_filter_js() -> str:
          showHidden=false → rating-below-threshold items get _debugReason (visible with filter-reason overlay) */
       items = items.map(function(t) {
         var r = t.rating || 0;
-        /* Rating threshold: when showHidden=true, gray items in-place (don't annotate as debug-filtered) */
+        /* Rating threshold: when showHidden=true, gray items in-place (don't annotate as debug-filtered).
+           The just-rated item is always grayed regardless of showHidden — never debug-filtered away. */
         if (_effectiveThreshold > 0 && r > 0 && r < _effectiveThreshold) {
           var hClone = {}; for (var k in t) { if (t.hasOwnProperty(k)) hClone[k] = t[k]; }
-          if (showHidden) {
+          if (showHidden || t.relative_path === _justRatedPath) {
             hClone._hiddenShown = true;
             return hClone;
           } else {
@@ -369,7 +370,7 @@ def render_search_filter_js() -> str:
           }
         }
         var reasons = [];
-        if (filterRating > 0 && (r < filterRating)) {
+        if (filterRating > 0 && (r < filterRating) && t.relative_path !== _justRatedPath) {
           reasons.push('Quick-Filter: Rating < ' + filterRating + '\\u2605');
         }
         if (filterFav && !_savedFavorites[t.relative_path]) {
@@ -401,24 +402,29 @@ def render_search_filter_js() -> str:
          Unrated tracks (rating 0) are always shown regardless of threshold.
          showHidden=false  → hidden songs filtered out entirely.
          showHidden=true   → hidden songs kept at their natural position, grayed
-                             out so the full list is visible. */
+                             out so the full list is visible.
+         The just-rated track (_justRatedPath) is NEVER removed by this step,
+         even when showHidden=false — it is grayed in-place instead, so the
+         user can see and undo the change that just crossed the threshold. */
       if (_effectiveThreshold > 0) {
         if (!showHidden) {
           items = items.filter(function(t) {
-            var r = t.rating || 0; return r === 0 || r >= _effectiveThreshold;
-          });
-        } else {
-          /* Mark hidden items in-place — they stay at their sorted position */
-          items = items.map(function(t) {
             var r = t.rating || 0;
-            if (r > 0 && r < _effectiveThreshold) {
-              var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
-              clone._hiddenShown = true;
-              return clone;
-            }
-            return t;
+            return r === 0 || r >= _effectiveThreshold || t.relative_path === _justRatedPath;
           });
         }
+        /* Mark hidden items in-place — they stay at their sorted position.
+           Runs in both showHidden branches so the just-rated exception above
+           (kept in the array when showHidden=false) still gets grayed. */
+        items = items.map(function(t) {
+          var r = t.rating || 0;
+          if (r > 0 && r < _effectiveThreshold) {
+            var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
+            clone._hiddenShown = true;
+            return clone;
+          }
+          return t;
+        });
       }
       if (needle) {
         items = items.filter(function(t) {
@@ -427,9 +433,21 @@ def render_search_filter_js() -> str:
                  t.relative_path.toLowerCase().indexOf(needle) >= 0;
         });
       }
-      /* Quick-filters (never affect hidden-shown items — they are already grayed) */
+      /* Quick-filters (never affect hidden-shown items — they are already grayed,
+         and never remove the just-rated item — it gets marked hidden-shown below
+         instead of being filtered out, mirroring the threshold exception above). */
       if (filterRating > 0) {
-        items = items.filter(function(t) { return t._hiddenShown || (t.rating || 0) >= filterRating; });
+        items = items.filter(function(t) {
+          return t._hiddenShown || t.relative_path === _justRatedPath || (t.rating || 0) >= filterRating;
+        });
+        items = items.map(function(t) {
+          if (!t._hiddenShown && t.relative_path === _justRatedPath && (t.rating || 0) < filterRating) {
+            var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
+            clone._hiddenShown = true;
+            return clone;
+          }
+          return t;
+        });
       }
       if (filterFav) {
         items = items.filter(function(t) { return t._hiddenShown || !!_savedFavorites[t.relative_path]; });
@@ -438,6 +456,7 @@ def render_search_filter_js() -> str:
         items = items.filter(function(t) { return t._hiddenShown || t.genre === filterGenre; });
       }
     }
+
     items = items.slice().sort(function(a, b) {
       var sa = a.season || 0, sb = b.season || 0;
       var ea = a.episode || 0, eb = b.episode || 0;
@@ -471,7 +490,7 @@ def render_search_filter_js() -> str:
       if (ea !== eb) return ea - eb;
       return a.title.localeCompare(b.title);
     });
-    renderTracks(items);
+    renderTracks(items, force);
   }
   /* needsConversion()/filenameFromPath() ported to webui/src/pathUtils.ts
      (Vite/TS migration Phase 5 opportunistic-port slice — see

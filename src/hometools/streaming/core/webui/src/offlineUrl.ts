@@ -9,15 +9,19 @@
  * Python fragment than its accessors — so it moves here as module-private
  * state, no `htState` bridge needed.
  *
- * `getOfflineUrl` is the only external call site (`playOfflineOrStream()`
- * in `_track_render.py`, not yet ported) — bridged onto
- * `window.getOfflineUrl` by `main.ts`. `revokeOfflineUrl` has no other
- * caller, so it stays module-private.
+ * `getOfflineUrl` is called from `playOfflineOrStream()` in
+ * `_track_render.py` (not yet ported) — bridged onto `window.getOfflineUrl`
+ * by `main.ts`. `revokeOfflineUrl` is ALSO called bare from
+ * `playItem()` in `_library_tools.py` (not yet ported, 2 call sites) —
+ * it must be exported + bridged onto `window.revokeOfflineUrl` too, or the
+ * bare identifier throws a ReferenceError in that (still non-module,
+ * shared-scope) legacy script, silently breaking playback before the
+ * player-bar UI even updates (see docs/architecture.md incident notes).
  */
 
 let currentOfflineUrl: string | null = null;
 
-function revokeOfflineUrl(): void {
+export function revokeOfflineUrl(): void {
   if (currentOfflineUrl) {
     URL.revokeObjectURL(currentOfflineUrl);
     currentOfflineUrl = null;
