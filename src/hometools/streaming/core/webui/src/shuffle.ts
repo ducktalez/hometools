@@ -14,7 +14,7 @@
  * legacy script runs).
  */
 
-import { getState } from "./stateBridge";
+import { getState, type HtState } from "./stateBridge";
 
 /** In-place Fisher-Yates. */
 export function fisherYates(arr: number[]): number[] {
@@ -63,21 +63,62 @@ export function rebuildShuffleQueue(startIndex?: number): void {
   s.shufflePos = 0;
 }
 
-/** Next index respecting shuffle/repeat. -1 = stop. */
-export function nextIndex(): number {
-  const s = getState();
-  if (!s) return -1;
-  if (s.shuffleMode && s.shuffleQueue.length) {
-    s.shufflePos = (s.shufflePos + 1) % s.shuffleQueue.length;
-    /* Replenish weighted queue when exhausted */
-    if (s.shufflePos === 0 && s.shuffleMode === "weighted") {
-      s.shuffleQueue = buildWeightedQueue(s.filteredItems);
-    }
-    return s.shuffleQueue[s.shufflePos];
-  }
+/** Linear (non-shuffle) next index. -1 = stop. */
+function linearNext(s: HtState): number {
   const ni = s.currentIndex + 1;
   if (ni >= s.filteredItems.length) return s.repeatMode === "all" ? 0 : -1;
   return ni;
+}
+
+export interface PeekedNext {
+  index: number;
+  /** Apply the shuffle advance. No-op if shuffleQueue was rebuilt meanwhile. */
+  commit(): void;
+}
+
+const NOOP = (): void => {};
+
+/**
+ * Next index WITHOUT side effects. Crossfade peeks at start and commits
+ * only on finish — an aborted crossfade (seek/pause) must not consume a
+ * shuffle slot (was: skipped track).
+ */
+export function peekNextIndex(): PeekedNext {
+  const s = getState();
+  if (!s) return { index: -1, commit: NOOP };
+  if (s.shuffleMode && s.shuffleQueue.length) {
+    const q = s.shuffleQueue;
+    const pos = (s.shufflePos + 1) % q.length;
+    /* Replenish weighted queue when exhausted */
+    if (pos === 0 && s.shuffleMode === "weighted") {
+      const fresh = buildWeightedQueue(s.filteredItems);
+      return {
+        index: fresh[0],
+        commit: () => {
+          const st = getState();
+          if (st && st.shuffleQueue === q) {
+            st.shuffleQueue = fresh;
+            st.shufflePos = 0;
+          }
+        },
+      };
+    }
+    return {
+      index: q[pos],
+      commit: () => {
+        const st = getState();
+        if (st && st.shuffleQueue === q) st.shufflePos = pos;
+      },
+    };
+  }
+  return { index: linearNext(s), commit: NOOP };
+}
+
+/** Next index respecting shuffle/repeat (advances shuffle state). -1 = stop. */
+export function nextIndex(): number {
+  const p = peekNextIndex();
+  p.commit();
+  return p.index;
 }
 
 /** Prev index respecting shuffle/repeat. */

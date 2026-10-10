@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from hometools.streaming.core.server_utils import render_base_css, render_media_page, render_player_js
+from hometools.streaming.core.server_utils import render_media_page, render_player_js
 
 
 def _js():
@@ -64,15 +64,17 @@ class TestServiceWorkerOfflineSupport:
         assert "DOWNLOAD_DELETED" in sw
 
     def test_service_worker_db_version_matches_main_js(self):
-        """Service worker must open IndexedDB at the same version as the main JS."""
+        """Service worker must open IndexedDB at the same name+version as the
+        page-side data layer (webui/src/offlineDb.ts) — mismatch = VersionError."""
+        import re
+
         from hometools.streaming.core.server_utils import render_pwa_service_worker
 
         sw = render_pwa_service_worker()
-        js = _js()
-
-        # Both must use version 2
-        assert "'hometools-downloads', 2" in sw
-        assert "'hometools-downloads', 2" in js
+        ts = _webui_src("offlineDb.ts")
+        name = re.search(r'DB_NAME = "([^"]+)"', ts).group(1)
+        version = re.search(r"DB_VERSION = (\d+)", ts).group(1)
+        assert f"'{name}', {version}" in sw
 
     def test_service_worker_handles_db_upgrade(self):
         """Service worker must handle onupgradeneeded for IndexedDB."""
@@ -173,11 +175,14 @@ class TestTrackDownloadButtons:
         assert "track-dl-btn" in js
 
     def test_js_has_init_download_db(self):
-        """initDownloadDB must open IndexedDB for downloads."""
+        """IndexedDB layer ported to webui/src/offlineDb.ts (behaviour:
+        webui/test/offlineDb.test.ts); legacy must not redefine it."""
+        ts = _webui_src("offlineDb.ts")
+        assert "export function initDownloadDB(" in ts
+        assert "indexedDB.open(DB_NAME, DB_VERSION)" in ts
         js = _js()
-        assert "function initDownloadDB" in js
-        assert "indexedDB.open" in js
-        assert "'hometools-downloads'" in js
+        assert "function initDownloadDB" not in js
+        assert "var downloadDB" not in js
 
     def test_js_has_download_track_function(self):
         """downloadTrack must fetch with progress and store blob in IndexedDB."""
@@ -192,7 +197,7 @@ class TestTrackDownloadButtons:
         js = _js()
         assert "function deleteTrackDownload" in js
         assert "deleteDownloadById" in js
-        assert ".delete(id)" in js
+        assert ".delete(id)" in _webui_src("offlineDb.ts")
 
     def test_js_has_update_all_download_buttons(self):
         """updateAllDownloadButtons must check cached status for all track buttons."""
@@ -305,6 +310,10 @@ class TestStorageQuotaHandling:
         assert "function pruneOldDownloads" in js
         assert "function ensureStorageBudget" in js
         assert "500 * 1024 * 1024" in js
+        # eviction logic ported (behaviour: webui/test/offlineBudget.test.ts)
+        assert "window._evictForBudget(requiredBytes, OFFLINE_SOFT_LIMIT, protectedStreamUrl)" in js
+        assert "candidates.shift()" not in js
+        assert "export function pickEvictionVictims<" in _webui_src("offlineDownloads.ts")
 
     def test_js_updates_storage_summary(self):
         js = _js()
@@ -379,8 +388,8 @@ class TestTrackDownloadCSS:
         assert "dl-pulse" in css
 
     def test_css_has_offline_library_styles(self):
-        """CSS must style the offline modal/list."""
-        css = render_base_css()
+        """CSS must style the offline modal/list (ported to trackList.css)."""
+        css = _webui_src("styles/trackList.css")
         assert ".offline-library" in css
         assert ".offline-panel" in css
         assert ".offline-download-item" in css

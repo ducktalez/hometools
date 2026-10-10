@@ -1,11 +1,4 @@
-"""CSS fragment: video overlay (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_video_overlay_css() -> str:
-    """Return the video overlay section of the dark-theme CSS."""
-    return """/* ── Video thumbnail preview ── */
+/* ── Video thumbnail preview ── */
 .thumb-preview {
   display: none; position: absolute; bottom: calc(100% + 8px);
   transform: translateX(-50%);
@@ -520,4 +513,4 @@ def render_video_overlay_css() -> str:
 @media (max-width: 480px) {
   .video-float-container { width: 200px; height: 113px; bottom: 60px; right: 8px; }
 }
-"""
+

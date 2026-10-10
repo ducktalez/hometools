@@ -268,10 +268,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
       var toIdx = Number(_dropTarget.dataset.queueIndex);
       if (!_dropAbove) toIdx += 1;
       if (fromIdx < toIdx) toIdx -= 1;
-      if (fromIdx !== toIdx && fromIdx >= 0 && toIdx >= 0 && fromIdx < _userQueue.length) {
-        var moved = _userQueue.splice(fromIdx, 1)[0];
-        _userQueue.splice(Math.min(toIdx, _userQueue.length), 0, moved);
-      }
+      window._queueMove(fromIdx, toIdx);
       cancelDrag();
       renderQueuePanel();
     }
@@ -603,8 +600,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     return window._itemsUnder(path, allItems);
   }
 
-  /* compute direct sub-folders and loose files at a path level */
-  var IGNORED_FOLDERS = {'#recycle': true, '@eaDir': true};
+  /* IGNORED_FOLDERS moved to webui/src/folderContents.ts with contentsAt. */
 
   /* detectLangFromName/detectSubLangFromName: ported to
      webui/src/langDetect.ts, bridged onto window by main.ts. */
@@ -640,109 +636,10 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     '</span>';
   }
 
+  /* contentsAt: ported to webui/src/folderContents.ts (allItems +
+     LANG_GROUPS explicit). Bare-name wrapper keeps all call sites. */
   function contentsAt(path) {
-    var items = itemsUnder(path);
-    var folderMap = {};
-    var folderThumb = {};
-    var folderThumbLg = {};
-    var folderLangs = {};
-    var folderSubLangs = {};
-    var files = [];
-    var off = path ? path.length + 1 : 0;
-    items.forEach(function(it) {
-      var rest = it.relative_path.substring(off);
-      var slash = rest.indexOf('/');
-      if (slash >= 0) {
-        var name = rest.substring(0, slash);
-        if (IGNORED_FOLDERS[name]) return;
-        if (!folderMap[name]) folderMap[name] = 0;
-        folderMap[name]++;
-        if (!folderThumb[name] && it.thumbnail_url) folderThumb[name] = it.thumbnail_url;
-        if (!folderThumbLg[name] && it.thumbnail_lg_url) folderThumbLg[name] = it.thumbnail_lg_url;
-        /* Aggregate languages from items + folder-name detection */
-        if (!folderLangs[name]) folderLangs[name] = {};
-        if (it.language) folderLangs[name][it.language] = true;
-        var folderLang = detectLangFromName(name);
-        if (folderLang) folderLangs[name][folderLang] = true;
-        /* Aggregate subtitle languages from items + folder-name detection */
-        if (!folderSubLangs[name]) folderSubLangs[name] = '';
-        if (!folderSubLangs[name] && it.subtitle_language) folderSubLangs[name] = it.subtitle_language;
-        if (!folderSubLangs[name]) {
-          var detSub = detectSubLangFromName(name);
-          if (detSub) folderSubLangs[name] = detSub;
-        }
-      } else {
-        files.push(it);
-      }
-    });
-    var folders = Object.keys(folderMap)
-      .sort(function(a, b) {
-        /* Favorites (#-prefixed) first, then alphabetical */
-        var aFav = a.charAt(0) === '#';
-        var bFav = b.charAt(0) === '#';
-        if (aFav !== bFav) return aFav ? -1 : 1;
-        return a.localeCompare(b);
-      })
-      .map(function(n) {
-        var isFav = n.charAt(0) === '#';
-        var langs = folderLangs[n] ? Object.keys(folderLangs[n]).sort() : [];
-        return {
-          name: n,
-          displayName: cleanFolderName(n),
-          isFavorite: isFav,
-          count: folderMap[n],
-          thumbnail_url: folderThumb[n] || '',
-          thumbnail_lg_url: folderThumbLg[n] || '',
-          languages: langs,
-          subLang: folderSubLangs[n] || '',
-          variants: null
-        };
-      });
-
-    /* ── Multi-language merge ── */
-    /* Group folders by merge-key: LANG_GROUPS[name] or displayName */
-    var _mergeMap = {};
-    folders.forEach(function(f) {
-      var key = LANG_GROUPS[f.name] || f.displayName;
-      if (!_mergeMap[key]) _mergeMap[key] = [];
-      _mergeMap[key].push(f);
-    });
-    var merged = [];
-    Object.keys(_mergeMap).forEach(function(key) {
-      var group = _mergeMap[key];
-      if (group.length === 1) {
-        merged.push(group[0]);
-        return;
-      }
-      /* Pick primary: prefer variant without language tag, or favorite, or first */
-      var primary = group[0];
-      for (var gi = 0; gi < group.length; gi++) {
-        if (group[gi].isFavorite) { primary = group[gi]; break; }
-        if (!detectLangFromName(group[gi].name) && !LANG_GROUPS[group[gi].name]) primary = group[gi];
-      }
-      var allLangs = {};
-      var totalCount = 0;
-      var variants = [];
-      group.forEach(function(g) {
-        totalCount += g.count;
-        g.languages.forEach(function(lc) { allLangs[lc] = true; });
-        var lang = g.languages.length ? g.languages[0] : detectLangFromName(g.name) || '';
-        var subLang = detectSubLangFromName(g.name) || g.subLang || '';
-        variants.push({ name: g.name, lang: lang, subLang: subLang, count: g.count });
-      });
-      merged.push({
-        name: primary.name,
-        displayName: primary.displayName,
-        isFavorite: group.some(function(g) { return g.isFavorite; }),
-        count: totalCount,
-        thumbnail_url: primary.thumbnail_url || group[1].thumbnail_url || '',
-        thumbnail_lg_url: primary.thumbnail_lg_url || group[1].thumbnail_lg_url || '',
-        languages: Object.keys(allLangs).sort(),
-        variants: variants
-      });
-    });
-
-    return { folders: merged, files: files };
+    return window._contentsAt(path, allItems, LANG_GROUPS);
   }
 
   /* leafName()/parentPath() now live in webui/src/pathUtils.ts, bridged

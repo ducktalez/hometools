@@ -35,6 +35,33 @@ export function getAppDownloadUsage(downloads: OfflineDownload[]): number {
   return (downloads || []).reduce((sum, d) => sum + (d.status === "ready" ? Number(d.size || 0) : 0), 0);
 }
 
+/**
+ * Oldest-first eviction plan to fit `requiredBytes` under `softLimit`.
+ * Only "ready" items, never `protectedStreamUrl` (the one being downloaded/
+ * played). Returns [] if already fits, null if impossible even after
+ * evicting all candidates (caller must then delete nothing).
+ *
+ * Ported from `_track_render.py::pruneOldDownloads` (selection half).
+ */
+export function pickEvictionVictims<T extends OfflineDownload>(
+  downloads: T[],
+  requiredBytes: number,
+  softLimit: number,
+  protectedStreamUrl?: string | null
+): T[] | null {
+  let total = getAppDownloadUsage(downloads);
+  const candidates = (downloads || [])
+    .filter((d) => d.status === "ready" && d.streamUrl !== protectedStreamUrl)
+    .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  const victims: T[] = [];
+  while (total + requiredBytes > softLimit && candidates.length) {
+    const victim = candidates.shift() as T;
+    victims.push(victim);
+    total -= Number(victim.size || 0);
+  }
+  return total + requiredBytes > softLimit ? null : victims;
+}
+
 export interface OfflineStorageInfo {
   downloads: OfflineDownload[];
   appUsage: number;

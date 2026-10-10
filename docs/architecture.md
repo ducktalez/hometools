@@ -120,32 +120,39 @@ mirrors `MediaItem.to_dict()`.
 ## 7. Vite/TypeScript migration (in progress)
 
 Goal: replace the Python-string JS/CSS generators
-(`server_utils/_player_js.py` + `player_js/*.py` + `_css.py` + `css/*.py`,
-~8900 lines) module-by-module with real `.ts`/`.css`, built by Vite, served
-as static assets. Backend is unaffected.
+(`server_utils/_player_js.py` + `player_js/*.py`, ~6900 lines) module-by-
+module with real `.ts`, built by Vite, served as static assets. CSS side
+is **done** — `_css.py`/`css/*.py` are gone, all rules live in
+`webui/src/styles/*.css`. Backend is unaffected.
 
 - `streaming/core/webui/` — Vite project (`src/main.ts` defines `PlayerConfig`
   and hosts already-ported leaf modules: `pathUtils.ts`, `dupeUtils.ts`,
   `metricPill.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `recentMoveTargets.ts`,
   `catalogCache.ts`, `offlineDownloads.ts`, `langDetect.ts`, `episodeGaps.ts`,
   `catalogQuery.ts`, `clickGuard.ts`, `toast.ts`, `folderCache.ts`,
-  `shuffle.ts`; `legacy-globals.d.ts` types the shared cross-fragment
-  globals still owned by the legacy script; `stateBridge.ts` types
-  `window.htState` — the live getter/setter bridge `_core.py` defines over
-  its IIFE-scoped state vars, used by ports that must *write* shared state).
+  `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
+  cross-fragment globals still owned by the legacy script; `stateBridge.ts`
+  types `window.htState` — the live getter/setter bridge `_core.py` defines
+  over its IIFE-scoped state vars, used by ports that must *write* shared
+  state).
+- `webui/test/*.test.ts` — vitest behaviour tests for ported modules (fake
+  `htState` via `test/helpers.ts`), run via `npm test` and pytest
+  `tests/test_webui_unit.py`.
 - `server_utils/_static.py` mounts the Vite build output at `/static` and
   injects its script tag right before the legacy inline `<script>` — same
   execution order as before, zero behavior change. It also emits
-  `<link rel="stylesheet">` tags (`get_static_css_tags()`) for ported CSS,
-  placed after the inline `<style>` so ported rules win.
-- CSS ports (`webui/src/styles/*.css`, imported by `main.ts`) have no
-  coupling blocker — done: `metaPill.css`; the other eight `css/*.py`
-  fragments still render inline.
-- Only dependency-free leaf functions have been ported so far; the
-  stateful fragments (`_core.py`, `_library_tools.py`, ...) are blocked by
-  cross-fragment coupling (see `docs/IMPLEMENTATION_PLAN.md` → Design
-  Discussions → "Player-JS-Modulkopplung").
-- Safety net until the migration is complete: `tests/test_js_syntax.py`
+  `<link rel="stylesheet">` tags for the built CSS, placed after the inline
+  `<style>` (now empty — `render_base_css()` always returns `""`, kept only
+  for `_html.py`'s API).
+- CSS ports (`webui/src/styles/*.css`, imported by `main.ts`) — **all done**:
+  `metaPill.css`, `root.css`, `toolsPanel.css`, `modals.css`,
+  `playlistCards.css`, `playerBar.css`, `tableView.css`, `trackList.css`,
+  `videoOverlay.css`.
+- Only dependency-free leaf functions have been ported so far on the JS
+  side; the stateful fragments (`_core.py`, `_library_tools.py`, ...) are
+  blocked by cross-fragment coupling (see `docs/IMPLEMENTATION_PLAN.md` →
+  Design Discussions → "Player-JS-Modulkopplung").
+- Safety net until the JS migration is complete: `tests/test_js_syntax.py`
   parses the concatenated legacy JS with `esprima`.
 
 ---
@@ -183,7 +190,9 @@ catalog cache `localStorage` (`webui/src/catalogCache.ts`, bridged onto
 `docker-compose.yml` (services `audio`/`video`/`channel`) · PWA `_pwa.py`
 (manifest/SW/icons) + IndexedDB offline downloads · local webui build
 `streaming/webui_build.py` + `hometools build-webui` (mtime-based staleness
-check; wired as PyCharm before-launch task) · PyCharm run configs generated
+check; wired as PyCharm before-launch task) · webui JS unit tests
+`webui/test/` (vitest, `npm test`; pytest wrapper `tests/test_webui_unit.py`)
+· PyCharm run configs generated
 by `streaming/setup.py::generate_pycharm_configs` + `hometools setup-pycharm`
 (`.idea/` is git-ignored, so nothing is committed).
 

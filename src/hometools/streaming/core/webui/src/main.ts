@@ -14,7 +14,50 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: offlineUrl.ts (getOfflineUrl/currentOfflineUrl, from
+ * Latest slice: evictForBudget (offlineDb.ts) + pickEvictionVictims
+ * (offlineDownloads.ts), from _track_render.py::pruneOldDownloads. Legacy
+ * keeps pruneOldDownloads as thin wrapper (UI refresh).
+ *
+ * Previous slice: offlineDb.ts (IndexedDB layer from _track_render.py;
+ * downloadDB handle moved as private state). Tested with fake-indexeddb.
+ *
+ * Previous slice: folderContents.ts (contentsAt, from _queue.py — allItems +
+ * LANG_GROUPS explicit; legacy keeps bare-name wrapper). First port with a
+ * vitest behaviour test (test/folderContents.test.ts).
+ *
+ * Previous slice: resolveNext (queue.ts, from _library_tools.py::
+ * _resolveNextForCrossfade) + replaceItemFields (catalogQuery.ts, from
+ * _patchAllItemsRating — arrays explicit). Lyrics double-listener removed.
+ *
+ * Previous slice: queue.ts (queueIndexOf/queueAdd/queueRemoveAt/queueClear,
+ * data half of _core.py's queue block). htState.userQueue added (getter+
+ * setter) — clearQueue reassigns, so plain window-bridge was not enough.
+ *
+ * Previous slice: intro.ts (parseIntro/introButtonMode/patchIntroLocal, from
+ * _core.py's skip-intro block). Pure decision/parse logic only; DOM, fetch
+ * and _intro* IIFE vars stay in _core.py.
+ *
+ * Previous slice: filterChain.ts (applyFilterChain, from
+ * _search_filter.py::applyFilter()'s normal-mode + DEBUG_FILTER-mode
+ * rating/favorite/genre/search annotate-and-filter chain). showHidden/
+ * filterRating/filterFav/filterGenre/_effectiveThreshold/_justRatedPath/
+ * _savedFavorites/DEBUG_FILTER bundled into one explicit options object
+ * (FilterChainOptions) instead of closure reads; the DOM reads
+ * (searchInput.value/sortField.value) and renderTracks() call stay in
+ * applyFilter() itself.
+ *
+ * Previous slice: search.ts (buildFolderMatches/searchItems, from
+ * _search_filter.py::globalSearch()'s folder-match + item-match halves).
+ * allItems/hiddenActive/_effectiveThreshold now explicit params; the DOM/
+ * state-mutation half (playlistItems/filteredItems/_enterTrackListView/
+ * renderSearchResults) stays in globalSearch() itself.
+ *
+ * Previous slice: sortTracks added to catalogQuery.ts (from
+ * _search_filter.py::applyFilter()'s inline comparator). Explicit params
+ * sortBy/hasCustomPlaylist (was sortField.value DOM read + _currentPlaylistId
+ * global read).
+ *
+ * Previous slice: offlineUrl.ts (getOfflineUrl/currentOfflineUrl, from
  * _track_render.py + the currentOfflineUrl var in _core.py). State-mitnehmen
  * pattern: currentOfflineUrl lived in _core.py but was only read/written by
  * these two functions in _track_render.py — moved here as module-private
@@ -111,7 +154,20 @@ import {
   SMART_OPS_BY_TYPE,
 } from "./smartPlaylist";
 import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
-import { itemsUnder, collectGenres } from "./catalogQuery";
+import { itemsUnder, collectGenres, sortTracks, replaceItemFields } from "./catalogQuery";
+import { buildFolderMatches, searchItems } from "./search";
+import { applyFilterChain } from "./filterChain";
+import { parseIntro, introButtonMode, patchIntroLocal } from "./intro";
+import { queueIndexOf, queueAdd, queueRemoveAt, queueClear, queueMove, resolveNext } from "./queue";
+import { contentsAt } from "./folderContents";
+import {
+  initDownloadDB,
+  getDownloadByStreamUrl,
+  getAllDownloads,
+  deleteDownloadById,
+  deleteDownloadByStreamUrl,
+  evictForBudget,
+} from "./offlineDb";
 import { installClickGuard, wasDrag } from "./clickGuard";
 import { showToast } from "./toast";
 import { getAllFolders, invalidateFolderCache } from "./folderCache";
@@ -127,6 +183,8 @@ import "./styles/modals.css";
 import "./styles/playlistCards.css";
 import "./styles/playerBar.css";
 import "./styles/tableView.css";
+import "./styles/trackList.css";
+import "./styles/videoOverlay.css";
 import {
   saveCatalogCache,
   loadCatalogCache,
@@ -279,6 +337,27 @@ declare global {
     withMissingEpisodes: typeof withMissingEpisodes;
     _itemsUnder(path: string, allItems: LegacyMediaItem[]): LegacyMediaItem[];
     _collectGenres: typeof collectGenres;
+    _sortTracks: typeof sortTracks;
+    _buildFolderMatches: typeof buildFolderMatches;
+    _searchItems: typeof searchItems;
+    _applyFilterChain: typeof applyFilterChain;
+    _parseIntro: typeof parseIntro;
+    _introButtonMode: typeof introButtonMode;
+    _patchIntroLocal: typeof patchIntroLocal;
+    _queueIndexOf: typeof queueIndexOf;
+    _queueAdd: typeof queueAdd;
+    _queueRemoveAt: typeof queueRemoveAt;
+    _queueClear: typeof queueClear;
+    _queueMove: typeof queueMove;
+    _resolveNext: typeof resolveNext;
+    _replaceItemFields: typeof replaceItemFields;
+    _contentsAt: typeof contentsAt;
+    initDownloadDB: typeof initDownloadDB;
+    getDownloadByStreamUrl: typeof getDownloadByStreamUrl;
+    getAllDownloads: typeof getAllDownloads;
+    deleteDownloadById: typeof deleteDownloadById;
+    deleteDownloadByStreamUrl: typeof deleteDownloadByStreamUrl;
+    _evictForBudget: typeof evictForBudget;
     wasDrag: typeof wasDrag;
     _getAllFoldersFrom: typeof getAllFolders;
     _invalidateFolderCache: typeof invalidateFolderCache;
@@ -365,6 +444,29 @@ window.detectSubLangFromName = detectSubLangFromName;
 window.withMissingEpisodes = withMissingEpisodes;
 window._itemsUnder = itemsUnder;
 window._collectGenres = collectGenres;
+window._sortTracks = sortTracks;
+window._buildFolderMatches = buildFolderMatches;
+window._searchItems = searchItems;
+window._applyFilterChain = applyFilterChain;
+window._parseIntro = parseIntro;
+window._introButtonMode = introButtonMode;
+window._patchIntroLocal = patchIntroLocal;
+// Queue data ops — htState.userQueue bridge (see queue.ts header).
+window._queueIndexOf = queueIndexOf;
+window._queueAdd = queueAdd;
+window._queueRemoveAt = queueRemoveAt;
+window._queueClear = queueClear;
+window._queueMove = queueMove;
+window._resolveNext = resolveNext;
+window._replaceItemFields = replaceItemFields;
+window._contentsAt = contentsAt;
+// IndexedDB layer — same names as legacy (bare call sites unchanged).
+window.initDownloadDB = initDownloadDB;
+window.getDownloadByStreamUrl = getDownloadByStreamUrl;
+window.getAllDownloads = getAllDownloads;
+window.deleteDownloadById = deleteDownloadById;
+window.deleteDownloadByStreamUrl = deleteDownloadByStreamUrl;
+window._evictForBudget = evictForBudget;
 window.wasDrag = wasDrag;
 // showToast already typed in legacy-globals.d.ts — no re-declare here.
 window.showToast = showToast;

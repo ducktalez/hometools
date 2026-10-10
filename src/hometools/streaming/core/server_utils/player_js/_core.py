@@ -74,7 +74,9 @@ def render_core_js(waveform_js) -> str:
     get shuffleQueue() { return shuffleQueue; },
     set shuffleQueue(v) { shuffleQueue = v; },
     get shufflePos() { return shufflePos; },
-    set shufflePos(v) { shufflePos = v; }
+    set shufflePos(v) { shufflePos = v; },
+    get userQueue() { return _userQueue; },
+    set userQueue(v) { _userQueue = v; }
   };
 
   var player       = document.getElementById('player');
@@ -461,10 +463,13 @@ def render_core_js(waveform_js) -> str:
   var _introLongPressTimer = null;
   var _introLongPressed = false;
 
+  /* Pure parts (parseIntro/introButtonMode/patchIntroLocal) ported to
+     webui/src/intro.ts, bridged onto window by main.ts. DOM + state here. */
   function _setCurrentIntro(t) {
-    _introStart = Math.max(0, parseFloat(t && t.intro_start) || 0);
-    _introEnd = Math.max(0, parseFloat(t && t.intro_end) || 0);
-    _curIsSeries = !!(t && ((parseInt(t.season, 10) || 0) > 0 || (parseInt(t.episode, 10) || 0) > 0));
+    var info = window._parseIntro(t);
+    _introStart = info.start;
+    _introEnd = info.end;
+    _curIsSeries = info.isSeries;
     if (videoSkipIntroBtn) { videoSkipIntroBtn.hidden = true; _introBtnMode = ''; }
   }
 
@@ -472,45 +477,18 @@ def render_core_js(waveform_js) -> str:
     if (!SKIP_INTRO_ENABLED || !videoSkipIntroBtn || !isVideoMode) return;
     var cur = player.currentTime || 0;
     var dur = isFinite(player.duration) ? player.duration : 0;
-    var label = videoSkipIntroBtn.querySelector('span');
-    /* skip mode: a marker is set and we're inside the intro window */
-    if (_introEnd > 0 && cur >= _introStart && cur < _introEnd - 0.3) {
-      if (_introBtnMode !== 'skip') {
-        _introBtnMode = 'skip';
-        videoSkipIntroBtn.classList.remove('set-mode');
-        if (label) label.textContent = 'Intro \\u00fcberspringen';
+    var mode = window._introButtonMode(cur, dur, _introStart, _introEnd, _curIsSeries);
+    if (mode) {
+      if (_introBtnMode !== mode) {
+        _introBtnMode = mode;
+        var label = videoSkipIntroBtn.querySelector('span');
+        videoSkipIntroBtn.classList.toggle('set-mode', mode === 'set');
+        if (label) label.textContent = (mode === 'skip') ? 'Intro \\u00fcberspringen' : 'Intro-Ende setzen';
         videoSkipIntroBtn.hidden = false;
       }
       return;
     }
-    /* set mode: series episode, no marker yet, early in playback */
-    if (_introEnd <= 0 && _curIsSeries && dur > 0) {
-      var maxSet = Math.min(dur * 0.25, 180);
-      if (cur >= 5 && cur <= maxSet) {
-        if (_introBtnMode !== 'set') {
-          _introBtnMode = 'set';
-          videoSkipIntroBtn.classList.add('set-mode');
-          if (label) label.textContent = 'Intro-Ende setzen';
-          videoSkipIntroBtn.hidden = false;
-        }
-        return;
-      }
-    }
     if (!videoSkipIntroBtn.hidden) { videoSkipIntroBtn.hidden = true; _introBtnMode = ''; }
-  }
-
-  function _patchIntroLocal(relPath, start, end) {
-    if (!relPath) return;
-    function patch(arr) {
-      if (!arr) return;
-      for (var i = 0; i < arr.length; i++) {
-        if (arr[i] && arr[i].relative_path === relPath) {
-          arr[i].intro_start = start; arr[i].intro_end = end;
-        }
-      }
-    }
-    patch(typeof allItems !== 'undefined' ? allItems : null);
-    patch(typeof filteredItems !== 'undefined' ? filteredItems : null);
   }
 
   function _saveIntroMarker(start, end) {
@@ -518,7 +496,7 @@ def render_core_js(waveform_js) -> str:
     if (!relPath) return;
     _introStart = Math.max(0, start || 0);
     _introEnd = Math.max(0, end || 0);
-    _patchIntroLocal(relPath, _introStart, _introEnd);
+    window._patchIntroLocal([allItems, filteredItems], relPath, _introStart, _introEnd);
     try {
       fetch(INTRO_API_PATH, {
         method: 'POST',
@@ -884,10 +862,6 @@ def render_core_js(waveform_js) -> str:
     _lyricsClose.addEventListener('click', closeLyricsPanel);
   }
 
-  if (_lyricsClose) {
-    _lyricsClose.addEventListener('click', closeLyricsPanel);
-  }
-
   /* ── Queue (Warteschlange) panel ── */
   var _queuePeekHandle = document.getElementById('queue-peek-handle');
   var _queuePanel = document.getElementById('queue-panel');
@@ -921,44 +895,34 @@ def render_core_js(waveform_js) -> str:
     if (_domNodeMissingOrDetached(_queueDragHandle)) _queueDragHandle = document.getElementById('queue-drag-handle');
   }
 
-  function addToQueue(item) {
-    _ensureQueueDom();
-    if (!item || !item.relative_path) return;
-    /* Prevent duplicates */
-    var exists = _userQueue.some(function(q) { return q.relative_path === item.relative_path; });
-    if (exists) {
-      showToast('Bereits in der Warteschlange');
-      return;
-    }
-    _userQueue.push({
-      title: item.title || '',
-      artist: item.artist || '',
-      stream_url: item.stream_url || '',
-      relative_path: item.relative_path || '',
-      thumbnail_url: item.thumbnail_url || '',
-      thumbnail_lg_url: item.thumbnail_lg_url || '',
-      rating: item.rating || 0,
-      media_type: item.media_type || ITEM_NOUN
-    });
+  /* Queue data ops (add/remove/clear/indexOf) ported to webui/src/queue.ts
+     via htState.userQueue. These wrappers keep DOM/toast/playItem side. */
+  function _onQueueChanged() {
     updateQueueBadge();
     updateQueueButtons();
     if (_queueOpen) renderQueuePanel();
+  }
+
+  function addToQueue(item) {
+    _ensureQueueDom();
+    var res = window._queueAdd(item, ITEM_NOUN);
+    if (res === 'invalid') return;
+    if (res === 'duplicate') {
+      showToast('Bereits in der Warteschlange');
+      return;
+    }
+    _onQueueChanged();
     showToast('\u201e' + escHtml(item.title || 'Titel') + '\u201c zur Warteschlange hinzugef\u00fcgt');
   }
 
   function removeFromQueue(index) {
-    if (index < 0 || index >= _userQueue.length) return;
-    _userQueue.splice(index, 1);
-    updateQueueBadge();
-    updateQueueButtons();
-    if (_queueOpen) renderQueuePanel();
+    if (!window._queueRemoveAt(index)) return;
+    _onQueueChanged();
   }
 
   function clearQueue() {
-    _userQueue = [];
-    updateQueueBadge();
-    updateQueueButtons();
-    if (_queueOpen) renderQueuePanel();
+    window._queueClear();
+    _onQueueChanged();
   }
 
   function updateQueueBadge() {
@@ -971,7 +935,7 @@ def render_core_js(waveform_js) -> str:
     /* Update .track-queue-btn states in track list */
     document.querySelectorAll('.track-queue-btn').forEach(function(btn) {
       var rp = btn.dataset.relativePath;
-      var inQ = _userQueue.some(function(q) { return q.relative_path === rp; });
+      var inQ = window._queueIndexOf(_userQueue, rp) >= 0;
       btn.classList.toggle('in-queue', inQ);
       btn.title = inQ ? 'Aus Warteschlange entfernen' : 'Zur Warteschlange hinzuf\u00fcgen';
     });
@@ -1017,13 +981,9 @@ def render_core_js(waveform_js) -> str:
   }
 
   function playFromQueue(index) {
-    if (index < 0 || index >= _userQueue.length) return;
-    var item = _userQueue[index];
-    /* Remove played item from queue */
-    _userQueue.splice(index, 1);
-    updateQueueBadge();
-    updateQueueButtons();
-    if (_queueOpen) renderQueuePanel();
+    var item = window._queueRemoveAt(index);
+    if (!item) return;
+    _onQueueChanged();
     /* Play via playItem — find in filteredItems for correct index, or play directly */
     var fiIdx = filteredItems.findIndex(function(fi) { return fi.relative_path === item.relative_path; });
     if (fiIdx >= 0) {

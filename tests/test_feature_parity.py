@@ -826,7 +826,10 @@ class TestGlobalSearchParity:
             assert "function initGlobalSearch" in html
 
     def test_both_uis_have_search_result_css(self, tmp_path):
-        """Both UIs must include the search-result-folder CSS class."""
+        """search-result-folder CSS class must exist (ported to trackList.css)
+        and both UIs render the global search input."""
+        from pathlib import Path
+
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
@@ -836,25 +839,41 @@ class TestGlobalSearchParity:
         video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
 
         for html in [audio_html, video_html]:
-            assert "search-result-folder" in html
-            assert "#global-search-input" in html
+            assert 'id="global-search-input"' in html
+
+        css = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "hometools"
+            / "streaming"
+            / "core"
+            / "webui"
+            / "src"
+            / "styles"
+            / "trackList.css"
+        ).read_text(encoding="utf-8")
+        assert "search-result-folder" in css
 
 
 class TestLanguageParity:
     """Language tag support must be present in both audio and video UIs."""
 
-    def test_both_uis_have_lang_badge_css(self, tmp_path):
-        """Both UIs must include the .lang-badge CSS class."""
-        from fastapi.testclient import TestClient
+    def test_both_uis_have_lang_badge_css(self):
+        """.lang-badge CSS class must exist (ported to trackList.css)."""
+        from pathlib import Path
 
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert ".lang-badge" in html
+        css = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "hometools"
+            / "streaming"
+            / "core"
+            / "webui"
+            / "src"
+            / "styles"
+            / "trackList.css"
+        ).read_text(encoding="utf-8")
+        assert ".lang-badge" in css
 
     def test_both_uis_have_lang_to_flag_map(self, tmp_path):
         """Both UIs must include the LANG_TO_FLAG JavaScript mapping."""
@@ -943,18 +962,22 @@ class TestLanguageParity:
         for html in [audio_html, video_html]:
             assert "DEFAULT_LANG" in html
 
-    def test_both_uis_have_composite_flag_css(self, tmp_path):
-        """Both UIs must include .composite-flag CSS class."""
-        from fastapi.testclient import TestClient
+    def test_both_uis_have_composite_flag_css(self):
+        """.composite-flag CSS class must exist (ported to trackList.css)."""
+        from pathlib import Path
 
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert ".composite-flag" in html
+        css = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "hometools"
+            / "streaming"
+            / "core"
+            / "webui"
+            / "src"
+            / "styles"
+            / "trackList.css"
+        ).read_text(encoding="utf-8")
+        assert ".composite-flag" in css
 
     def test_both_uis_have_composite_flag_js(self, tmp_path):
         """Both UIs must include compositeFlagHtml and detectSubLangFromName JS functions."""

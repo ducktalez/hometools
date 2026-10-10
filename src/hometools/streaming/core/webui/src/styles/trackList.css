@@ -1,11 +1,4 @@
-"""CSS fragment: track list (split from the former monolithic _css.py)."""
-
-from __future__ import annotations
-
-
-def render_track_list_css() -> str:
-    """Return the track list section of the dark-theme CSS."""
-    return """/* ── Inline track rating stars ── */
+/* ── Inline track rating stars ── */
 .track-inline-rating {
   display: none; align-items: center; gap: 0px; flex-shrink: 0; margin-left: 4px;
 }
@@ -506,4 +499,3 @@ body.modal-open { overflow: hidden; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-"""

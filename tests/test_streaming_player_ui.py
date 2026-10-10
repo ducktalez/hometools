@@ -3,7 +3,7 @@
 import re as _re
 from pathlib import Path
 
-from hometools.streaming.core.server_utils import render_base_css, render_media_page, render_player_js
+from hometools.streaming.core.server_utils import render_media_page, render_player_js
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,12 +96,12 @@ def test_css_contains_waveform_canvas():
 
 
 def test_css_contains_thumb_preview():
-    css = render_base_css()
+    css = _webui_src("styles/videoOverlay.css")
     assert ".thumb-preview" in css
 
 
 def test_css_queue_panel_is_fixed_overlay_above_player_bar():
-    css = render_base_css()
+    css = _webui_src("styles/videoOverlay.css")
     assert ".queue-panel" in css
     assert "position: fixed;" in css
     assert "left: 0; right: 0;" in css
@@ -112,7 +112,7 @@ def test_css_queue_panel_is_fixed_overlay_above_player_bar():
 
 def test_css_queue_drag_handle_present():
     """Queue panel must include a drag-handle for user-resizable height."""
-    css = render_base_css()
+    css = _webui_src("styles/videoOverlay.css")
     assert ".queue-drag-handle" in css
     assert "cursor: grab" in css
     assert ".queue-drag-handle-bar" in css
@@ -679,6 +679,72 @@ def test_shuffle_js_restores_from_localstorage():
     js = _js()
     assert "ht-shuffle-mode" in js
     assert "localStorage.getItem" in js
+
+
+def test_queue_data_ops_ported_to_ts():
+    """Queue mutations live in webui/src/queue.ts via htState.userQueue;
+    legacy keeps wrappers (DOM/toast/playItem) under the old names."""
+    ts = _webui_src("queue.ts")
+    for fn in ("queueIndexOf", "queueAdd", "queueRemoveAt", "queueClear", "queueMove"):
+        assert f"export function {fn}(" in ts
+    assert "getState()" in ts
+    js = _js()
+    assert "_userQueue.push(" not in js
+    assert "_userQueue.splice(" not in js
+    # reassignment (clear) only via queueClear — declaration `var _userQueue = []` stays
+    assert not _re.search(r"(?<!var )_userQueue = \[\];", js)
+    for fn in ("addToQueue", "removeFromQueue", "clearQueue", "playFromQueue"):
+        assert f"function {fn}(" in js
+
+
+def test_resolve_next_and_rating_patch_ported_to_ts():
+    """Crossfade next-target + copy-on-write rating patch live in TS."""
+    q = _webui_src("queue.ts")
+    assert "export function resolveNext(" in q
+    cq = _webui_src("catalogQuery.ts")
+    assert "export function replaceItemFields(" in cq
+    js = _js()
+    assert "function _resolveNextForCrossfade" not in js
+    assert "window._resolveNext()" in js
+    # all four arrays must be patched (stale playlistItems = rating-filter bug)
+    assert "window._replaceItemFields([allItems, playlistItems, filteredItems, _userQueue]" in js
+
+
+def test_crossfade_defers_shuffle_advance_until_finish():
+    """resolveNext must PEEK (no shuffle advance); commit only in
+    _finishCrossfade, dropped in _xfadeCleanup — an aborted crossfade
+    (seek/pause) must not skip a shuffle track."""
+    q = _webui_src("queue.ts")
+    assert "peekNextIndex()" in q
+    assert "nextIndex()" not in q.replace("peekNextIndex()", "")
+    sh = _webui_src("shuffle.ts")
+    assert "export function peekNextIndex(" in sh
+    js = _js()
+    cleanup = js.split("function _xfadeCleanup()", 1)[1].split("\n  }", 1)[0]
+    assert "_xfadeCommit = null" in cleanup
+    finish = js.split("function _finishCrossfade()", 1)[1].split("\n  }\n", 1)[0]
+    assert "_xfadeCommit()" in finish
+
+
+def test_lyrics_close_listener_registered_once():
+    js = _js()
+    assert js.count("_lyricsClose.addEventListener('click', closeLyricsPanel)") == 1
+
+
+def test_intro_helpers_ported_to_ts():
+    """Skip-intro pure helpers live in webui/src/intro.ts; legacy keeps DOM/state only."""
+    ts = _webui_src("intro.ts")
+    assert "export function parseIntro(" in ts
+    assert "export function introButtonMode(" in ts
+    assert "export function patchIntroLocal(" in ts
+    # Threshold semantics: skip window ends 0.3s early, set window 5s..min(25%, 180s)
+    assert "cur < end - 0.3" in ts
+    assert "Math.min(dur * 0.25, 180)" in ts
+    js = _js()
+    assert "function _patchIntroLocal" not in js
+    assert "window._parseIntro(" in js
+    assert "window._introButtonMode(" in js
+    assert "window._patchIntroLocal(" in js
 
 
 def test_shuffle_js_has_long_press_binding():
@@ -1280,11 +1346,10 @@ def test_genre_filter_js_variable():
 
 
 def test_genre_filter_apply_logic():
-    """applyFilter must filter by genre when filterGenre is set."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js()
-    assert "t.genre === filterGenre" in js
+    """Filter chain (ported to webui/src/filterChain.ts::applyFilterChain)
+    must filter by genre when filterGenre is set."""
+    ts = _webui_src("filterChain.ts")
+    assert "t.genre === filterGenre" in ts
 
 
 def test_combined_filter_popover_present():
@@ -1491,8 +1556,11 @@ def test_min_rating_filter_logic_in_apply_filter():
     js = render_player_js()
     # Must contain the filter that hides rated-but-low tracks while keeping unrated
     assert "MIN_RATING_THRESHOLD" in js
-    # Semantics: exclusive < comparison, so threshold-star songs are NOT hidden
-    assert "r === 0 || r >= _effectiveThreshold" in js
+    # Semantics: exclusive < comparison, so threshold-star songs are NOT hidden.
+    # Filter chain itself ported to webui/src/filterChain.ts::applyFilterChain
+    # (effectiveThreshold is an explicit param there, not the _effectiveThreshold global).
+    ts = _webui_src("filterChain.ts")
+    assert "r === 0 || r >= effectiveThreshold" in ts
 
 
 # ---------------------------------------------------------------------------
@@ -1589,8 +1657,10 @@ def test_global_search_respects_min_rating():
     """
     js = render_player_js()
     assert "MIN_RATING_THRESHOLD" in js
-    # The globalSearch function filters via _effectiveThreshold with < semantics
-    assert "r < _effectiveThreshold" in js
+    # globalSearch passes _effectiveThreshold + hiddenActive into search.ts
+    assert "var hiddenActive = (_effectiveThreshold > 0 && !showHidden);" in js
+    ts = _webui_src("search.ts")
+    assert "r < effectiveThreshold" in ts
 
 
 def test_global_search_shows_folder_path():
@@ -1812,10 +1882,10 @@ def test_js_has_detect_lang_from_name():
 
 
 def test_js_clean_folder_name_strips_hash():
-    """cleanFolderName in contentsAt should strip # prefix from displayName."""
-    js = _js()
-    # The cleanFolderName function should strip # at start
-    assert "charAt(0) === '#'" in js
+    """contentsAt (ported to folderContents.ts) sorts #-favorites first;
+    behaviour covered by webui/test/folderContents.test.ts."""
+    ts = _webui_src("folderContents.ts")
+    assert 'charAt(0) === "#"' in ts
 
 
 def test_js_clean_folder_name_strips_lang_tag():
@@ -1833,9 +1903,12 @@ def test_js_folder_card_renders_lang_badges():
 
 
 def test_js_contents_at_aggregates_languages():
-    """contentsAt must collect language codes into folderLangs."""
+    """contentsAt ported to folderContents.ts; legacy keeps thin wrapper."""
+    ts = _webui_src("folderContents.ts")
+    assert "folderLangs" in ts
     js = _js()
-    assert "folderLangs" in js
+    assert "window._contentsAt(path, allItems, LANG_GROUPS)" in js
+    assert "var _mergeMap" not in js
 
 
 def test_js_leaf_name_uses_clean_folder_name():
@@ -1983,6 +2056,7 @@ class TestHtStateBridge:
             "repeatMode",
             "shuffleQueue",
             "shufflePos",
+            "userQueue",
         ]:
             assert f"get {name}()" in js, f"missing getter for {name}"
             assert f"set {name}(v)" in js, f"missing setter for {name}"
@@ -2030,7 +2104,7 @@ def test_js_breadcrumb_uses_clean_folder_name():
 
 def test_css_has_lang_badge():
     """CSS must include .lang-badge styling."""
-    css = render_base_css()
+    css = _webui_src("styles/trackList.css")
     assert ".lang-badge" in css
 
 
@@ -2102,22 +2176,22 @@ def test_js_default_lang_defaults_to_de():
 
 def test_css_has_composite_flag():
     """CSS must include .composite-flag styling."""
-    css = render_base_css()
+    css = _webui_src("styles/trackList.css")
     assert ".composite-flag" in css
     assert ".composite-flag-sub" in css
 
 
 def test_css_has_lang_select_btn():
     """CSS must include .lang-select-btn styling."""
-    css = render_base_css()
+    css = _webui_src("styles/trackList.css")
     assert ".lang-select-btn" in css
     assert ".lang-select-btn:hover" in css
 
 
 def test_js_contents_at_aggregates_sub_langs():
-    """contentsAt must collect subtitle language codes into folderSubLangs."""
-    js = _js()
-    assert "folderSubLangs" in js or "subLang" in js
+    """contentsAt (folderContents.ts) collects subtitle languages."""
+    ts = _webui_src("folderContents.ts")
+    assert "folderSubLangs" in ts
 
 
 def test_js_folder_card_renders_lang_select_btn():
@@ -2399,7 +2473,7 @@ class TestPlayerBugfixes2026_06:
 
     def test_css_progress_track_disables_touch_scroll(self):
         """progress-track needs touch-action:none so drag isn't stolen by scroll."""
-        css = render_base_css()
+        css = _webui_src("styles/playerBar.css")
         assert "touch-action: none" in css
 
     def test_js_ended_guard_against_spurious_end(self):
@@ -2622,7 +2696,7 @@ class TestTrackDetailTableView:
         assert "track-play-btn" in js
 
     def test_folder_hover_play_button_moved_over_cover(self):
-        css = render_base_css()
+        css = _webui_src("styles/videoOverlay.css")
         assert ".folder-play-btn" in css
         # Positioned over the left side of the cover, not bottom-right anymore
         assert "left: 0.6rem" in css

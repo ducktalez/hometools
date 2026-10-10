@@ -7,15 +7,17 @@ in `git log`.
 
 ### Vite/TypeScript migration
 
-Goal: replace `_player_js.py`/`player_js/*.py`/`_css.py`/`css/*.py` (~8900
-lines JS/CSS as Python strings) module-by-module with real `.ts`/`.css`,
-built via Vite, served as FastAPI static assets. Backend untouched.
+Goal: replace `_player_js.py`/`player_js/*.py` (~6900 lines JS as Python
+strings) module-by-module with real `.ts`, built via Vite, served as
+FastAPI static assets. Backend untouched. CSS side already fully migrated
+(see below).
 
 **Rule:** port one pure, dependency-free function/module at a time (proven:
 `pathUtils.ts`, `dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`,
 `recentMoveTargets.ts`, `catalogCache.ts`, `offlineDownloads.ts`,
 `langDetect.ts`, `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`,
-`toast.ts`, `folderCache.ts`, `shuffle.ts`, `offlineUrl.ts`). Never bulk-port via `eval()` —
+`toast.ts`, `folderCache.ts`, `shuffle.ts`, `offlineUrl.ts`,
+`catalogQuery.ts::sortTracks`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts`). Never bulk-port via `eval()` —
 tried once, broke prod (see git log 2026-08-06). `legacy.ts` sits unused in
 tree as raw material — don't re-enable as-is.
 
@@ -24,12 +26,18 @@ Third pattern (since `clickGuard.ts`): if a stateful block's state is
 with the function — no bridge, no param. Check that first, it beats both
 other patterns.
 
-**CSS-Teil (`css/*.py`, ~2000 Zeilen) hat keinen Blocker** — Fragmente sind
-reine Strings ohne Querverweise. Eins nach dem anderen nach
-`webui/src/styles/*.css` (Ablauf in `webui/README.md` → "CSS ports").
-Portiert: `metaPill.css`, `_root`, `_tools_panel`, `_modals`,
-`_playlist_cards`, `_player_bar`, `_table_view`. Offen: `_track_list`,
-`_video_overlay`.
+**CSS-Teil fertig** — alle Fragmente aus `css/*.py` nach
+`webui/src/styles/*.css` portiert (`metaPill`, `root`, `toolsPanel`,
+`modals`, `playlistCards`, `playerBar`, `tableView`, `trackList`,
+`videoOverlay`). `_css.py`/`css/` komplett entfernt; `render_base_css()`
+bleibt als No-Op (`""`) nur für `_html.py`s Signatur erhalten.
+
+**Regel seit vitest-Setup:** jeder Port bringt einen Verhaltenstest in
+`webui/test/*.test.ts` mit (läuft auch via pytest `test_webui_unit.py`).
+Ältere Ports ohne Test nachziehen, wenn angefasst (`pathUtils.ts`,
+`dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `catalogCache.ts`,
+`offlineDownloads.ts`, `langDetect.ts`, `episodeGaps.ts`, `folderCache.ts`,
+`offlineUrl.ts`, `clickGuard.ts`, `toast.ts`).
 
 Blocker for stateful fragments (`_core.py`, `_library_tools.py`, ...):
 cross-fragment coupling — **gelöst** via `htState`-Bridge, siehe
@@ -46,6 +54,10 @@ Funktion für Funktion über eines der vier Muster portieren.
 - `hometools_overrides.yaml`: weitere Felder bei Bedarf (`tmdb_id`, `imdb_id`)
 
 ### Infrastruktur
+- webui Toolchain-Major-Upgrade (vite 5→6+/7, vitest 2→4+): schließt
+  `npm audit`-Advisories (esbuild Dev-Server, @vitest/mocker). Aktuell nicht
+  ausnutzbar (nur `vite build`/`vitest run`, keine Mocks) — siehe
+  `webui/README.md`. Braucht Node-Baseline-Check fürs Docker-Image.
 - Optionales HTTPS
 - iOS Background Video Playback → [plans/background_video_playback.md](plans/background_video_playback.md)
 - `_library_tools.py` (~2300 Zeilen) weiter splitten, sobald sichere Grenze gefunden

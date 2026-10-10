@@ -1050,18 +1050,8 @@ def render_library_tools_js() -> str:
      re-render happened to refresh it from allItems. Bugfix — see
      docs/IMPLEMENTATION_PLAN.md "Rating-Filter-Sichtbarkeit". */
   function _patchAllItemsRating(relativePath, rating) {
-    function _patchArr(arr) {
-      if (!arr) return;
-      for (var i = 0; i < arr.length; i++) {
-        if (arr[i] && arr[i].relative_path === relativePath) {
-          arr[i] = Object.assign({}, arr[i], { rating: rating });
-        }
-      }
-    }
-    _patchArr(allItems);
-    _patchArr(playlistItems);
-    _patchArr(filteredItems);
-    _patchArr(_userQueue);
+    /* Copy-on-write patch ported to webui/src/catalogQuery.ts::replaceItemFields. */
+    window._replaceItemFields([allItems, playlistItems, filteredItems, _userQueue], relativePath, { rating: rating });
   }
 
   /* Update the .rating-bar inside a track list item without a full re-render.
@@ -1307,6 +1297,7 @@ def render_library_tools_js() -> str:
   var _xfadeTimer = null;   /* setInterval for volume ramp */
   var _xfadeNextItem = null;/* the item being crossfaded into */
   var _xfadeNextIndex = -1; /* filteredItems index of the crossfade target */
+  var _xfadeCommit = null;  /* deferred shuffle advance from resolveNext(); applied on finish only */
 
   function _xfadeCleanup() {
     if (_xfadeTimer) { clearInterval(_xfadeTimer); _xfadeTimer = null; }
@@ -1314,26 +1305,18 @@ def render_library_tools_js() -> str:
     _xfading = false;
     _xfadeNextItem = null;
     _xfadeNextIndex = -1;
-  }
-
-  function _resolveNextForCrossfade() {
-    /* Determine the next item WITHOUT consuming queue or advancing state */
-    if (_userQueue.length > 0) {
-      return { item: _userQueue[0], index: -1, fromQueue: true };
-    }
-    if (!filteredItems.length) return null;
-    var ni = nextIndex();
-    if (ni < 0 || ni >= filteredItems.length) return null;
-    return { item: filteredItems[ni], index: ni, fromQueue: false };
+    _xfadeCommit = null; /* aborted → shuffle position untouched */
   }
 
   function _startCrossfade() {
     if (_xfading) return;
-    var next = _resolveNextForCrossfade();
+    /* next-target resolution ported to webui/src/queue.ts::resolveNext */
+    var next = window._resolveNext();
     if (!next || !next.item || !next.item.stream_url) return;
     _xfading = true;
     _xfadeNextItem = next.item;
     _xfadeNextIndex = next.index;
+    _xfadeCommit = next.commit;
 
     /* Create or reuse the xfade audio element */
     if (!_xfadeAudio) {
@@ -1388,9 +1371,11 @@ def render_library_tools_js() -> str:
       /* Consume from queue */
       playFromQueue(0);
     } else {
+      if (_xfadeNextIndex >= 0 && _xfadeCommit) _xfadeCommit();
       playTrack(_xfadeNextIndex >= 0 ? _xfadeNextIndex : nextIndex());
     }
     _xfadeNextIndex = -1;
+    _xfadeCommit = null;
 
     /* Restore volume to 1 for the main player */
     player.volume = 1;

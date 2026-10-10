@@ -31,7 +31,15 @@ cd src/hometools/streaming/core/webui
 npm install
 npm run build       # outputs to ../static/
 npm run typecheck   # tsc --noEmit
+npm test            # vitest run — behaviour tests in test/*.test.ts
 ```
+
+**Tests** live in `test/` (outside `src/`: not bundled, no rebuild trigger,
+not in `tsc` include). Node env, no DOM; modules behind the `htState`
+bridge get a fake state via `test/helpers.ts::installState()`; IndexedDB code
+uses `fake-indexeddb` (fresh `IDBFactory` per test). Also run from pytest
+(`tests/test_webui_unit.py`, skipped without npm/`node_modules`). Every new
+port ships a behaviour test here.
 
 `npm run build` output goes to `src/hometools/streaming/core/static/`
 (git-ignored, `node_modules/` also git-ignored). No Node runtime is
@@ -44,7 +52,10 @@ has a moderate advisory (GHSA-67mh-4wv8-2f99) that only affects the Vite
 responses from a locally running dev server. This scaffold only ever runs
 `vite build` (no dev server is used or exposed), so the finding is not
 exploitable here. Revisit when upgrading to Vite 7+ becomes convenient
-(breaking change, needs a newer Node baseline).
+(breaking change, needs a newer Node baseline). Same for `vitest@2.x`'s
+`@vitest/mocker` advisory (GHSA-82fw-gwwq-j7x9): only the mock-redirect
+feature is affected, our tests use no mocks. Fix = vitest 4+/vite 6+ major
+upgrade, tracked in `docs/IMPLEMENTATION_PLAN.md`.
 
 ## Migration plan
 
@@ -147,5 +158,8 @@ at the end of `<body>`, so runtime injection would flash unstyled content.
 over a stale legacy duplicate at equal specificity.
 
 Ported so far: `metaPill.css`, `root.css`, `toolsPanel.css`, `modals.css`,
-`playlistCards.css`, `playerBar.css`, `tableView.css`.
+`playlistCards.css`, `playerBar.css`, `tableView.css`, `trackList.css`,
+`videoOverlay.css`. **All CSS is migrated** — `server_utils/_css.py`/
+`css/*.py` are gone; `render_base_css()` is a no-op (`""`) kept only for
+`_html.py`'s call signature.
 

@@ -7,67 +7,12 @@ def render_search_filter_js() -> str:
     """Return the search filter section of the player JS."""
     return """  function globalSearch(needle) {
     needle = needle.toLowerCase();
-    /* ── Phase 1: Folder / series matches ──
-       Walk every relative_path, split into segments, collect each unique
-       folder prefix whose *leaf* segment contains the needle.  For video
-       libraries the top-level folder is the series title, so a search for
-       "avatar" surfaces the series folder before the individual episodes. */
-    var folderSeen = {};
-    var folderMatches = [];
+    /* Folder-match + item-match computation: ported to webui/src/search.ts
+       (buildFolderMatches/searchItems), bridged onto window by main.ts.
+       allItems/hiddenActive/_effectiveThreshold passed explicitly. */
     var hiddenActive = (_effectiveThreshold > 0 && !showHidden);
-    allItems.forEach(function(t) {
-      if (hiddenActive) {
-        var r = t.rating || 0;
-        if (r > 0 && r < _effectiveThreshold) return;
-      }
-      var rp = t.relative_path || '';
-      if (!rp) return;
-      var parts = rp.split('/');
-      /* Drop the file segment — only directory segments are folders. */
-      parts.pop();
-      var prefix = '';
-      for (var i = 0; i < parts.length; i++) {
-        var seg = parts[i];
-        prefix = prefix ? (prefix + '/' + seg) : seg;
-        if (folderSeen[prefix]) continue;
-        var cleaned = (typeof cleanFolderName === 'function') ? cleanFolderName(seg) : seg;
-        if (seg.toLowerCase().indexOf(needle) < 0 &&
-            (cleaned || '').toLowerCase().indexOf(needle) < 0) continue;
-        folderSeen[prefix] = true;
-        folderMatches.push({
-          path: prefix,
-          name: seg,
-          displayName: cleaned,
-          depth: i,
-          thumbnail_url: t.thumbnail_url || '',
-          thumbnail_lg_url: t.thumbnail_lg_url || ''
-        });
-      }
-    });
-    /* Count items beneath each matched folder + favour top-level matches. */
-    folderMatches.forEach(function(fm) {
-      var p = fm.path + '/';
-      var c = 0;
-      for (var j = 0; j < allItems.length; j++) {
-        var rp2 = allItems[j].relative_path || '';
-        if (rp2.indexOf(p) === 0) c++;
-      }
-      fm.count = c;
-    });
-    folderMatches.sort(function(a, b) {
-      if (a.depth !== b.depth) return a.depth - b.depth;   /* shallow first */
-      if (b.count !== a.count) return b.count - a.count;   /* bigger first */
-      return a.displayName.localeCompare(b.displayName);
-    });
-
-    /* ── Phase 2: Individual item matches ── */
-    var results = allItems.filter(function(t) {
-      var r = t.rating || 0;
-      if (hiddenActive && r > 0 && r < _effectiveThreshold) return false;
-      return (t.title || '').toLowerCase().indexOf(needle) >= 0 ||
-             (t.artist || '').toLowerCase().indexOf(needle) >= 0 ||
-             (t.relative_path || '').toLowerCase().indexOf(needle) >= 0;
-    });
+    var folderMatches = window._buildFolderMatches(allItems, needle, hiddenActive, _effectiveThreshold);
+    var results = window._searchItems(allItems, needle, hiddenActive, _effectiveThreshold);
     _globalSearchActive = true;
     /* Use search results as current playlist so next/prev works —
        must be set BEFORE _enterTrackListView (contract: caller sets
@@ -351,145 +296,26 @@ def render_search_filter_js() -> str:
       ? playlistItems.filter(function(it) { return !_locallyDeletedPaths[it.relative_path]; })
       : playlistItems;
 
-    if (DEBUG_FILTER) {
-      /* ── Debug mode: annotate items with reasons instead of removing ──
-         showHidden=true  → rating-below-threshold items get _hiddenShown (grayed, same UX as normal mode)
-         showHidden=false → rating-below-threshold items get _debugReason (visible with filter-reason overlay) */
-      items = items.map(function(t) {
-        var r = t.rating || 0;
-        /* Rating threshold: when showHidden=true, gray items in-place (don't annotate as debug-filtered).
-           The just-rated item is always grayed regardless of showHidden — never debug-filtered away. */
-        if (_effectiveThreshold > 0 && r > 0 && r < _effectiveThreshold) {
-          var hClone = {}; for (var k in t) { if (t.hasOwnProperty(k)) hClone[k] = t[k]; }
-          if (showHidden || t.relative_path === _justRatedPath) {
-            hClone._hiddenShown = true;
-            return hClone;
-          } else {
-            hClone._debugReason = 'Rating ' + r + '\\u2605 < Schwelle ' + _effectiveThreshold;
-            return hClone;
-          }
-        }
-        var reasons = [];
-        if (filterRating > 0 && (r < filterRating) && t.relative_path !== _justRatedPath) {
-          reasons.push('Quick-Filter: Rating < ' + filterRating + '\\u2605');
-        }
-        if (filterFav && !_savedFavorites[t.relative_path]) {
-          reasons.push('Kein Favorit');
-        }
-        if (filterGenre && t.genre !== filterGenre) {
-          reasons.push('Genre \\u2260 ' + filterGenre);
-        }
-        if (reasons.length > 0) {
-          /* Clone the item so we don't mutate the original in playlistItems */
-          var clone = {};
-          for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
-          clone._debugReason = reasons.join(' | ');
-          return clone;
-        }
-        return t;
-      });
-      /* Text search always filters even in debug mode */
-      if (needle) {
-        items = items.filter(function(t) {
-          return t.title.toLowerCase().indexOf(needle) >= 0 ||
-                 t.artist.toLowerCase().indexOf(needle) >= 0 ||
-                 t.relative_path.toLowerCase().indexOf(needle) >= 0;
-        });
-      }
-    } else {
-      /* ── Normal mode ── */
-      /* Effective threshold: tracks with rating < threshold are "ausgeblendet".
-         Unrated tracks (rating 0) are always shown regardless of threshold.
-         showHidden=false  → hidden songs filtered out entirely.
-         showHidden=true   → hidden songs kept at their natural position, grayed
-                             out so the full list is visible.
-         The just-rated track (_justRatedPath) is NEVER removed by this step,
-         even when showHidden=false — it is grayed in-place instead, so the
-         user can see and undo the change that just crossed the threshold. */
-      if (_effectiveThreshold > 0) {
-        if (!showHidden) {
-          items = items.filter(function(t) {
-            var r = t.rating || 0;
-            return r === 0 || r >= _effectiveThreshold || t.relative_path === _justRatedPath;
-          });
-        }
-        /* Mark hidden items in-place — they stay at their sorted position.
-           Runs in both showHidden branches so the just-rated exception above
-           (kept in the array when showHidden=false) still gets grayed. */
-        items = items.map(function(t) {
-          var r = t.rating || 0;
-          if (r > 0 && r < _effectiveThreshold) {
-            var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
-            clone._hiddenShown = true;
-            return clone;
-          }
-          return t;
-        });
-      }
-      if (needle) {
-        items = items.filter(function(t) {
-          return t.title.toLowerCase().indexOf(needle) >= 0 ||
-                 t.artist.toLowerCase().indexOf(needle) >= 0 ||
-                 t.relative_path.toLowerCase().indexOf(needle) >= 0;
-        });
-      }
-      /* Quick-filters (never affect hidden-shown items — they are already grayed,
-         and never remove the just-rated item — it gets marked hidden-shown below
-         instead of being filtered out, mirroring the threshold exception above). */
-      if (filterRating > 0) {
-        items = items.filter(function(t) {
-          return t._hiddenShown || t.relative_path === _justRatedPath || (t.rating || 0) >= filterRating;
-        });
-        items = items.map(function(t) {
-          if (!t._hiddenShown && t.relative_path === _justRatedPath && (t.rating || 0) < filterRating) {
-            var clone = {}; for (var k in t) { if (t.hasOwnProperty(k)) clone[k] = t[k]; }
-            clone._hiddenShown = true;
-            return clone;
-          }
-          return t;
-        });
-      }
-      if (filterFav) {
-        items = items.filter(function(t) { return t._hiddenShown || !!_savedFavorites[t.relative_path]; });
-      }
-      if (filterGenre) {
-        items = items.filter(function(t) { return t._hiddenShown || t.genre === filterGenre; });
-      }
-    }
-
-    items = items.slice().sort(function(a, b) {
-      var sa = a.season || 0, sb = b.season || 0;
-      var ea = a.episode || 0, eb = b.episode || 0;
-      if (sortBy === 'custom') {
-        /* In playlist context: preserve playlist order (no sort).
-           In filesystem context: sort by rating desc, title asc as tiebreaker. */
-        if (_currentPlaylistId) return 0;
-        var ra = a.rating || 0, rb = b.rating || 0;
-        if (ra !== rb) return rb - ra;
-        return a.title.localeCompare(b.title);
-      }
-      if (sortBy === 'recent') {
-        /* newest first by mtime, title as tiebreaker */
-        var ma = a.mtime || 0, mb = b.mtime || 0;
-        if (ma !== mb) return mb - ma;
-        return a.title.localeCompare(b.title);
-      }
-      if (sortBy === 'title') {
-        /* Series-aware title sort: prefer season/episode when present */
-        if (sa > 0 || sb > 0) {
-          if (sa !== sb) return sa - sb;
-          if (ea !== eb) return ea - eb;
-        }
-        return a.title.localeCompare(b.title) || a.relative_path.localeCompare(b.relative_path);
-      }
-      if (sortBy === 'path') return a.relative_path.localeCompare(b.relative_path);
-      /* artist sort: group by folder, then season/episode within */
-      var ad = a.artist.localeCompare(b.artist);
-      if (ad !== 0) return ad;
-      if (sa !== sb) return sa - sb;
-      if (ea !== eb) return ea - eb;
-      return a.title.localeCompare(b.title);
+    /* Filter chain (rating/favorite/genre/search, normal + DEBUG_FILTER
+       mode): ported to webui/src/filterChain.ts::applyFilterChain(items,
+       opts), bridged onto window._applyFilterChain by main.ts. Globals
+       bundled into one explicit options object instead of closure reads. */
+    items = window._applyFilterChain(items, {
+      needle: needle,
+      debugFilter: DEBUG_FILTER,
+      effectiveThreshold: _effectiveThreshold,
+      showHidden: showHidden,
+      justRatedPath: _justRatedPath,
+      filterRating: filterRating,
+      filterFav: filterFav,
+      filterGenre: filterGenre,
+      savedFavorites: _savedFavorites
     });
+
+    /* sort: ported to webui/src/catalogQuery.ts::sortTracks(items, sortBy,
+       hasCustomPlaylist), bridged onto window._sortTracks by main.ts. Explicit
+       params instead of reading sortField.value/_currentPlaylistId globals. */
+    items = window._sortTracks(items, sortBy, !!_currentPlaylistId);
     renderTracks(items, force);
   }
   /* needsConversion()/filenameFromPath() ported to webui/src/pathUtils.ts
@@ -872,10 +698,9 @@ def render_search_filter_js() -> str:
       if (queueBtn) {
         e.stopPropagation(); e.preventDefault();
         var qrp = queueBtn.dataset.relativePath;
-        var inQ = _userQueue.some(function(q) { return q.relative_path === qrp; });
-        if (inQ) {
-          var qi = _userQueue.findIndex(function(q) { return q.relative_path === qrp; });
-          if (qi >= 0) removeFromQueue(qi);
+        var qi = window._queueIndexOf(_userQueue, qrp);
+        if (qi >= 0) {
+          removeFromQueue(qi);
           showToast('Aus Warteschlange entfernt');
         } else {
           var qidx = Number(queueBtn.dataset.index);

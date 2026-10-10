@@ -89,7 +89,6 @@ def render_track_render_js() -> str:
   }
 
   /* ── offline download management ── */
-  var downloadDB = null;
   var OFFLINE_SOFT_LIMIT = 500 * 1024 * 1024;
   var activeDownloads = {};
 
@@ -112,91 +111,11 @@ def render_track_render_js() -> str:
      bridged onto window.getOfflineUrl by main.ts (see that file's header
      comment for why currentOfflineUrl moved as private state). */
 
-  function initDownloadDB() {
-    return new Promise(function(resolve, reject) {
-      var req = indexedDB.open('hometools-downloads', 2);
-      req.onerror = function() { reject(req.error); };
-      req.onsuccess = function() { downloadDB = req.result; resolve(req.result); };
-      req.onupgradeneeded = function(e) {
-        var db = e.target.result;
-        var store;
-        if (!db.objectStoreNames.contains('downloads')) {
-          store = db.createObjectStore('downloads', { keyPath: 'id', autoIncrement: true });
-        } else {
-          store = e.target.transaction.objectStore('downloads');
-        }
-        if (!store.indexNames.contains('streamUrl')) {
-          store.createIndex('streamUrl', 'streamUrl', { unique: true });
-        }
-        if (!store.indexNames.contains('status')) {
-          store.createIndex('status', 'status', { unique: false });
-        }
-        if (!store.indexNames.contains('timestamp')) {
-          store.createIndex('timestamp', 'timestamp', { unique: false });
-        }
-        if (!store.indexNames.contains('title')) {
-          store.createIndex('title', 'title', { unique: false });
-        }
-      };
-    });
-  }
-
-  function getDownloadByStreamUrl(streamUrl) {
-    return new Promise(function(resolve) {
-      if (!downloadDB) { resolve(null); return; }
-      try {
-        var tx = downloadDB.transaction('downloads', 'readonly');
-        var store = tx.objectStore('downloads');
-        var index = store.index('streamUrl');
-        var req = index.get(streamUrl);
-        req.onerror = function() { resolve(null); };
-        req.onsuccess = function() { resolve(req.result || null); };
-      } catch (e) {
-        resolve(null);
-      }
-    });
-  }
-
-  function getAllDownloads() {
-    return new Promise(function(resolve) {
-      if (!downloadDB) { resolve([]); return; }
-      try {
-        var tx = downloadDB.transaction('downloads', 'readonly');
-        var store = tx.objectStore('downloads');
-        var req = store.getAll();
-        req.onerror = function() { resolve([]); };
-        req.onsuccess = function() { resolve(req.result || []); };
-      } catch (e) {
-        resolve([]);
-      }
-    });
-  }
-
-  function deleteDownloadById(id) {
-    return new Promise(function(resolve) {
-      if (!downloadDB) { resolve(false); return; }
-      try {
-        var tx = downloadDB.transaction('downloads', 'readwrite');
-        tx.objectStore('downloads').delete(id);
-        tx.oncomplete = function() { resolve(true); };
-        tx.onerror = function() { resolve(false); };
-      } catch (e) {
-        resolve(false);
-      }
-    });
-  }
-
-  function deleteDownloadByStreamUrl(streamUrl) {
-    return getDownloadByStreamUrl(streamUrl).then(function(download) {
-      if (!download) return false;
-      return deleteDownloadById(download.id).then(function(ok) {
-        if (ok && navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'DELETE_DOWNLOAD', url: streamUrl });
-        }
-        return ok;
-      });
-    });
-  }
+  /* IndexedDB layer (initDownloadDB/getDownloadByStreamUrl/getAllDownloads/
+     deleteDownloadById/deleteDownloadByStreamUrl + downloadDB handle):
+     ported to webui/src/offlineDb.ts, bridged onto window by main.ts under
+     the same names — bare call sites below unchanged. DB name/version is a
+     contract with the Service Worker (_pwa.py), see offlineDb.ts header. */
 
   /* formatBytes() lives in _core.py — kept as the single canonical
      definition (was accidentally duplicated here during the module split). */
@@ -466,26 +385,9 @@ def render_track_render_js() -> str:
   }
 
   function pruneOldDownloads(requiredBytes, protectedStreamUrl) {
-    return getAllDownloads().then(function(downloads) {
-      var total = getAppDownloadUsage(downloads);
-      var candidates = downloads.filter(function(download) {
-        return download.status === 'ready' && download.streamUrl !== protectedStreamUrl;
-      }).sort(function(a, b) {
-        return (a.timestamp || 0) - (b.timestamp || 0);
-      });
-      var victims = [];
-      while (total + requiredBytes > OFFLINE_SOFT_LIMIT && candidates.length) {
-        var victim = candidates.shift();
-        victims.push(victim);
-        total -= Number(victim.size || 0);
-      }
-      if (total + requiredBytes > OFFLINE_SOFT_LIMIT) return false;
-      var chain = Promise.resolve();
-      victims.forEach(function(victim) {
-        chain = chain.then(function() { return deleteDownloadById(victim.id); });
-      });
-      return chain.then(function() { return true; });
-    }).then(function(ok) {
+    /* selection + deletion: webui/src/offlineDb.ts::evictForBudget
+       (pickEvictionVictims in offlineDownloads.ts). UI refresh stays here. */
+    return window._evictForBudget(requiredBytes, OFFLINE_SOFT_LIMIT, protectedStreamUrl).then(function(ok) {
       updateAllDownloadButtons();
       refreshOfflineLibrary();
       return ok;

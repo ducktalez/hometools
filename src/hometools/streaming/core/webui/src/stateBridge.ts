@@ -25,6 +25,7 @@ export interface HtState {
   repeatMode: false | "all" | "one";
   shuffleQueue: number[];
   shufflePos: number;
+  userQueue: LegacyMediaItem[];
 }
 
 /** Bridge or null when the legacy script hasn't run (yet). Callers must no-op then. */

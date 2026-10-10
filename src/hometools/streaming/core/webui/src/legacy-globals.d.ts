@@ -136,9 +136,52 @@ interface Window {
   showToast(msg: string, durationMs?: number): void;
   rebuildShuffleQueue(startIndex: number): void;
   itemsUnder(path: string): LegacyMediaItem[];
-  contentsAt(path: string): { folders: string[]; files: LegacyMediaItem[] };
+  contentsAt(path: string): import("./folderContents").FolderContents;
   _invalidateDupeMap(): void;
   _ensureDupeMap(): void;
   refreshCatalog(): void;
+  /** Owned by `catalogQuery.ts` now (bridged in main.ts). */
+  _sortTracks(items: LegacyMediaItem[], sortBy: string, hasCustomPlaylist: boolean): LegacyMediaItem[];
+  /** Owned by `search.ts` now (bridged in main.ts). */
+  _buildFolderMatches(
+    allItems: LegacyMediaItem[],
+    needleLower: string,
+    hiddenActive: boolean,
+    effectiveThreshold: number
+  ): import("./search").FolderMatch[];
+  _searchItems(
+    allItems: LegacyMediaItem[],
+    needleLower: string,
+    hiddenActive: boolean,
+    effectiveThreshold: number
+  ): LegacyMediaItem[];
+  /** Owned by `filterChain.ts` now (bridged in main.ts). */
+  _applyFilterChain(
+    items: LegacyMediaItem[],
+    opts: import("./filterChain").FilterChainOptions
+  ): LegacyMediaItem[];
+  /** Owned by `intro.ts` now (bridged in main.ts). */
+  _parseIntro(t: LegacyMediaItem | null | undefined): import("./intro").IntroInfo;
+  _introButtonMode(cur: number, dur: number, start: number, end: number, isSeries: boolean): import("./intro").IntroBtnMode;
+  _patchIntroLocal(arrays: Array<LegacyMediaItem[] | null | undefined>, relPath: string, start: number, end: number): void;
+  /** Owned by `queue.ts` now (bridged in main.ts). */
+  _queueIndexOf(queue: LegacyMediaItem[] | null | undefined, relPath: string): number;
+  _queueAdd(item: LegacyMediaItem | null | undefined, defaultMediaType: string): import("./queue").QueueAddResult;
+  _queueRemoveAt(index: number): LegacyMediaItem | null;
+  _queueClear(): void;
+  _queueMove(fromIdx: number, toIdx: number): void;
+  _resolveNext(): import("./queue").NextTarget | null;
+  /** Owned by `catalogQuery.ts` now (bridged in main.ts). */
+  _replaceItemFields(
+    arrays: Array<LegacyMediaItem[] | null | undefined>,
+    relPath: string,
+    fields: Partial<LegacyMediaItem>
+  ): void;
+  /** Owned by `folderContents.ts` now (bridged in main.ts). */
+  _contentsAt(
+    path: string,
+    allItems: LegacyMediaItem[],
+    langGroups: Record<string, string>
+  ): import("./folderContents").FolderContents;
 }
 
