@@ -147,26 +147,9 @@ def render_smart_playlists_js() -> str:
 
   function _smartSubmit(onSuccess) {
     var s = _smartEditorState;
-    if (!s.name) { showToast('Bitte einen Namen eingeben'); return; }
-    if (!s.rules.length) { showToast('Mindestens eine Regel erforderlich'); return; }
-    /* Defensive: strip any self-reference from in_playlist rules (circular-reference guard) */
-    if (s.id) {
-      s.rules.forEach(function(r) {
-        if (r.field === 'in_playlist' && Array.isArray(r.value)) {
-          r.value = r.value.filter(function(v) { return v !== s.id; });
-        }
-      });
-    }
-    var smart = { match: s.match, rules: s.rules };
-    if (s.limit && Number(s.limit) > 0) smart.limit = Number(s.limit);
-    var payload, method;
-    if (s.id) {
-      payload = { playlist_id: s.id, smart: smart };
-      method = 'PUT';
-    } else {
-      payload = { name: s.name, smart: smart };
-      method = 'POST';
-    }
+    var req = window._buildSmartSubmit(s);
+    if (req.error) { showToast(req.error); return; }
+    var payload = req.payload, method = req.method;
     fetch(PLAYLISTS_SMART_PATH, {
       method: method,
       headers: { 'Content-Type': 'application/json' },

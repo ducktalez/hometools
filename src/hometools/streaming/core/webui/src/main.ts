@@ -14,7 +14,17 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: evictForBudget (offlineDb.ts) + pickEvictionVictims
+ * Latest slice: resume.ts (findResumeLocal/findResumeRecent, from
+ * _folder_browse.py::_restoreLastEpisode). New pytest tests/test_webui_bridges.py
+ * checks every `window._x(` call in player_js/*.py is bridged here.
+ *
+ * Previous slice: collectAllPlaylistRelPaths/resolveAllPlaylistItems/
+ * buildSmartSubmit (smartPlaylist.ts, from _smart_playlists.py).
+ *
+ * Previous slice: resolvePlaylistItems (smartPlaylist.ts, from _playlists.py;
+ * globals explicit, legacy keeps thin wrapper).
+ *
+ * Previous slice: evictForBudget (offlineDb.ts) + pickEvictionVictims
  * (offlineDownloads.ts), from _track_render.py::pruneOldDownloads. Legacy
  * keeps pruneOldDownloads as thin wrapper (UI refresh).
  *
@@ -156,6 +166,10 @@ import {
   smartFieldType,
   smartOpsFor,
   smartRenderRuleRow,
+  resolvePlaylistItems,
+  collectAllPlaylistRelPaths,
+  resolveAllPlaylistItems,
+  buildSmartSubmit,
   SMART_FIELDS,
   SMART_OPS_BY_TYPE,
 } from "./smartPlaylist";
@@ -179,6 +193,7 @@ import { showToast } from "./toast";
 import { getAllFolders, invalidateFolderCache } from "./folderCache";
 import { fisherYates, buildWeightedQueue, buildNormalQueue, rebuildShuffleQueue, nextIndex, prevIndex } from "./shuffle";
 import { getOfflineUrl, revokeOfflineUrl } from "./offlineUrl";
+import { findResumeLocal, findResumeRecent } from "./resume";
 
 // CSS ports: Vite bundles these into one stylesheet, _html.py links it
 // AFTER the legacy inline <style> (later wins at equal specificity).
@@ -324,6 +339,12 @@ declare global {
     _smartFieldType: typeof smartFieldType;
     _smartOpsFor: typeof smartOpsFor;
     _smartRenderRuleRow: typeof smartRenderRuleRow;
+    _resolvePlaylistItems: typeof resolvePlaylistItems;
+    _collectAllPlaylistRelPaths: typeof collectAllPlaylistRelPaths;
+    _resolveAllPlaylistItemsFrom: typeof resolveAllPlaylistItems;
+    _buildSmartSubmit: typeof buildSmartSubmit;
+    _findResumeLocal: typeof findResumeLocal;
+    _findResumeRecent: typeof findResumeRecent;
     SMART_FIELDS: typeof SMART_FIELDS;
     SMART_OPS_BY_TYPE: typeof SMART_OPS_BY_TYPE;
     _getRecentMoveTargets: typeof getRecentMoveTargets;
@@ -439,6 +460,12 @@ window._evaluateSmartPlaylist = evaluateSmartPlaylist;
 window._smartFieldType = smartFieldType;
 window._smartOpsFor = smartOpsFor;
 window._smartRenderRuleRow = smartRenderRuleRow;
+window._resolvePlaylistItems = resolvePlaylistItems;
+window._collectAllPlaylistRelPaths = collectAllPlaylistRelPaths;
+window._resolveAllPlaylistItemsFrom = resolveAllPlaylistItems;
+window._buildSmartSubmit = buildSmartSubmit;
+window._findResumeLocal = findResumeLocal;
+window._findResumeRecent = findResumeRecent;
 window.SMART_FIELDS = SMART_FIELDS;
 window.SMART_OPS_BY_TYPE = SMART_OPS_BY_TYPE;
 window._getRecentMoveTargets = getRecentMoveTargets;

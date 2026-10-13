@@ -66,22 +66,8 @@ def render_playlists_js() -> str:
   function renderPlaylistLibrary() { /* removed */ }
 
   function _resolvePlaylistItems(plId) {
-    var pl = _userPlaylists.find(function(p) { return p.id === plId; });
-    if (!pl) return null;
-    /* Smart playlist: evaluate rules against allItems. */
-    if (pl.smart && pl.smart.rules) {
-      var resolvedSmart = _evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites);
-      if (!resolvedSmart || resolvedSmart.length === 0) return null;
-      return { pl: pl, resolved: resolvedSmart };
-    }
-    if (!pl.items || pl.items.length === 0) return null;
-    var resolved = [];
-    pl.items.forEach(function(rp) {
-      var match = allItems.find(function(it) { return it.relative_path === rp; });
-      if (match) resolved.push(match);
-    });
-    if (resolved.length === 0) return null;
-    return { pl: pl, resolved: resolved };
+    /* Logic ported to webui/src/smartPlaylist.ts::resolvePlaylistItems. */
+    return window._resolvePlaylistItems(plId, _userPlaylists, allItems, _savedFavorites);
   }
 
   /* Smart playlist evaluator: ported to webui/src/smartPlaylist.ts,

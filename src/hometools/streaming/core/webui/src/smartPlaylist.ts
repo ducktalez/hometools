@@ -308,6 +308,94 @@ export function evaluateSmartPlaylist(
   }
 }
 
+/** Resolve a user playlist id to `{pl, resolved}` (smart: evaluated; manual:
+ * items looked up in `allItems`). `null` when unknown/empty. Ported from
+ * `player_js/_playlists.py::_resolvePlaylistItems` — globals explicit. */
+export function resolvePlaylistItems(
+  plId: string,
+  userPlaylists: UserPlaylist[],
+  allItems: LegacyMediaItem[],
+  savedFavorites: Record<string, boolean>
+): { pl: UserPlaylist; resolved: LegacyMediaItem[] } | null {
+  try {
+    const pl = (userPlaylists || []).find((p) => p.id === plId);
+    if (!pl) return null;
+    if (pl.smart && pl.smart.rules) {
+      const resolvedSmart = evaluateSmartPlaylist(pl, allItems, userPlaylists, savedFavorites);
+      if (!resolvedSmart || resolvedSmart.length === 0) return null;
+      return { pl, resolved: resolvedSmart };
+    }
+    if (!pl.items || pl.items.length === 0) return null;
+    const resolved: LegacyMediaItem[] = [];
+    pl.items.forEach((rp) => {
+      const match = (allItems || []).find((it) => it.relative_path === rp);
+      if (match) resolved.push(match);
+    });
+    if (resolved.length === 0) return null;
+    return { pl, resolved };
+  } catch {
+    return null;
+  }
+}
+
+/** Union of all user playlists' items (dedup, order-preserving). Ported from
+ * `_smart_playlists.py::_collectAllPlaylistRelPaths`. */
+export function collectAllPlaylistRelPaths(userPlaylists: UserPlaylist[]): string[] {
+  const seen: Record<string, boolean> = Object.create(null);
+  const out: string[] = [];
+  (userPlaylists || []).forEach((pl) => {
+    (pl.items || []).forEach((rp) => {
+      if (!seen[rp]) {
+        seen[rp] = true;
+        out.push(rp);
+      }
+    });
+  });
+  return out;
+}
+
+/** Items of `collectAllPlaylistRelPaths`, resolved against `allItems`. */
+export function resolveAllPlaylistItems(userPlaylists: UserPlaylist[], allItems: LegacyMediaItem[]): LegacyMediaItem[] {
+  const byPath: Record<string, LegacyMediaItem> = Object.create(null);
+  (allItems || []).forEach((it) => {
+    if (!(it.relative_path in byPath)) byPath[it.relative_path] = it;
+  });
+  const out: LegacyMediaItem[] = [];
+  collectAllPlaylistRelPaths(userPlaylists).forEach((rp) => {
+    const m = byPath[rp];
+    if (m) out.push(m);
+  });
+  return out;
+}
+
+export interface SmartEditorState {
+  id: string | null;
+  name: string;
+  match: "all" | "any";
+  rules: SmartPlaylistRule[];
+  limit: number | "";
+}
+
+/** Validate editor state + build the save request. `error` set => show toast,
+ * no request. Strips self-references from `in_playlist` rules (cycle guard).
+ * Ported from `_smart_playlists.py::_smartSubmit`. */
+export function buildSmartSubmit(
+  s: SmartEditorState
+): { error: string } | { method: "PUT" | "POST"; payload: Record<string, unknown> } {
+  if (!s.name) return { error: "Bitte einen Namen eingeben" };
+  if (!s.rules.length) return { error: "Mindestens eine Regel erforderlich" };
+  const rules = s.rules.map((r) =>
+    s.id && r.field === "in_playlist" && Array.isArray(r.value)
+      ? { ...r, value: (r.value as unknown[]).filter((v) => v !== s.id) }
+      : r
+  );
+  const smart: SmartPlaylistSpec = { match: s.match, rules };
+  if (s.limit && Number(s.limit) > 0) smart.limit = Number(s.limit);
+  return s.id
+    ? { method: "PUT", payload: { playlist_id: s.id, smart } }
+    : { method: "POST", payload: { name: s.name, smart } };
+}
+
 /** One rule-editor row's HTML (field/op selects + value input). Ported
  * from `player_js/_playlists.py`. `escHtmlFn` passed in like
  * `breadcrumb.ts::renderBreadcrumbHtml` — avoids a circular import back to
@@ -393,4 +481,3 @@ export function smartRenderRuleRow(
     "</div>"
   );
 }
-

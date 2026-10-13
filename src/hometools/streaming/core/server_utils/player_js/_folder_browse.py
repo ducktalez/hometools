@@ -596,46 +596,23 @@ def render_folder_browse_js() -> str:
   function _restoreLastEpisode() {
     /* ── 1. Try localStorage first (fast, works through server restarts) ─── */
     var local = _loadLastPlayedLocal();
-    if (local && local.path) {
-      var pathToIdx = {};
-      filteredItems.forEach(function(it, i) { pathToIdx[it.relative_path] = i; });
-      if (local.path in pathToIdx && currentIndex < 0) {
-        var idx = pathToIdx[local.path];
-        currentIndex = idx;
-        markActive();
-        var li = trackList.querySelector('[data-index="' + idx + '"]');
-        if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        var pos = Number(local.position_seconds || 0);
-        var label = (filteredItems[idx] && filteredItems[idx].title) || local.path;
-        showToast('Weiter bei: ' + label + (pos > 2 ? ' (' + fmtTime(pos) + ')' : ''), 5000);
-        return;
-      }
+    function _applyResume(hit, withPos) {
+      currentIndex = hit.idx;
+      markActive();
+      var li = trackList.querySelector('[data-index="' + hit.idx + '"]');
+      if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      showToast('Weiter bei: ' + hit.label + (withPos ? ' (' + fmtTime(hit.pos) + ')' : ''), 5000);
     }
+    var hitLocal = window._findResumeLocal(filteredItems, local, currentIndex);
+    if (hitLocal) { _applyResume(hitLocal, hitLocal.pos > 2); return; }
     /* ── 2. Fallback: server recent API ────────────────────────────────────── */
     if (!RECENT_ENABLED) return;
     fetch(RECENT_API_PATH + '?limit=100')
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
-        if (!d || !d.items || !d.items.length) return;
-        if (currentIndex >= 0) return;
-        var pathToIdx2 = {};
-        filteredItems.forEach(function(it, i) { pathToIdx2[it.relative_path] = i; });
-        for (var j = 0; j < d.items.length; j++) {
-          var entry = d.items[j];
-          var rp = entry.relative_path || '';
-          if (!(rp in pathToIdx2)) continue;
-          var pos2 = Number(entry.position_seconds || 0);
-          if (pos2 < 5) continue;
-          if (currentIndex >= 0) return;
-          var idx2 = pathToIdx2[rp];
-          currentIndex = idx2;
-          markActive();
-          var li2 = trackList.querySelector('[data-index="' + idx2 + '"]');
-          if (li2) li2.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          var label2 = (filteredItems[idx2] && filteredItems[idx2].title) || rp;
-          showToast('Weiter bei: ' + label2 + ' (' + fmtTime(pos2) + ')', 5000);
-          return;
-        }
+        if (!d || !d.items) return;
+        var hit = window._findResumeRecent(filteredItems, d.items, currentIndex);
+        if (hit) _applyResume(hit, true);
       })
       .catch(function() {});
   }
