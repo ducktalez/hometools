@@ -108,5 +108,30 @@ export function estimateOfflineStorage(downloads: OfflineDownload[], softLimit: 
   }
   return Promise.all(tasks).then(() => info);
 }
-
-
+export interface StorageSummaryView {
+  warn: boolean;
+  summary: string;
+  detail: string;
+  pill: string;
+  hasDownloads: boolean;
+}
+/** Texts/flags for the offline-storage summary. DOM writes stay legacy;
+ * formatBytes passed in (lives in main.ts). */
+export function storageSummaryView(info: OfflineStorageInfo, formatBytes: (n: number) => string): StorageSummaryView {
+  const n = info.downloads.length;
+  const warn = !!(
+    info.appUsage >= info.softLimit * 0.8 ||
+    (info.browserQuota && (info.browserUsage || 0) >= info.browserQuota * 0.8)
+  );
+  const summary = n
+    ? n + " Offline-Download" + (n !== 1 ? "s" : "") + " \u00b7 " + formatBytes(info.appUsage) + " lokal gespeichert"
+    : "Noch keine Offline-Downloads.";
+  const parts = ["App-Budget " + formatBytes(info.appUsage) + " / " + formatBytes(info.softLimit)];
+  if (info.browserQuota) {
+    parts.push("Browser " + formatBytes(info.browserUsage || 0) + " / " + formatBytes(info.browserQuota));
+  }
+  if (info.persistent !== null) {
+    parts.push(info.persistent ? "Persistent aktiv" : "Nicht persistent");
+  }
+  return { warn, summary, detail: parts.join(" \u00b7 "), pill: "Downloaded (" + n + ")", hasDownloads: n > 0 };
+}

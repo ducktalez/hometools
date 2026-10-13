@@ -5,38 +5,13 @@ from __future__ import annotations
 
 def render_library_tools_js() -> str:
     """Return the library tools section of the player JS."""
-    return """  function _buildDuplicateMap() {
-    var map = {};
-    allItems.forEach(function(item, i) {
-      var key = _dupeKey(item);
-      if (!key) return;
-      if (!map[key]) map[key] = [];
-      map[key].push(i);
-    });
-    /* Keep only groups with 2+ items */
-    _dupeMap = {};
-    _dupePaths = new Set();
-    _dupeSafety = {};
-    var keys = Object.keys(map);
-    for (var k = 0; k < keys.length; k++) {
-      if (map[keys[k]].length > 1) {
-        var groupIndices = map[keys[k]];
-        _dupeMap[keys[k]] = groupIndices;
-        /* Collect group items for safety check */
-        var groupItems = groupIndices.map(function(gi) { return allItems[gi]; }).filter(Boolean);
-        var isSafe = _isDupeGroupSafe(groupItems);
-        groupIndices.forEach(function(gi) {
-          var rp = allItems[gi] ? allItems[gi].relative_path : null;
-          if (rp) {
-            _dupePaths.add(rp);
-            _dupeSafety[rp] = isSafe;
-          }
-        });
-      }
-    }
-  }
-
-  function _invalidateDupeMap() {
+    return """  /* grouping/safety: webui/src/dupeUtils.ts::buildDuplicateIndex (allItems explicit). */
+  function _buildDuplicateMap() {
+    var idx = window._buildDuplicateIndex(allItems);
+    _dupeMap = idx.map;
+    _dupePaths = idx.paths;
+    _dupeSafety = idx.safety;
+  }  function _invalidateDupeMap() {
     _dupeMap = null;
     _dupePaths = null;
     _dupeSafety = null;
@@ -958,19 +933,11 @@ def render_library_tools_js() -> str:
 
   /* Toggle shuffle mode: off → normal → weighted → off */
   function cycleShuffle() {
-    if (!shuffleMode) {
-      shuffleMode = 'normal';
-    } else if (shuffleMode === 'normal') {
-      shuffleMode = 'weighted';
-    } else {
-      shuffleMode = false;
-    }
+    shuffleMode = window._nextShuffleMode(shuffleMode);
     localStorage.setItem('ht-shuffle-mode', shuffleMode || '');
     updateShuffleBtn();
     rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
-  }
-
-  /* Activate weighted shuffle directly (long-press) */
+  }  /* Activate weighted shuffle directly (long-press) */
   function activateWeightedShuffle() {
     shuffleMode = 'weighted';
     localStorage.setItem('ht-shuffle-mode', 'weighted');
@@ -979,65 +946,43 @@ def render_library_tools_js() -> str:
     showToast('Gewichteter Shuffle aktiv (nach Bewertung)');
   }
 
+  /* mode transitions + labels: webui/src/playerControls.ts */
   function updateShuffleBtn() {
     if (!btnShuffle) return;
-    btnShuffle.classList.toggle('shuffle-active', !!shuffleMode);
-    btnShuffle.classList.toggle('shuffle-weighted', shuffleMode === 'weighted');
-    btnShuffle.title = shuffleMode === 'weighted'
-      ? 'Shuffle (gewichtet nach Bewertung) — Long Press für Aus'
-      : shuffleMode === 'normal'
-        ? 'Shuffle (zufällig) — Klick für gewichtet, Long Press für Aus'
-        : 'Shuffle aktivieren';
-  }
-
-  /* ── Repeat mode: off → all → one → off ── */
+    var v = window._shuffleBtnView(shuffleMode);
+    btnShuffle.classList.toggle('shuffle-active', v.active);
+    btnShuffle.classList.toggle('shuffle-weighted', v.variant);
+    btnShuffle.title = v.title;
+  }  /* ── Repeat mode: off → all → one → off ── */
   function cycleRepeat() {
-    if (!repeatMode) {
-      repeatMode = 'all';
-    } else if (repeatMode === 'all') {
-      repeatMode = 'one';
-    } else {
-      repeatMode = false;
-    }
+    repeatMode = window._nextRepeatMode(repeatMode);
     localStorage.setItem('ht-repeat-mode', repeatMode || '');
     updateRepeatBtn();
   }
-
   function updateRepeatBtn() {
     if (!btnRepeat) return;
-    btnRepeat.classList.toggle('repeat-active', !!repeatMode);
-    btnRepeat.classList.toggle('repeat-one', repeatMode === 'one');
+    var v = window._repeatBtnView(repeatMode);
+    btnRepeat.classList.toggle('repeat-active', v.active);
+    btnRepeat.classList.toggle('repeat-one', v.variant);
     btnRepeat.innerHTML = repeatMode === 'one' ? IC_REPEAT_ONE : IC_REPEAT;
-    btnRepeat.title = repeatMode === 'one'
-      ? 'Einzeltitel wiederholen — Klick für Aus'
-      : repeatMode === 'all'
-        ? 'Alle wiederholen — Klick für Einzeltitel'
-        : 'Wiederholen aktivieren';
-  }
-
-  /* ── Rating stars (audio-only write, display-only for video) ── */
+    btnRepeat.title = v.title;
+  }  /* ── Rating stars (audio-only write, display-only for video) ── */
   var playerRatingEl = document.getElementById('player-rating');
 
   function renderPlayerRating(stars) {
     if (!playerRatingEl) return;
-    var rounded = Math.round(stars || 0);
     playerRatingEl.innerHTML = '';
-    for (var i = 1; i <= 5; i++) {
+    window._playerRatingStars(stars).forEach(function(sv) {
       var btn = document.createElement('button');
-      btn.className = 'player-rating-star' + (i <= rounded ? ' active' : '');
-      btn.innerHTML = i <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
-      btn.dataset.star = i;
-      /* Tooltip: clicking the currently-set star will clear the rating (toggle to 0) */
-      btn.title = (i === rounded && rounded > 0)
-        ? 'Bewertung entfernen (nochmals klicken)'
-        : i + (i === 1 ? ' Stern' : ' Sterne');
+      btn.className = 'player-rating-star' + (sv.active ? ' active' : '');
+      btn.innerHTML = sv.active ? IC_STAR_FILLED : IC_STAR_EMPTY;
+      btn.dataset.star = sv.star;
+      btn.title = sv.title;
       if (!RATING_WRITE_ENABLED) btn.style.pointerEvents = 'none';
       playerRatingEl.appendChild(btn);
-    }
+    });
     playerRatingEl.removeAttribute('hidden');
-  }
-
-  /* Patch the matching entry in EVERY array that may hold a reference to
+  }  /* Patch the matching entry in EVERY array that may hold a reference to
      this item — allItems AND playlistItems AND filteredItems AND the user
      queue. Uses Object.assign (new object, no in-place mutation) to avoid
      the frozen-data-mutation pattern used elsewhere, BUT that means each
@@ -1062,13 +1007,14 @@ def render_library_tools_js() -> str:
     var wrap = li.querySelector('.track-thumb-wrap');
     if (wrap) {
       var bar = wrap.querySelector('.rating-bar');
-      if (rating > 0) {
+      var _pct = window._ratingBarWidthPct(rating);
+      if (_pct > 0) {
         if (!bar) {
           bar = document.createElement('div');
           bar.className = 'rating-bar';
           wrap.appendChild(bar);
         }
-        bar.style.width = (rating / 5 * 100) + '%';
+        bar.style.width = _pct + '%';
       } else if (bar) {
         bar.remove();
       }
@@ -1601,38 +1547,29 @@ def render_library_tools_js() -> str:
 
   function updateFavoriteButtons() {
     document.querySelectorAll('.track-pin-btn').forEach(function(btn) {
-      var rp = btn.dataset.relativePath;
-      if (_savedFavorites[rp]) {
-        btn.classList.add('pinned');
-        btn.title = 'Favorit entfernen';
-      } else {
-        btn.classList.remove('pinned');
-        btn.title = 'Favorit';
-      }
+      var v = window._favoriteBtnView(!!_savedFavorites[btn.dataset.relativePath]);
+      btn.classList.toggle('pinned', v.pinned);
+      btn.title = v.title;
     });
-  }
-
-  /* ── metadata edit modal ── */
+  }  /* ── metadata edit modal ── */
   var _editModalRating = 0; /* selected rating inside the edit modal */
 
   function renderEditModalRating(stars) {
     var container = document.getElementById('edit-modal-rating');
     if (!container) return;
-    var rounded = Math.round(stars || 0);
-    _editModalRating = rounded;
+    var view = window._editModalRatingStars(stars);
+    _editModalRating = view.rounded;
     container.innerHTML = '';
-    for (var i = 1; i <= 5; i++) {
+    view.stars.forEach(function(sv) {
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'edit-modal-rating-star' + (i <= rounded ? ' active' : '');
-      btn.innerHTML = i <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY;
-      btn.dataset.star = String(i);
-      btn.title = i + (i === 1 ? ' Stern' : ' Sterne');
+      btn.className = 'edit-modal-rating-star' + (sv.active ? ' active' : '');
+      btn.innerHTML = sv.active ? IC_STAR_FILLED : IC_STAR_EMPTY;
+      btn.dataset.star = String(sv.star);
+      btn.title = sv.title;
       container.appendChild(btn);
-    }
-  }
-
-  (function _initEditModalRatingEvents() {
+    });
+  }  (function _initEditModalRatingEvents() {
     var container = document.getElementById('edit-modal-rating');
     if (!container) return;
     container.addEventListener('mouseover', function(e) {
@@ -1653,7 +1590,7 @@ def render_library_tools_js() -> str:
       if (!btn) return;
       var n = parseInt(btn.dataset.star, 10);
       /* Toggle off if clicking the same star */
-      renderEditModalRating(n === _editModalRating ? 0 : n);
+      renderEditModalRating(window._toggleEditRating(n, _editModalRating));
     });
   })();
 
@@ -2161,13 +2098,10 @@ def render_library_tools_js() -> str:
   var _currentPlaylistId = '';
 
   /* ── Favorites custom order (server-side + localStorage fallback) ── */
+  /* order loading/sorting: webui/src/customOrder.ts (server sync stays here). */
   function _loadFavoritesOrder() {
-    try {
-      var raw = localStorage.getItem('ht-favorites-order');
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
-  }
-  function _saveFavoritesOrder(paths) {
+    return window._loadOrder(window.FAVORITES_ORDER_KEY);
+  }  function _saveFavoritesOrder(paths) {
     try { localStorage.setItem('ht-favorites-order', JSON.stringify(paths)); }
     catch (e) { /* quota exceeded — ignore */ }
     /* persist to server (fire-and-forget) */
@@ -2192,30 +2126,14 @@ def render_library_tools_js() -> str:
       }).catch(function() { cb(_loadFavoritesOrder()); });
   }
   function _sortFavoritesByOrder(favItems) {
-    var order = _loadFavoritesOrder();
-    if (!order.length) return favItems;
-    var orderMap = {};
-    order.forEach(function(rp, i) { orderMap[rp] = i; });
-    return favItems.slice().sort(function(a, b) {
-      var ia = orderMap[a.relative_path], ib = orderMap[b.relative_path];
-      if (ia === undefined && ib === undefined) return 0;
-      if (ia === undefined) return 1;
-      if (ib === undefined) return -1;
-      return ia - ib;
-    });
-  }
-
-  /* ── Folder custom order (server-side + localStorage fallback) ── */
+    return window._sortByOrder(favItems, _loadFavoritesOrder());
+  }  /* ── Folder custom order (server-side + localStorage fallback) ── */
   function _folderOrderKey(folderPath) {
-    return 'ht-folder-order-' + (folderPath || '__root__');
+    return window._folderOrderKey(folderPath);
   }
   function _loadFolderOrder(folderPath) {
-    try {
-      var raw = localStorage.getItem(_folderOrderKey(folderPath));
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
-  }
-  function _saveFolderOrder(folderPath, paths) {
+    return window._loadOrder(_folderOrderKey(folderPath));
+  }  function _saveFolderOrder(folderPath, paths) {
     try { localStorage.setItem(_folderOrderKey(folderPath), JSON.stringify(paths)); }
     catch (e) { /* quota exceeded — ignore */ }
     /* persist to server (fire-and-forget) */
@@ -2241,20 +2159,8 @@ def render_library_tools_js() -> str:
       }).catch(function() { cb(_loadFolderOrder(folderPath)); });
   }
   function _sortByFolderOrder(folderPath, items) {
-    var order = _loadFolderOrder(folderPath);
-    if (!order.length) return items;
-    var orderMap = {};
-    order.forEach(function(rp, i) { orderMap[rp] = i; });
-    return items.slice().sort(function(a, b) {
-      var ia = orderMap[a.relative_path], ib = orderMap[b.relative_path];
-      if (ia === undefined && ib === undefined) return 0;
-      if (ia === undefined) return 1;
-      if (ib === undefined) return -1;
-      return ia - ib;
-    });
-  }
-
-  var _playlistRevision = 0;
+    return window._sortByOrder(items, _loadFolderOrder(folderPath));
+  }  var _playlistRevision = 0;
   var _playlistSyncTimer = null;
   var _PLAYLIST_SYNC_INTERVAL = CFG.playlistSyncIntervalMs || 30000; /* ms */
 

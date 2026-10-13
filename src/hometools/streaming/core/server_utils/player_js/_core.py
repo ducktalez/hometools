@@ -675,8 +675,9 @@ def render_core_js(waveform_js) -> str:
   /* ── playback progress persistence ── */
   var _progressTimer = 0;
   var _progressRelPath = '';
+  /* progressApiBase/buildProgressPayload: webui/src/progress.ts */
   function _progressApiBase() {
-    return API_PATH.substring(0, API_PATH.lastIndexOf('/')) + '/progress';
+    return window._progressApiBase(API_PATH);
   }
   function saveProgressNow() {
     var rp = _progressRelPath;
@@ -687,8 +688,8 @@ def render_core_js(waveform_js) -> str:
     /* Always update localStorage so the episode is restored after server restarts,
        even in the first/last 5 s where the server save is intentionally skipped. */
     _saveLastPlayedLocal(rp, pos);
-    if (pos < 5 || pos > dur - 5) return;
-    var payload = JSON.stringify({relative_path: rp, position_seconds: pos, duration: dur});
+    var payload = window._buildProgressPayload(rp, pos, dur);
+    if (!payload) return;
     /* Prefer sendBeacon — it survives page unload / app backgrounding on mobile,
        where a regular fetch() would be cancelled. */
     if (navigator.sendBeacon) {

@@ -36,3 +36,27 @@ def test_webui_vitest_suite():
     except (OSError, subprocess.TimeoutExpired) as exc:
         pytest.fail(f"vitest run failed to execute: {exc}")
     assert proc.returncode == 0, f"vitest failed:\n{proc.stdout[-4000:]}\n{proc.stderr[-2000:]}"
+
+
+def test_webui_typecheck():
+    """`tsc --noEmit`: catches missing imports / window typings in main.ts
+    that the string-presence tests cannot see."""
+    npx = shutil.which("npx")
+    if npx is None:
+        pytest.skip("npx not on PATH")
+    if not (WEBUI_DIR / "node_modules" / "typescript").is_dir():
+        pytest.skip("typescript not installed — run 'npm install' in webui/")
+    try:
+        proc = subprocess.run(
+            [npx, "--no-install", "tsc", "--noEmit"],
+            cwd=str(WEBUI_DIR),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        pytest.fail(f"tsc failed to execute: {exc}")
+    assert proc.returncode == 0, f"tsc failed:\n{proc.stdout[-4000:]}\n{proc.stderr[-2000:]}"

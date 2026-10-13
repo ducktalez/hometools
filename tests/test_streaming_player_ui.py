@@ -1127,10 +1127,11 @@ def test_rating_toast_zero_stars_label():
 
 
 def test_rating_star_tooltip_hints_toggle():
-    """The currently-set star should show a 'remove' hint in its tooltip."""
-    js = render_player_js()
-    assert "Bewertung entfernen" in js
-    assert "nochmals klicken" in js
+    """Currently-set star shows a remove hint (playerRatingStars, playerControls.ts)."""
+    ts = _webui_src("playerControls.ts")
+    assert "Bewertung entfernen" in ts
+    assert "nochmals klicken" in ts
+    assert "window._playerRatingStars(" in render_player_js()
 
 
 # ---------------------------------------------------------------------------
@@ -2128,10 +2129,14 @@ def test_js_has_composite_flag_html():
 
 
 def test_js_composite_flag_html_uses_composite_flag_class():
-    """compositeFlagHtml must produce HTML with composite-flag class."""
-    js = _js()
-    assert "composite-flag" in js
-    assert "composite-flag-sub" in js
+    """compositeFlagHtml (ported to langDetect.ts) emits composite-flag classes."""
+    ts = _webui_src("langDetect.ts")
+    assert "export function compositeFlagHtml" in ts
+    assert "composite-flag" in ts
+    assert "composite-flag-sub" in ts
+    assert "window._compositeFlagHtml = compositeFlagHtml" in _webui_src("main.ts")
+    assert "window._compositeFlagHtml(" in _js()
+    assert "window._langBadgesHtml(" in _js()
 
 
 def test_js_has_default_lang_variable():

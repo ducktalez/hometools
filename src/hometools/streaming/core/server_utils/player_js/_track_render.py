@@ -123,50 +123,30 @@ def render_track_render_js() -> str:
   /* formatDate/sortDownloads/getAppDownloadUsage: ported to
      webui/src/offlineDownloads.ts, bridged onto window by main.ts. */
 
+  /* findItemByStreamUrl: webui/src/catalogQuery.ts (explicit lists). */
   function findItemByStreamUrl(streamUrl) {
-    var idx = filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; });
-    if (idx >= 0) return { item: filteredItems[idx], index: idx };
-    for (var i = 0; i < allItems.length; i++) {
-      if (allItems[i].stream_url === streamUrl) return { item: allItems[i], index: -1 };
-    }
-    return null;
+    return window._findItemByStreamUrl(streamUrl, filteredItems, allItems);
   }
 
 
   /* estimateOfflineStorage: ported to webui/src/offlineDownloads.ts,
      bridged onto window by main.ts. softLimit now explicit 2nd arg. */
 
+  /* texts/flags: webui/src/offlineDownloads.ts::storageSummaryView. DOM here. */
   function renderStorageSummary(info) {
     if (!info) return;
-    var warn = info.appUsage >= info.softLimit * 0.8 ||
-      (info.browserQuota && info.browserUsage >= info.browserQuota * 0.8);
+    var v = window._storageSummaryView(info);
     if (offlineStorageSummary) {
-      offlineStorageSummary.classList.toggle('warn', !!warn);
-      offlineStorageSummary.textContent = info.downloads.length
-        ? info.downloads.length + ' Offline-Download' + (info.downloads.length !== 1 ? 's' : '') +
-          ' · ' + formatBytes(info.appUsage) + ' lokal gespeichert'
-        : 'Noch keine Offline-Downloads.';
+      offlineStorageSummary.classList.toggle('warn', v.warn);
+      offlineStorageSummary.textContent = v.summary;
     }
-    if (offlineStorageDetail) {
-      var parts = [
-        'App-Budget ' + formatBytes(info.appUsage) + ' / ' + formatBytes(info.softLimit)
-      ];
-      if (info.browserQuota) {
-        parts.push('Browser ' + formatBytes(info.browserUsage) + ' / ' + formatBytes(info.browserQuota));
-      }
-      if (info.persistent !== null) {
-        parts.push(info.persistent ? 'Persistent aktiv' : 'Nicht persistent');
-      }
-      offlineStorageDetail.textContent = parts.join(' · ');
-    }
+    if (offlineStorageDetail) offlineStorageDetail.textContent = v.detail;
     if (downloadedPill) {
-      downloadedPill.textContent = 'Downloaded (' + info.downloads.length + ')';
-      downloadedPill.classList.toggle('has-downloads', info.downloads.length > 0);
+      downloadedPill.textContent = v.pill;
+      downloadedPill.classList.toggle('has-downloads', v.hasDownloads);
     }
     updateOfflineFolderCount();
-  }
-
-  function renderOfflineDownloadList(downloads) {
+  }  function renderOfflineDownloadList(downloads) {
     if (!offlineDownloadList) return;
     if (!downloads.length) {
       offlineDownloadList.innerHTML = '<li class="empty-downloads">Noch keine Offline-Downloads gespeichert.</li>';

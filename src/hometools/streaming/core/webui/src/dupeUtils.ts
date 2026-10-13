@@ -134,4 +134,43 @@ export function _isDupeGroupSafe(groupItems: DupeSafetyItem[]): boolean {
   }
   return true;
 }
-
+export interface DuplicateIndex {
+  /** dupe key -> indices into the input array (groups of 2+) */
+  map: Record<string, number[]>;
+  /** relative_path of every item in any group */
+  paths: Set<string>;
+  /** relative_path -> group is safe to auto-resolve */
+  safety: Record<string, boolean>;
+}
+/**
+ * Group `items` by `_dupeKey`, keep groups of 2+. Ported from
+ * `_library_tools.py::_buildDuplicateMap` (allItems now explicit; legacy
+ * assigns the result to _dupeMap/_dupePaths/_dupeSafety).
+ */
+export function buildDuplicateIndex(items: Array<DupeKeyItem & DupeSafetyItem>): DuplicateIndex {
+  const all: Record<string, number[]> = {};
+  items.forEach((item, i) => {
+    const key = _dupeKey(item);
+    if (!key) return;
+    if (!all[key]) all[key] = [];
+    all[key].push(i);
+  });
+  const map: Record<string, number[]> = {};
+  const paths = new Set<string>();
+  const safety: Record<string, boolean> = {};
+  Object.keys(all).forEach((key) => {
+    const indices = all[key];
+    if (indices.length < 2) return;
+    map[key] = indices;
+    const groupItems = indices.map((gi) => items[gi]).filter(Boolean);
+    const safe = _isDupeGroupSafe(groupItems);
+    indices.forEach((gi) => {
+      const rp = items[gi] ? items[gi].relative_path : null;
+      if (rp) {
+        paths.add(rp);
+        safety[rp] = safe;
+      }
+    });
+  });
+  return { map, paths, safety };
+}

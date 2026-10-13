@@ -128,7 +128,7 @@ is **done** — `_css.py`/`css/*.py` are gone, all rules live in
 - `streaming/core/webui/` — Vite project (`src/main.ts` defines `PlayerConfig`
   and hosts already-ported leaf modules: `pathUtils.ts`, `dupeUtils.ts`,
   `metricPill.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `recentMoveTargets.ts`,
-  `catalogCache.ts`, `offlineDownloads.ts`, `langDetect.ts`, `episodeGaps.ts`,
+  `catalogCache.ts`, `offlineDownloads.ts`, `langDetect.ts` (+ flag-badge HTML), `episodeGaps.ts`,
   `catalogQuery.ts`, `clickGuard.ts`, `toast.ts`, `folderCache.ts`,
   `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
   cross-fragment globals still owned by the legacy script; `stateBridge.ts`

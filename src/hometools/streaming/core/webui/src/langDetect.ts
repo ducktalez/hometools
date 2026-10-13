@@ -1,7 +1,7 @@
 /** Folder-name language/subtitle detection. Ported from player_js/_queue.py.
- * Pure regex lookups, no window reads. Bridged onto window by main.ts;
- * langBadgesHtml/compositeFlagHtml (need LANG_TO_FLAG SVG markup, single
- * source of truth in _svg.py) stay in Python and call these by bare name. */
+ * Regex lookups + flag HTML builders. Flag SVG map (LANG_TO_FLAG, single
+ * source of truth in _svg.py) is an explicit param. Bridged onto window by
+ * main.ts; legacy keeps thin bare-name wrappers. */
 
 const LANG_DETECT_MAP: [RegExp, string][] = [
   [/\(\s*engl(?:ish)?\s*(?:,\s*(?:ger|de)(?:\s*sub(?:s)?)?)?\s*\)/i, "en"],
@@ -40,6 +40,37 @@ export function detectLangFromName(name: string): string {
   return "";
 }
 
+/** lang code -> inline SVG markup (LANG_TO_FLAG, single source: _svg.py). */
+export type FlagMap = Record<string, string>;
+
+/** Badge spans for each language that has a flag; "" when none. */
+export function langBadgesHtml(langs: string[] | null | undefined, flags: FlagMap): string {
+  if (!langs || !langs.length) return "";
+  let html = "";
+  langs.forEach((lc) => {
+    const svg = flags[lc];
+    if (svg) {
+      html += '<span class="lang-badge" title="' + lc.toUpperCase() + '">' + svg + "</span>";
+    }
+  });
+  return html;
+}
+
+/** Main-language flag with optional smaller subtitle-flag overlay. */
+export function compositeFlagHtml(mainLang: string, subLang: string, flags: FlagMap): string {
+  const mainSvg = mainLang && flags[mainLang] ? flags[mainLang] : "";
+  if (!mainSvg) return "";
+  const subSvg = subLang && flags[subLang] ? flags[subLang] : "";
+  if (!subSvg) {
+    return '<span class="composite-flag" title="' + (mainLang || "").toUpperCase() + '">' + mainSvg + "</span>";
+  }
+  return (
+    '<span class="composite-flag" title="' + (mainLang || "").toUpperCase() + " + " + (subLang || "").toUpperCase() + ' Sub">' +
+    mainSvg +
+    '<span class="composite-flag-sub">' + subSvg + "</span>" +
+    "</span>"
+  );
+}
 const SUB_DETECT_MAP: [RegExp, string][] = [
   [/\(\s*\w+\s*,\s*(?:ger(?:man)?|de(?:utsch)?)(?:\s*sub(?:s|title)?(?:s)?)?\s*\)/i, "de"],
   [/\(\s*\w+\s*,\s*(?:eng(?:l(?:ish)?)?|en)(?:\s*sub(?:s|title)?(?:s)?)?\s*\)/i, "en"],

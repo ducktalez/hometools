@@ -129,79 +129,44 @@ def render_search_filter_js() -> str:
   /* _collectPlaylistGenres: ported to webui/src/catalogQuery.ts as
      collectGenres(items) — playlistItems now explicit param. */
 
+  /* labels/counts: webui/src/filterPopover.ts (chip views); DOM writes here. */
   function updateFilterChips() {
     if (filterCombinedBtn) {
-      var activeCount = (filterRating > 0 ? 1 : 0) + (filterFav ? 1 : 0) + (filterGenre ? 1 : 0);
-      filterCombinedBtn.innerHTML = IC_FILTER + ' Filtern' + (activeCount ? ' (' + activeCount + ')' : '');
-      filterCombinedBtn.classList.toggle('active', activeCount > 0);
-      filterCombinedBtn.title = activeCount
-        ? activeCount + ' Filter aktiv \u2014 klicken zum Anpassen'
-        : 'Filtern (Bewertung, Favoriten, Genre)';
+      var cv = window._filterCombinedChipView({ rating: filterRating, fav: filterFav, genre: filterGenre }, IC_FILTER);
+      filterCombinedBtn.innerHTML = cv.html;
+      filterCombinedBtn.classList.toggle('active', cv.active);
+      filterCombinedBtn.title = cv.title;
     }
     /* Keep an already-open popover's contents (star state, genre <select>)
        in sync — e.g. after navigating into a folder whose genre list differs. */
     if (document.getElementById('ht-filter-popover')) _renderFilterPopoverBody();
     if (filterHiddenBtn) {
-      if (_effectiveThreshold > 0) {
-        var _hiddenCount = playlistItems.filter(function(t) {
-          var r = t.rating || 0; return r > 0 && r < _effectiveThreshold;
-        }).length;
-        var _totalCount = playlistItems.length;
+      var hv = window._filterHiddenChipView(playlistItems, _effectiveThreshold, showHidden, IC_EYE);
+      if (hv) {
         filterHiddenBtn.style.display = '';
-        /* Always render "(N/M)" so the button width stays stable — prevents layout shift on click */
-        filterHiddenBtn.innerHTML = IC_EYE + ' Ausgeblendet (' + _hiddenCount + '/' + _totalCount + ')';
-        filterHiddenBtn.classList.toggle('active', !showHidden);
-        filterHiddenBtn.title = showHidden
-          ? 'Ausgeblendete Songs sichtbar \u2014 klicken zum Verstecken'
-          : 'Ausgeblendete Songs einblenden';
+        filterHiddenBtn.innerHTML = hv.html;
+        filterHiddenBtn.classList.toggle('active', hv.active);
+        filterHiddenBtn.title = hv.title;
       } else {
         filterHiddenBtn.style.display = 'none';
       }
     }
-  }
-
-  /* ── Combined "Filtern" popover (Bewertung + Favorit + Genre) ──────────
+  }  /* ── Combined "Filtern" popover (Bewertung + Favorit + Genre) ──────────
      Mirrors the generic _openCtxMenu() pattern (_library_tools.py) —
      fixed-position card anchored to the trigger button, closes on outside
      click / Escape — but hosts interactive controls (star buttons,
      checkbox, <select>) instead of a static action list, so it gets its
      own small open/close/wire trio here rather than reusing _openCtxMenu's
      items schema (label+onClick only). */
+  /* markup: webui/src/filterPopover.ts::filterPopoverBodyHtml (state explicit). */
   function _filterPopoverBodyHtml() {
-    var genreList = _collectGenres(playlistItems);
-    var starsHtml = '';
-    for (var i = 1; i <= 5; i++) {
-      starsHtml += '<button type="button" class="filter-popover-star' + (i <= filterRating ? ' active' : '') +
-        '" data-star="' + i + '" title="' + i + (i === 1 ? '+ Stern' : '+ Sterne') + '">' +
-        (i <= filterRating ? IC_STAR_FILLED : IC_STAR_EMPTY) + '</button>';
-    }
-    var genreSectionHtml = genreList.length
-      ? '<div class="filter-popover-section">' +
-          '<div class="filter-popover-label">Genre</div>' +
-          '<select class="filter-popover-genre-select" id="filter-popover-genre-select">' +
-            '<option value="">Alle Genres</option>' +
-            genreList.map(function(g) {
-              return '<option value="' + escHtml(g) + '"' + (g === filterGenre ? ' selected' : '') + '>' + escHtml(g) + '</option>';
-            }).join('') +
-          '</select>' +
-        '</div>'
-      : '';
-    return (
-      '<div class="filter-popover-section">' +
-        '<div class="filter-popover-label">Bewertung</div>' +
-        '<div class="filter-popover-stars">' + starsHtml + '</div>' +
-      '</div>' +
-      '<div class="filter-popover-section">' +
-        '<label class="filter-popover-toggle">' +
-          '<input type="checkbox" id="filter-popover-fav"' + (filterFav ? ' checked' : '') + '> Nur Favoriten' +
-        '</label>' +
-      '</div>' +
-      genreSectionHtml +
-      '<button type="button" class="filter-popover-reset" id="filter-popover-reset">Zur\u00fccksetzen</button>'
+    return window._filterPopoverBodyHtml(
+      _collectGenres(playlistItems),
+      { rating: filterRating, fav: filterFav, genre: filterGenre },
+      { starFilled: IC_STAR_FILLED, starEmpty: IC_STAR_EMPTY },
+      escHtml
     );
-  }
-
-  function _wireFilterPopoverBody(pop) {
+  }  function _wireFilterPopoverBody(pop) {
     pop.querySelectorAll('.filter-popover-star').forEach(function(starBtn) {
       starBtn.addEventListener('click', function() {
         var val = Number(starBtn.dataset.star);

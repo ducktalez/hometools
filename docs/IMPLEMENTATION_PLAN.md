@@ -13,11 +13,11 @@ FastAPI static assets. Backend untouched. CSS side already fully migrated
 (see below).
 
 **Rule:** port one pure, dependency-free function/module at a time (proven:
-`pathUtils.ts`, `dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`,
+`pathUtils.ts`, `dupeUtils.ts` (+ `buildDuplicateIndex`), `breadcrumb.ts`, `smartPlaylist.ts`,
 `recentMoveTargets.ts`, `catalogCache.ts`, `offlineDownloads.ts`,
-`langDetect.ts`, `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`,
+`langDetect.ts` (inkl. Flag-Badge-HTML), `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`,
 `toast.ts`, `folderCache.ts`, `shuffle.ts`, `offlineUrl.ts`,
-`catalogQuery.ts::sortTracks`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts`). Never bulk-port via `eval()` —
+`catalogQuery.ts::sortTracks`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts`, `progress.ts`, `playerControls.ts`, `customOrder.ts`, `filterPopover.ts` (+ Chip-Views), `offlineDownloads.ts::storageSummaryView`, `catalogQuery.ts::findItemByStreamUrl`). Never bulk-port via `eval()` —
 tried once, broke prod (see git log 2026-08-06). `legacy.ts` sits unused in
 tree as raw material — don't re-enable as-is.
 
@@ -35,7 +35,7 @@ bleibt als No-Op (`""`) nur für `_html.py`s Signatur erhalten.
 **Regel seit vitest-Setup:** jeder Port bringt einen Verhaltenstest in
 `webui/test/*.test.ts` mit (läuft auch via pytest `test_webui_unit.py`).
 Ältere Ports ohne Test nachziehen, wenn angefasst (`pathUtils.ts`,
-`dupeUtils.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `catalogCache.ts`,
+`dupeUtils.ts` (+ `buildDuplicateIndex`), `breadcrumb.ts`, `smartPlaylist.ts`, `catalogCache.ts`,
 `offlineDownloads.ts`, `langDetect.ts`, `episodeGaps.ts`, `folderCache.ts`,
 `offlineUrl.ts`, `clickGuard.ts`, `toast.ts`).
 

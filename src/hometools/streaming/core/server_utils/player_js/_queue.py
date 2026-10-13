@@ -609,31 +609,14 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
      window (see main.ts) — this bare identifier resolves through the
      normal JS scope chain to window.cleanFolderName. */
 
+  /* langBadgesHtml/compositeFlagHtml: ported to webui/src/langDetect.ts
+     (LANG_TO_FLAG explicit param). Wrappers keep bare names. */
   function langBadgesHtml(langs) {
-    if (!langs || !langs.length) return '';
-    var html = '';
-    langs.forEach(function(lc) {
-      var svg = LANG_TO_FLAG[lc];
-      if (svg) {
-        html += '<span class="lang-badge" title="' + lc.toUpperCase() + '">' + svg + '</span>';
-      }
-    });
-    return html;
+    return window._langBadgesHtml(langs, LANG_TO_FLAG);
   }
 
-
-  /* Composite flag: main language flag with optional smaller subtitle flag overlay */
   function compositeFlagHtml(mainLang, subLang) {
-    var mainSvg = mainLang && LANG_TO_FLAG[mainLang] ? LANG_TO_FLAG[mainLang] : '';
-    if (!mainSvg) return '';
-    var subSvg = subLang && LANG_TO_FLAG[subLang] ? LANG_TO_FLAG[subLang] : '';
-    if (!subSvg) {
-      return '<span class="composite-flag" title="' + (mainLang || '').toUpperCase() + '">' + mainSvg + '</span>';
-    }
-    return '<span class="composite-flag" title="' + (mainLang || '').toUpperCase() + ' + ' + (subLang || '').toUpperCase() + ' Sub">' +
-      mainSvg +
-      '<span class="composite-flag-sub">' + subSvg + '</span>' +
-    '</span>';
+    return window._compositeFlagHtml(mainLang, subLang, LANG_TO_FLAG);
   }
 
   /* contentsAt: ported to webui/src/folderContents.ts (allItems +

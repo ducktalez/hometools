@@ -108,5 +108,16 @@ export function sortTracks(
   });
 }
 
-
-
+/** Item for a stream URL: prefers `filteredItems` (index >= 0), falls back to `allItems` (index -1). */
+export function findItemByStreamUrl(
+  streamUrl: string,
+  filteredItems: LegacyMediaItem[],
+  allItems: LegacyMediaItem[]
+): { item: LegacyMediaItem; index: number } | null {
+  const idx = filteredItems.findIndex((it) => it.stream_url === streamUrl);
+  if (idx >= 0) return { item: filteredItems[idx], index: idx };
+  for (let i = 0; i < allItems.length; i++) {
+    if (allItems[i].stream_url === streamUrl) return { item: allItems[i], index: -1 };
+  }
+  return null;
+}
