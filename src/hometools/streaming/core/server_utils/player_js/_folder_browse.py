@@ -146,78 +146,16 @@ def render_folder_browse_js() -> str:
       /* "+ Neue Playlist" and "Titel" are rendered in the compact tools row above. */
     }
 
-    c.folders.forEach(function(f) {
-      var noun = f.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN;
-      var thumbSrc = viewMode !== 'list'
-        ? (f.thumbnail_lg_url || f.thumbnail_url || FOLDER_PLACEHOLDER)
-        : (f.thumbnail_url || FOLDER_PLACEHOLDER);
-      var displayLabel = showOrigNames ? f.name : f.displayName;
-      var favBadge = f.isFavorite && !showOrigNames ? '<span class="fav-badge" title="Favorit">' + IC_STAR + '</span>' : '';
-      var langBadges = !showOrigNames ? langBadgesHtml(f.languages) : '';
-      var isAudiobook = AUDIOBOOK_DIRS.some(function(d) { return f.name.toLowerCase().startsWith(d.toLowerCase()); });
-      var hasVariants = f.variants && f.variants.length > 1;
-      var extraClass = (f.isFavorite ? ' fav-folder' : '') + (isAudiobook ? ' audiobook-folder' : '') + (hasVariants ? ' multi-lang-folder' : '');
-      var variantsAttr = hasVariants ? ' data-variants="' + escHtml(JSON.stringify(f.variants)) + '"' : '';
-
-      /* Video server: always show a single primary-language flag in a fixed
-         top-right corner — falls back to DEFAULT_LANG when nothing detected.
-         Multi-variant folders skip this corner flag because they already render
-         per-variant flag buttons inside the folder-count area.  Audio keeps the
-         pre-existing inline langBadges next to folder-name. */
-      var cornerFlagHtml = '';
-      if (_isVideo && !showOrigNames && !hasVariants) {
-        var primaryLang = (f.languages && f.languages[0]) || DEFAULT_LANG;
-        var pf = compositeFlagHtml(primaryLang, f.subLang || '');
-        if (pf) cornerFlagHtml = '<span class="folder-lang-corner">' + pf + '</span>';
-        /* On video we suppress the inline name-side badge to avoid duplication */
-        langBadges = '';
-      }
-
-      /* Build folder-count content: inline flag buttons for multi-lang, plain count otherwise */
-      var countContent;
-      if (hasVariants && !showOrigNames) {
-        /* Sort: DEFAULT_LANG first, then alphabetical */
-        var sortedV = f.variants.slice().sort(function(a, b) {
-          if (a.lang === DEFAULT_LANG && b.lang !== DEFAULT_LANG) return -1;
-          if (b.lang === DEFAULT_LANG && a.lang !== DEFAULT_LANG) return 1;
-          return (a.lang || '').localeCompare(b.lang || '');
-        });
-        countContent = '';
-        sortedV.forEach(function(v) {
-          var flag = compositeFlagHtml(v.lang, v.subLang);
-          if (flag) {
-            countContent += '<button class="lang-select-btn" data-variant-name="' + escHtml(v.name) + '" title="' +
-              escHtml((_LANG_NAME_MAP[v.lang] || v.lang || '') + (v.subLang ? ' + ' + (_LANG_NAME_MAP[v.subLang] || v.subLang) + ' Sub' : '') + ' (' + v.count + ')') + '">' +
-              flag + '<span class="lang-select-count">' + v.count + '</span></button>';
-          }
-        });
-        if (!countContent) countContent = f.count + ' ' + noun;
-      } else {
-        countContent = f.count + ' ' + noun;
-      }
-
-      html += '<div class="folder-card' + extraClass + '" data-folder="' + escHtml(f.name) + '"' + variantsAttr + '>' +
-        favBadge +
-        cornerFlagHtml +
-        '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-        '<div class="folder-name">' + escHtml(displayLabel) + (langBadges && !hasVariants ? ' ' + langBadges : '') + '</div>' +
-        '<div class="folder-count">' + countContent + '</div>' +
-        '<button class="folder-play-btn" title="Play all">' + IC_FOLDER_PLAY + '</button>' +
-      '</div>';
-    });
-    c.files.forEach(function(it, i) {
-      var thumbSrc = viewMode !== 'list'
-        ? (it.thumbnail_lg_url || it.thumbnail_url || FILE_PLACEHOLDER)
-        : (it.thumbnail_url || FILE_PLACEHOLDER);
-      var ratingBar = it.rating > 0 ? '<div class="rating-bar" style="width:' + (it.rating / 5 * 100) + '%"></div>' : '';
-      html += '<div class="folder-card file-card" data-file-idx="' + i + '">' +
-        '<div class="thumb-wrap folder-thumb-wrap">' +
-        '<img class="folder-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-        ratingBar + '</div>' +
-        '<div class="folder-name">' + escHtml(it.title) + '</div>' +
-        '<div class="folder-count">' + escHtml(it.artist || '') + '</div>' +
-      '</div>';
-    });
+    /* card HTML: webui/src/folderCards.ts (folderCardHtml / fileCardHtml) */
+    var _cardOpts = {
+      escHtml: escHtml, viewMode: viewMode, showOrigNames: showOrigNames, isVideo: _isVideo,
+      itemNoun: ITEM_NOUN, defaultLang: DEFAULT_LANG, audiobookDirs: AUDIOBOOK_DIRS,
+      langNames: _LANG_NAME_MAP, folderPlaceholder: FOLDER_PLACEHOLDER, filePlaceholder: FILE_PLACEHOLDER,
+      icStar: IC_STAR, icFolderPlay: IC_FOLDER_PLAY,
+      compositeFlagHtml: compositeFlagHtml, langBadgesHtml: langBadgesHtml
+    };
+    c.folders.forEach(function(f) { html += window._folderCardHtml(f, _cardOpts); });
+    c.files.forEach(function(it, i) { html += window._fileCardHtml(it, i, _cardOpts); });
     folderGrid.innerHTML = html;
 
     /* Offline folder card click → open offline library */

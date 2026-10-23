@@ -130,7 +130,7 @@ is **done** — `_css.py`/`css/*.py` are gone, all rules live in
   `metricPill.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `recentMoveTargets.ts`,
   `catalogCache.ts`, `offlineDownloads.ts`, `langDetect.ts` (+ flag-badge HTML), `episodeGaps.ts`,
   `catalogQuery.ts`, `clickGuard.ts`, `toast.ts`, `folderCache.ts`,
-  `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
+  `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `recentlyPlayed.ts`, `folderCards.ts`, `trackRows.ts`, `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
   cross-fragment globals still owned by the legacy script; `stateBridge.ts`
   types `window.htState` — the live getter/setter bridge `_core.py` defines
   over its IIFE-scoped state vars, used by ports that must *write* shared

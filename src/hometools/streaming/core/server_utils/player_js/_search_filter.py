@@ -56,16 +56,8 @@ def render_search_filter_js() -> str:
     folderMatches.forEach(function(fm) {
       var li = document.createElement('li');
       li.className = 'track-item search-folder-item';
-      var thumbSrc = fm.thumbnail_url || FILE_PLACEHOLDER;
-      var parentDir = fm.path.lastIndexOf('/') > 0 ? fm.path.substring(0, fm.path.lastIndexOf('/')) : '';
-      li.innerHTML = '<div class="track-number">' + IC_FOLDER_PLAY + '</div>' +
-        '<div class="track-thumb-wrap"><img class="track-thumb" src="' + escHtml(thumbSrc) + '" loading="lazy"></div>' +
-        '<div class="track-info">' +
-          '<div class="track-title">' + escHtml(fm.displayName || fm.name) +
-            ' <span class="search-folder-count">(' + fm.count + ')</span></div>' +
-          '<div class="track-artist">Ordner</div>' +
-          (parentDir ? '<div class="search-result-folder">' + escHtml(parentDir) + '</div>' : '') +
-        '</div>';
+      /* row markup: webui/src/trackRows.ts::searchFolderRowHtml */
+      li.innerHTML = window._searchFolderRowHtml(fm, escHtml, FILE_PLACEHOLDER, IC_FOLDER_PLAY);
       li.addEventListener('click', function() { navigateToSearchFolder(fm.path); });
       trackList.appendChild(li);
     });
@@ -73,19 +65,8 @@ def render_search_filter_js() -> str:
       var li = document.createElement('li');
       li.className = 'track-item';
       li.setAttribute('data-index', i);
-      var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
-      var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
-      /* Extract folder path for context */
-      var folderPath = '';
-      var lastSlash = (t.relative_path || '').lastIndexOf('/');
-      if (lastSlash > 0) folderPath = t.relative_path.substring(0, lastSlash);
-      li.innerHTML = '<div class="track-number">' + (i + 1) + '</div>' +
-        '<div class="track-thumb-wrap"><img class="track-thumb" src="' + escHtml(thumbSrc) + '" loading="lazy">' + ratingBar + '</div>' +
-        '<div class="track-info">' +
-          '<div class="track-title">' + escHtml(t.title || t.relative_path) + '</div>' +
-          '<div class="track-artist">' + escHtml(t.artist || '') + '</div>' +
-          (folderPath ? '<div class="search-result-folder">' + escHtml(folderPath) + '</div>' : '') +
-        '</div>';
+      /* row markup: webui/src/trackRows.ts::searchResultRowHtml */
+      li.innerHTML = window._searchResultRowHtml(t, i, escHtml, FILE_PLACEHOLDER);
       li.addEventListener('click', function() { navigateToSearchResult(t, i); });
       trackList.appendChild(li);
     });
@@ -308,110 +289,18 @@ def render_search_filter_js() -> str:
     /* BPM "calculate" affordance (yellow-glow clickable "?") is gated by the
        Tools-panel "BPM berechnen" toggle — see _track_render.py::_applyToolState. */
     var bpmCalcEnabled = !!(_toolState.active && _toolState.bpmCalc);
-    var html = '';
-    for (var i = _renderBatchOffset; i < end; i++) {
-      var t = _renderAllItems[i];
-      var idx = _renderRealIdxMap[i];
-      /* missing episode placeholder */
-      if (t._missing) {
-        var seLabel = 'S' + String(t.season).padStart(2, '0') + 'E' + String(t.episode).padStart(2, '0');
-        html += '<li class="track-item missing-episode" aria-disabled="true">' +
-          '<span class="track-num"><span class="num-text">' + seLabel + '</span></span>' +
-          '<div class="track-info"><div class="track-title">Folge fehlt</div>' +
-          '<div class="track-artist">' + seLabel + ' \\u2014 nicht in der Bibliothek</div></div></li>';
-        continue;
-      }
-      /* debug-filtered placeholder */
-      if (t._debugReason) {
-        var dbgTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
-        var dbgSub = t.artist || t.relative_path;
-        var dbgThumb = t.thumbnail_url || FILE_PLACEHOLDER;
-        var dbgRating = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
-        html += '<li class="track-item debug-filtered">' +
-          '<span class="track-num"><span class="num-text">\\u00b7</span></span>' +
-          '<div class="thumb-wrap track-thumb-wrap">' +
-          '<img class="track-thumb" src="' + escHtml(dbgThumb) + '" alt="" loading="lazy">' +
-          dbgRating + '</div>' +
-          '<div class="track-info">' +
-            '<div class="track-title">' + escHtml(dbgTitle) + '</div>' +
-            '<div class="track-artist">' + escHtml(dbgSub) + '</div>' +
-            '<div class="debug-reason">' + escHtml(t._debugReason) + '</div>' +
-          '</div></li>';
-        continue;
-      }
-      /* normal track row */
-      var isSeries = (t.season || 0) > 0;
-      var numLabel = isSeries
-        ? 'S' + String(t.season).padStart(2, '0') + 'E' + String(t.episode).padStart(2, '0')
-        : String(idx + 1);
-      var displayTitle = showOrig ? filenameFromPath(t.relative_path) : t.title;
-      var subtitle = t.artist || t.relative_path;
-      var extraCls = (idx === currentIndex ? ' active' : '') + (t._hiddenShown ? ' track-item--hidden-shown' : '');
-      var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
-      var ratingBar = t.rating > 0 ? '<div class="rating-bar" style="width:' + (t.rating / 5 * 100) + '%"></div>' : '';
-      var convertBadge = needsConversion(t.relative_path) ? '<span class="convert-badge" title="Wird on-the-fly konvertiert">\\u26A1</span>' : '';
-      var isDupe = _dupePaths && _dupePaths.has(t.relative_path);
-      var dupeSafe = isDupe && _dupeSafety && _dupeSafety[t.relative_path];
-      var dupeDeleteCls = isDupe ? (dupeSafe ? ' track-delete-btn--safe' : ' track-delete-btn--warn') : '';
-      var dupeDeleteTitle = isDupe
-        ? (dupeSafe ? 'Duplikat l\\u00f6schen (Gr\\u00f6\\u00dfe + L\\u00e4nge nahezu identisch)'
-                    : 'Duplikat l\\u00f6schen \\u2014 Vorsicht: Gr\\u00f6\\u00dfe oder L\\u00e4nge weicht ab!')
-        : '';
-      var dupeBadge = isDupe ? '<span class="dupe-badge" title="Duplikat erkannt">Duplikat' +
-        '<button class="track-delete-btn' + dupeDeleteCls + '" data-index="' + idx +
-        '" title="' + escHtml(dupeDeleteTitle) + '">' + IC_TRASH + '</button></span>' : '';
-      /* Table/detail view (audio only): title + artist become directly
-         editable while a tool is active, and duration/genre get their own
-         columns (hidden by CSS outside table-mode). */
-      var tableEditable = (trackViewMode === 'table' && !isVideoMode && METADATA_EDIT_ENABLED && showOrig);
-      var editAttrs = tableEditable
-        ? ' contenteditable="true" spellcheck="false" data-relative-path="' + escHtml(t.relative_path || '') + '"'
-        : '';
-      /* BPM pill (audio only) — same markup serves both the always-visible
-         list-view pill and the table-view column (CSS alone repositions it
-         via .track-bpm-cell); see webui/src/metricPill.ts + docs/architecture.md
-         "Metric Pill Architecture" for the generalized design (future fields:
-         genre/mood/key can follow the same pattern). */
-      var bpmPillHtml = (isVideoMode || typeof window.renderBpmPill !== 'function')
-        ? ''
-        : '<span class="track-bpm-cell">' + window.renderBpmPill(t.bpm, BPM_MIN, BPM_MAX,
-            { index: idx, relativePath: t.relative_path, calcEnabled: bpmCalcEnabled }) + '</span>';
-      html += '<li class="track-item' + extraCls +
-        '" data-index="' + idx + '">' +
-        '<span class="track-num"><span class="num-text">' + numLabel + '</span></span>' +
-        '<div class="thumb-wrap track-thumb-wrap">' +
-        '<img class="track-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-        '<button class="track-play-btn" data-index="' + idx + '" title="Abspielen">' + IC_FOLDER_PLAY + '</button>' +
-        ratingBar + '</div>' +
-        '<div class="track-info">' +
-          '<div class="track-title"><span class="track-title-text"' + (tableEditable ? editAttrs + ' data-field="title"' : '') + '>' + escHtml(displayTitle) + '</span>' + convertBadge + dupeBadge + '</div>' +
-          '<div class="track-artist"' + (tableEditable ? editAttrs + ' data-field="artist"' : '') + '>' + escHtml(subtitle) + '</div>' +
-        '</div>' +
-        bpmPillHtml +
-        '<span class="track-duration-cell">' + (t.duration ? fmtTime(t.duration) : '') + '</span>' +
-        '<span class="track-genre-cell">' + escHtml(t.genre || '') + '</span>' +
-        '<button class="track-dl-btn" data-stream-url="' + escHtml(t.stream_url) +
-          '" data-title="' + escHtml(t.title) +
-          '" data-artist="' + escHtml(t.artist || '') +
-          '" data-relative-path="' + escHtml(t.relative_path || '') +
-          '" data-thumbnail-url="' + escHtml(t.thumbnail_url || '') +
-          '" data-media-type="' + escHtml(t.media_type || ITEM_NOUN) + '" title="Download">' + IC_DL + '</button>' +
-        '<button class="track-pin-btn" data-relative-path="' + escHtml(t.relative_path || '') +
-          '" data-title="' + escHtml(t.title) +
-          '" title="Favorit">' + IC_PIN + '</button>' +
-        (METADATA_EDIT_ENABLED ? '<button class="track-edit-btn" data-index="' + idx + '" title="Bearbeiten">' + IC_EDIT + '</button>' : '') +
-        (PLAYLISTS_ENABLED ? '<button class="track-playlist-btn" data-relative-path="' + escHtml(t.relative_path || '') + '" title="Zur Playlist hinzuf\\u00fcgen">' + IC_PLAYLIST + '</button>' : '') +
-        '<button class="track-queue-btn" data-relative-path="' + escHtml(t.relative_path || '') + '" data-index="' + idx + '" title="Zur Warteschlange hinzuf\\u00fcgen">' + IC_QUEUE + '</button>' +
-        '<button class="track-kebab-btn" data-relative-path="' + escHtml(t.relative_path || '') +
-          '" data-title="' + escHtml(t.title) + '" title="Mehr Optionen">' + IC_DOTS + '</button>' +
-        '<button class="track-reveal-btn" data-relative-path="' + escHtml(t.relative_path || '') +
-          '" data-title="' + escHtml(t.title) + '" title="Im Explorer anzeigen">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
-        '</button>' +
-        renderInlineRating(t, idx) +
-        renderMoveWidget(t, idx) +
-        '</li>';
-    }
+    /* row HTML: webui/src/trackRows.ts::trackRowsHtml (missing / debug / normal rows) */
+    var html = window._trackRowsHtml(_renderAllItems, _renderRealIdxMap, _renderBatchOffset, end, {
+      escHtml: escHtml, fmtTime: fmtTime, showOrig: showOrig, currentIndex: currentIndex,
+      bpmCalcEnabled: bpmCalcEnabled, trackViewMode: trackViewMode, isVideoMode: isVideoMode,
+      metadataEditEnabled: !!METADATA_EDIT_ENABLED, playlistsEnabled: !!PLAYLISTS_ENABLED,
+      itemNoun: ITEM_NOUN, bpmMin: BPM_MIN, bpmMax: BPM_MAX,
+      dupePaths: _dupePaths, dupeSafety: _dupeSafety, filePlaceholder: FILE_PLACEHOLDER,
+      ic: { folderPlay: IC_FOLDER_PLAY, trash: IC_TRASH, dl: IC_DL, pin: IC_PIN, edit: IC_EDIT,
+            playlist: IC_PLAYLIST, queue: IC_QUEUE, dots: IC_DOTS },
+      renderBpmPill: window.renderBpmPill,
+      renderInlineRating: renderInlineRating, renderMoveWidget: renderMoveWidget
+    });
     var isFirstBatch = (_renderBatchOffset === 0);
     _renderBatchOffset = end;
     if (_renderSentinelEl && _renderSentinelEl.parentNode === trackList) {

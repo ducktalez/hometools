@@ -152,7 +152,7 @@ import { renderBpmPill } from "./metricPill";
 import { needsConversion, filenameFromPath, parentPath, leafName, currentFolderOf } from "./pathUtils";
 import { _fmtDuration, _fmtFileSize, _fmtDate, _normalizeStem, _dupeKey, _isDupeGroupSafe } from "./dupeUtils";
 import { cleanFolderName, renderBreadcrumbHtml } from "./breadcrumb";
-import { formatDate, sortDownloads, getAppDownloadUsage, estimateOfflineStorage, storageSummaryView } from "./offlineDownloads";
+import { formatDate, sortDownloads, getAppDownloadUsage, estimateOfflineStorage, storageSummaryView, readyStreamUrls, offlineDownloadListHtml } from "./offlineDownloads";
 import type { OfflineStorageInfo, StorageSummaryView } from "./offlineDownloads";
 import { detectLangFromName, detectSubLangFromName, langBadgesHtml, compositeFlagHtml } from "./langDetect";
 import { progressApiBase, buildProgressPayload } from "./progress";
@@ -180,6 +180,9 @@ import { applyFilterChain } from "./filterChain";
 import { parseIntro, introButtonMode, patchIntroLocal } from "./intro";
 import { queueIndexOf, queueAdd, queueRemoveAt, queueClear, queueMove, resolveNext } from "./queue";
 import { contentsAt } from "./folderContents";
+import { folderCardHtml, fileCardHtml } from "./folderCards";
+import { trackRowsHtml, searchFolderRowHtml, searchResultRowHtml } from "./trackRows";
+import { recentCardsHtml, recentPlayContext } from "./recentlyPlayed";
 import {
   initDownloadDB,
   getDownloadByStreamUrl,
@@ -360,6 +363,8 @@ declare global {
     getAppDownloadUsage: typeof getAppDownloadUsage;
     estimateOfflineStorage: typeof estimateOfflineStorage;
     _storageSummaryView(info: OfflineStorageInfo): StorageSummaryView;
+    _readyStreamUrls: typeof readyStreamUrls;
+    _offlineDownloadListHtml: typeof offlineDownloadListHtml;
     detectLangFromName: typeof detectLangFromName;
     detectSubLangFromName: typeof detectSubLangFromName;
     _langBadgesHtml: typeof langBadgesHtml;
@@ -402,6 +407,13 @@ declare global {
     _resolveNext: typeof resolveNext;
     _replaceItemFields: typeof replaceItemFields;
     _contentsAt: typeof contentsAt;
+    _folderCardHtml: typeof folderCardHtml;
+    _fileCardHtml: typeof fileCardHtml;
+    _trackRowsHtml: typeof trackRowsHtml;
+    _searchFolderRowHtml: typeof searchFolderRowHtml;
+    _searchResultRowHtml: typeof searchResultRowHtml;
+    _recentCardsHtml: typeof recentCardsHtml;
+    _recentPlayContext: typeof recentPlayContext;
     initDownloadDB: typeof initDownloadDB;
     getDownloadByStreamUrl: typeof getDownloadByStreamUrl;
     getAllDownloads: typeof getAllDownloads;
@@ -496,6 +508,8 @@ window.sortDownloads = sortDownloads;
 window.getAppDownloadUsage = getAppDownloadUsage;
 window.estimateOfflineStorage = estimateOfflineStorage;
 window._storageSummaryView = function (info) { return storageSummaryView(info, formatBytes); };
+window._readyStreamUrls = readyStreamUrls;
+window._offlineDownloadListHtml = offlineDownloadListHtml;
 window.detectLangFromName = detectLangFromName;
 window.detectSubLangFromName = detectSubLangFromName;
 window._langBadgesHtml = langBadgesHtml;
@@ -539,6 +553,13 @@ window._queueMove = queueMove;
 window._resolveNext = resolveNext;
 window._replaceItemFields = replaceItemFields;
 window._contentsAt = contentsAt;
+window._folderCardHtml = folderCardHtml;
+window._fileCardHtml = fileCardHtml;
+window._trackRowsHtml = trackRowsHtml;
+window._searchFolderRowHtml = searchFolderRowHtml;
+window._searchResultRowHtml = searchResultRowHtml;
+window._recentCardsHtml = recentCardsHtml;
+window._recentPlayContext = recentPlayContext;
 // IndexedDB layer — same names as legacy (bare call sites unchanged).
 window.initDownloadDB = initDownloadDB;
 window.getDownloadByStreamUrl = getDownloadByStreamUrl;

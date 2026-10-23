@@ -148,25 +148,8 @@ def render_track_render_js() -> str:
     updateOfflineFolderCount();
   }  function renderOfflineDownloadList(downloads) {
     if (!offlineDownloadList) return;
-    if (!downloads.length) {
-      offlineDownloadList.innerHTML = '<li class="empty-downloads">Noch keine Offline-Downloads gespeichert.</li>';
-      return;
-    }
-    offlineDownloadList.innerHTML = downloads.map(function(download) {
-      var thumbSrc = download.thumbnailUrl || FILE_PLACEHOLDER;
-      var subtitle = download.artist || download.relativePath || '';
-      var statusText = download.status === 'ready' ? 'Offline bereit' : (download.status || 'unbekannt');
-      return '<li class="offline-download-item" data-stream-url="' + escHtml(download.streamUrl) + '">' +
-        '<img class="offline-download-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-        '<div class="offline-download-meta">' +
-          '<div class="offline-download-title">' + escHtml(download.title || 'Unbenannter Download') + '</div>' +
-          '<div class="offline-download-sub">' + escHtml(subtitle) + '</div>' +
-          '<div class="offline-download-size">' + escHtml(statusText) + ' · ' +
-            escHtml(formatBytes(download.size || 0)) + ' · ' + escHtml(formatDate(download.timestamp)) + '</div>' +
-        '</div>' +
-        '<button class="offline-download-delete" data-stream-url="' + escHtml(download.streamUrl) + '" title="Entfernen">Entfernen</button>' +
-      '</li>';
-    }).join('');
+    offlineDownloadList.innerHTML = window._offlineDownloadListHtml(downloads, escHtml, formatBytes, FILE_PLACEHOLDER);
+    if (!downloads.length) return;
     offlineDownloadList.querySelectorAll('.offline-download-item').forEach(function(el) {
       el.addEventListener('click', function(e) {
         if (e.target && e.target.classList && e.target.classList.contains('offline-download-delete')) return;
@@ -307,25 +290,16 @@ def render_track_render_js() -> str:
           card.addEventListener('click', function() {
             var path = card.dataset.path;
             var seekPos = parseFloat(card.dataset.pos) || 0;
-            /* find item in the full allItems list */
+            /* item + folder siblings: webui/src/recentlyPlayed.ts::recentPlayContext */
+            var ctx = window._recentPlayContext(path, allItems);
+            if (!ctx) return;
             var found = null;
             for (var i = 0; i < allItems.length; i++) {
               if (allItems[i].relative_path === path) { found = allItems[i]; break; }
             }
-            if (!found) return;
-            /* navigate to the item's folder and play it */
-            var folder = path.lastIndexOf('/') >= 0
-              ? path.substring(0, path.lastIndexOf('/')) : '';
-            currentPath = folder;
+            currentPath = ctx.folder;
             inPlaylist = true;
-            var folderItems = folder
-              ? allItems.filter(function(it) {
-                  return it.relative_path.startsWith(folder + '/') &&
-                    it.relative_path.indexOf('/', folder.length + 1) < 0;
-                })
-              : allItems.filter(function(it) { return it.relative_path.indexOf('/') < 0; });
-            if (!folderItems.length) folderItems = [found];
-            showPlaylist(folderItems, false);
+            showPlaylist(ctx.folderItems, false);
             /* Find the correct index in filteredItems *after* showPlaylist has
                sorted them via applyFilter.  Computing idx from the unsorted
                folderItems before showPlaylist would give a stale position and
@@ -385,10 +359,8 @@ def render_track_render_js() -> str:
   function updateAllDownloadButtons() {
     if (!downloadDB) return;
     getAllDownloads().then(function(downloads) {
-      var cached = {};
-      downloads.forEach(function(d) {
-        if (d.streamUrl && d.status === 'ready') cached[d.streamUrl] = true;
-      });
+      /* ready-set: webui/src/offlineDownloads.ts::readyStreamUrls */
+      var cached = window._readyStreamUrls(downloads);
       document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
         var url = btn.dataset.streamUrl;
         btn.classList.remove('cached');

@@ -7,6 +7,10 @@ export interface OfflineDownload {
   timestamp?: number;
   title?: string;
   size?: number;
+  streamUrl?: string;
+  thumbnailUrl?: string;
+  artist?: string;
+  relativePath?: string;
   [key: string]: unknown;
 }
 
@@ -108,6 +112,18 @@ export function estimateOfflineStorage(downloads: OfflineDownload[], softLimit: 
   }
   return Promise.all(tasks).then(() => info);
 }
+
+/** Set (as object) of streamUrls with a fully downloaded ("ready") entry.
+ * Ported from `_track_render.py::updateAllDownloadButtons`. */
+export function readyStreamUrls(downloads: OfflineDownload[]): Record<string, true> {
+  const cached: Record<string, true> = {};
+  (downloads || []).forEach((d) => {
+    const url = d.streamUrl;
+    if (typeof url === "string" && url && d.status === "ready") cached[url] = true;
+  });
+  return cached;
+}
+
 export interface StorageSummaryView {
   warn: boolean;
   summary: string;
@@ -134,4 +150,35 @@ export function storageSummaryView(info: OfflineStorageInfo, formatBytes: (n: nu
     parts.push(info.persistent ? "Persistent aktiv" : "Nicht persistent");
   }
   return { warn, summary, detail: parts.join(" \u00b7 "), pill: "Downloaded (" + n + ")", hasDownloads: n > 0 };
+}
+
+/** `<li>` HTML of the offline library list. Ported from `renderOfflineDownloadList`. */
+export function offlineDownloadListHtml(
+  downloads: OfflineDownload[],
+  escHtml: (s: unknown) => string,
+  formatBytes: (n: number) => string,
+  placeholder: string
+): string {
+  if (!downloads || !downloads.length) {
+    return '<li class="empty-downloads">Noch keine Offline-Downloads gespeichert.</li>';
+  }
+  return downloads
+    .map((d) => {
+      const thumbSrc = d.thumbnailUrl || placeholder;
+      const subtitle = d.artist || d.relativePath || "";
+      const statusText = d.status === "ready" ? "Offline bereit" : d.status || "unbekannt";
+      return (
+        '<li class="offline-download-item" data-stream-url="' + escHtml(d.streamUrl) + '">' +
+        '<img class="offline-download-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
+        '<div class="offline-download-meta">' +
+        '<div class="offline-download-title">' + escHtml(d.title || "Unbenannter Download") + "</div>" +
+        '<div class="offline-download-sub">' + escHtml(subtitle) + "</div>" +
+        '<div class="offline-download-size">' + escHtml(statusText) + " \u00b7 " +
+        escHtml(formatBytes(d.size || 0)) + " \u00b7 " + escHtml(formatDate(d.timestamp)) + "</div>" +
+        "</div>" +
+        '<button class="offline-download-delete" data-stream-url="' + escHtml(d.streamUrl) + '" title="Entfernen">Entfernen</button>' +
+        "</li>"
+      );
+    })
+    .join("");
 }

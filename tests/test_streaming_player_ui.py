@@ -1666,8 +1666,7 @@ def test_global_search_respects_min_rating():
 
 def test_global_search_shows_folder_path():
     """Search results must show the folder path for context."""
-    js = render_player_js()
-    assert "search-result-folder" in js
+    assert "search-result-folder" in _webui_src("trackRows.ts")
 
 
 def test_global_search_debounce():
@@ -1899,8 +1898,8 @@ def test_js_clean_folder_name_strips_lang_tag():
 
 def test_js_folder_card_renders_lang_badges():
     """Folder card rendering must include langBadgesHtml call."""
-    js = _js()
-    assert "langBadgesHtml(f.languages)" in js
+    assert "o.langBadgesHtml(f.languages)" in _webui_src("folderCards.ts")
+    assert "window._folderCardHtml(f, _cardOpts)" in _js()
 
 
 def test_js_contents_at_aggregates_languages():
@@ -2505,8 +2504,7 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_missing_episode_placeholder_label(self):
         """Missing-episode placeholders must show a clear 'Folge fehlt' label."""
-        js = render_player_js()
-        assert "Folge fehlt" in js
+        assert "Folge fehlt" in _webui_src("trackRows.ts")
 
 
 # ---------------------------------------------------------------------------
@@ -2674,9 +2672,9 @@ class TestTrackDetailTableView:
         assert "detail/table view is audio-only" in js
 
     def test_track_row_has_duration_and_genre_cells(self):
-        js = render_player_js()
-        assert "track-duration-cell" in js
-        assert "track-genre-cell" in js
+        ts = _webui_src("trackRows.ts")
+        assert "track-duration-cell" in ts
+        assert "track-genre-cell" in ts
 
     def test_table_header_columns(self):
         js = render_player_js()
