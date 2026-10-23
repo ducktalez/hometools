@@ -812,17 +812,9 @@ def render_track_render_js() -> str:
   _applyToolState();
 
   /* ── Inline track rating stars ── */
+  /* markup: webui/src/inlineWidgets.ts::inlineRatingHtml */
   function renderInlineRating(t, idx) {
-    if (!RATING_WRITE_ENABLED) return '';
-    var rounded = Math.round(t.rating || 0);
-    var html = '<span class="track-inline-rating" data-index="' + idx + '">';
-    for (var i = 1; i <= 5; i++) {
-      html += '<button class="track-inline-rating-star' + (i <= rounded ? ' active' : '') +
-        '" data-star="' + i + '" data-index="' + idx + '" title="' + i + (i === 1 ? ' Stern' : ' Sterne') + '">' +
-        (i <= rounded ? IC_STAR_FILLED : IC_STAR_EMPTY) + '</button>';
-    }
-    html += '</span>';
-    return html;
+    return window._inlineRatingHtml(t.rating, idx, !!RATING_WRITE_ENABLED, IC_STAR_FILLED, IC_STAR_EMPTY);
   }
 
   function setInlineRating(idx, stars) {
@@ -923,21 +915,8 @@ def render_track_render_js() -> str:
     var menu = document.createElement('div');
     menu.id = 'bpm-adjust-menu';
     menu.className = 'ht-ctx-menu bpm-adjust-menu';
-    menu.innerHTML =
-      '<div class="bpm-adjust-current">' + (curBpm > 0 ? Math.round(curBpm) + ' BPM' : 'BPM unbekannt') + '</div>' +
-      '<div class="bpm-adjust-actions">' +
-        '<button type="button" class="bpm-adjust-btn" data-action="slower"' + (curBpm > 0 ? '' : ' disabled') +
-          ' title="Wert halbieren \u2014 falls doppelt so schnell erkannt wurde">' + IC_CHEVRONS_DOWN + '<span>Langsamer</span></button>' +
-        '<button type="button" class="bpm-adjust-btn" data-action="reload" title="BPM neu berechnen">' +
-          IC_REFRESH + '<span>Neu berechnen</span></button>' +
-        '<button type="button" class="bpm-adjust-btn" data-action="faster"' + (curBpm > 0 ? '' : ' disabled') +
-          ' title="Wert verdoppeln \u2014 falls halb so schnell erkannt wurde">' + IC_CHEVRONS_UP + '<span>Schneller</span></button>' +
-      '</div>' +
-      '<div class="bpm-adjust-manual">' +
-        '<input type="number" class="bpm-adjust-input" min="0" max="400" step="1" inputmode="numeric" ' +
-          'value="' + (curBpm > 0 ? Math.round(curBpm) : '') + '" placeholder="BPM manuell">' +
-        '<button type="button" class="bpm-adjust-apply">\u00dcbernehmen</button>' +
-      '</div>';
+    /* markup: webui/src/playerBarHtml.ts::bpmAdjustMenuHtml */
+    menu.innerHTML = window._bpmAdjustMenuHtml(curBpm, { chevronsDown: IC_CHEVRONS_DOWN, refresh: IC_REFRESH, chevronsUp: IC_CHEVRONS_UP });
     document.body.appendChild(menu);
 
     var rect = btnEl.getBoundingClientRect();

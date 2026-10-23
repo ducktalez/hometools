@@ -34,52 +34,11 @@ def render_library_tools_js() -> str:
     var body = document.getElementById('dupe-panel-body');
     if (!body) return;
     var keys = Object.keys(_dupeMap);
-    if (keys.length === 0) {
-      body.innerHTML = '<div style="text-align:center;color:var(--sub);padding:2rem 0">Keine Duplikate gefunden.</div>';
-    } else {
-      var html = '';
-      keys.forEach(function(key) {
-        var indices = _dupeMap[key];
-        var firstTitle = allItems[indices[0]] ? (allItems[indices[0]].title || key) : key;
-        html += '<div class="dupe-group">';
-        html += '<div class="dupe-group-header">' + IC_DUPLICATE +
-          '<span>' + escHtml(firstTitle) + '</span>' +
-          '<span class="dupe-group-count">(' + indices.length + 'x)</span></div>';
-        indices.forEach(function(idx) {
-          var t = allItems[idx];
-          if (!t) return;
-          var thumbSrc = t.thumbnail_url || FILE_PLACEHOLDER;
-          var folder = '';
-          var sl = (t.relative_path || '').lastIndexOf('/');
-          if (sl > 0) folder = t.relative_path.substring(0, sl);
-          /* Build metadata line: duration · kbps · size · date */
-          var metaParts = [];
-          if (t.duration) metaParts.push(_fmtDuration(t.duration));
-          if (t.bitrate) metaParts.push(t.bitrate + '\u00a0kbps');
-          if (t.file_size) metaParts.push(_fmtFileSize(t.file_size));
-          if (t.mtime) metaParts.push(_fmtDate(t.mtime));
-          var metaHtml = metaParts.length
-            ? '<div class="dupe-group-item-meta">' + metaParts.join(' \u00b7 ') + '</div>'
-            : '';
-          var isSafe = _dupeSafety && _dupeSafety[t.relative_path];
-          var trashCls = isSafe ? ' dupe-trash-btn--safe' : ' dupe-trash-btn--warn';
-          var trashTitle = isSafe
-            ? 'In den Papierkorb verschieben (Gr\u00f6\u00dfe + L\u00e4nge nahezu identisch)'
-            : 'In den Papierkorb verschieben \u2014 Vorsicht: Gr\u00f6\u00dfe oder L\u00e4nge weicht ab!';
-          html += '<div class="dupe-group-item" data-all-index="' + idx + '">' +
-            '<img src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-            '<div class="dupe-group-item-info">' +
-              '<div class="dupe-group-item-title">' + escHtml(t.title || t.relative_path) + '</div>' +
-              '<div class="dupe-group-item-path">' + escHtml(folder || t.relative_path) + '</div>' +
-              metaHtml +
-            '</div>' +
-            '<button class="dupe-trash-btn' + trashCls + '" data-all-index="' + idx +
-            '" title="' + escHtml(trashTitle) + '">' + IC_TRASH + '</button>' +
-            '</div>';
-        });
-        html += '</div>';
-      });
-      body.innerHTML = html;
+    /* markup: webui/src/panelBodies.ts::dupePanelBodyHtml */
+    body.innerHTML = window._dupePanelBodyHtml(allItems, _dupeMap, _dupeSafety, {
+      escHtml: escHtml, filePlaceholder: FILE_PLACEHOLDER, icDuplicate: IC_DUPLICATE, icTrash: IC_TRASH
+    });
+    if (keys.length > 0) {
       /* Wire up trash buttons */
       body.querySelectorAll('.dupe-trash-btn').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
@@ -319,44 +278,8 @@ def render_library_tools_js() -> str:
      port, see docs/IMPLEMENTATION_PLAN.md), bridged onto window by main.ts. */
 
   function renderMoveWidget(t, idx) {
-    var curFolder = _currentFolderOf(t);
-    var recent = _getRecentMoveTargets();
-    var allF = _getAllFolders();
-    /* Build 4 quick-pick folders: MRU first, fill with allFolders */
-    var picks = recent.slice(0, 4);
-    if (picks.length < 4) {
-      var seen = {};
-      picks.forEach(function(p) { seen[p] = true; });
-      for (var fi = 0; fi < allF.length && picks.length < 4; fi++) {
-        if (!seen[allF[fi]]) { picks.push(allF[fi]); seen[allF[fi]] = true; }
-      }
-    }
-    /* The currently playing track may briefly remain at the source location while
-       streaming; the server handles this gracefully (deferred delete).
-       We keep the widget fully active — no disabled state. */
-    var isActive = false; /* reserved, not used for blocking */
-    var html = '<span class="track-move-widget" data-index="' + idx + '">';
-    /* 2x2 quick-pick grid — always 4 buttons */
-    html += '<span class="move-quick-grid">';
-    for (var i = 0; i < Math.min(4, picks.length); i++) {
-      var isCur = picks[i] === curFolder;
-      html += '<button class="move-quick-btn' + (isCur ? ' is-current' : '') +
-        '" data-target="' + escHtml(picks[i]) +
-        '" data-index="' + idx + '" title="Verschieben nach: ' + escHtml(picks[i]) + '">' +
-        escHtml(picks[i]) + '</button>';
-    }
-    html += '</span>';
-    /* Dropdown with all folders */
-    html += '<select class="move-folder-select" data-index="' + idx + '">';
-    html += '<option value="" disabled' + (curFolder ? '' : ' selected') + '>Ordner w\u00e4hlen\u2026</option>';
-    allF.forEach(function(f) {
-      html += '<option value="' + escHtml(f) + '"' + (f === curFolder ? ' selected' : '') + '>' + escHtml(f) + '</option>';
-    });
-    html += '</select>';
-    /* Delete button — last element, visually separated by left border */
-    html += '<button class="move-delete-btn" data-index="' + idx + '" title="Datei in den Papierkorb verschieben">' +
-      IC_TRASH + '</button>';
-    html += '</span>';
+    /* markup: webui/src/inlineWidgets.ts::moveWidgetHtml */
+    return window._moveWidgetHtml(idx, _currentFolderOf(t), _getRecentMoveTargets(), _getAllFolders(), escHtml, IC_TRASH);
     return html;
   }
 
@@ -428,11 +351,7 @@ def render_library_tools_js() -> str:
     var menu = document.createElement('div');
     menu.id = 'ht-ctx-menu';
     menu.className = 'ht-ctx-menu';
-    menu.innerHTML = items.map(function(it, i) {
-      return '<button class="ht-ctx-item' + (it.danger ? ' ht-ctx-item--danger' : '') + '" data-idx="' + i + '">' +
-        (it.icon || '') + ' ' + escHtml(it.label) +
-      '</button>';
-    }).join('');
+    menu.innerHTML = window._ctxMenuHtml(items, escHtml); /* webui/src/panelBodies.ts */
     document.body.appendChild(menu);
     /* Position: align right edge with button, just below (or above if no room) */
     var rect = btn.getBoundingClientRect();

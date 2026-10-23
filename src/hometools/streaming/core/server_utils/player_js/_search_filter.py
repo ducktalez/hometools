@@ -409,34 +409,11 @@ def render_search_filter_js() -> str:
       : null;
     if (!t) { playerBarActions.innerHTML = ''; return; }
 
-    var allF = _getAllFolders();
-    var curFolder = _currentFolderOf(t);
-    var kebabHtml =
-      '<button class="player-bar-kebab-btn" id="player-bar-kebab" ' +
-        'data-relative-path="' + escHtml(t.relative_path || '') + '" ' +
-        'data-title="' + escHtml(t.title || '') + '" ' +
-        'title="Mehr Optionen">' + IC_DOTS + '</button>';
-
-    var moveHtml = '';
-    if (allF.length) {
-      moveHtml = '<select class="player-bar-move-select" id="player-bar-move-select">' +
-        '<option value="" disabled selected>Verschieben\u2026</option>';
-      allF.forEach(function(f) {
-        moveHtml += '<option value="' + escHtml(f) + '"' +
-          (f === curFolder ? ' disabled' : '') + '>' + escHtml(f) + '</option>';
-      });
-      moveHtml += '</select>';
-    }
-    var trashHtml =
-      '<button class="player-bar-trash-btn" id="player-bar-trash" title="Datei l\\u00f6schen">' +
-        IC_TRASH + '</button>';
-
-    /* Check current tool state */
+    /* markup: webui/src/playerBarHtml.ts::playerBarActionsHtml */
     var inMoverMode = document.body.classList.contains('tool-show-file-mover');
+    playerBarActions.innerHTML = window._playerBarActionsHtml(
+      t, _getAllFolders(), _currentFolderOf(t), inMoverMode, escHtml, IC_DOTS, IC_TRASH);
     if (inMoverMode) {
-      playerBarActions.innerHTML =
-        (moveHtml ? '<div class="player-bar-actions-row">' + moveHtml + '</div>' : '') +
-        '<div class="player-bar-actions-row">' + trashHtml + kebabHtml + '</div>';
       /* Wire move-select */
       var mvSel = playerBarActions.querySelector('#player-bar-move-select');
       if (mvSel) {
@@ -459,8 +436,6 @@ def render_search_filter_js() -> str:
           _deleteItem(currentIndex);
         });
       }
-    } else {
-      playerBarActions.innerHTML = kebabHtml;
     }
     /* Wire kebab */
     var kbBtn = playerBarActions.querySelector('#player-bar-kebab');

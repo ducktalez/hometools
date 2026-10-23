@@ -54,70 +54,19 @@ def render_folder_browse_js() -> str:
     /* Compact tools row — only on root: Neue Playlist | Titel | Downloaded | reload.
        Video server omits playlist tools (Neue Playlist / Intelligente Playlist / Titel)
        since playlists are an audio-only feature there. */
-    var _toolsRowParts = [];
     var _isVideo = (ITEM_NOUN === 'video');
-    if (isRoot && PLAYLISTS_ENABLED && !_isVideo) {
-      _toolsRowParts.push(
-        '<button type="button" class="tools-row-item playlist-new-card" id="playlist-new-card">' +
-          '<span class="tools-row-icon">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-          '</span>' +
-          '<span class="tools-row-label">Neue Playlist\u2026</span>' +
-          '<span class="tools-row-count"></span>' +
-        '</button>'
-      );
-      _toolsRowParts.push(
-        '<button type="button" class="tools-row-item playlist-new-card smart-new-card" id="smart-playlist-new-card"' +
-          ' title="Intelligente Playlist erstellen">' +
-          '<span class="tools-row-icon">' + IC_SMART_PLAYLIST + '</span>' +
-          '<span class="tools-row-label">Intelligente Playlist\u2026</span>' +
-          '<span class="tools-row-count"></span>' +
-        '</button>'
-      );
-      /* "Titel" — flat list of all library tracks (allItems). */
-      _toolsRowParts.push(
-        '<button type="button" class="tools-row-item playlist-folder-card" id="all-titles-card"' +
-          ' data-playlist-id="__alltitles__" title="Zeigt alle Titel der Ordner als Liste an">' +
-          '<span class="tools-row-icon">' + IC_PLAYLIST + '</span>' +
-          '<span class="tools-row-label">Titel</span>' +
-          (allItems.length > 0 ? '<span class="tools-row-count">' + allItems.length + '</span>' : '') +
-        '</button>'
-      );
-    }
-    if (isRoot && OFFLINE_ENABLED) {
-      _toolsRowParts.push(
-        '<button type="button" class="tools-row-item offline-folder-card" id="offline-folder-card">' +
-          '<span class="tools-row-icon">' + IC_DL + '</span>' +
-          '<span class="tools-row-label">Downloaded</span>' +
-          '<span class="tools-row-count" id="offline-folder-count">0</span>' +
-        '</button>'
-      );
-    }
-    /* "Neu laden" icon-only square button — always visible on root, right-most */
-    if (isRoot) {
-      _toolsRowParts.push(
-        '<button type="button" class="tools-row-item refresh-catalog-card" id="refresh-catalog-card" title="Neu laden">' +
-          '<span class="tools-row-icon">' + IC_REFRESH + '</span>' +
-        '</button>'
-      );
-    }
-    if (_toolsRowParts.length > 0) {
-      html += '<div class="playlist-tools-row">' + _toolsRowParts.join('') + '</div>';
-    }
+    /* markup: webui/src/rootCards.ts::toolsRowHtml */
+    html += window._toolsRowHtml({
+      isRoot: isRoot, playlistsEnabled: !!PLAYLISTS_ENABLED, offlineEnabled: !!OFFLINE_ENABLED,
+      isVideo: _isVideo, allItemsCount: allItems.length, icSmartPlaylist: IC_SMART_PLAYLIST,
+      icPlaylist: IC_PLAYLIST, icDl: IC_DL, icRefresh: IC_REFRESH
+    });
 
     /* Auto-Favorites playlist card — only on root when favorites exist */
     if (isRoot && PLAYLISTS_ENABLED) {
       var _favCount = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; }).length;
-      if (_favCount > 0) {
-        html += '<div class="folder-card playlist-folder-card" data-playlist-id="__favorites__">' +
-          '<div class="thumb-wrap playlist-thumb-wrap">' +
-            '<div class="folder-thumb playlist-folder-icon">' + IC_STAR + '</div>' +
-            '<button class="playlist-cover-play-btn" title="Abspielen">' + IC_FOLDER_PLAY + '</button>' +
-          '</div>' +
-          '<div class="folder-name">Favoriten</div>' +
-          '<div class="folder-count">' + _favCount + ' Titel</div>' +
-        '</div>';
-      }
+      /* markup: webui/src/rootCards.ts::favoritesCardHtml */
+      html += window._favoritesCardHtml(_favCount, IC_STAR, IC_FOLDER_PLAY);
     }
 
     /* Playlist pseudo-folder cards — only on root, only when playlists enabled.
@@ -131,17 +80,11 @@ def render_folder_browse_js() -> str:
       _userPlaylists.forEach(function(pl) {
         var isSmart = !!(pl.smart && pl.smart.rules);
         var cnt = isSmart ? _evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites).length : (pl.items || []).length;
-        var iconHtml = IC_PLAYLIST +
-          (isSmart ? '<span class="smart-pl-badge" title="Intelligente Playlist">' + IC_SMART_PLAYLIST + '</span>' : '');
-        html += '<div class="folder-card playlist-folder-card' + (isSmart ? ' smart-playlist-card' : '') + '" data-playlist-id="' + escHtml(pl.id) + '">' +
-          '<div class="thumb-wrap playlist-thumb-wrap">' +
-            '<div class="folder-thumb playlist-folder-icon">' + iconHtml + '</div>' +
-            '<button class="playlist-cover-play-btn" title="Abspielen">' + IC_FOLDER_PLAY + '</button>' +
-          '</div>' +
-          '<div class="folder-name">' + escHtml(pl.name) + '</div>' +
-          '<div class="folder-count">' + cnt + ' Titel</div>' +
-          '<button class="playlist-folder-kebab" title="Mehr Optionen">' + IC_DOTS + '</button>' +
-        '</div>';
+        /* markup: webui/src/rootCards.ts::playlistCardHtml */
+        html += window._playlistCardHtml(pl, cnt, {
+          escHtml: escHtml, icPlaylist: IC_PLAYLIST, icSmartPlaylist: IC_SMART_PLAYLIST,
+          icFolderPlay: IC_FOLDER_PLAY, icDots: IC_DOTS
+        });
       });
       /* "+ Neue Playlist" and "Titel" are rendered in the compact tools row above. */
     }

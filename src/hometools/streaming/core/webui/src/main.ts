@@ -182,6 +182,11 @@ import { queueIndexOf, queueAdd, queueRemoveAt, queueClear, queueMove, resolveNe
 import { contentsAt } from "./folderContents";
 import { folderCardHtml, fileCardHtml } from "./folderCards";
 import { trackRowsHtml, searchFolderRowHtml, searchResultRowHtml } from "./trackRows";
+import { inlineRatingHtml, moveWidgetHtml } from "./inlineWidgets";
+import { dupePanelBodyHtml, queuePanelHtml, ctxMenuHtml } from "./panelBodies";
+import { playerBarActionsHtml, bpmAdjustMenuHtml } from "./playerBarHtml";
+import { toolsRowHtml, favoritesCardHtml, playlistCardHtml } from "./rootCards";
+import { smartEditorModalHtml, playlistModalListHtml } from "./smartEditorModal";
 import { recentCardsHtml, recentPlayContext } from "./recentlyPlayed";
 import {
   initDownloadDB,
@@ -412,6 +417,18 @@ declare global {
     _trackRowsHtml: typeof trackRowsHtml;
     _searchFolderRowHtml: typeof searchFolderRowHtml;
     _searchResultRowHtml: typeof searchResultRowHtml;
+    _inlineRatingHtml: typeof inlineRatingHtml;
+    _moveWidgetHtml: typeof moveWidgetHtml;
+    _dupePanelBodyHtml: typeof dupePanelBodyHtml;
+    _queuePanelHtml: typeof queuePanelHtml;
+    _ctxMenuHtml: typeof ctxMenuHtml;
+    _playerBarActionsHtml: typeof playerBarActionsHtml;
+    _bpmAdjustMenuHtml: typeof bpmAdjustMenuHtml;
+    _toolsRowHtml: typeof toolsRowHtml;
+    _favoritesCardHtml: typeof favoritesCardHtml;
+    _playlistCardHtml: typeof playlistCardHtml;
+    _smartEditorModalHtml: typeof smartEditorModalHtml;
+    _playlistModalListHtml: typeof playlistModalListHtml;
     _recentCardsHtml: typeof recentCardsHtml;
     _recentPlayContext: typeof recentPlayContext;
     initDownloadDB: typeof initDownloadDB;
@@ -558,6 +575,18 @@ window._fileCardHtml = fileCardHtml;
 window._trackRowsHtml = trackRowsHtml;
 window._searchFolderRowHtml = searchFolderRowHtml;
 window._searchResultRowHtml = searchResultRowHtml;
+window._inlineRatingHtml = inlineRatingHtml;
+window._moveWidgetHtml = moveWidgetHtml;
+window._dupePanelBodyHtml = dupePanelBodyHtml;
+window._queuePanelHtml = queuePanelHtml;
+window._ctxMenuHtml = ctxMenuHtml;
+window._playerBarActionsHtml = playerBarActionsHtml;
+window._bpmAdjustMenuHtml = bpmAdjustMenuHtml;
+window._toolsRowHtml = toolsRowHtml;
+window._favoritesCardHtml = favoritesCardHtml;
+window._playlistCardHtml = playlistCardHtml;
+window._smartEditorModalHtml = smartEditorModalHtml;
+window._playlistModalListHtml = playlistModalListHtml;
 window._recentCardsHtml = recentCardsHtml;
 window._recentPlayContext = recentPlayContext;
 // IndexedDB layer — same names as legacy (bare call sites unchanged).

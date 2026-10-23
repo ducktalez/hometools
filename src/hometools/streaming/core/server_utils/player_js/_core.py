@@ -950,20 +950,8 @@ def render_core_js(waveform_js) -> str:
       return;
     }
     if (_queueClearBtn) _queueClearBtn.style.display = '';
-    var html = '<ul class="queue-list" id="queue-list">';
-    _userQueue.forEach(function(item, idx) {
-      var thumbSrc = item.thumbnail_url || FILE_PLACEHOLDER;
-      html += '<li class="queue-item" data-queue-index="' + idx + '">' +
-        '<img class="queue-item-thumb" src="' + escHtml(thumbSrc) + '" alt="" loading="lazy">' +
-        '<div class="queue-item-info">' +
-          '<div class="queue-item-title">' + escHtml(item.title) + '</div>' +
-          '<div class="queue-item-artist">' + escHtml(item.artist || item.relative_path) + '</div>' +
-        '</div>' +
-        '<button class="queue-item-remove" data-queue-index="' + idx + '" title="Entfernen">' + IC_REMOVE + '</button>' +
-        '</li>';
-    });
-    html += '</ul>';
-    _queueBody.innerHTML = html;
+    /* markup: webui/src/panelBodies.ts::queuePanelHtml */
+    _queueBody.innerHTML = window._queuePanelHtml(_userQueue, escHtml, FILE_PLACEHOLDER, IC_REMOVE);
     /* Wire up click handlers */
     _queueBody.querySelectorAll('.queue-item').forEach(function(el) {
       el.addEventListener('click', function(e) {

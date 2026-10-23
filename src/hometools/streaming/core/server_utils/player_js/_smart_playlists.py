@@ -29,34 +29,8 @@ def render_smart_playlists_js() -> str:
 
   function _smartRenderEditor() {
     var s = _smartEditorState;
-    var rulesHtml = s.rules.map(function(r, i) { return _smartRenderRuleRow(r, i, _userPlaylists, s.id, escHtml); }).join('');
-    var html =
-      '<div class="smart-editor-backdrop" id="smart-editor-backdrop">' +
-        '<div class="smart-editor-modal" role="dialog" aria-modal="true">' +
-          '<div class="smart-editor-header">' +
-            '<span>' + IC_SMART_PLAYLIST + ' Intelligente Playlist</span>' +
-            '<button type="button" class="smart-editor-close" id="smart-editor-close" title="Schließen">×</button>' +
-          '</div>' +
-          '<div class="smart-editor-body">' +
-            '<label class="smart-editor-label">Name' +
-              '<input type="text" id="smart-editor-name" value="' + escHtml(s.name) + '" placeholder="Best of Rock">' +
-            '</label>' +
-            '<div class="smart-editor-match">' +
-              '<label><input type="radio" name="smart-match" value="all"' + (s.match === 'all' ? ' checked' : '') + '> Alle Regeln erfüllen (UND)</label>' +
-              '<label><input type="radio" name="smart-match" value="any"' + (s.match === 'any' ? ' checked' : '') + '> Eine Regel erfüllen (ODER)</label>' +
-            '</div>' +
-            '<div class="smart-editor-rules" id="smart-editor-rules">' + rulesHtml + '</div>' +
-            '<button type="button" class="smart-editor-add" id="smart-editor-add-rule">+ Regel hinzufügen</button>' +
-            '<label class="smart-editor-label">Begrenzen auf (optional)' +
-              '<input type="number" id="smart-editor-limit" value="' + escHtml(String(s.limit)) + '" placeholder="0 = unbegrenzt">' +
-            '</label>' +
-          '</div>' +
-          '<div class="smart-editor-footer">' +
-            '<button type="button" class="smart-editor-cancel" id="smart-editor-cancel">Abbrechen</button>' +
-            '<button type="button" class="smart-editor-save" id="smart-editor-save">Speichern</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+    /* markup: webui/src/smartEditorModal.ts::smartEditorModalHtml */
+    var html = window._smartEditorModalHtml(s, _userPlaylists, escHtml, IC_SMART_PLAYLIST);
     var existing = document.getElementById('smart-editor-backdrop');
     if (existing) existing.remove();
     document.body.insertAdjacentHTML('beforeend', html);
@@ -327,16 +301,8 @@ def render_smart_playlists_js() -> str:
   function renderPlaylistModalList() {
     var listEl = document.getElementById('playlist-modal-list');
     if (!listEl) return;
-    if (_userPlaylists.length === 0) {
-      listEl.innerHTML = '<li style="padding:0.5rem;color:var(--sub);font-size:0.85rem">Noch keine Playlists. Erstelle eine neue!</li>';
-      return;
-    }
-    listEl.innerHTML = _userPlaylists.map(function(pl) {
-      var cnt = (pl.items || []).length;
-      return '<li class="playlist-modal-item" data-id="' + escHtml(pl.id) + '">' +
-        '<span class="playlist-modal-item-name">' + escHtml(pl.name) + '</span>' +
-        '<span class="playlist-modal-item-count">' + cnt + ' Titel</span></li>';
-    }).join('');
+    /* markup: webui/src/smartEditorModal.ts::playlistModalListHtml */
+    listEl.innerHTML = window._playlistModalListHtml(_userPlaylists, escHtml);
     listEl.querySelectorAll('.playlist-modal-item').forEach(function(el) {
       el.addEventListener('click', function() {
         addToPlaylist(el.dataset.id, _playlistAddPath);

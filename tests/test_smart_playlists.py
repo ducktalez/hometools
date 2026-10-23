@@ -468,8 +468,8 @@ class TestJsInjection:
         assert "PLAYLISTS_SMART_PATH" in js
 
     def test_smart_badge_class_present(self):
+        assert "smart-pl-badge" in _webui_src("rootCards.ts")
         js = _js()
-        assert "smart-pl-badge" in js
         assert "IC_SMART_PLAYLIST" in js
 
     def test_refresh_button_handler_present(self):
