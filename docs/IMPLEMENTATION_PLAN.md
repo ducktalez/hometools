@@ -17,7 +17,7 @@ FastAPI static assets. Backend untouched. CSS side already fully migrated
 `recentMoveTargets.ts`, `catalogCache.ts`, `offlineDownloads.ts`,
 `langDetect.ts` (inkl. Flag-Badge-HTML), `episodeGaps.ts`, `catalogQuery.ts`, `clickGuard.ts`,
 `toast.ts`, `folderCache.ts`, `shuffle.ts`, `offlineUrl.ts`,
-`catalogQuery.ts::sortTracks`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts`, `progress.ts`, `playerControls.ts`, `customOrder.ts`, `filterPopover.ts` (+ Chip-Views), `offlineDownloads.ts::storageSummaryView`, `offlineDownloads.ts::readyStreamUrls`, `offlineDownloads.ts::offlineDownloadListHtml`, `recentlyPlayed.ts`, `folderCards.ts`, `trackRows.ts`, `inlineWidgets.ts`, `panelBodies.ts`, `playerBarHtml.ts`, `rootCards.ts`, `smartEditorModal.ts`, `renderWindow.ts`, `catalogQuery.ts::findItemByStreamUrl`, `catalogQuery.ts::indexOfPath/ratingToastLabel/withoutPath/isBeforeIndex`). Never bulk-port via `eval()` —
+`catalogQuery.ts::sortTracks`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `offlineDb.ts`, `progress.ts`, `playerControls.ts`, `customOrder.ts`, `filterPopover.ts` (+ Chip-Views), `offlineDownloads.ts::storageSummaryView`, `offlineDownloads.ts::readyStreamUrls`, `offlineDownloads.ts::offlineDownloadListHtml`, `recentlyPlayed.ts`, `folderCards.ts`, `trackRows.ts`, `inlineWidgets.ts`, `panelBodies.ts`, `playerBarHtml.ts`, `rootCards.ts`, `smartEditorModal.ts`, `renderWindow.ts`, `chromeHtml.ts`, `catalogQuery.ts::findItemByStreamUrl`, `catalogQuery.ts::indexOfPath/ratingToastLabel/withoutPath/isBeforeIndex`). Never bulk-port via `eval()` —
 tried once, broke prod (see git log 2026-08-06). `legacy.ts` sits unused in
 tree as raw material — don't re-enable as-is.
 

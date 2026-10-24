@@ -2679,9 +2679,10 @@ class TestTrackDetailTableView:
     def test_table_header_columns(self):
         js = render_player_js()
         assert "track-table-header" in js
-        assert "Interpret" in js
-        assert "Dauer" in js
-        assert "Genre" in js
+        ts = _webui_src("chromeHtml.ts")
+        assert "Interpret" in ts
+        assert "Dauer" in ts
+        assert "Genre" in ts
 
     def test_inline_edit_save_function_present(self):
         js = render_player_js()

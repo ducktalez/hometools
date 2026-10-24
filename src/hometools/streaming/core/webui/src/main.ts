@@ -188,6 +188,7 @@ import { playerBarActionsHtml, bpmAdjustMenuHtml } from "./playerBarHtml";
 import { toolsRowHtml, favoritesCardHtml, playlistCardHtml } from "./rootCards";
 import { smartEditorModalHtml, playlistModalListHtml } from "./smartEditorModal";
 import { batchEnd, renderTargetFor, jumpTarget } from "./renderWindow";
+import { indexingToastHtml, TRACK_TABLE_HEADER_HTML, viewToggleView } from "./chromeHtml";
 import { recentCardsHtml, recentPlayContext } from "./recentlyPlayed";
 import {
   initDownloadDB,
@@ -431,6 +432,9 @@ declare global {
     _smartEditorModalHtml: typeof smartEditorModalHtml;
     _playlistModalListHtml: typeof playlistModalListHtml;
     _batchEnd: typeof batchEnd;
+    _indexingToastHtml: typeof indexingToastHtml;
+    _trackTableHeaderHtml: string;
+    _viewToggleView: typeof viewToggleView;
     _indexOfPath: typeof indexOfPath;
     _withoutPath: typeof withoutPath;
     _isBeforeIndex: typeof isBeforeIndex;
@@ -596,6 +600,9 @@ window._playlistCardHtml = playlistCardHtml;
 window._smartEditorModalHtml = smartEditorModalHtml;
 window._playlistModalListHtml = playlistModalListHtml;
 window._batchEnd = batchEnd;
+window._indexingToastHtml = indexingToastHtml;
+window._trackTableHeaderHtml = TRACK_TABLE_HEADER_HTML;
+window._viewToggleView = viewToggleView;
 window._indexOfPath = indexOfPath;
 window._withoutPath = withoutPath;
 window._isBeforeIndex = isBeforeIndex;

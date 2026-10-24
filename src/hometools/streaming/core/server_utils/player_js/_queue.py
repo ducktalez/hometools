@@ -809,21 +809,17 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
         hdr = document.createElement('div');
         hdr.id = 'track-table-header';
         hdr.className = 'track-table-header';
-        hdr.innerHTML =
-          '<span></span><span></span>' +
-          '<span>Titel</span><span>Interpret</span>' +
-          '<span>Dauer</span><span>Genre</span><span>BPM</span><span>\u2605</span><span></span>';
+        hdr.innerHTML = window._trackTableHeaderHtml; /* webui/src/chromeHtml.ts */
         trackList.parentNode.insertBefore(hdr, trackList);
       }
     } else if (hdr) {
       hdr.remove();
     }
     if (viewToggle && _isTrackViewVisible()) {
-      viewToggle.innerHTML = tableMode ? IC_LIST : IC_TABLE;
-      viewToggle.title = tableMode
-        ? 'Detailansicht \u2014 Klick f\u00fcr normale Listenansicht'
-        : 'Listenansicht \u2014 Klick f\u00fcr Detailansicht (Tabelle)';
-      viewToggle.classList.toggle('view-toggle-locked', isVideoMode);
+      var _vt = window._viewToggleView(tableMode, isVideoMode); /* webui/src/chromeHtml.ts */
+      viewToggle.innerHTML = _vt.useListIcon ? IC_LIST : IC_TABLE;
+      viewToggle.title = _vt.title;
+      viewToggle.classList.toggle('view-toggle-locked', _vt.locked);
     }
   }
   function _isTrackViewVisible() {

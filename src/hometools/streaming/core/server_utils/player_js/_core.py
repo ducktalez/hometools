@@ -774,20 +774,8 @@ def render_core_js(waveform_js) -> str:
       });
       document.body.appendChild(_indexToastEl);
     }
-    /* Optional progress bar — prog may be the cache status object (build_percent)
-       or a plain {percent} object. */
-    var pct = null;
-    if (prog) {
-      if (typeof prog.build_percent === 'number') pct = prog.build_percent;
-      else if (typeof prog.percent === 'number') pct = prog.percent;
-    }
-    var barHtml = '';
-    if (pct !== null && pct >= 0) {
-      var w = Math.max(2, Math.min(100, pct));
-      barHtml = '<div class="ht-index-progress"><div class="ht-index-progress-fill" style="width:' + w + '%"></div></div>';
-    }
-    _indexToastEl.innerHTML = '<div class="ht-index-row"><span class="spinner"></span>' +
-      escHtml(msg || 'Indexing…') + '</div>' + barHtml;
+    /* markup + progress: webui/src/chromeHtml.ts::indexingToastHtml */
+    _indexToastEl.innerHTML = window._indexingToastHtml(msg, prog, escHtml);
     _indexToastEl.classList.add('visible');
   }
   function hideIndexingToast() {
