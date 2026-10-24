@@ -1122,8 +1122,8 @@ def test_undo_rating_patches_all_items():
 
 def test_rating_toast_zero_stars_label():
     """setRating with 0 stars must produce 'Bewertung entfernt' label (not '0 Sterne vergeben')."""
-    js = render_player_js()
-    assert "Bewertung entfernt" in js
+    assert "Bewertung entfernt" in _webui_src("catalogQuery.ts")
+    assert "window._ratingToastLabel(stars)" in render_player_js()
 
 
 def test_rating_star_tooltip_hints_toggle():

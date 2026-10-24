@@ -83,3 +83,18 @@ describe("search", () => {
   });
 });
 
+import { indexOfPath, ratingToastLabel } from "../src/catalogQuery";
+describe("indexOfPath / ratingToastLabel", () => {
+  const items = [{ relative_path: "a" }, { relative_path: "b" }] as never;
+  it("indexOfPath", () => {
+    expect(indexOfPath(items, "b")).toBe(1);
+    expect(indexOfPath(items, "x")).toBe(-1);
+    expect(indexOfPath(null, "a")).toBe(-1);
+    expect(indexOfPath(items, null)).toBe(-1);
+  });
+  it("ratingToastLabel", () => {
+    expect(ratingToastLabel(0)).toBe("Bewertung entfernt");
+    expect(ratingToastLabel(1)).toBe("1 Stern vergeben");
+    expect(ratingToastLabel(4)).toBe("4 Sterne vergeben");
+  });
+});

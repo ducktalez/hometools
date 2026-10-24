@@ -174,7 +174,7 @@ import {
   SMART_OPS_BY_TYPE,
 } from "./smartPlaylist";
 import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
-import { itemsUnder, collectGenres, sortTracks, replaceItemFields, findItemByStreamUrl } from "./catalogQuery";
+import { itemsUnder, collectGenres, sortTracks, replaceItemFields, findItemByStreamUrl, indexOfPath, ratingToastLabel } from "./catalogQuery";
 import { buildFolderMatches, searchItems } from "./search";
 import { applyFilterChain } from "./filterChain";
 import { parseIntro, introButtonMode, patchIntroLocal } from "./intro";
@@ -187,6 +187,7 @@ import { dupePanelBodyHtml, queuePanelHtml, ctxMenuHtml } from "./panelBodies";
 import { playerBarActionsHtml, bpmAdjustMenuHtml } from "./playerBarHtml";
 import { toolsRowHtml, favoritesCardHtml, playlistCardHtml } from "./rootCards";
 import { smartEditorModalHtml, playlistModalListHtml } from "./smartEditorModal";
+import { batchEnd, renderTargetFor, jumpTarget } from "./renderWindow";
 import { recentCardsHtml, recentPlayContext } from "./recentlyPlayed";
 import {
   initDownloadDB,
@@ -429,6 +430,11 @@ declare global {
     _playlistCardHtml: typeof playlistCardHtml;
     _smartEditorModalHtml: typeof smartEditorModalHtml;
     _playlistModalListHtml: typeof playlistModalListHtml;
+    _batchEnd: typeof batchEnd;
+    _indexOfPath: typeof indexOfPath;
+    _ratingToastLabel: typeof ratingToastLabel;
+    _renderTargetFor: typeof renderTargetFor;
+    _jumpTarget: typeof jumpTarget;
     _recentCardsHtml: typeof recentCardsHtml;
     _recentPlayContext: typeof recentPlayContext;
     initDownloadDB: typeof initDownloadDB;
@@ -587,6 +593,11 @@ window._favoritesCardHtml = favoritesCardHtml;
 window._playlistCardHtml = playlistCardHtml;
 window._smartEditorModalHtml = smartEditorModalHtml;
 window._playlistModalListHtml = playlistModalListHtml;
+window._batchEnd = batchEnd;
+window._indexOfPath = indexOfPath;
+window._ratingToastLabel = ratingToastLabel;
+window._renderTargetFor = renderTargetFor;
+window._jumpTarget = jumpTarget;
 window._recentCardsHtml = recentCardsHtml;
 window._recentPlayContext = recentPlayContext;
 // IndexedDB layer — same names as legacy (bare call sites unchanged).

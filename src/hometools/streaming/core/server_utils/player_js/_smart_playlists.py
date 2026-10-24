@@ -418,7 +418,7 @@ def render_smart_playlists_js() -> str:
       playlistItems = reordered;
       filteredItems = reordered;
       if (playingPath) {
-        var newIdx = reordered.findIndex(function(it) { return it.relative_path === playingPath; });
+        var newIdx = window._indexOfPath(reordered, playingPath);
         if (newIdx >= 0) currentIndex = newIdx;
       }
       renderTracks(reordered, true);
@@ -442,7 +442,7 @@ def render_smart_playlists_js() -> str:
       playlistItems = fReordered;
       filteredItems = fReordered;
       if (fPlayingPath) {
-        var fNewIdx = fReordered.findIndex(function(it) { return it.relative_path === fPlayingPath; });
+        var fNewIdx = window._indexOfPath(fReordered, fPlayingPath);
         if (fNewIdx >= 0) currentIndex = fNewIdx;
       }
       renderTracks(fReordered, true);
@@ -492,7 +492,7 @@ def render_smart_playlists_js() -> str:
     playlistItems = resolved;
     filteredItems = resolved;
     if (playingPath) {
-      var newIdx = resolved.findIndex(function(it) { return it.relative_path === playingPath; });
+      var newIdx = window._indexOfPath(resolved, playingPath);
       if (newIdx >= 0) currentIndex = newIdx;
     }
     renderTracks(resolved, true);

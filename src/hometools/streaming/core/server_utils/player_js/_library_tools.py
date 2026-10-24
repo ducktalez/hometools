@@ -981,7 +981,7 @@ def render_library_tools_js() -> str:
         if (inPlaylist) {
           applyFilter(true);
           /* Sort/filter may have reordered items — relocate currentIndex */
-          var relocated = filteredItems.findIndex(function(fi) { return fi.relative_path === ratedPath; });
+          var relocated = window._indexOfPath(filteredItems, ratedPath);
           if (relocated >= 0) currentIndex = relocated;
           markActive();
         } else {
@@ -991,9 +991,7 @@ def render_library_tools_js() -> str:
         /* rebuild weighted shuffle queue so new rating is reflected immediately */
         if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
         /* show toast with undo option if entry_id was returned */
-        var toastLabel = stars === 0
-          ? 'Bewertung entfernt'
-          : stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
+        var toastLabel = window._ratingToastLabel(stars);
         if (d.entry_id) {
           showRatingToastWithUndo(stars, prevRating, d.entry_id, t);
         } else {
@@ -1006,9 +1004,7 @@ def render_library_tools_js() -> str:
 
   function showRatingToastWithUndo(stars, prevStars, entryId, t) {
     var toast = document.getElementById('toast');
-    var label = stars === 0
-      ? 'Bewertung entfernt'
-      : stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
+    var label = window._ratingToastLabel(stars);
     if (!toast) { showToast(label); return; }
     /* build toast via DOM — avoids quote-escaping in onclick attribute */
     toast.innerHTML = '';

@@ -283,7 +283,7 @@ def render_search_filter_js() -> str:
   }
 
   function _appendTrackBatch() {
-    var end = Math.min(_renderBatchOffset + _RENDER_BATCH_SIZE, _renderAllItems.length);
+    var end = window._batchEnd(_renderBatchOffset, _RENDER_BATCH_SIZE, _renderAllItems.length);
     if (end <= _renderBatchOffset) { _stopRenderObserver(); return; }
     var showOrig = _anyToolActive();
     /* BPM "calculate" affordance (yellow-glow clickable "?") is gated by the
@@ -327,15 +327,9 @@ def render_search_filter_js() -> str:
   }
 
   function _ensureRenderedTo(idx) {
-    /* Synchronously render batches until the item at filteredItems index idx
-       is present in the DOM.  Needed before markActive / scrollIntoView. */
-    if (!_renderAllItems.length || idx < 0) return;
-    /* Find the display index for filteredItems index idx */
-    var displayIdx = -1;
-    for (var k = 0; k < _renderRealIdxMap.length; k++) {
-      if (_renderRealIdxMap[k] === idx) { displayIdx = k; break; }
-    }
-    if (displayIdx < 0 || displayIdx < _renderBatchOffset) return;
+    /* target: webui/src/renderWindow.ts::renderTargetFor */
+    var displayIdx = window._renderTargetFor(_renderRealIdxMap, idx, _renderBatchOffset, _renderAllItems.length);
+    if (displayIdx < 0) return;
     /* Render batches until displayIdx is covered */
     while (_renderBatchOffset <= displayIdx && _renderBatchOffset < _renderAllItems.length) {
       var prevOffset = _renderBatchOffset;
@@ -374,9 +368,10 @@ def render_search_filter_js() -> str:
       : null;
     if (!t) return;
     var rp = t.relative_path || '';
-    var lastSlash = rp.lastIndexOf('/');
-    var folder = lastSlash >= 0 ? rp.substring(0, lastSlash) : '';
-    if (inPlaylist && currentPath === folder) {
+    /* target: webui/src/renderWindow.ts::jumpTarget */
+    var jt = window._jumpTarget(t, inPlaylist, currentPath);
+    var folder = jt.folder;
+    if (jt.sameView) {
       /* Already in the right playlist view — just scroll to the track */
       _ensureRenderedTo(currentIndex);
       markActive();

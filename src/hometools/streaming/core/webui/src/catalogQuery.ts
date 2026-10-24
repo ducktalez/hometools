@@ -121,3 +121,12 @@ export function findItemByStreamUrl(
   }
   return null;
 }
+/** Index of the first item with `relative_path === path`, or -1. */
+export function indexOfPath(items: LegacyMediaItem[] | null | undefined, path: string | null | undefined): number {
+  if (!items || !path) return -1;
+  return items.findIndex((it) => it && it.relative_path === path);
+}
+/** Toast text after a rating change (0 = removed). */
+export function ratingToastLabel(stars: number): string {
+  return stars === 0 ? "Bewertung entfernt" : stars + (stars === 1 ? " Stern" : " Sterne") + " vergeben";
+}

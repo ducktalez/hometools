@@ -850,7 +850,7 @@ def render_track_render_js() -> str:
         /* Sort/filter may have reordered items — relocate currentIndex to
            the track that is actually still playing. */
         if (playingPath) {
-          var relocated = filteredItems.findIndex(function(fi) { return fi.relative_path === playingPath; });
+          var relocated = window._indexOfPath(filteredItems, playingPath);
           if (relocated >= 0) currentIndex = relocated;
         }
         markActive();
@@ -861,9 +861,7 @@ def render_track_render_js() -> str:
       }
       /* rebuild weighted shuffle queue so new rating is reflected */
       if (shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
-      var toastLabel2 = stars === 0
-        ? 'Bewertung entfernt'
-        : stars + (stars === 1 ? ' Stern' : ' Sterne') + ' vergeben';
+      var toastLabel2 = window._ratingToastLabel(stars);
       if (d.entry_id) {
         showRatingToastWithUndo(stars, prevRating, d.entry_id, t);
       } else {
@@ -886,12 +884,8 @@ def render_track_render_js() -> str:
      See docs/IMPLEMENTATION_PLAN.md Design Discussions
      ("Player-JS-Modulkopplung") for why that boundary exists. */
   function _patchAllItemsBpm(relativePath, bpm) {
-    for (var i = 0; i < allItems.length; i++) {
-      if (allItems[i].relative_path === relativePath) {
-        allItems[i] = Object.assign({}, allItems[i], { bpm: bpm });
-        break;
-      }
-    }
+    /* copy-on-write: webui/src/catalogQuery.ts::replaceItemFields */
+    window._replaceItemFields([allItems], relativePath, { bpm: bpm });
   }
 
   var _bpmMenuCleanup = null;
