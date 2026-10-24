@@ -125,12 +125,7 @@ def render_library_tools_js() -> str:
         filteredItems[currentIndex].relative_path === t.relative_path) {
       playingFilteredIdx = currentIndex;
     }
-    var wasBefore = false;
-    if (playingFilteredIdx < 0 && currentIndex >= 0) {
-      for (var fi = 0; fi < currentIndex && fi < filteredItems.length; fi++) {
-        if (filteredItems[fi].relative_path === t.relative_path) { wasBefore = true; break; }
-      }
-    }
+    var wasBefore = playingFilteredIdx < 0 && window._isBeforeIndex(filteredItems, t.relative_path, currentIndex);
     fetch(DELETE_API_PATH, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -144,7 +139,7 @@ def render_library_tools_js() -> str:
       /* Also remove from playlistItems (e.g. when in the "duplicates" virtual playlist view)
          so that filteredItems does not keep showing the deleted item on the next applyFilter() */
       var rp = t.relative_path;
-      playlistItems = playlistItems.filter(function(it) { return it.relative_path !== rp; });
+      playlistItems = window._withoutPath(playlistItems, rp);
       _invalidateDupeMap();
       _invalidateFolderCache();
       /* Keep localStorage in sync so the deleted file is gone on the next page load too */
@@ -178,17 +173,12 @@ def render_library_tools_js() -> str:
     showToast('Datei nicht gefunden \u2014 aus der Liste entfernt');
     /* Determine playback context before mutating filteredItems */
     var wasCurrentlyPlaying = (relativePath === _progressRelPath);
-    var wasBefore = false;
-    if (!wasCurrentlyPlaying && currentIndex >= 0) {
-      for (var fi = 0; fi < currentIndex && fi < filteredItems.length; fi++) {
-        if (filteredItems[fi].relative_path === relativePath) { wasBefore = true; break; }
-      }
-    }
-    allItems = allItems.filter(function(it) { return it.relative_path !== relativePath; });
+    var wasBefore = !wasCurrentlyPlaying && window._isBeforeIndex(filteredItems, relativePath, currentIndex);
+    allItems = window._withoutPath(allItems, relativePath);
     _invalidateDupeMap();
     _invalidateFolderCache();
     _saveCatalogCache(allItems);
-    playlistItems = playlistItems.filter(function(it) { return it.relative_path !== relativePath; });
+    playlistItems = window._withoutPath(playlistItems, relativePath);
     if (wasBefore) currentIndex = Math.max(0, currentIndex - 1);
     btnPlay.innerHTML = IC_PLAY;
     if (inPlaylist) {
@@ -222,7 +212,7 @@ def render_library_tools_js() -> str:
       if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Fehler'); });
       return r.json();
     }).then(function() {
-      allItems = allItems.filter(function(it) { return it.relative_path !== t.relative_path; });
+      allItems = window._withoutPath(allItems, t.relative_path);
       _invalidateDupeMap();
       _invalidateFolderCache();
       /* Keep localStorage in sync so the deleted file is gone on the next page load too */

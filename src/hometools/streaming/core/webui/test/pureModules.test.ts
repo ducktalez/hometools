@@ -97,4 +97,21 @@ describe("indexOfPath / ratingToastLabel", () => {
     expect(ratingToastLabel(1)).toBe("1 Stern vergeben");
     expect(ratingToastLabel(4)).toBe("4 Sterne vergeben");
   });
+});import { withoutPath, isBeforeIndex } from "../src/catalogQuery";
+describe("withoutPath / isBeforeIndex", () => {
+  const items = [{ relative_path: "a" }, { relative_path: "b" }, { relative_path: "c" }] as never;
+  it("withoutPath returns new array", () => {
+    const r = withoutPath(items, "b");
+    expect(r.map((i) => i.relative_path)).toEqual(["a", "c"]);
+    expect(r).not.toBe(items);
+    expect(withoutPath(items, "zzz")).toHaveLength(3);
+  });
+  it("isBeforeIndex strictly before", () => {
+    expect(isBeforeIndex(items, "a", 2)).toBe(true);
+    expect(isBeforeIndex(items, "b", 2)).toBe(true);
+    expect(isBeforeIndex(items, "c", 2)).toBe(false);
+    expect(isBeforeIndex(items, "a", 0)).toBe(false);
+    expect(isBeforeIndex(items, "a", -1)).toBe(false);
+    expect(isBeforeIndex(items, "c", 99)).toBe(true);
+  });
 });

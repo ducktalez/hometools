@@ -174,7 +174,7 @@ import {
   SMART_OPS_BY_TYPE,
 } from "./smartPlaylist";
 import { getRecentMoveTargets, saveRecentMoveTarget } from "./recentMoveTargets";
-import { itemsUnder, collectGenres, sortTracks, replaceItemFields, findItemByStreamUrl, indexOfPath, ratingToastLabel } from "./catalogQuery";
+import { itemsUnder, collectGenres, sortTracks, replaceItemFields, findItemByStreamUrl, indexOfPath, ratingToastLabel, withoutPath, isBeforeIndex } from "./catalogQuery";
 import { buildFolderMatches, searchItems } from "./search";
 import { applyFilterChain } from "./filterChain";
 import { parseIntro, introButtonMode, patchIntroLocal } from "./intro";
@@ -432,6 +432,8 @@ declare global {
     _playlistModalListHtml: typeof playlistModalListHtml;
     _batchEnd: typeof batchEnd;
     _indexOfPath: typeof indexOfPath;
+    _withoutPath: typeof withoutPath;
+    _isBeforeIndex: typeof isBeforeIndex;
     _ratingToastLabel: typeof ratingToastLabel;
     _renderTargetFor: typeof renderTargetFor;
     _jumpTarget: typeof jumpTarget;
@@ -595,6 +597,8 @@ window._smartEditorModalHtml = smartEditorModalHtml;
 window._playlistModalListHtml = playlistModalListHtml;
 window._batchEnd = batchEnd;
 window._indexOfPath = indexOfPath;
+window._withoutPath = withoutPath;
+window._isBeforeIndex = isBeforeIndex;
 window._ratingToastLabel = ratingToastLabel;
 window._renderTargetFor = renderTargetFor;
 window._jumpTarget = jumpTarget;

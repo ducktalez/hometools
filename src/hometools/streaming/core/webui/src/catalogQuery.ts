@@ -129,4 +129,19 @@ export function indexOfPath(items: LegacyMediaItem[] | null | undefined, path: s
 /** Toast text after a rating change (0 = removed). */
 export function ratingToastLabel(stars: number): string {
   return stars === 0 ? "Bewertung entfernt" : stars + (stars === 1 ? " Stern" : " Sterne") + " vergeben";
+}/** New array without the entries whose `relative_path === path`. */
+export function withoutPath(items: LegacyMediaItem[], path: string): LegacyMediaItem[] {
+  return items.filter((it) => it.relative_path !== path);
+}
+/**
+ * True when `path` sits strictly before `currentIndex` in `items` (used to
+ * shift the playing index after a removal). Index `currentIndex` itself and
+ * beyond do not count; negative `currentIndex` -> false.
+ */
+export function isBeforeIndex(items: LegacyMediaItem[], path: string, currentIndex: number): boolean {
+  if (currentIndex < 0) return false;
+  for (let i = 0; i < currentIndex && i < items.length; i++) {
+    if (items[i].relative_path === path) return true;
+  }
+  return false;
 }
