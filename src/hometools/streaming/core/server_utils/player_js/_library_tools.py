@@ -1017,148 +1017,25 @@ def render_library_tools_js() -> str:
   function updateFavoriteButtons() { window._updateFavoriteButtons(); }
   function toggleFavorite(item, btn) { window._toggleFavorite(item, btn, _favHooks()); }
     /* ── metadata edit modal ── */
-  var _editModalRating = 0; /* selected rating inside the edit modal */
-
-  function renderEditModalRating(stars) {
-    var container = document.getElementById('edit-modal-rating');
-    if (!container) return;
-    var view = window._editModalRatingStars(stars);
-    _editModalRating = view.rounded;
-    container.innerHTML = '';
-    view.stars.forEach(function(sv) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'edit-modal-rating-star' + (sv.active ? ' active' : '');
-      btn.innerHTML = sv.active ? IC_STAR_FILLED : IC_STAR_EMPTY;
-      btn.dataset.star = String(sv.star);
-      btn.title = sv.title;
-      container.appendChild(btn);
-    });
-  }  (function _initEditModalRatingEvents() {
-    var container = document.getElementById('edit-modal-rating');
-    if (!container) return;
-    container.addEventListener('mouseover', function(e) {
-      var btn = e.target.closest('.edit-modal-rating-star');
-      if (!btn) return;
-      var n = parseInt(btn.dataset.star, 10);
-      container.querySelectorAll('.edit-modal-rating-star').forEach(function(b, i) {
-        b.classList.toggle('hover', i < n);
-      });
-    });
-    container.addEventListener('mouseleave', function() {
-      container.querySelectorAll('.edit-modal-rating-star').forEach(function(b) {
-        b.classList.remove('hover');
-      });
-    });
-    container.addEventListener('click', function(e) {
-      var btn = e.target.closest('.edit-modal-rating-star');
-      if (!btn) return;
-      var n = parseInt(btn.dataset.star, 10);
-      /* Toggle off if clicking the same star */
-      renderEditModalRating(window._toggleEditRating(n, _editModalRating));
-    });
-  })();
-
-  function openEditModal(idx) {
-    if (!METADATA_EDIT_ENABLED) return;
-    var t = filteredItems[idx];
-    if (!t) return;
-    var backdrop = document.getElementById('edit-modal-backdrop');
-    if (!backdrop) return;
-    document.getElementById('edit-modal-title-input').value = t.title || '';
-    document.getElementById('edit-modal-artist-input').value = t.artist || '';
-    document.getElementById('edit-modal-album-input').value = '';
-    document.getElementById('edit-modal-path').value = t.relative_path || '';
-    document.getElementById('edit-modal-idx').value = String(idx);
-    /* Rating stars — only if rating write is enabled */
-    var ratingField = document.getElementById('edit-modal-rating-field');
-    if (RATING_WRITE_ENABLED) {
-      if (ratingField) ratingField.style.display = '';
-      renderEditModalRating(t.rating || 0);
-    } else {
-      if (ratingField) ratingField.style.display = 'none';
-    }
-    backdrop.removeAttribute('hidden');
-    document.body.classList.add('modal-open');
-    document.getElementById('edit-modal-title-input').focus();
+  /* Edit modal ported to webui/src/editModal.ts (_editModalRating private there). */
+  function _editHooks() {
+    return {
+      metadataEditEnabled: !!METADATA_EDIT_ENABLED, ratingWriteEnabled: !!RATING_WRITE_ENABLED,
+      metadataEditPath: METADATA_EDIT_PATH, ratingApiPath: RATING_API_PATH,
+      icStarFilled: IC_STAR_FILLED, icStarEmpty: IC_STAR_EMPTY,
+      toast: showToast, applyFilter: applyFilter,
+      renderPlayerRating: renderPlayerRating, rebuildShuffleQueue: rebuildShuffleQueue,
+      setPlayerText: function(title, artist) {
+        if (playerTitle) playerTitle.textContent = title;
+        if (playerArtist) playerArtist.textContent = artist;
+      }
+    };
   }
+  window._initEditModalRatingEvents(_editHooks());
+  function openEditModal(idx) { window._openEditModal(idx, _editHooks()); }
+  function closeEditModal() { window._closeEditModal(); }
+  function submitEditModal() { window._submitEditModal(_editHooks()); }
 
-  function closeEditModal() {
-    var backdrop = document.getElementById('edit-modal-backdrop');
-    if (backdrop) backdrop.setAttribute('hidden', '');
-    document.body.classList.remove('modal-open');
-  }
-
-  function submitEditModal() {
-    var path = document.getElementById('edit-modal-path').value;
-    var idx = parseInt(document.getElementById('edit-modal-idx').value, 10);
-    var title = document.getElementById('edit-modal-title-input').value.trim();
-    var artist = document.getElementById('edit-modal-artist-input').value.trim();
-    var album = document.getElementById('edit-modal-album-input').value.trim();
-    var saveBtn = document.getElementById('edit-modal-save-btn');
-    if (!path) return;
-    if (saveBtn) saveBtn.disabled = true;
-
-    /* Determine if rating changed */
-    var t = filteredItems[idx];
-    var oldRating = t ? Math.round(t.rating || 0) : 0;
-    var newRating = _editModalRating;
-    var ratingChanged = RATING_WRITE_ENABLED && (newRating !== oldRating);
-
-    /* Save metadata (title/artist/album) */
-    var metaPromise = fetch(METADATA_EDIT_PATH, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: path, title: title, artist: artist, album: album || null })
-    }).then(function(r) { return r.json(); });
-
-    /* Save rating if changed */
-    var ratingPromise = ratingChanged
-      ? fetch(RATING_API_PATH, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: path, rating: newRating })
-        }).then(function(r) { return r.ok ? r.json() : null; })
-      : Promise.resolve(null);
-
-    Promise.all([metaPromise, ratingPromise])
-      .then(function(results) {
-        var d = results[0];
-        var rd = results[1];
-        if (saveBtn) saveBtn.disabled = false;
-        if (d.ok) {
-          /* Update in-memory items so the list reflects changes immediately */
-          var updates = { title: title, artist: artist };
-          if (rd && rd.ok) updates.rating = rd.rating;
-          if (filteredItems[idx]) {
-            filteredItems[idx] = Object.assign({}, filteredItems[idx], updates);
-          }
-          for (var i = 0; i < allItems.length; i++) {
-            if (allItems[i].relative_path === path) {
-              allItems[i] = Object.assign({}, allItems[i], updates);
-              break;
-            }
-          }
-          closeEditModal();
-          applyFilter();
-          /* Update player display if this is the currently playing track */
-          if (idx === currentIndex) {
-            if (playerTitle) playerTitle.textContent = title;
-            if (playerArtist) playerArtist.textContent = artist;
-            if (rd && rd.ok) renderPlayerRating(rd.rating);
-          }
-          /* Rebuild weighted shuffle queue if rating changed */
-          if (rd && rd.ok && shuffleMode === 'weighted') rebuildShuffleQueue(currentIndex);
-          showToast('Gespeichert \u2713');
-        } else {
-          showToast('Fehler beim Speichern');
-        }
-      })
-      .catch(function() {
-        if (saveBtn) saveBtn.disabled = false;
-        showToast('Netzwerkfehler beim Speichern');
-      });
-  }
 
   /* showToast() lives in _core.py — kept as the single canonical
      definition (was accidentally duplicated here during the module split). */

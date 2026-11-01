@@ -1171,17 +1171,17 @@ def test_edit_modal_rating_html_present():
 
 def test_edit_modal_rating_js_render_function():
     """JS must contain renderEditModalRating function."""
-    js = render_player_js()
-    assert "renderEditModalRating" in js
-    assert "_editModalRating" in js
+    ts = _webui_src("editModal.ts")
+    assert "renderEditModalRating" in ts
+    assert "_editModalRating" in ts
 
 
 def test_edit_modal_rating_submit_sends_rating():
     """submitEditModal must include rating API call when rating changes."""
-    js = render_player_js()
-    assert "RATING_API_PATH" in js
-    assert "ratingChanged" in js
-    assert "Promise.all" in js
+    assert "RATING_API_PATH" in render_player_js()
+    ts = _webui_src("editModal.ts")
+    assert "ratingChanged" in ts
+    assert "Promise.all" in ts
 
 
 def test_audio_server_has_rating_endpoint():
