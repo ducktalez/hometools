@@ -553,11 +553,12 @@ def test_render_audit_panel_has_back_link():
 
 def test_player_js_has_undo_rating_function():
     from hometools.streaming.core.server_utils import render_player_js
+    from tests.test_streaming_player_ui import _webui_src
 
-    js = render_player_js()
-    assert "undoRating" in js
-    assert "showRatingToastWithUndo" in js
-    assert "AUDIT_UNDO_PATH" in js
+    ts = _webui_src("rating.ts")
+    assert "undoRating" in ts
+    assert "showRatingToastWithUndo" in ts
+    assert "AUDIT_UNDO_PATH" in render_player_js()
 
 
 def test_player_js_audit_undo_path_injected():

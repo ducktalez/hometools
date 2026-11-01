@@ -27,6 +27,7 @@ export function installState(over: Partial<HtState> = {}): HtState {
     playlistAddPath: "",
     globalSearchActive: false,
     savedFavorites: {},
+    justRatedPath: null,
     ...over,
   };
   (globalThis as unknown as { window: { htState: HtState } }).window = { htState: s };

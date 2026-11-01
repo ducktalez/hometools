@@ -32,6 +32,7 @@ export interface HtState {
   playlistAddPath: string;
   globalSearchActive: boolean;
   savedFavorites: Record<string, boolean>;
+  justRatedPath: string | null;
 }
 
 /** Bridge or null when the legacy script hasn't run (yet). Callers must no-op then. */
@@ -39,4 +40,3 @@ export function getState(): HtState | null {
   const s = (window as unknown as { htState?: HtState }).htState;
   return s || null;
 }
-

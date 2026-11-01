@@ -263,6 +263,7 @@ import { closeCtxMenu, openCtxMenu, revealInExplorer } from "./ctxMenu";
 import { openDupePanel, closeDupePanel, collectDupeItems } from "./dupePanel";
 import { deleteTrackFromList, deleteDuplicateFile, removeGoneTrack, moveFileToFolder } from "./libraryOps";
 import { loadFavorites, updateFavoriteButtons, toggleFavorite } from "./favorites";
+import { renderPlayerRating, patchAllItemsRating, updateTrackRatingBar, setRating, undoRating } from "./rating";
 import { recentCardsHtml, recentPlayContext } from "./recentlyPlayed";
 import {
   initDownloadDB,
@@ -549,6 +550,11 @@ declare global {
     _loadFavorites: typeof loadFavorites;
     _updateFavoriteButtons: typeof updateFavoriteButtons;
     _toggleFavorite: typeof toggleFavorite;
+    _renderPlayerRating: typeof renderPlayerRating;
+    _patchAllItemsRating: typeof patchAllItemsRating;
+    _updateTrackRatingBar: typeof updateTrackRatingBar;
+    _setRating: typeof setRating;
+    _undoRating: typeof undoRating;
     _indexingToastHtml: typeof indexingToastHtml;
     _trackTableHeaderHtml: string;
     _viewToggleView: typeof viewToggleView;
@@ -788,6 +794,11 @@ window._moveFileToFolder = moveFileToFolder;
 window._loadFavorites = loadFavorites;
 window._updateFavoriteButtons = updateFavoriteButtons;
 window._toggleFavorite = toggleFavorite;
+window._renderPlayerRating = renderPlayerRating;
+window._patchAllItemsRating = patchAllItemsRating;
+window._updateTrackRatingBar = updateTrackRatingBar;
+window._setRating = setRating;
+window._undoRating = undoRating;
 window._indexingToastHtml = indexingToastHtml;
 window._trackTableHeaderHtml = TRACK_TABLE_HEADER_HTML;
 window._viewToggleView = viewToggleView;
@@ -887,4 +898,7 @@ window._createAndAddToPlaylist = createAndAddToPlaylist;
 // Click-guard owns its own pointer state now (was _mdX/_mdY in _core.py) —
 // listeners must be live before the legacy script wires any click handler.
 installClickGuard();
+
+
+
 

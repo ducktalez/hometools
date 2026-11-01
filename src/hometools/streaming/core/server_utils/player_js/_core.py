@@ -84,7 +84,9 @@ def render_core_js(waveform_js) -> str:
     get globalSearchActive() { return _globalSearchActive; },
     set globalSearchActive(v) { _globalSearchActive = v; },
     get savedFavorites() { return _savedFavorites; },
-    set savedFavorites(v) { _savedFavorites = v; }
+    set savedFavorites(v) { _savedFavorites = v; },
+    get justRatedPath() { return _justRatedPath; },
+    set justRatedPath(v) { _justRatedPath = v; }
   };
 
   var player       = document.getElementById('player');

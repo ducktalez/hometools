@@ -709,7 +709,7 @@ def test_resolve_next_and_rating_patch_ported_to_ts():
     assert "function _resolveNextForCrossfade" not in js
     assert "window._resolveNext()" in js
     # all four arrays must be patched (stale playlistItems = rating-filter bug)
-    assert "window._replaceItemFields([allItems, playlistItems, filteredItems, _userQueue]" in js
+    assert "replaceItemFields([s.allItems, s.playlistItems, s.filteredItems, s.userQueue]" in _webui_src("rating.ts")
 
 
 def test_crossfade_defers_shuffle_advance_until_finish():
@@ -1133,7 +1133,7 @@ def test_rating_star_tooltip_hints_toggle():
     ts = _webui_src("playerControls.ts")
     assert "Bewertung entfernen" in ts
     assert "nochmals klicken" in ts
-    assert "window._playerRatingStars(" in render_player_js()
+    assert "playerRatingStars(" in _webui_src("rating.ts")
 
 
 # ---------------------------------------------------------------------------
@@ -2072,7 +2072,7 @@ class TestHtStateBridge:
 
     def test_shuffle_call_sites_still_present(self):
         js = _js()
-        assert js.count("rebuildShuffleQueue(") >= 8
+        assert js.count("rebuildShuffleQueue(") >= 6
         assert "nextIndex()" in js
         assert "prevIndex()" in js
 
