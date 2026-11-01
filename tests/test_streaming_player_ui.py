@@ -2756,3 +2756,10 @@ class TestHtConfigJson:
         )
         cfg = self._config(page)
         assert cfg["languageGroups"] == {}
+
+
+def test_player_rating_el_declared_before_use():
+    """Regression: ported rating block once dropped `var playerRatingEl`, throwing
+    at startup (ReferenceError) so the catalog never rendered."""
+    js = render_player_js()
+    assert "var playerRatingEl = document.getElementById('player-rating')" in js

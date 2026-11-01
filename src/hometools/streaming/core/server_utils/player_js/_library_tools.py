@@ -630,6 +630,7 @@ def render_library_tools_js() -> str:
   function _patchAllItemsRating(relativePath, rating) { window._patchAllItemsRating(relativePath, rating); }
   function _updateTrackRatingBar(idx, rating) { window._updateTrackRatingBar(idx, rating, _ratingHooks()); }
   function setRating(stars) { window._setRating(stars, _ratingHooks()); }
+  var playerRatingEl = document.getElementById('player-rating');
 
 
   if (playerRatingEl) {
