@@ -711,95 +711,18 @@ def render_library_tools_js() -> str:
     btnRepeat.addEventListener('click', cycleRepeat);
   }
 
-  /* ── Crossfade (audio only) ── */
-  var _xfadeAudio = null;   /* second <audio> element for crossfade target */
-  var _xfading = false;     /* true while a crossfade is in progress */
-  var _xfadeTimer = null;   /* setInterval for volume ramp */
-  var _xfadeNextItem = null;/* the item being crossfaded into */
-  var _xfadeNextIndex = -1; /* filteredItems index of the crossfade target */
-  var _xfadeCommit = null;  /* deferred shuffle advance from resolveNext(); applied on finish only */
-
-  function _xfadeCleanup() {
-    if (_xfadeTimer) { clearInterval(_xfadeTimer); _xfadeTimer = null; }
-    if (_xfadeAudio) { _xfadeAudio.pause(); _xfadeAudio.removeAttribute('src'); }
-    _xfading = false;
-    _xfadeNextItem = null;
-    _xfadeNextIndex = -1;
-    _xfadeCommit = null; /* aborted → shuffle position untouched */
+  /* Crossfade ported to webui/src/crossfade.ts (_xfade* state private there). */
+  function _xfadeHooks() {
+    return {
+      player: player, durationSec: CROSSFADE_DURATION,
+      flushOutgoingProgress: function() { saveProgressNow(); clearProgressFor(_progressRelPath); },
+      playTrack: playTrack, playFromQueue: playFromQueue
+    };
   }
+  function _xfadeCleanup() { window._crossfadeCleanup(); }
+  function _startCrossfade() { window._startCrossfade(_xfadeHooks()); }
+  function _finishCrossfade() { window._finishCrossfade(_xfadeHooks()); }
 
-  function _startCrossfade() {
-    if (_xfading) return;
-    /* next-target resolution ported to webui/src/queue.ts::resolveNext */
-    var next = window._resolveNext();
-    if (!next || !next.item || !next.item.stream_url) return;
-    _xfading = true;
-    _xfadeNextItem = next.item;
-    _xfadeNextIndex = next.index;
-    _xfadeCommit = next.commit;
-
-    /* Create or reuse the xfade audio element */
-    if (!_xfadeAudio) {
-      _xfadeAudio = document.createElement('audio');
-      _xfadeAudio.style.display = 'none';
-      _xfadeAudio.preload = 'auto';
-      document.body.appendChild(_xfadeAudio);
-    }
-    _xfadeAudio.volume = 0;
-    _xfadeAudio.src = next.item.stream_url;
-    _xfadeAudio.load();
-    _xfadeAudio.play().catch(function() { _xfadeCleanup(); });
-
-    /* Ramp volumes: fade out current, fade in next */
-    var steps = 20; /* 50ms intervals over CROSSFADE_DURATION */
-    var interval = (CROSSFADE_DURATION * 1000) / steps;
-    var step = 0;
-    _xfadeTimer = setInterval(function() {
-      step++;
-      var progress = Math.min(step / steps, 1);
-      /* Ease curve: sine ease-in-out */
-      var ease = 0.5 - 0.5 * Math.cos(Math.PI * progress);
-      player.volume = Math.max(0, 1 - ease);
-      _xfadeAudio.volume = Math.min(1, ease);
-      if (step >= steps) {
-        clearInterval(_xfadeTimer);
-        _xfadeTimer = null;
-        _finishCrossfade();
-      }
-    }, interval);
-  }
-
-  function _finishCrossfade() {
-    if (!_xfadeNextItem) { _xfadeCleanup(); return; }
-    /* Save progress for the outgoing track */
-    saveProgressNow();
-    clearProgressFor(_progressRelPath);
-
-    /* Advance the actual playback state */
-    var nextItem = _xfadeNextItem;
-    var fromQueue = _xfadeNextIndex === -1 && _userQueue.length > 0;
-
-    /* Stop the xfade audio — main player takes over */
-    var xfSrc = _xfadeAudio.src;
-    var xfTime = _xfadeAudio.currentTime;
-    _xfadeAudio.pause();
-
-    _xfading = false;
-    _xfadeNextItem = null;
-
-    if (fromQueue) {
-      /* Consume from queue */
-      playFromQueue(0);
-    } else {
-      if (_xfadeNextIndex >= 0 && _xfadeCommit) _xfadeCommit();
-      playTrack(_xfadeNextIndex >= 0 ? _xfadeNextIndex : nextIndex());
-    }
-    _xfadeNextIndex = -1;
-    _xfadeCommit = null;
-
-    /* Restore volume to 1 for the main player */
-    player.volume = 1;
-  }
 
   player.addEventListener('ended', function() {
     /* Guard against spurious 'ended' events: some browsers (and stream/network
@@ -817,7 +740,7 @@ def render_library_tools_js() -> str:
       return;
     }
     clearProgressFor(_progressRelPath);
-    if (_xfading) {
+    if (window._isCrossfading()) {
       /* Crossfade already handled transition — just finish it */
       _finishCrossfade();
       return;
@@ -865,7 +788,7 @@ def render_library_tools_js() -> str:
     if (bgAudioIsActive()) return;
     /* User-initiated pause (custom button OR native controls) */
     wasPlaying = false;
-    if (_xfading) { _xfadeCleanup(); player.volume = 1; }
+    if (window._isCrossfading()) { _xfadeCleanup(); player.volume = 1; }
     if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
     stopBgSync();
     if (!player.ended) btnPlay.innerHTML = IC_PLAY;
@@ -892,7 +815,7 @@ def render_library_tools_js() -> str:
     _updateSkipIntroBtn();
     /* Crossfade trigger: start fading when remaining time <= CROSSFADE_DURATION
        Skip crossfade for repeat-one (track restarts itself) */
-    if (CROSSFADE_DURATION > 0 && !_xfading && !isVideoPlayer && repeatMode !== 'one') {
+    if (CROSSFADE_DURATION > 0 && !window._isCrossfading() && !isVideoPlayer && repeatMode !== 'one') {
       var remaining = player.duration - player.currentTime;
       if (remaining > 0 && remaining <= CROSSFADE_DURATION && player.duration > CROSSFADE_DURATION + 5) {
         _startCrossfade();

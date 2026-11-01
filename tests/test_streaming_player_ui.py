@@ -707,7 +707,7 @@ def test_resolve_next_and_rating_patch_ported_to_ts():
     assert "export function replaceItemFields(" in cq
     js = _js()
     assert "function _resolveNextForCrossfade" not in js
-    assert "window._resolveNext()" in js
+    assert "resolveNext()" in _webui_src("crossfade.ts")
     # all four arrays must be patched (stale playlistItems = rating-filter bug)
     assert "replaceItemFields([s.allItems, s.playlistItems, s.filteredItems, s.userQueue]" in _webui_src("rating.ts")
 
@@ -721,11 +721,11 @@ def test_crossfade_defers_shuffle_advance_until_finish():
     assert "nextIndex()" not in q.replace("peekNextIndex()", "")
     sh = _webui_src("shuffle.ts")
     assert "export function peekNextIndex(" in sh
-    js = _js()
-    cleanup = js.split("function _xfadeCleanup()", 1)[1].split("\n  }", 1)[0]
-    assert "_xfadeCommit = null" in cleanup
-    finish = js.split("function _finishCrossfade()", 1)[1].split("\n  }\n", 1)[0]
-    assert "_xfadeCommit()" in finish
+    xf = _webui_src("crossfade.ts")
+    cleanup = xf.split("export function crossfadeCleanup()", 1)[1].split("\n}\n", 1)[0]
+    assert "_commit = null" in cleanup
+    finish = xf.split("export function finishCrossfade(", 1)[1]
+    assert "commit()" in finish
 
 
 def test_lyrics_close_listener_registered_once():
@@ -1595,7 +1595,7 @@ def test_crossfade_js_has_xfade_functions():
     assert "_startCrossfade" in js
     assert "_finishCrossfade" in js
     assert "_xfadeCleanup" in js
-    assert "_xfadeAudio" in js
+    assert "_audio = document.createElement" in _webui_src("crossfade.ts")
 
 
 def test_crossfade_trigger_in_timeupdate():
