@@ -66,6 +66,26 @@ export function closeDownloadDB(): void {
   downloadDB = null;
 }
 
+/** True once initDownloadDB succeeded (legacy `if (!downloadDB)` guards). */
+export function isDownloadDbReady(): boolean {
+  return downloadDB !== null;
+}
+
+/** Add a download record. Rejects on failure (caller shows error). */
+export function addDownloadRecord(record: Record<string, unknown>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!downloadDB) return reject(new Error("IndexedDB not ready"));
+    try {
+      const tx = downloadDB.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).add(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("IndexedDB write failed"));
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 export function getDownloadByStreamUrl(streamUrl: string): Promise<DownloadRecord | null> {
   return new Promise((resolve) => {
     if (!downloadDB) return resolve(null);
@@ -140,6 +160,3 @@ export function deleteDownloadByStreamUrl(streamUrl: string): Promise<boolean> {
     });
   });
 }
-
-
-

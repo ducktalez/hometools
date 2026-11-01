@@ -27,72 +27,37 @@ def render_library_tools_js() -> str:
     return Object.keys(_dupeMap).length;
   }
 
+  /* Panel open/close/wiring: webui/src/dupePanel.ts (dupe state stays here,
+     read by track rendering). Row click navigates to folder + plays. */
   function openDupePanel() {
     _ensureDupeMap();
-    var backdrop = document.getElementById('dupe-panel-backdrop');
-    if (!backdrop) return;
-    var body = document.getElementById('dupe-panel-body');
-    if (!body) return;
-    var keys = Object.keys(_dupeMap);
-    /* markup: webui/src/panelBodies.ts::dupePanelBodyHtml */
-    body.innerHTML = window._dupePanelBodyHtml(allItems, _dupeMap, _dupeSafety, {
-      escHtml: escHtml, filePlaceholder: FILE_PLACEHOLDER, icDuplicate: IC_DUPLICATE, icTrash: IC_TRASH
-    });
-    if (keys.length > 0) {
-      /* Wire up trash buttons */
-      body.querySelectorAll('.dupe-trash-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var ai = Number(btn.dataset.allIndex);
-          _deleteDuplicateFile(ai);
-        });
-      });
-      /* Wire up clicks to play */
-      body.querySelectorAll('.dupe-group-item').forEach(function(el) {
-        el.addEventListener('click', function() {
-          var ai = Number(el.dataset.allIndex);
-          var t = allItems[ai];
-          if (!t) return;
-          closeDupePanel();
-          /* Navigate to folder and play */
+    window._openDupePanel(
+      { allItems: allItems, dupeMap: _dupeMap, dupeSafety: _dupeSafety, dupePaths: _dupePaths },
+      {
+        escHtml: escHtml, filePlaceholder: FILE_PLACEHOLDER, icDuplicate: IC_DUPLICATE, icTrash: IC_TRASH,
+        deleteDuplicate: _deleteDuplicateFile,
+        playItem: function(t) {
           var sl = (t.relative_path || '').lastIndexOf('/');
-          if (sl > 0) {
-            var folder = t.relative_path.substring(0, sl);
-            var items = itemsUnder(folder);
-            showPlaylist(items, folder);
-            var localIdx = -1;
-            for (var j = 0; j < filteredItems.length; j++) {
-              if (filteredItems[j].relative_path === t.relative_path) { localIdx = j; break; }
-            }
-            if (localIdx >= 0) playTrack(localIdx);
+          if (sl <= 0) return;
+          var folder = t.relative_path.substring(0, sl);
+          showPlaylist(itemsUnder(folder), folder);
+          var localIdx = -1;
+          for (var j = 0; j < filteredItems.length; j++) {
+            if (filteredItems[j].relative_path === t.relative_path) { localIdx = j; break; }
           }
-        });
-      });
-    }
-    /* Update subtitle */
-    var sub = document.getElementById('dupe-panel-subtitle');
-    if (sub) sub.textContent = keys.length + ' Duplikat-Gruppe' + (keys.length !== 1 ? 'n' : '') +
-      ' (' + (_dupePaths ? _dupePaths.size : 0) + ' Dateien)';
-    backdrop.removeAttribute('hidden');
+          if (localIdx >= 0) playTrack(localIdx);
+        }
+      }
+    );
   }
+  function closeDupePanel() { window._closeDupePanel(); }
 
-  function closeDupePanel() {
-    var backdrop = document.getElementById('dupe-panel-backdrop');
-    if (backdrop) backdrop.setAttribute('hidden', '');
-  }
 
   function playDuplicates() {
     _ensureDupeMap();
     var keys = Object.keys(_dupeMap);
     if (!keys.length) { showToast('Keine Duplikate gefunden'); return; }
-    /* Collect all items from dupe groups, grouped by key for natural listening order */
-    var dupeItems = [];
-    keys.forEach(function(key) {
-      _dupeMap[key].forEach(function(idx) {
-        var t = allItems[idx];
-        if (t) dupeItems.push(t);
-      });
-    });
+    var dupeItems = window._collectDupeItems(_dupeMap, allItems);
     if (!dupeItems.length) return;
     closeDupePanel();
     /* Show as virtual playlist. Header/toolbar state via _enterTrackListView()
@@ -114,145 +79,23 @@ def render_library_tools_js() -> str:
 
   }
 
-  function _deleteDuplicateFile(allIndex) {
-    var t = allItems[allIndex];
-    if (!t) return;
-    var name = t.title || t.relative_path;
-    if (!confirm('Datei "' + name + '" in den Papierkorb verschieben?')) return;
-    /* Check if this track is the currently playing one */
-    var playingFilteredIdx = -1;
-    if (currentIndex >= 0 && currentIndex < filteredItems.length &&
-        filteredItems[currentIndex].relative_path === t.relative_path) {
-      playingFilteredIdx = currentIndex;
-    }
-    var wasBefore = playingFilteredIdx < 0 && window._isBeforeIndex(filteredItems, t.relative_path, currentIndex);
-    fetch(DELETE_API_PATH, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({path: t.relative_path})
-    }).then(function(r) {
-      if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Fehler'); });
-      return r.json();
-    }).then(function() {
-      /* Remove item from allItems */
-      allItems.splice(allIndex, 1);
-      /* Also remove from playlistItems (e.g. when in the "duplicates" virtual playlist view)
-         so that filteredItems does not keep showing the deleted item on the next applyFilter() */
-      var rp = t.relative_path;
-      playlistItems = window._withoutPath(playlistItems, rp);
-      _invalidateDupeMap();
-      _invalidateFolderCache();
-      /* Keep localStorage in sync so the deleted file is gone on the next page load too */
-      _saveCatalogCache(allItems);
-      /* Adjust currentIndex */
-      if (wasBefore) {
-        currentIndex = Math.max(0, currentIndex - 1);
-      }
-      showToast('Datei gel\\u00f6scht: ' + name);
-      /* Re-render the track list first so filteredItems is up-to-date */
-      if (inPlaylist) applyFilter();
-      /* Re-render the dupe panel with updated data */
-      openDupePanel();
-      /* If the playing track was deleted, advance to next */
-      if (playingFilteredIdx >= 0 && filteredItems.length > 0) {
-        var ni = Math.min(currentIndex, filteredItems.length - 1);
-        playTrack(ni);
-      }
-    }).catch(function(err) {
-      showToast('L\\u00f6schen fehlgeschlagen: ' + (err.message || err));
-    });
+  /* Delete/move/gone-track ported to webui/src/libraryOps.ts (_deletePending
+     private there; state via htState). Hooks bundle the legacy side effects. */
+  function _libOpsHooks() {
+    return {
+      deleteApiPath: DELETE_API_PATH, moveApiPath: MOVE_API_PATH, toast: showToast,
+      invalidateCaches: function() { _invalidateDupeMap(); _invalidateFolderCache(); },
+      saveCatalogCache: _saveCatalogCache,
+      applyFilter: applyFilter, showFolderView: showFolderView, playTrack: playTrack,
+      itemsUnder: itemsUnder,
+      progressRelPath: function() { return _progressRelPath; },
+      showPausedIcon: function() { btnPlay.innerHTML = IC_PLAY; },
+      reopenDupePanel: openDupePanel
+    };
   }
-
-  /* Remove a track that the player could not load (404 / gone on disk).
-     Called from the player 'error' handler after a HEAD-request confirms 404.
-     Mirrors the logic of _deleteTrackFromList but without the server DELETE call. */
-  function _removeGoneTrack(relativePath) {
-    /* If _deleteTrackFromList is already handling this path (animation still running),
-       don't double-advance the player — _doRemoveRender will call playTrack after fade. */
-    if (_deletePending === relativePath) return;
-    showToast('Datei nicht gefunden \u2014 aus der Liste entfernt');
-    /* Determine playback context before mutating filteredItems */
-    var wasCurrentlyPlaying = (relativePath === _progressRelPath);
-    var wasBefore = !wasCurrentlyPlaying && window._isBeforeIndex(filteredItems, relativePath, currentIndex);
-    allItems = window._withoutPath(allItems, relativePath);
-    _invalidateDupeMap();
-    _invalidateFolderCache();
-    _saveCatalogCache(allItems);
-    playlistItems = window._withoutPath(playlistItems, relativePath);
-    if (wasBefore) currentIndex = Math.max(0, currentIndex - 1);
-    btnPlay.innerHTML = IC_PLAY;
-    if (inPlaylist) {
-      applyFilter();
-      if (wasCurrentlyPlaying && filteredItems.length > 0) {
-        playTrack(Math.min(currentIndex < 0 ? 0 : currentIndex, filteredItems.length - 1));
-      } else if (filteredItems.length === 0) {
-        showFolderView();
-      }
-    } else {
-      showFolderView();
-    }
-  }
-
-  function _deleteTrackFromList(filteredIdx) {
-    var t = filteredItems[filteredIdx];
-    if (!t) return;
-    var name = t.title || t.relative_path;
-    if (!confirm('Datei "' + name + '" in den Papierkorb verschieben?')) return;
-    var wasCurrentlyPlaying = (filteredIdx === currentIndex);
-    var wasBefore = (currentIndex >= 0 && filteredIdx < currentIndex);
-    /* Mark IMMEDIATELY (before API call) so concurrent silent-refreshes and
-       _removeGoneTrack don't re-add or double-handle the item. */
-    _locallyDeletedPaths[t.relative_path] = true;
-    _deletePending = t.relative_path;
-    fetch(DELETE_API_PATH, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({path: t.relative_path})
-    }).then(function(r) {
-      if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Fehler'); });
-      return r.json();
-    }).then(function() {
-      allItems = window._withoutPath(allItems, t.relative_path);
-      _invalidateDupeMap();
-      _invalidateFolderCache();
-      /* Keep localStorage in sync so the deleted file is gone on the next page load too */
-      _saveCatalogCache(allItems);
-      /* Adjust currentIndex so the player stays on the right track */
-      if (wasBefore) {
-        currentIndex = Math.max(0, currentIndex - 1);
-      } else if (wasCurrentlyPlaying) {
-        /* Will point to the next song (which shifted into our slot) */
-        if (currentIndex >= filteredItems.length - 1) currentIndex = Math.max(0, currentIndex - 1);
-      }
-      showToast('Datei gel\\u00f6scht: ' + name);
-      /* Re-render after the fade-out completes, or immediately if element not found */
-      function _doRemoveRender() {
-        _deletePending = null;
-        if (inPlaylist) {
-          var items = itemsUnder(currentPath);
-          if (items.length) { playlistItems = items; applyFilter(); }
-          else { showFolderView(); }
-        } else { showFolderView(); }
-        /* If the playing track was deleted, advance to the next one.
-           Guard: _removeGoneTrack may have already advanced during the animation. */
-        if (wasCurrentlyPlaying && filteredItems.length > 0) {
-          playTrack(Math.min(currentIndex, filteredItems.length - 1));
-        }
-      }
-      var li = trackList.querySelector('[data-index="' + filteredIdx + '"]');
-      if (li) {
-        li.classList.add('track-item--removing');
-        li.addEventListener('animationend', _doRemoveRender, { once: true });
-      } else {
-        _doRemoveRender();
-      }
-    }).catch(function(err) {
-      _locallyDeletedPaths[t.relative_path] && delete _locallyDeletedPaths[t.relative_path];
-      _deletePending = null;
-      showToast('L\\u00f6schen fehlgeschlagen: ' + (err.message || err));
-    });
-  }
-
+  function _deleteDuplicateFile(allIndex) { window._deleteDuplicateFile(allIndex, _libOpsHooks()); }
+  function _removeGoneTrack(relativePath) { window._removeGoneTrack(relativePath, _libOpsHooks()); }
+  function _deleteTrackFromList(filteredIdx) { window._deleteTrackFromList(filteredIdx, _libOpsHooks()); }
   /* ── File mover (move to folder) ── */
   /* _getRecentMoveTargets()/_saveRecentMoveTarget() ported to
      webui/src/recentMoveTargets.ts, bridged onto window by main.ts. */
@@ -273,125 +116,22 @@ def render_library_tools_js() -> str:
     return html;
   }
 
-  function moveFileToFolder(idx, targetFolder) {
-    var t = filteredItems[idx];
-    if (!t) return;
-    var curFolder = _currentFolderOf(t);
-    if (targetFolder === curFolder) { showToast('Datei ist bereits in diesem Ordner'); return; }
-    /* Mark old path immediately so concurrent background fetches don't
-       re-add the item at its old location before the server has rescanned. */
-    _locallyDeletedPaths[t.relative_path] = true;
-    fetch(MOVE_API_PATH, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: t.relative_path, target_folder: targetFolder })
-    })
-    .then(function(r) {
-      if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Move failed'); });
-      return r.json();
-    })
-    .then(function(d) {
-      if (!d || !d.ok) return;
-      _saveRecentMoveTarget(targetFolder);
-      /* Update allItems in-place */
-      for (var i = 0; i < allItems.length; i++) {
-        if (allItems[i].relative_path === t.relative_path) {
-          allItems[i] = Object.assign({}, allItems[i], {
-            relative_path: d.new_path,
-            stream_url: allItems[i].stream_url.replace(encodeURIComponent(t.relative_path), encodeURIComponent(d.new_path)),
-            artist: targetFolder
-          });
-          break;
-        }
-      }
-      _invalidateDupeMap();
-      _invalidateFolderCache();
-      _saveCatalogCache(allItems);  /* keep localStorage in sync after rename */
-      showToast('Verschoben nach ' + targetFolder);
-      /* Fade item out, then re-render — no ghost needed since item is cleanly gone */
-      var li = trackList.querySelector('[data-index="' + idx + '"]');
-      if (li) {
-        li.classList.add('track-item--removing');
-        li.addEventListener('animationend', function() { applyFilter(); }, { once: true });
-      } else {
-        applyFilter();
-      }
-    })
-    .catch(function(err) {
-      delete _locallyDeletedPaths[t.relative_path];
-      showToast('Fehler: ' + (err.message || 'Verschieben fehlgeschlagen'));
-    });
-  }
+  function moveFileToFolder(idx, targetFolder) { window._moveFileToFolder(idx, targetFolder, _libOpsHooks()); }
 
-  /* ── Generic three-dot / kebab dropdown menu ─────────────────────────────
-     Shared by every kebab menu in the UI (track rows, player bar, playlist
-     cards, …) so they all look and behave identically — a single dropdown
-     anchored to the triggering button, right-aligned to it.
+  /* Generic kebab dropdown + reveal-in-explorer ported to webui/src/ctxMenu.ts
+     (cleanup handle private there). Wrappers keep bare-name call sites.
      items: [{ icon, label, onClick, danger }] */
-  var _ctxMenuCleanup = null;
-
-  function _closeCtxMenu() {
-    if (_ctxMenuCleanup) { _ctxMenuCleanup(); _ctxMenuCleanup = null; }
-    var old = document.getElementById('ht-ctx-menu');
-    if (old) old.remove();
-  }
-
-  function _openCtxMenu(btn, items) {
-    _closeCtxMenu();
-    var menu = document.createElement('div');
-    menu.id = 'ht-ctx-menu';
-    menu.className = 'ht-ctx-menu';
-    menu.innerHTML = window._ctxMenuHtml(items, escHtml); /* webui/src/panelBodies.ts */
-    document.body.appendChild(menu);
-    /* Position: align right edge with button, just below (or above if no room) */
-    var rect = btn.getBoundingClientRect();
-    menu.style.right = Math.max(4, window.innerWidth - rect.right) + 'px';
-    var spaceBelow = window.innerHeight - rect.bottom;
-    if (spaceBelow >= menu.offsetHeight + 8) {
-      menu.style.top = (rect.bottom + 4) + 'px';
-    } else {
-      menu.style.top = Math.max(4, rect.top - menu.offsetHeight - 4) + 'px';
-    }
-    menu.querySelectorAll('.ht-ctx-item').forEach(function(elBtn) {
-      elBtn.addEventListener('click', function() {
-        var idx = Number(elBtn.dataset.idx);
-        _closeCtxMenu();
-        if (items[idx] && typeof items[idx].onClick === 'function') items[idx].onClick();
-      });
-    });
-    /* Close on outside click or Escape */
-    function _onOutside(e) { if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) _closeCtxMenu(); }
-    function _onEsc(e) { if (e.key === 'Escape') _closeCtxMenu(); }
-    setTimeout(function() {
-      document.addEventListener('click', _onOutside);
-      document.addEventListener('keydown', _onEsc);
-    }, 0);
-    _ctxMenuCleanup = function() {
-      document.removeEventListener('click', _onOutside);
-      document.removeEventListener('keydown', _onEsc);
-    };
-  }
-
-  /* ── Track context menu (three-dot / kebab) ─────────────────────────────── */
+  function _closeCtxMenu() { window._closeCtxMenu(); }
+  function _openCtxMenu(btn, items) { window._openCtxMenu(btn, items, escHtml); }
+  /* -- Track context menu (three-dot / kebab) -- */
   function _openTrackCtxMenu(btn, relativePath, title) {
     var IC_FOLDER_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
     _openCtxMenu(btn, [
       { icon: IC_FOLDER_OPEN, label: 'Im Explorer anzeigen', onClick: function() { _revealInExplorer(relativePath, title); } }
     ]);
   }
-
   function _revealInExplorer(relativePath, title) {
-    fetch(REVEAL_API_PATH, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({path: relativePath})
-    })
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(d) {
-      if (!d) { showToast('Pfad nicht gefunden'); return; }
-      showToast(d.revealed ? 'Explorer ge\u00f6ffnet' : 'Pfad: ' + d.path);
-    })
-    .catch(function() { showToast('Fehler beim Anzeigen'); });
+    window._revealInExplorer(relativePath, { apiPath: REVEAL_API_PATH, toast: showToast });
   }
 
   /* ── playback ── */
@@ -726,7 +466,7 @@ def render_library_tools_js() -> str:
     updatePlayerBarActions();
     refreshMetadata(t);
     /* Auto-update lyrics panel if currently open */
-    if (LYRICS_ENABLED && _lyricsOpen) openLyricsPanel(t.relative_path || '', t.title);
+    if (LYRICS_ENABLED && window._lyrics.isOpen()) openLyricsPanel(t.relative_path || '', t.title);
 
     /* playback progress: track current item and try to resume */
     saveProgressNow();   /* flush the outgoing track's position before switching */
@@ -1434,29 +1174,20 @@ def render_library_tools_js() -> str:
   /* ── Favoriten — speichern & teilen ── */
   var _savedFavorites = {};
 
-  function loadFavorites() {
-    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
-    fetch(base + '/shortcuts')
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(data) {
-        _savedFavorites = {};
-        if (data && Array.isArray(data.items)) {
-          data.items.forEach(function(s) { _savedFavorites[s.id] = true; });
-        }
-        updateFavoriteButtons();
-        /* If favorites filter is active, re-apply so newly loaded state is reflected */
-        if (filterFav && inPlaylist) applyFilter();
-      })
-      .catch(function() {});
+  /* loadFavorites/updateFavoriteButtons/toggleFavorite ported to
+     webui/src/favorites.ts; _savedFavorites stays here (many legacy readers),
+     reached from TS via htState.savedFavorites. */
+  function _favHooks() {
+    return {
+      apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
+      toast: showToast, applyFilter: applyFilter,
+      filterFavActive: function() { return !!filterFav; }
+    };
   }
-
-  function updateFavoriteButtons() {
-    document.querySelectorAll('.track-pin-btn').forEach(function(btn) {
-      var v = window._favoriteBtnView(!!_savedFavorites[btn.dataset.relativePath]);
-      btn.classList.toggle('pinned', v.pinned);
-      btn.title = v.title;
-    });
-  }  /* ── metadata edit modal ── */
+  function loadFavorites() { window._loadFavorites(_favHooks()); }
+  function updateFavoriteButtons() { window._updateFavoriteButtons(); }
+  function toggleFavorite(item, btn) { window._toggleFavorite(item, btn, _favHooks()); }
+    /* ── metadata edit modal ── */
   var _editModalRating = 0; /* selected rating inside the edit modal */
 
   function renderEditModalRating(stars) {
@@ -1598,53 +1329,6 @@ def render_library_tools_js() -> str:
         if (saveBtn) saveBtn.disabled = false;
         showToast('Netzwerkfehler beim Speichern');
       });
-  }
-
-  function toggleFavorite(item, btn) {
-    if (!item || !item.relative_path) return;
-    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
-    var isPinned = _savedFavorites[item.relative_path];
-
-    if (isPinned) {
-      /* Remove favorite */
-      fetch(base + '/shortcuts?id=' + encodeURIComponent(item.relative_path), { method: 'DELETE' })
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function() {
-          delete _savedFavorites[item.relative_path];
-          if (btn) { btn.classList.remove('pinned'); btn.title = 'Favorit'; }
-          showToast('Favorit entfernt');
-        })
-        .catch(function() {});
-    } else {
-      /* Add favorite */
-      fetch(base + '/shortcuts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: item.relative_path,
-          title: item.title || item.relative_path,
-          icon: '/thumb?path=' + encodeURIComponent(item.relative_path)
-        })
-      })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function() {
-        _savedFavorites[item.relative_path] = true;
-        if (btn) { btn.classList.add('pinned'); btn.title = 'Favorit entfernen'; }
-        showToast('Als Favorit gespeichert');
-        /* On mobile: additionally offer share sheet for home screen shortcut */
-        if (navigator.share && ('ontouchstart' in window || navigator.maxTouchPoints > 0)) {
-          var deepUrl = window.location.origin + '/?id=' + encodeURIComponent(item.relative_path);
-          setTimeout(function() {
-            navigator.share({
-              title: item.title || 'Favorit',
-              text: item.title || '',
-              url: deepUrl
-            }).catch(function() {});
-          }, 600);
-        }
-      })
-      .catch(function() { showToast('Favorit konnte nicht gespeichert werden'); });
-    }
   }
 
   /* showToast() lives in _core.py — kept as the single canonical
@@ -2066,7 +1750,6 @@ def render_library_tools_js() -> str:
   function _sortByFolderOrder(folderPath, items) {
     return window._sortByOrder(items, _loadFolderOrder(folderPath));
   }  var _playlistRevision = 0;
-  var _playlistSyncTimer = null;
   var _PLAYLIST_SYNC_INTERVAL = CFG.playlistSyncIntervalMs || 30000; /* ms */
 
 """

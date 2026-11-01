@@ -17,10 +17,7 @@ def render_core_js(waveform_js) -> str:
   var playlistItems = [];
   /* _moveGhosts kept for compat but no longer populated — ghost display removed. */
   var _moveGhosts = {};
-  /* Path currently being deleted by _deleteTrackFromList.  Prevents _removeGoneTrack
-     (triggered by the 404 the stream returns for the deleted file) from double-advancing
-     the player while the delete animation is still running. */
-  var _deletePending = null;
+  /* _deletePending moved private into webui/src/libraryOps.ts. */
   /* Paths deleted client-side this session (file sent to trash via POST /delete).
      Set IMMEDIATELY on user confirm (before the API call) to close the race window
      where a concurrent silent-refresh could re-add the item while the call is in-flight.
@@ -48,7 +45,6 @@ def render_core_js(waveform_js) -> str:
   /* ── Queue (Warteschlange) state ── */
   var _userQueue = [];           /* Array of item objects {title, artist, stream_url, relative_path, thumbnail_url, ...} */
   var _queueOpen = false;
-  var _queueDndCleanup = null;
 
   /* ── State bridge for ported TS modules (webui/src/stateBridge.ts) ──
      Getter/setter closures: TS reads see live values, TS writes reassign
@@ -76,7 +72,19 @@ def render_core_js(waveform_js) -> str:
     get shufflePos() { return shufflePos; },
     set shufflePos(v) { shufflePos = v; },
     get userQueue() { return _userQueue; },
-    set userQueue(v) { _userQueue = v; }
+    set userQueue(v) { _userQueue = v; },
+    get userPlaylists() { return _userPlaylists; },
+    set userPlaylists(v) { _userPlaylists = v; },
+    get playlistRevision() { return _playlistRevision; },
+    set playlistRevision(v) { _playlistRevision = v; },
+    get currentPlaylistId() { return _currentPlaylistId; },
+    set currentPlaylistId(v) { _currentPlaylistId = v; },
+    get playlistAddPath() { return _playlistAddPath; },
+    set playlistAddPath(v) { _playlistAddPath = v; },
+    get globalSearchActive() { return _globalSearchActive; },
+    set globalSearchActive(v) { _globalSearchActive = v; },
+    get savedFavorites() { return _savedFavorites; },
+    set savedFavorites(v) { _savedFavorites = v; }
   };
 
   var player       = document.getElementById('player');
@@ -113,7 +121,6 @@ def render_core_js(waveform_js) -> str:
   var _justRatedTimer = null;
   /* Combined "Filtern" popover (Bewertung + Favorit + Genre) — see
      docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2. */
-  var _filterPopoverCleanup = null;
   var folderGrid   = document.getElementById('folder-grid');
   var trackView    = document.getElementById('track-view');
   var filterBar    = document.querySelector('.filter-bar');
@@ -180,11 +187,6 @@ def render_core_js(waveform_js) -> str:
                DOM rebuild is skipped entirely (e.g. navigating away and back
                to the same "Alle Titel" view).                                */
   var _RENDER_BATCH_SIZE  = 100;
-  var _renderAllItems     = [];   /* full displayTracks array for current render */
-  var _renderRealIdxMap   = [];   /* parallel: displayIdx → filteredItems index (-1 = placeholder) */
-  var _renderBatchOffset  = 0;    /* how many items have been appended to DOM so far */
-  var _renderSentinelEl   = null; /* sentinel <li> that triggers next batch */
-  var _renderObserver     = null; /* IntersectionObserver watching the sentinel */
   var _rgKey              = '';   /* render-guard key from last completed renderTracks call */
   var _searchDebounceTimer = null; /* debounce timer for search-input */
 
@@ -788,68 +790,14 @@ def render_core_js(waveform_js) -> str:
   }
 
   /* ── Lyrics panel ── */
-  var _lyricsBtn   = document.getElementById('btn-lyrics');
-  var _lyricsPanel = document.getElementById('lyrics-panel');
-  var _lyricsBody  = document.getElementById('lyrics-body');
-  var _lyricsClose = document.getElementById('lyrics-close-btn');
-  var _lyricsCache = {};   /* relative_path → lyrics text or '' */
-  var _lyricsOpen  = false;
-
-  function openLyricsPanel(relativePath, trackTitle) {
-    if (!LYRICS_ENABLED || !_lyricsPanel) return;
-    _lyricsOpen = true;
-    _lyricsPanel.classList.add('visible');
-    if (_lyricsBtn) _lyricsBtn.title = 'Songtext schlie\u00dfen';
-
-    /* Serve from cache if available */
-    if (relativePath in _lyricsCache) {
-      _renderLyrics(_lyricsCache[relativePath], trackTitle);
-      return;
-    }
-    if (_lyricsBody) _lyricsBody.innerHTML = '<div class="lyrics-loading">Lade Songtext\u2026</div>';
-    fetch(LYRICS_API_PATH + '?path=' + encodeURIComponent(relativePath), { cache: 'no-store' })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(d) {
-        var text = (d && d.lyrics) ? d.lyrics : '';
-        _lyricsCache[relativePath] = text;
-        if (_lyricsOpen) _renderLyrics(text, trackTitle);
-      })
-      .catch(function() {
-        if (_lyricsBody) _lyricsBody.innerHTML = '<div class="lyrics-empty">Songtext konnte nicht geladen werden.</div>';
-      });
-  }
-
-  function _renderLyrics(text, trackTitle) {
-    if (!_lyricsBody) return;
-    if (text) {
-      _lyricsBody.innerHTML = '<div class="lyrics-text">' + escHtml(text) + '</div>';
-      if (_lyricsBtn) _lyricsBtn.classList.add('has-lyrics');
-    } else {
-      _lyricsBody.innerHTML = '<div class="lyrics-empty">Kein Songtext f\u00fcr \u201e' + escHtml(trackTitle || 'diesen Titel') + '\u201c hinterlegt.</div>';
-      if (_lyricsBtn) _lyricsBtn.classList.remove('has-lyrics');
-    }
-  }
-
-  function closeLyricsPanel() {
-    _lyricsOpen = false;
-    if (_lyricsPanel) _lyricsPanel.classList.remove('visible');
-    if (_lyricsBtn) _lyricsBtn.title = 'Songtext anzeigen';
-  }
-
-  if (_lyricsBtn) {
-    _lyricsBtn.addEventListener('click', function() {
-      if (_lyricsOpen) {
-        closeLyricsPanel();
-      } else {
-        /* Find the currently playing track */
-        var t = filteredItems[currentIndex] || playlistItems[currentIndex];
-        if (t) openLyricsPanel(t.relative_path, t.title);
-      }
-    });
-  }
-  if (_lyricsClose) {
-    _lyricsClose.addEventListener('click', closeLyricsPanel);
-  }
+  /* cache/open-state/DOM wiring: webui/src/lyricsPanel.ts. Wrappers keep the
+     bare names used by _queue.py / _library_tools.py. */
+  window._lyrics = window._initLyricsPanel({
+    enabled: LYRICS_ENABLED, apiPath: LYRICS_API_PATH, escHtml: escHtml,
+    getCurrentTrack: function() { return filteredItems[currentIndex] || playlistItems[currentIndex]; }
+  });
+  function openLyricsPanel(relativePath, trackTitle) { window._lyrics.open(relativePath, trackTitle); }
+  function closeLyricsPanel() { window._lyrics.close(); }
 
   /* ── Queue (Warteschlange) panel ── */
   var _queuePeekHandle = document.getElementById('queue-peek-handle');

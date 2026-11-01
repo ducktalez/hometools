@@ -26,6 +26,12 @@ export interface HtState {
   shuffleQueue: number[];
   shufflePos: number;
   userQueue: LegacyMediaItem[];
+  userPlaylists: unknown[];
+  playlistRevision: number;
+  currentPlaylistId: string;
+  playlistAddPath: string;
+  globalSearchActive: boolean;
+  savedFavorites: Record<string, boolean>;
 }
 
 /** Bridge or null when the legacy script hasn't run (yet). Callers must no-op then. */

@@ -214,10 +214,11 @@ class TestTrackDownloadButtons:
     def test_js_dl_btn_toggle_behavior(self):
         """Clicking a cached button should delete, clicking uncached should download, clicking downloading should cancel."""
         js = _js()
+        ts = _webui_src("trackListDelegation.ts")
         assert "deleteTrackDownload" in js
         assert "downloadTrack" in js
-        assert "classList.contains('cached')" in js
-        assert "classList.contains('downloading')" in js
+        assert 'classList.contains("cached")' in ts
+        assert 'classList.contains("downloading")' in ts
         assert "cancelDownload" in js
 
     def test_js_init_download_db_called_at_startup(self):
@@ -258,8 +259,15 @@ class TestTrackDownloadButtons:
     def test_js_download_uses_store_add(self):
         """downloadTrack must use store.add() not store.put() for Chrome compat."""
         js = _js()
-        # store.add() works with autoIncrement keyPath without providing the key
-        assert "store.add({" in js
+        # store.add() works with autoIncrement keyPath without providing the key;
+        # the write lives in webui/src/offlineDb.ts::addDownloadRecord
+        assert "window.addDownloadRecord(" in js
+        from pathlib import Path
+
+        import hometools
+
+        ts = Path(hometools.__file__).parent / "streaming/core/webui/src/offlineDb.ts"
+        assert ".add(record)" in ts.read_text(encoding="utf-8")
 
     def test_js_download_button_has_prevent_default(self):
         """Download button click must call preventDefault to avoid side effects."""

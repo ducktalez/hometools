@@ -21,6 +21,12 @@ export function installState(over: Partial<HtState> = {}): HtState {
     shuffleQueue: [],
     shufflePos: -1,
     userQueue: [],
+    userPlaylists: [],
+    playlistRevision: 0,
+    currentPlaylistId: "",
+    playlistAddPath: "",
+    globalSearchActive: false,
+    savedFavorites: {},
     ...over,
   };
   (globalThis as unknown as { window: { htState: HtState } }).window = { htState: s };

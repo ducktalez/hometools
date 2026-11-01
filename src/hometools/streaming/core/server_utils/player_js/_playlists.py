@@ -5,65 +5,27 @@ from __future__ import annotations
 
 def render_playlists_js() -> str:
     """Return the playlists section of the player JS."""
-    return """  function loadUserPlaylists() {
-    if (!PLAYLISTS_ENABLED) return Promise.resolve([]);
-    return fetch(PLAYLISTS_API_PATH).then(function(r) { return r.json(); })
-      .then(function(d) {
-        _userPlaylists = d.items || [];
-        if (typeof d.revision === 'number') _playlistRevision = d.revision;
-        updatePlaylistPill();
-        return _userPlaylists;
-      })
-      .catch(function() { return []; });
+    return """  /* Load/sync/snapshot ported to webui/src/playlistSync.ts (state via
+     htState.userPlaylists/playlistRevision, sync timer private there).
+     These thin wrappers keep the bare-name call sites unchanged. */
+  function _playlistOpts() {
+    return {
+      enabled: PLAYLISTS_ENABLED,
+      apiPath: PLAYLISTS_API_PATH,
+      versionPath: PLAYLISTS_VERSION_PATH,
+      intervalMs: _PLAYLIST_SYNC_INTERVAL,
+      onRemoteUpdate: function() {
+        /* If we're currently looking at the folder view, re-render to show updated playlist cards */
+        if (!inPlaylist && currentPath === '') showFolderView();
+      }
+    };
   }
-
-  function _startPlaylistSync() {
-    if (!PLAYLISTS_ENABLED) return;
-    _stopPlaylistSync();
-    _playlistSyncTimer = setInterval(_pollPlaylistVersion, _PLAYLIST_SYNC_INTERVAL);
-    /* Pause when tab hidden, resume when visible */
-    document.addEventListener('visibilitychange', _onPlaylistVisibility);
-  }
-  function _stopPlaylistSync() {
-    if (_playlistSyncTimer) { clearInterval(_playlistSyncTimer); _playlistSyncTimer = null; }
-  }
-  function _onPlaylistVisibility() {
-    if (document.hidden) {
-      _stopPlaylistSync();
-    } else {
-      /* Resume polling and do an immediate check */
-      _stopPlaylistSync();
-      _pollPlaylistVersion();
-      _playlistSyncTimer = setInterval(_pollPlaylistVersion, _PLAYLIST_SYNC_INTERVAL);
-    }
-  }
-  function _pollPlaylistVersion() {
-    fetch(PLAYLISTS_VERSION_PATH).then(function(r) { return r.json(); })
-      .then(function(d) {
-        if (typeof d.revision === 'number' && d.revision > _playlistRevision) {
-          loadUserPlaylists().then(function() {
-            /* If we're currently looking at the folder view, re-render to show updated playlist cards */
-            if (!inPlaylist && currentPath === '') showFolderView();
-          });
-        }
-      }).catch(function() { /* offline — ignore */ });
-  }
-
-  function updatePlaylistPill() { /* pill removed — no-op */ }
-
-  /* ── optimistic UI helpers ── */
-  function _snapshotPlaylists() {
-    return JSON.parse(JSON.stringify(_userPlaylists));
-  }
-  function _restorePlaylists(snap) {
-    _userPlaylists = snap;
-    updatePlaylistPill();
-  }
-
-  /* ── playlist library panel (removed — playlists as pseudo-folders) ── */
-  function openPlaylistLibrary() { /* removed */ }
-  function closePlaylistLibrary() { /* removed */ }
-  function renderPlaylistLibrary() { /* removed */ }
+  function loadUserPlaylists() { return window._loadUserPlaylists(_playlistOpts()); }
+  function _startPlaylistSync() { window._startPlaylistSync(_playlistOpts()); }
+  function _stopPlaylistSync() { window._stopPlaylistSync(); }
+  function _snapshotPlaylists() { return window._snapshotPlaylists(); }
+  function _restorePlaylists(snap) { window._restorePlaylists(snap); }
+  function updatePlaylistPill() { /* pill removed - no-op */ }
 
   function _resolvePlaylistItems(plId) {
     /* Logic ported to webui/src/smartPlaylist.ts::resolvePlaylistItems. */
@@ -98,6 +60,5 @@ def render_playlists_js() -> str:
      _smartOpsFor()/_smartRenderRuleRow() ported to webui/src/smartPlaylist.ts,
      bridged onto window by main.ts. */
 
-  var _smartEditorState = null;
 
 """

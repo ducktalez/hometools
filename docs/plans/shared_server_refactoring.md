@@ -206,20 +206,21 @@ let serverURL = URL(string: "http://localhost:8011")
 
 ## Migration Plan (2-3 Stunden)
 
+> Stand: Umsetzung als `register_*`-Funktionen (kein `MediaStreamingApp`), Server sind real ~1300-1500 LOC, nicht 200.
+
 ### Phase 1: Factory erstellen
-- [ ] `core/server_factory.py` schreiben
-- [ ] Generic Endpoints implementieren
-- [ ] Tests schreiben
+- [x] `core/server_factory.py` (health, PWA, progress, shortcuts, playlists, folder-order, todos/state, audit-Liste, reveal, delete-file)
+- [x] Tests: `tests/test_server_factory.py`
+- [x] Index-Liste/refresh/status (`register_index_routes`) + `/thumb` (`register_thumb_route`, sprite nur video)
+- [ ] Noch offen: Audit-Panel-HTML, `/stream`-Endpoints (Remux-Logik video-spezifisch), Phase 4
 
 ### Phase 2: Audio-Server migrieren
-- [ ] `audio/server.py` reduzieren
-- [ ] Testen
-- [ ] Tests aktualisieren
+- [x] Geteilte Routen → Factory
+- [x] Tests grün (1518 passed)
 
 ### Phase 3: Video-Server migrieren
-- [ ] `video/server.py` reduzieren
-- [ ] Testen
-- [ ] Tests aktualisieren
+- [x] Geteilte Routen → Factory
+- [x] Tests grün
 
 ### Phase 4: Optional — Catalog abstrahieren
 - [ ] `core/catalog.py` generische Base-Klasse

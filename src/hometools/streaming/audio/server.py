@@ -33,23 +33,31 @@ from hometools.streaming.audio.catalog import (
     list_artists,
     query_tracks,
 )
-from hometools.streaming.core.catalog import quick_folder_scan
 from hometools.streaming.core.index_cache import IndexCache
 from hometools.streaming.core.openapi_schema import install_filtered_openapi
+from hometools.streaming.core.server_factory import (
+    register_audit_entries_route,
+    register_delete_file_route,
+    register_folder_order_routes,
+    register_health_route,
+    register_index_routes,
+    register_playlist_routes,
+    register_progress_routes,
+    register_pwa_routes,
+    register_reveal_route,
+    register_shortcuts_routes,
+    register_thumb_route,
+    register_todo_state_route,
+)
 from hometools.streaming.core.server_utils import (
-    build_index_status_payload,
     check_library_accessible,
     mount_static_assets,
     render_error_page,
     render_media_page,
-    render_pwa_icon_png,
-    render_pwa_icon_svg,
-    render_pwa_manifest,
-    render_pwa_service_worker,
     resolve_media_path,
     safe_resolve,
 )
-from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
+from hometools.streaming.core.thumbnailer import start_background_thumbnail_generation
 from hometools.streaming.core.waveform import (
     check_waveform_cached,
     ensure_waveform,
@@ -275,16 +283,6 @@ def create_app(
     # re-walk the filesystem every 2 seconds.
     _quick_cache: dict[str, object] = {"items": [], "at": 0.0}
 
-    @app.get("/health")
-    def health() -> dict[str, str]:
-        ok, msg = check_library_accessible(resolved_library_dir)
-        return {
-            "status": "ok" if ok else "degraded",
-            "library_dir": str(resolved_library_dir),
-            "library_accessible": str(ok),
-            "detail": msg,
-        }
-
     @app.get("/", response_class=HTMLResponse)
     def audio_home() -> HTMLResponse:
         t0 = time.monotonic()
@@ -296,146 +294,6 @@ def create_app(
         elapsed = time.monotonic() - t0
         logger.info("GET / — shell rendered in %.2fs", elapsed)
         return HTMLResponse(html)
-
-    @app.get("/api/audio/tracks")
-    def audio_tracks(q: str | None = None, artist: str | None = None, sort: str = "artist") -> dict[str, object]:
-        t0 = time.monotonic()
-        logger.info("GET /api/audio/tracks — start (q=%r, artist=%r, sort=%r)", q, artist, sort)
-        if resolved_safe_mode:
-            ok, msg = check_library_accessible(resolved_library_dir)
-            if not ok:
-                return {
-                    "library_dir": str(resolved_library_dir),
-                    "count": 0,
-                    "items": [],
-                    "artists": [],
-                    "error": msg,
-                    "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-                }
-            tracks = build_audio_index(resolved_library_dir, cache_dir=None)
-            filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
-            logger.info(
-                "GET /api/audio/tracks — SAFE MODE returned %d/%d items in %.1fs",
-                len(filtered),
-                len(tracks),
-                time.monotonic() - t0,
-            )
-            return {
-                "library_dir": str(resolved_library_dir),
-                "count": len(filtered),
-                "items": [t.to_dict() for t in filtered],
-                "artists": list_artists(tracks),
-                "safe_mode": True,
-                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-            }
-        cache_t0 = time.monotonic()
-        refresh_started = _audio_index_cache.ensure_background_refresh(
-            resolved_library_dir,
-            cache_dir=resolved_cache_dir,
-        )
-        tracks = _audio_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
-        building = _audio_index_cache.is_building()
-        cache_elapsed = time.monotonic() - cache_t0
-        if building and not tracks:
-            ok, msg = check_library_accessible(resolved_library_dir)
-            if not ok:
-                return {
-                    "library_dir": str(resolved_library_dir),
-                    "count": 0,
-                    "items": [],
-                    "artists": [],
-                    "error": msg,
-                    "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-                }
-            cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
-            status_payload = build_index_status_payload(
-                library_dir=resolved_library_dir,
-                item_label="audio",
-                library_ok=True,
-                library_message="ok",
-                cache_status=cache_status,
-            )
-            # Reuse cached quick scan if available (avoid re-walking the
-            # filesystem on every 2-second poll while the index builds).
-            now = time.monotonic()
-            if _quick_cache["items"] and (now - _quick_cache["at"]) < 30.0:
-                quick_items = _quick_cache["items"]
-                logger.debug("GET /api/audio/tracks — reusing cached quick scan (%d items)", len(quick_items))
-            else:
-                quick_items = quick_folder_scan(
-                    resolved_library_dir,
-                    suffixes=AUDIO_SUFFIX,
-                    media_type="audio",
-                    stream_url_prefix="/audio/stream",
-                )
-                _quick_cache["items"] = quick_items
-                _quick_cache["at"] = now
-            filtered = query_tracks(quick_items, q=q, artist=artist, sort_by=sort)
-            logger.info(
-                "GET /api/audio/tracks — quick scan %d items in %.2fs (refresh_started=%s, status=%s)",
-                len(quick_items),
-                time.monotonic() - cache_t0,
-                refresh_started,
-                status_payload["detail"],
-            )
-            return {
-                "count": len(filtered),
-                "items": [t.to_dict() for t in filtered],
-                "artists": list_artists(quick_items),
-                "refreshing": True,
-                **status_payload,
-                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-            }
-        query_t0 = time.monotonic()
-        filtered = query_tracks(tracks, q=q, artist=artist, sort_by=sort)
-        query_elapsed = time.monotonic() - query_t0
-        cache_status = _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
-        build_detail = (
-            build_index_status_payload(
-                library_dir=resolved_library_dir,
-                item_label="audio",
-                library_ok=True,
-                library_message="ok",
-                cache_status=cache_status,
-            )["detail"]
-            if building
-            else ""
-        )
-        logger.info(
-            "GET /api/audio/tracks — %d/%d items in %.1fs (cache=%.2fs, query=%.2fs, refresh_started=%s, building=%s, q=%r, artist=%r, sort=%r)",
-            len(filtered),
-            len(tracks),
-            time.monotonic() - t0,
-            cache_elapsed,
-            query_elapsed,
-            refresh_started,
-            building,
-            q,
-            artist,
-            sort,
-        )
-        return {
-            "library_dir": str(resolved_library_dir),
-            "count": len(filtered),
-            "items": [t.to_dict() for t in filtered],
-            "artists": list_artists(tracks),
-            "refreshing": building,
-            "cache": cache_status,
-            "detail": build_detail,
-            "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-        }
-
-    @app.post("/api/audio/refresh")
-    def audio_refresh() -> dict[str, object]:
-        """Invalidate the index cache and trigger a fresh rebuild from the filesystem."""
-        _audio_index_cache.invalidate()
-        _quick_cache["items"] = []
-        _quick_cache["at"] = 0.0
-        _audio_index_cache.ensure_background_refresh(
-            resolved_library_dir,
-            cache_dir=resolved_cache_dir,
-        )
-        return {"ok": True, "detail": "Refresh started"}
 
     @app.post("/api/audio/refresh-ratings")
     def audio_refresh_ratings(payload: dict[str, object]) -> dict[str, object]:
@@ -501,72 +359,6 @@ def create_app(
     def audio_refresh_log() -> dict[str, object]:
         """Return the persistent rating-refresh log (folder → last timestamp)."""
         return _read_refresh_log(resolved_cache_dir)
-
-    @app.get("/api/audio/status")
-    def audio_status() -> dict[str, object]:
-        from hometools.streaming.core.issue_registry import summarize_issue_and_todos
-
-        ok, msg = check_library_accessible(resolved_library_dir)
-        cache_status = (
-            {
-                "label": "audio-index",
-                "building": False,
-                "cached_count": 0,
-                "fresh": False,
-                "ttl_seconds": 0,
-                "cache_age_seconds": None,
-                "library_dir": str(resolved_library_dir),
-                "snapshot_path": "",
-                "snapshot_exists": False,
-                "build_running_for_seconds": None,
-                "last_build_started_at": None,
-                "last_build_finished_at": None,
-                "last_build_duration_seconds": None,
-                "last_build_reason": "safe-mode",
-                "last_error": "",
-            }
-            if resolved_safe_mode
-            else _audio_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
-        )
-        issue_todo_summary = summarize_issue_and_todos(resolved_cache_dir)
-        payload = build_index_status_payload(
-            library_dir=resolved_library_dir,
-            item_label="audio",
-            library_ok=ok,
-            library_message="Safe mode active — no cache snapshot or thumbnail warmup" if resolved_safe_mode else msg,
-            cache_status=cache_status,
-            issues_summary=issue_todo_summary["issues"],
-            todo_summary=issue_todo_summary["todos"],
-        )
-        return payload
-
-    @app.post("/api/audio/todos/state")
-    def audio_todo_state(payload: dict[str, object]) -> dict[str, object]:
-        from hometools.streaming.core.issue_registry import summarize_todos, update_todo_state_action
-
-        todo_key = str(payload.get("todo_key") or "").strip()
-        action = str(payload.get("action") or "").strip().lower()
-        if not todo_key:
-            raise HTTPException(status_code=400, detail="todo_key is required")
-        if action not in {"acknowledge", "snooze", "clear"}:
-            raise HTTPException(status_code=400, detail="action must be acknowledge, snooze or clear")
-
-        result = update_todo_state_action(
-            resolved_cache_dir,
-            todo_key=todo_key,
-            action=action,
-            reason=str(payload.get("reason") or "").strip(),
-            seconds=int(payload.get("seconds") or 3600),
-        )
-        if not bool(result.get("ok", False)):
-            detail = str(result.get("message") or "Task state update failed")
-            raise HTTPException(status_code=404 if result.get("state") == "missing" else 400, detail=detail)
-
-        return {
-            "ok": True,
-            "result": result,
-            "todos": summarize_todos(resolved_cache_dir),
-        }
 
     @app.get("/api/audio/lyrics")
     def audio_lyrics(path: str) -> dict[str, object]:
@@ -973,65 +765,6 @@ def create_app(
 
         return {"ok": True, "new_path": new_relative, "entry_id": entry.entry_id}
 
-    @app.post("/api/audio/delete-file")
-    def audio_delete_file(payload: dict[str, object]) -> dict[str, object]:
-        """Delete an audio file by sending it to the system Recycle Bin / Trash.
-
-        Body: ``{"path": "Folder/song.mp3"}``
-        Returns ``{"ok": true, "entry_id": "..."}``
-        """
-        from hometools.streaming.core.audit_log import log_file_delete
-        from hometools.utils import send_to_trash
-
-        path = str(payload.get("path") or "").strip()
-        if not path:
-            raise HTTPException(status_code=400, detail="path is required")
-
-        try:
-            file_path = resolve_audio_path(resolved_library_dir, path)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        try:
-            trash_dest = send_to_trash(file_path)
-        except Exception as exc:
-            logger.exception("Failed to delete file %s", file_path)
-            raise HTTPException(status_code=500, detail=f"Delete failed: {exc}") from exc
-
-        entry = log_file_delete(
-            resolved_audit_dir,
-            server="audio",
-            path=path,
-            trash_path=trash_dest,
-        )
-
-        _audio_index_cache.invalidate()
-
-        return {"ok": True, "entry_id": entry.entry_id}
-
-    @app.post("/api/audio/reveal")
-    def audio_reveal(payload: dict[str, object]) -> dict[str, object]:
-        """Return the absolute path of an audio file and optionally open it in Explorer.
-
-        Body: ``{"path": "Folder/song.mp3"}``
-        Returns ``{"ok": true, "path": "/abs/path/to/song.mp3", "revealed": true|false}``
-        """
-        from hometools.utils import reveal_in_explorer
-
-        path = str(payload.get("path") or "").strip()
-        if not path:
-            raise HTTPException(status_code=400, detail="path is required")
-        try:
-            file_path = resolve_audio_path(resolved_library_dir, path)
-        except (FileNotFoundError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-        abs_path = str(file_path.resolve())
-        revealed = reveal_in_explorer(file_path)
-        return {"ok": True, "path": abs_path, "revealed": revealed}
-
     @app.get("/api/audio/recent")
     def audio_recent(limit: int = 10) -> dict[str, object]:
         """No recently-played section for audio.
@@ -1043,25 +776,6 @@ def create_app(
         return {"items": []}
 
     # --- Audit log endpoints ---
-
-    @app.get("/api/audio/audit")
-    def audio_audit_entries(
-        limit: int = 200,
-        path_filter: str = "",
-        action_filter: str = "",
-        include_undone: bool = True,
-    ) -> dict[str, object]:
-        """Return audit log entries for the audio server."""
-        from hometools.streaming.core.audit_log import load_entries
-
-        entries = load_entries(
-            resolved_audit_dir,
-            limit=limit,
-            path_filter=path_filter,
-            action_filter=action_filter,
-            include_undone=include_undone,
-        )
-        return {"items": entries, "total": len(entries)}
 
     @app.post("/api/audio/audit/undo")
     def audio_audit_undo(payload: dict[str, object]) -> dict[str, object]:
@@ -1188,27 +902,6 @@ def create_app(
             )
         )
 
-    @app.post("/api/audio/progress")
-    def audio_save_progress(payload: dict[str, object]) -> dict[str, object]:
-        """Save playback progress for an audio track."""
-        from hometools.streaming.core.progress import save_progress
-
-        rp = str(payload.get("relative_path") or "").strip()
-        if not rp:
-            raise HTTPException(status_code=400, detail="relative_path is required")
-        pos = float(payload.get("position_seconds") or 0)
-        dur = float(payload.get("duration") or 0)
-        ok = save_progress(resolved_cache_dir, rp, pos, dur)
-        return {"ok": ok}
-
-    @app.get("/api/audio/progress")
-    def audio_load_progress(path: str) -> dict[str, object]:
-        """Load playback progress for an audio track."""
-        from hometools.streaming.core.progress import load_progress
-
-        entry = load_progress(resolved_cache_dir, path)
-        return {"items": [entry] if entry else []}
-
     @app.get("/audio/stream")
     def audio_stream(path: str) -> FileResponse:
         try:
@@ -1219,25 +912,6 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         media_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
-
-    @app.get("/thumb")
-    def thumb(path: str, size: str = "sm") -> FileResponse:
-        """Serve a cached thumbnail image for an audio track.
-
-        Pass ``?size=lg`` for the large (480 px) variant.
-        """
-        from urllib.parse import unquote
-
-        relative_path = unquote(path)
-        if size == "lg":
-            from hometools.streaming.core.thumbnailer import get_thumbnail_lg_path
-
-            thumb_path = get_thumbnail_lg_path(resolved_cache_dir, "audio", relative_path)
-        else:
-            thumb_path = get_thumbnail_path(resolved_cache_dir, "audio", relative_path)
-        if not thumb_path.exists():
-            raise HTTPException(status_code=404, detail="Thumbnail not found")
-        return FileResponse(thumb_path, media_type="image/jpeg")
 
     @app.get("/api/audio/waveform")
     def audio_waveform(path: str) -> dict[str, object]:
@@ -1274,259 +948,41 @@ def create_app(
 
         raise HTTPException(status_code=404, detail="Waveform not available")
 
-    # --- Playlists API ---
-
-    @app.get("/api/audio/playlists/version")
-    def audio_playlists_version() -> dict[str, object]:
-        """Return the current playlist revision number (lightweight)."""
-        from hometools.streaming.core.playlists import get_revision
-
-        return {"revision": get_revision(resolved_cache_dir, "audio")}
-
-    @app.get("/api/audio/playlists")
-    def audio_playlists() -> dict[str, object]:
-        """Return all user playlists for the audio server."""
-        from hometools.streaming.core.playlists import load_playlists_with_revision
-
-        playlists, revision = load_playlists_with_revision(resolved_cache_dir, "audio")
-        return {"items": playlists, "revision": revision}
-
-    @app.post("/api/audio/playlists")
-    def audio_create_playlist(payload: dict[str, str]) -> dict[str, object]:
-        """Create a new empty playlist."""
-        from hometools.streaming.core.playlists import create_playlist
-
-        name = payload.get("name", "").strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="name is required")
-        pl = create_playlist(resolved_cache_dir, "audio", name=name)
-        return {"playlist": pl}
-
-    @app.delete("/api/audio/playlists")
-    def audio_delete_playlist(id: str) -> dict[str, object]:
-        """Delete a playlist by id."""
-        from hometools.streaming.core.playlists import delete_playlist
-
-        remaining = delete_playlist(resolved_cache_dir, "audio", id)
-        return {"items": remaining}
-
-    @app.patch("/api/audio/playlists")
-    def audio_rename_playlist(payload: dict[str, str]) -> dict[str, object]:
-        """Rename an existing playlist."""
-        from hometools.streaming.core.playlists import rename_playlist
-
-        playlist_id = payload.get("playlist_id", "")
-        name = payload.get("name", "").strip()
-        if not playlist_id or not name:
-            raise HTTPException(status_code=400, detail="playlist_id and name are required")
-        pl = rename_playlist(resolved_cache_dir, "audio", playlist_id, name=name)
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    @app.post("/api/audio/playlists/items")
-    def audio_add_playlist_item(payload: dict[str, str]) -> dict[str, object]:
-        """Add a track to a playlist."""
-        from hometools.config import get_playlist_insert_position
-        from hometools.streaming.core.playlists import add_item
-
-        playlist_id = payload.get("playlist_id", "")
-        relative_path = payload.get("relative_path", "")
-        if not playlist_id or not relative_path:
-            raise HTTPException(status_code=400, detail="playlist_id and relative_path are required")
-        pl = add_item(
-            resolved_cache_dir,
-            "audio",
-            playlist_id,
-            relative_path=relative_path,
-            insert_position=get_playlist_insert_position(),
-        )
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    @app.delete("/api/audio/playlists/items")
-    def audio_remove_playlist_item(playlist_id: str, path: str) -> dict[str, object]:
-        """Remove a track from a playlist."""
-        from hometools.streaming.core.playlists import remove_item
-
-        pl = remove_item(resolved_cache_dir, "audio", playlist_id, relative_path=path)
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    @app.patch("/api/audio/playlists/items")
-    def audio_move_playlist_item(payload: dict[str, str]) -> dict[str, object]:
-        """Move a track up or down within a playlist."""
-        from hometools.streaming.core.playlists import move_item
-
-        playlist_id = payload.get("playlist_id", "")
-        relative_path = payload.get("relative_path", "")
-        direction = payload.get("direction", "")
-        if not playlist_id or not relative_path or direction not in ("up", "down"):
-            raise HTTPException(status_code=400, detail="playlist_id, relative_path, and direction (up/down) are required")
-        pl = move_item(resolved_cache_dir, "audio", playlist_id, relative_path=relative_path, direction=direction)
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist or item not found")
-        return {"playlist": pl}
-
-    @app.put("/api/audio/playlists/items")
-    def audio_reorder_playlist_item(payload: dict[str, object]) -> dict[str, object]:
-        """Move a track to a specific index within a playlist."""
-        from hometools.streaming.core.playlists import reorder_item
-
-        playlist_id = str(payload.get("playlist_id", ""))
-        relative_path = str(payload.get("relative_path", ""))
-        to_index = payload.get("to_index")
-        if not playlist_id or not relative_path or to_index is None:
-            raise HTTPException(status_code=400, detail="playlist_id, relative_path, and to_index are required")
-        pl = reorder_item(resolved_cache_dir, "audio", playlist_id, relative_path=relative_path, to_index=int(to_index))
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist or item not found")
-        return {"playlist": pl}
-
-    # --- Smart Playlists API ---
-
-    @app.post("/api/audio/playlists/smart")
-    def audio_create_smart_playlist(payload: dict[str, object]) -> dict[str, object]:
-        """Create a new smart playlist defined by ``smart`` rules."""
-        from hometools.streaming.core.playlists import create_playlist
-        from hometools.streaming.core.smart_playlists import validate_smart_rules
-
-        name = str(payload.get("name", "")).strip()
-        smart = payload.get("smart")
-        if not name:
-            raise HTTPException(status_code=400, detail="name is required")
-        ok, reason = validate_smart_rules(smart)
-        if not ok:
-            raise HTTPException(status_code=400, detail=reason)
-        pl = create_playlist(resolved_cache_dir, "audio", name=name, smart=smart)  # type: ignore[arg-type]
-        return {"playlist": pl}
-
-    @app.put("/api/audio/playlists/smart")
-    def audio_update_smart_rules(payload: dict[str, object]) -> dict[str, object]:
-        """Update the smart-rule block of an existing (possibly regular) playlist."""
-        from hometools.streaming.core.playlists import update_smart_rules
-        from hometools.streaming.core.smart_playlists import validate_smart_rules
-
-        playlist_id = str(payload.get("playlist_id", ""))
-        smart = payload.get("smart")
-        if not playlist_id:
-            raise HTTPException(status_code=400, detail="playlist_id is required")
-        ok, reason = validate_smart_rules(smart, own_id=playlist_id)
-        if not ok:
-            raise HTTPException(status_code=400, detail=reason)
-        pl = update_smart_rules(resolved_cache_dir, "audio", playlist_id, smart=smart)  # type: ignore[arg-type]
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    # --- Custom Order API (server-side folder/favorites reorder) ---
-
-    @app.get("/api/audio/folder-order")
-    def audio_get_folder_order(path: str = "") -> dict[str, object]:
-        """Return the custom item order for a folder (or __favorites__)."""
-        from hometools.streaming.core.custom_order import load_order
-
-        return {"items": load_order(resolved_cache_dir, "audio", path)}
-
-    @app.put("/api/audio/folder-order")
-    def audio_save_folder_order(payload: dict[str, object]) -> dict[str, object]:
-        """Persist the custom item order for a folder (or __favorites__)."""
-        from hometools.streaming.core.custom_order import save_order
-
-        folder_path = str(payload.get("folder_path", ""))
-        items = payload.get("items", [])
-        if not isinstance(items, list):
-            raise HTTPException(status_code=400, detail="items must be a list")
-        saved = save_order(resolved_cache_dir, "audio", folder_path, [str(i) for i in items])
-        return {"items": saved}
-
-    @app.delete("/api/audio/folder-order")
-    def audio_delete_folder_order(path: str = "") -> dict[str, object]:
-        """Delete the custom order for a folder."""
-        from hometools.streaming.core.custom_order import delete_order
-
-        ok = delete_order(resolved_cache_dir, "audio", path)
-        return {"deleted": ok}
-
-    # --- Shortcuts API ---
-
-    @app.get("/api/audio/shortcuts")
-    def audio_shortcuts() -> dict[str, object]:
-        """Return saved PWA shortcuts for the audio server."""
-        from hometools.streaming.core.shortcuts import load_shortcuts
-
-        return {"items": load_shortcuts(resolved_cache_dir, "audio")}
-
-    @app.post("/api/audio/shortcuts")
-    def audio_add_shortcut(payload: dict[str, str]) -> dict[str, object]:
-        """Add or update a PWA shortcut."""
-        from hometools.streaming.core.shortcuts import save_shortcut
-
-        item_id = payload.get("id", "")
-        title = payload.get("title", "")
-        if not item_id or not title:
-            raise HTTPException(status_code=400, detail="id and title are required")
-        url = f"/?id={item_id}"
-        icon = payload.get("icon", f"/thumb?path={item_id}")
-        shortcuts = save_shortcut(resolved_cache_dir, "audio", item_id=item_id, title=title, url=url, icon=icon)
-        return {"items": shortcuts}
-
-    @app.delete("/api/audio/shortcuts")
-    def audio_remove_shortcut(id: str) -> dict[str, object]:
-        """Remove a PWA shortcut by item id."""
-        from hometools.streaming.core.shortcuts import remove_shortcut
-
-        shortcuts = remove_shortcut(resolved_cache_dir, "audio", id)
-        return {"items": shortcuts}
-
-    # --- PWA endpoints ---
-    _AUDIO_THEME = "#1db954"
-
-    @app.get("/manifest.json")
-    def manifest():
-        from fastapi.responses import JSONResponse
-
-        from hometools.streaming.core.shortcuts import load_shortcuts
-
-        saved = load_shortcuts(resolved_cache_dir, "audio")
-        pwa_shortcuts = [
-            {
-                "name": s["title"],
-                "short_name": s["title"][:25],
-                "url": s.get("url", f"/?id={s['id']}"),
-                "icons": [{"src": s.get("icon", "/icon.svg"), "sizes": "any"}],
-            }
-            for s in saved
-        ]
-        return JSONResponse(
-            content=_json.loads(render_pwa_manifest("hometools audio", "Audio", theme_color=_AUDIO_THEME, shortcuts=pwa_shortcuts or None)),
-            media_type="application/manifest+json",
-        )
-
-    @app.get("/sw.js")
-    def service_worker():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_service_worker(), media_type="application/javascript")
-
-    @app.get("/icon.svg")
-    def icon_svg():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_icon_svg("🎵", _AUDIO_THEME), media_type="image/svg+xml")
-
-    @app.get("/icon-192.png")
-    def icon_192():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_icon_png("🎵", 192, _AUDIO_THEME), media_type="image/png")
-
-    @app.get("/icon-512.png")
-    def icon_512():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_icon_png("🎵", 512, _AUDIO_THEME), media_type="image/png")
+    # --- Shared endpoints (core/server_factory.py) ---
+    register_health_route(app, resolved_library_dir)
+    register_index_routes(
+        app,
+        library_dir=resolved_library_dir,
+        cache_dir=resolved_cache_dir,
+        safe_mode=resolved_safe_mode,
+        media_type="audio",
+        api_path="/api/audio/tracks",
+        items_name="tracks",
+        default_sort="artist",
+        suffixes=AUDIO_SUFFIX,
+        stream_url_prefix="/audio/stream",
+        index_cache=_audio_index_cache,
+        build_index=build_audio_index,
+        query_fn=query_tracks,
+        list_artists_fn=list_artists,
+    )
+    register_thumb_route(app, resolved_cache_dir, "audio", allow_sprite=False)
+    register_todo_state_route(app, resolved_cache_dir, "audio")
+    register_audit_entries_route(app, resolved_audit_dir, "audio")
+    register_reveal_route(app, resolved_library_dir, "audio", resolve_audio_path)
+    register_delete_file_route(app, resolved_library_dir, resolved_audit_dir, "audio", resolve_audio_path, _audio_index_cache.invalidate)
+    register_progress_routes(app, resolved_cache_dir, "audio")
+    register_playlist_routes(app, resolved_cache_dir, "audio")
+    register_folder_order_routes(app, resolved_cache_dir, "audio")
+    register_shortcuts_routes(app, resolved_cache_dir, "audio")
+    register_pwa_routes(
+        app,
+        cache_dir=resolved_cache_dir,
+        media_type="audio",
+        app_name="hometools audio",
+        short_name="Audio",
+        emoji="??",
+        theme_color="#1db954",
+    )
 
     return app

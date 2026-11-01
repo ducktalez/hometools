@@ -14,7 +14,76 @@
  * fragments are coupled (see docs/IMPLEMENTATION_PLAN.md Design
  * Discussions for the follow-up plan on that).
  *
- * Latest slice: resume.ts (findResumeLocal/findResumeRecent, from
+ * Latest slice: filterApply.ts (updateFilterChips + applyFilter pipeline, from
+ * _search_filter.py; playlistItems via htState, filter state/DOM/render via hooks).
+ *
+ * Previous slice: trackRenderWindow.ts (windowed rendering: batch append, sentinel/
+ * observer, ensureRenderedTo, markActive, from _search_filter.py + renderTracks;
+ * window state private, _rgKey/row-context/decoration via hooks).
+ *
+ * Previous slice: playerNav.ts (jumpToCurrentTrack + updatePlayerBarActions wiring,
+ * from _search_filter.py; state via htState, actions via hooks; fixes undefined
+ * _deleteItem in the player-bar trash button).
+ *
+ * Previous slice: inlineEdit.ts (_saveInlineTableEdit, from _search_filter.py; items
+ * via htState, endpoint/toast via hooks).
+ *
+ * Previous slice: searchView.ts (globalSearch/renderSearchResults/navigate/exit, from
+ * _search_filter.py; state via htState, view effects via hooks).
+ *
+ * Previous slice: trackListDelegation.ts (track-list click/change/focusout/keydown/
+ * dblclick delegation, from _search_filter.py; handler refs private, actions via
+ * hooks; fixes dblclick listener stacking on re-wire).
+ *
+ * Previous slice: filterPopoverUi.ts (filter popover wiring/open/close, from
+ * _search_filter.py; cleanup handle private, filter state via hooks).
+ *
+ * Previous slice: catalogRefresh.ts (catalogChanged, refresh toast/info texts,
+ * patchRatingsInPlace — pure decisions from _queue.py; fetch/cache orchestration
+ * stays legacy).
+ *
+ * Previous slice: queuePanelUi.ts (queue panel height sync, drag-resize, peek handle,
+ * from _queue.py; DOM nodes/_queueOpen/_queueUserHeight via args+hooks).
+ *
+ * Previous slice: queueDragDrop.ts (queue-panel drag reorder, from _queue.py; drag
+ * state + _queueDndCleanup private, move/render via hooks).
+ *
+ * Previous slice: bootstrap.ts (startup sequence catalog -> router -> favorites ->
+ * playlists -> root view -> sync, from _drag_drop_init.py; all steps via hooks).
+ *
+ * Previous slice: playlistModalEvents.ts (add-to-playlist modal DOM events, from
+ * _drag_drop_init.py; playlistAddPath via htState, actions via hooks).
+ *
+ * Previous slice: swipe.ts (swipe-right = back, from _drag_drop_init.py; state private,
+ * inPlaylist/currentPath via htState, goBack via hook).
+ *
+ * Previous slice: playlistDragDrop.ts (initPlaylistDragDrop/destroy + private drag
+ * state/_dndCleanup, from _drag_drop_init.py + _smart_playlists.py; reorder via hook).
+ *
+ * Previous slice: viewEntry.ts (applyHeaderState/enterTrackListView/enterFolderGridView,
+ * from _folder_browse.py; DOM elements + callbacks via hooks).
+ *
+ * Previous slice: folderBrowseUi.ts (lang picker, filter-bar scroll reveal, header
+ * search wiring, playlist kebab items, from _folder_browse.py; private state moved,
+ * htState.globalSearchActive added).
+ *
+ * Previous slice: playlistViews.ts (showUserPlaylistView/playUserPlaylist + add-to-
+ * playlist modal, from _smart_playlists.py; htState.playlistAddPath added).
+ *
+ * Previous slice: playlistReorder.ts (reorderPlaylistItem/_applyPlaylistUpdate, from
+ * _smart_playlists.py; htState.currentPlaylistId added; movePlaylistItem was dead).
+ *
+ * Previous slice: smartEditor.ts (editor state/wiring/save, from
+ * _smart_playlists.py; _smartEditorState now module-private).
+ *
+ * Previous slice: playlistActions.ts (delete/rename/add/createAndAdd with optimistic
+ * UI, from _smart_playlists.py; view side effects via hooks object).
+ *
+ * Previous slice: playlistSync.ts (loadUserPlaylists/sync polling/snapshot,
+ * from _playlists.py; htState.userPlaylists+playlistRevision added, timer
+ * private). _playlists.py now only holds thin wrappers + refreshSmartPlaylist.
+ *
+ * Previous slice: resume.ts (findResumeLocal/findResumeRecent, from
  * _folder_browse.py::_restoreLastEpisode). New pytest tests/test_webui_bridges.py
  * checks every `window._x(` call in player_js/*.py is bridged here.
  *
@@ -189,6 +258,11 @@ import { toolsRowHtml, favoritesCardHtml, playlistCardHtml } from "./rootCards";
 import { smartEditorModalHtml, playlistModalListHtml } from "./smartEditorModal";
 import { batchEnd, renderTargetFor, jumpTarget } from "./renderWindow";
 import { indexingToastHtml, TRACK_TABLE_HEADER_HTML, viewToggleView } from "./chromeHtml";
+import { initLyricsPanel } from "./lyricsPanel";
+import { closeCtxMenu, openCtxMenu, revealInExplorer } from "./ctxMenu";
+import { openDupePanel, closeDupePanel, collectDupeItems } from "./dupePanel";
+import { deleteTrackFromList, deleteDuplicateFile, removeGoneTrack, moveFileToFolder } from "./libraryOps";
+import { loadFavorites, updateFavoriteButtons, toggleFavorite } from "./favorites";
 import { recentCardsHtml, recentPlayContext } from "./recentlyPlayed";
 import {
   initDownloadDB,
@@ -196,6 +270,8 @@ import {
   getAllDownloads,
   deleteDownloadById,
   deleteDownloadByStreamUrl,
+  isDownloadDbReady,
+  addDownloadRecord,
   evictForBudget,
 } from "./offlineDb";
 import { installClickGuard, wasDrag } from "./clickGuard";
@@ -204,6 +280,33 @@ import { getAllFolders, invalidateFolderCache } from "./folderCache";
 import { fisherYates, buildWeightedQueue, buildNormalQueue, rebuildShuffleQueue, nextIndex, prevIndex } from "./shuffle";
 import { getOfflineUrl, revokeOfflineUrl } from "./offlineUrl";
 import { findResumeLocal, findResumeRecent } from "./resume";
+import { openSmartPlaylistEditor } from "./smartEditor";
+import { reorderPlaylistItem } from "./playlistReorder";
+import { applyHeaderState, enterTrackListView, enterFolderGridView } from "./viewEntry";
+import { closeLangPicker, showLangPicker, initFilterBarScrollReveal, initGlobalSearch, hideGlobalSearch, playlistCtxMenuItems } from "./folderBrowseUi";
+import { initPlaylistDragDrop, destroyPlaylistDragDrop } from "./playlistDragDrop";
+import { initSwipeGestures } from "./swipe";
+import { initPlaylistModalEvents } from "./playlistModalEvents";
+import { bootstrapApp } from "./bootstrap";
+import { initQueueDragDrop, destroyQueueDragDrop } from "./queueDragDrop";
+import { syncQueueBottom, initQueueResize, initQueuePeekHandle } from "./queuePanelUi";
+import { catalogChanged, refreshToastMessage, catalogRefreshInfo, ratingRefreshInfo, patchRatingsInPlace } from "./catalogRefresh";
+import { renderFilterPopoverBody, closeFilterPopover, toggleFilterPopover } from "./filterPopoverUi";
+import { wireTrackListDelegation } from "./trackListDelegation";
+import { globalSearch, exitGlobalSearch } from "./searchView";
+import { saveInlineTableEdit } from "./inlineEdit";
+import { jumpToCurrentTrack, updatePlayerBarActions } from "./playerNav";
+import { stopRenderObserver, appendTrackBatch, ensureRenderedTo, markActive, startWindowedRender } from "./trackRenderWindow";
+import { updateFilterChips, applyFilter } from "./filterApply";
+import { showUserPlaylistView, playUserPlaylist, openPlaylistModal, closePlaylistModal } from "./playlistViews";
+import { deleteUserPlaylist, renameUserPlaylist, addToPlaylist, createAndAddToPlaylist } from "./playlistActions";
+import {
+  loadUserPlaylists,
+  startPlaylistSync,
+  stopPlaylistSync,
+  snapshotPlaylists,
+  restorePlaylists,
+} from "./playlistSync";
 
 // CSS ports: Vite bundles these into one stylesheet, _html.py links it
 // AFTER the legacy inline <style> (later wins at equal specificity).
@@ -432,6 +535,20 @@ declare global {
     _smartEditorModalHtml: typeof smartEditorModalHtml;
     _playlistModalListHtml: typeof playlistModalListHtml;
     _batchEnd: typeof batchEnd;
+    _initLyricsPanel: typeof initLyricsPanel;
+    _closeCtxMenu: typeof closeCtxMenu;
+    _openCtxMenu: typeof openCtxMenu;
+    _revealInExplorer: typeof revealInExplorer;
+    _openDupePanel: typeof openDupePanel;
+    _closeDupePanel: typeof closeDupePanel;
+    _collectDupeItems: typeof collectDupeItems;
+    _deleteTrackFromList: typeof deleteTrackFromList;
+    _deleteDuplicateFile: typeof deleteDuplicateFile;
+    _removeGoneTrack: typeof removeGoneTrack;
+    _moveFileToFolder: typeof moveFileToFolder;
+    _loadFavorites: typeof loadFavorites;
+    _updateFavoriteButtons: typeof updateFavoriteButtons;
+    _toggleFavorite: typeof toggleFavorite;
     _indexingToastHtml: typeof indexingToastHtml;
     _trackTableHeaderHtml: string;
     _viewToggleView: typeof viewToggleView;
@@ -448,6 +565,8 @@ declare global {
     getAllDownloads: typeof getAllDownloads;
     deleteDownloadById: typeof deleteDownloadById;
     deleteDownloadByStreamUrl: typeof deleteDownloadByStreamUrl;
+    isDownloadDbReady: typeof isDownloadDbReady;
+    addDownloadRecord: typeof addDownloadRecord;
     _evictForBudget: typeof evictForBudget;
     wasDrag: typeof wasDrag;
     _getAllFoldersFrom: typeof getAllFolders;
@@ -459,6 +578,61 @@ declare global {
     prevIndex: typeof prevIndex;
     getOfflineUrl: typeof getOfflineUrl;
     revokeOfflineUrl: typeof revokeOfflineUrl;
+    _loadUserPlaylists: typeof loadUserPlaylists;
+    _startPlaylistSync: typeof startPlaylistSync;
+    _stopPlaylistSync: typeof stopPlaylistSync;
+    _snapshotPlaylists: typeof snapshotPlaylists;
+    _restorePlaylists: typeof restorePlaylists;
+    _openSmartPlaylistEditor: typeof openSmartPlaylistEditor;
+    _reorderPlaylistItem: typeof reorderPlaylistItem;
+    _initPlaylistDragDrop: typeof initPlaylistDragDrop;
+    _destroyPlaylistDragDrop: typeof destroyPlaylistDragDrop;
+    _initSwipeGestures: typeof initSwipeGestures;
+    _initPlaylistModalEvents: typeof initPlaylistModalEvents;
+    _bootstrapApp: typeof bootstrapApp;
+    _initQueueDragDrop: typeof initQueueDragDrop;
+    _destroyQueueDragDrop: typeof destroyQueueDragDrop;
+    _syncQueueBottom: typeof syncQueueBottom;
+    _initQueueResize: typeof initQueueResize;
+    _initQueuePeekHandle: typeof initQueuePeekHandle;
+    _catalogChanged: typeof catalogChanged;
+    _refreshToastMessage: typeof refreshToastMessage;
+    _catalogRefreshInfo: typeof catalogRefreshInfo;
+    _ratingRefreshInfo: typeof ratingRefreshInfo;
+    _patchRatingsInPlace: typeof patchRatingsInPlace;
+    _renderFilterPopoverBody: typeof renderFilterPopoverBody;
+    _closeFilterPopover: typeof closeFilterPopover;
+    _toggleFilterPopover: typeof toggleFilterPopover;
+    _wireTrackListDelegation: typeof wireTrackListDelegation;
+    _globalSearch: typeof globalSearch;
+    _exitGlobalSearch: typeof exitGlobalSearch;
+    _saveInlineTableEdit: typeof saveInlineTableEdit;
+    _jumpToCurrentTrack: typeof jumpToCurrentTrack;
+    _updatePlayerBarActions: typeof updatePlayerBarActions;
+    _stopRenderObserver: typeof stopRenderObserver;
+    _appendTrackBatch: typeof appendTrackBatch;
+    _ensureRenderedTo: typeof ensureRenderedTo;
+    _markActive: typeof markActive;
+    _startWindowedRender: typeof startWindowedRender;
+    _updateFilterChips: typeof updateFilterChips;
+    _applyFilter: typeof applyFilter;
+    _showUserPlaylistView: typeof showUserPlaylistView;
+    _playUserPlaylist: typeof playUserPlaylist;
+    _openPlaylistModal: typeof openPlaylistModal;
+    _closePlaylistModal: typeof closePlaylistModal;
+    _closeLangPicker: typeof closeLangPicker;
+    _applyHeaderState: typeof applyHeaderState;
+    _enterTrackListView: typeof enterTrackListView;
+    _enterFolderGridView: typeof enterFolderGridView;
+    _showLangPicker: typeof showLangPicker;
+    _initFilterBarScrollReveal: typeof initFilterBarScrollReveal;
+    _initGlobalSearch: typeof initGlobalSearch;
+    _hideGlobalSearch: typeof hideGlobalSearch;
+    _playlistCtxMenuItems: typeof playlistCtxMenuItems;
+    _deleteUserPlaylist: typeof deleteUserPlaylist;
+    _renameUserPlaylist: typeof renameUserPlaylist;
+    _addToPlaylist: typeof addToPlaylist;
+    _createAndAddToPlaylist: typeof createAndAddToPlaylist;
   }
 }
 
@@ -600,6 +774,20 @@ window._playlistCardHtml = playlistCardHtml;
 window._smartEditorModalHtml = smartEditorModalHtml;
 window._playlistModalListHtml = playlistModalListHtml;
 window._batchEnd = batchEnd;
+window._initLyricsPanel = initLyricsPanel;
+window._closeCtxMenu = closeCtxMenu;
+window._openCtxMenu = openCtxMenu;
+window._revealInExplorer = revealInExplorer;
+window._openDupePanel = openDupePanel;
+window._closeDupePanel = closeDupePanel;
+window._collectDupeItems = collectDupeItems;
+window._deleteTrackFromList = deleteTrackFromList;
+window._deleteDuplicateFile = deleteDuplicateFile;
+window._removeGoneTrack = removeGoneTrack;
+window._moveFileToFolder = moveFileToFolder;
+window._loadFavorites = loadFavorites;
+window._updateFavoriteButtons = updateFavoriteButtons;
+window._toggleFavorite = toggleFavorite;
 window._indexingToastHtml = indexingToastHtml;
 window._trackTableHeaderHtml = TRACK_TABLE_HEADER_HTML;
 window._viewToggleView = viewToggleView;
@@ -617,6 +805,8 @@ window.getDownloadByStreamUrl = getDownloadByStreamUrl;
 window.getAllDownloads = getAllDownloads;
 window.deleteDownloadById = deleteDownloadById;
 window.deleteDownloadByStreamUrl = deleteDownloadByStreamUrl;
+window.isDownloadDbReady = isDownloadDbReady;
+window.addDownloadRecord = addDownloadRecord;
 window._evictForBudget = evictForBudget;
 window.wasDrag = wasDrag;
 // showToast already typed in legacy-globals.d.ts — no re-declare here.
@@ -635,6 +825,64 @@ window.getOfflineUrl = getOfflineUrl;
 // revokeOfflineUrl: still called bare from playItem() (_library_tools.py,
 // not yet ported) — must be bridged, see offlineUrl.ts header comment.
 window.revokeOfflineUrl = revokeOfflineUrl;
+// Playlist load/sync — state via htState.userPlaylists/playlistRevision,
+// timer private to playlistSync.ts (see its header).
+window._loadUserPlaylists = loadUserPlaylists;
+window._startPlaylistSync = startPlaylistSync;
+window._stopPlaylistSync = stopPlaylistSync;
+window._snapshotPlaylists = snapshotPlaylists;
+window._restorePlaylists = restorePlaylists;
+window._openSmartPlaylistEditor = openSmartPlaylistEditor;
+window._reorderPlaylistItem = reorderPlaylistItem;
+window._initPlaylistDragDrop = initPlaylistDragDrop;
+window._destroyPlaylistDragDrop = destroyPlaylistDragDrop;
+window._initSwipeGestures = initSwipeGestures;
+window._initPlaylistModalEvents = initPlaylistModalEvents;
+window._bootstrapApp = bootstrapApp;
+window._initQueueDragDrop = initQueueDragDrop;
+window._destroyQueueDragDrop = destroyQueueDragDrop;
+window._syncQueueBottom = syncQueueBottom;
+window._initQueueResize = initQueueResize;
+window._initQueuePeekHandle = initQueuePeekHandle;
+window._catalogChanged = catalogChanged;
+window._refreshToastMessage = refreshToastMessage;
+window._catalogRefreshInfo = catalogRefreshInfo;
+window._ratingRefreshInfo = ratingRefreshInfo;
+window._patchRatingsInPlace = patchRatingsInPlace;
+window._renderFilterPopoverBody = renderFilterPopoverBody;
+window._closeFilterPopover = closeFilterPopover;
+window._toggleFilterPopover = toggleFilterPopover;
+window._wireTrackListDelegation = wireTrackListDelegation;
+window._globalSearch = globalSearch;
+window._exitGlobalSearch = exitGlobalSearch;
+window._saveInlineTableEdit = saveInlineTableEdit;
+window._jumpToCurrentTrack = jumpToCurrentTrack;
+window._updatePlayerBarActions = updatePlayerBarActions;
+window._stopRenderObserver = stopRenderObserver;
+window._appendTrackBatch = appendTrackBatch;
+window._ensureRenderedTo = ensureRenderedTo;
+window._markActive = markActive;
+window._startWindowedRender = startWindowedRender;
+window._updateFilterChips = updateFilterChips;
+window._applyFilter = applyFilter;
+window._showUserPlaylistView = showUserPlaylistView;
+window._playUserPlaylist = playUserPlaylist;
+window._openPlaylistModal = openPlaylistModal;
+window._closePlaylistModal = closePlaylistModal;
+window._closeLangPicker = closeLangPicker;
+window._applyHeaderState = applyHeaderState;
+window._enterTrackListView = enterTrackListView;
+window._enterFolderGridView = enterFolderGridView;
+window._showLangPicker = showLangPicker;
+window._initFilterBarScrollReveal = initFilterBarScrollReveal;
+window._initGlobalSearch = initGlobalSearch;
+window._hideGlobalSearch = hideGlobalSearch;
+window._playlistCtxMenuItems = playlistCtxMenuItems;
+window._deleteUserPlaylist = deleteUserPlaylist;
+window._renameUserPlaylist = renameUserPlaylist;
+window._addToPlaylist = addToPlaylist;
+window._createAndAddToPlaylist = createAndAddToPlaylist;
+
 
 // Click-guard owns its own pointer state now (was _mdX/_mdY in _core.py) —
 // listeners must be live before the legacy script wires any click handler.

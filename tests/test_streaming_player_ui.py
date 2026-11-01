@@ -136,6 +136,7 @@ def test_queue_resize_js_persists_height():
     """JS must contain localStorage persistence for queue height."""
     js = render_player_js()
     assert "hometools_queue_height" in js
+    assert "localStorage.setItem" in _webui_src("queuePanelUi.ts")
     assert "localStorage.setItem" in js
     assert "localStorage.getItem" in js
 
@@ -143,10 +144,11 @@ def test_queue_resize_js_persists_height():
 def test_queue_panel_bottom_set_dynamically_by_js():
     """openQueuePanel must measure player-bar height and set bottom + max-height."""
     js = render_player_js()
+    ts = _webui_src("queuePanelUi.ts")
     assert "function _syncQueueBottom()" in js
-    assert ".offsetHeight" in js
-    assert "style.bottom" in js
-    assert "style.maxHeight" in js
+    assert ".offsetHeight" in ts
+    assert "style.bottom" in ts
+    assert "style.maxHeight" in ts
     assert "_syncQueueBottom();" in js
 
 
@@ -728,7 +730,8 @@ def test_crossfade_defers_shuffle_advance_until_finish():
 
 def test_lyrics_close_listener_registered_once():
     js = _js()
-    assert js.count("_lyricsClose.addEventListener('click', closeLyricsPanel)") == 1
+    assert _webui_src("lyricsPanel.ts").count('closeBtn.addEventListener("click", close)') == 1
+    assert js.count("window._initLyricsPanel(") == 1
 
 
 def test_intro_helpers_ported_to_ts():
@@ -1097,8 +1100,7 @@ def test_rating_toggle_to_zero_via_player_bar():
 
 def test_rating_toggle_to_zero_via_inline_stars():
     """Clicking the already-active inline star must pass 0 to setInlineRating (toggle off)."""
-    js = render_player_js()
-    assert "_clicked === _cur ? 0 : _clicked" in js
+    assert "clicked === cur ? 0 : clicked" in _webui_src("trackListDelegation.ts")
 
 
 def test_set_rating_patches_all_items():
@@ -1255,30 +1257,34 @@ def test_rating_in_both_player_bar_styles():
 # ---------------------------------------------------------------------------
 
 
-def test_player_visibility_uses_currentSrc_not_currentIndex():
-    """showFolderView must hide player only when player.currentSrc is falsy.
+def _view_entry_bodies():
+    """Bodies of the three view-entry functions (ported to webui/src/viewEntry.ts)."""
+    ts = _webui_src("viewEntry.ts")
+    header = ts.split("export function applyHeaderState(", 1)[1].split("export function enterTrackListView(", 1)[0]
+    track = ts.split("export function enterTrackListView(", 1)[1].split("export function enterFolderGridView(", 1)[0]
+    grid = ts.split("export function enterFolderGridView(", 1)[1]
+    return header, track, grid
 
+
+def test_player_visibility_uses_currentSrc_not_currentIndex():
+    """Folder-grid entry must hide the player only when player.currentSrc is falsy.
     Using currentIndex < 0 caused the player to disappear after navigating
     to the offline library (which resets currentIndex) and then going Home.
     """
-    js = _js()
-    # Must NOT use the old broken condition
-    assert "if (currentIndex < 0) playerBar.classList.add('view-hidden')" not in js
-    # Must use the correct currentSrc check
-    assert "if (!player.currentSrc) playerBar.classList.add('view-hidden')" in js
+    _, _, grid = _view_entry_bodies()
+    assert 'if (!d.player.currentSrc) d.playerBar.classList.add("view-hidden")' in grid
+    assert "currentIndex < 0" not in grid
 
 
 def test_player_currentSrc_check_in_all_folder_functions():
-    """The player-visibility guard lives ONCE in _enterFolderGridView() —
+    """The player-visibility guard lives ONCE in enterFolderGridView() (viewEntry.ts) ?
     all folder-grid views (showFolderView both branches, showLoadingState,
     showCatalogLoadError) delegate to it instead of re-inlining the guard
     (the old >=4 duplicated copies were exactly the header-drift source)."""
-    js = _js()
-    count = js.count("if (!player.currentSrc) playerBar.classList.add('view-hidden')")
-    assert count == 1, f"Expected exactly 1 centralized occurrence, got {count}"
-    fn = js.split("function _enterFolderGridView(opts)", 1)[1]
-    body = fn.split("\n  }", 1)[0]
-    assert "if (!player.currentSrc) playerBar.classList.add('view-hidden')" in body
+    guard = 'if (!d.player.currentSrc) d.playerBar.classList.add("view-hidden")'
+    ts = _webui_src("viewEntry.ts")
+    assert ts.count(guard) == 1
+    assert "player.currentSrc) playerBar.classList.add" not in _js()
 
 
 # ---------------------------------------------------------------------------
@@ -1377,13 +1383,13 @@ def test_combined_filter_popover_present():
     js = render_player_js()
     assert "function _toggleFilterPopover(" in js
     assert "function _closeFilterPopover(" in js
-    assert "ht-filter-popover" in js
+    ts = _webui_src("filterPopoverUi.ts")
+    assert "ht-filter-popover" in ts
     # Reset must clear all three quick-filters, not just one.
-    reset_fn = js.split("function _wireFilterPopoverBody(", 1)[1]
-    reset_body = reset_fn.split("#filter-popover-reset", 1)[1]
-    assert "filterRating = 0" in reset_body
-    assert "filterFav = false" in reset_body
-    assert "filterGenre = ''" in reset_body
+    reset_body = ts.split("#filter-popover-reset", 1)[1]
+    assert "rating: 0" in reset_body
+    assert "fav: false" in reset_body
+    assert 'genre: ""' in reset_body
 
 
 def test_genre_field_on_media_item():
@@ -1423,46 +1429,36 @@ def test_genre_field_defaults_empty():
 
 
 def test_swipe_gesture_code_present():
-    """Touch swipe gesture handlers must be present in the generated JS."""
+    """Touch swipe handlers ported to swipe.ts; legacy JS only wires it."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
-    assert "Touch swipe gestures" in js
-    assert "touchstart" in js
-    assert "touchend" in js
-    assert "SWIPE_MIN_DIST" in js
+    ts = _webui_src("swipe.ts")
+    assert "touchstart" in ts
+    assert "touchend" in ts
+    assert "SWIPE_MIN_DIST" in ts
+    assert "window._initSwipeGestures" in render_player_js()
 
 
 def test_swipe_gesture_skips_range_inputs():
     """Swipe handler must not intercept touch events on range inputs (progress bar)."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js()
-    assert "type === 'range'" in js or "el.type === 'range'" in js
+    assert '"range"' in _webui_src("swipe.ts")
 
 
 def test_swipe_no_next_prev_track():
     """Swipe must NOT trigger next/prev track — only buttons do that."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js()
-    # Extract only the swipe gesture IIFE section
-    start = js.index("Touch swipe gestures")
-    end = js.index("}());", start)
-    swipe_section = js[start:end]
-    assert "nextIndex()" not in swipe_section
-    assert "prevIndex()" not in swipe_section
+    ts = _webui_src("swipe.ts")
+    assert "nextIndex" not in ts
+    assert "prevIndex" not in ts
 
 
 def test_swipe_right_calls_go_back():
     """Swipe right must call goBack (back navigation only)."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
-    assert "goBack()" in js
+    assert "h.goBack()" in _webui_src("swipe.ts")
+    assert "goBack: goBack" in render_player_js()  # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
 # Playlist sync interval injection
 # ---------------------------------------------------------------------------
 
@@ -1508,11 +1504,13 @@ def test_optimistic_snapshot_helpers_in_js():
 
 
 def test_optimistic_rollback_toast_in_delete():
-    """deleteUserPlaylist must show a rollback toast on error."""
-    from hometools.streaming.core.server_utils import render_player_js
+    """deleteUserPlaylist (ported to webui/src/playlistActions.ts) must show a rollback toast on error."""
+    from pathlib import Path
 
-    js = render_player_js()
-    assert "r\\u00fcckg\\u00e4ngig" in js or "rückg" in js
+    import hometools.streaming.core as core_pkg
+
+    ts = (Path(core_pkg.__file__).parent / "webui" / "src" / "playlistActions.ts").read_text(encoding="utf-8")
+    assert "rückgängig" in ts
 
 
 # ---------------------------------------------------------------------------
@@ -1647,8 +1645,10 @@ def test_global_search_function_exists():
     assert "function globalSearch" in js
     assert "function initGlobalSearch" in js
     assert "function exitGlobalSearch" in js
-    assert "function navigateToSearchResult" in js
-    assert "function renderSearchResults" in js
+    ts = _webui_src("searchView.ts")
+    assert "export function navigateToSearchFolder" in ts
+    assert "export function renderSearchResults" in ts
+    assert "h.playItem(t, i)" in ts
 
 
 def test_global_search_respects_min_rating():
@@ -1658,8 +1658,9 @@ def test_global_search_respects_min_rating():
     """
     js = render_player_js()
     assert "MIN_RATING_THRESHOLD" in js
-    # globalSearch passes _effectiveThreshold + hiddenActive into search.ts
-    assert "var hiddenActive = (_effectiveThreshold > 0 && !showHidden);" in js
+    # globalSearch (searchView.ts) passes threshold + hiddenActive into search.ts
+    assert "threshold > 0 && !h.showHidden()" in _webui_src("searchView.ts")
+    assert "effectiveThreshold: function() { return _effectiveThreshold; }" in js
     ts = _webui_src("search.ts")
     assert "r < effectiveThreshold" in ts
 
@@ -1670,9 +1671,10 @@ def test_global_search_shows_folder_path():
 
 
 def test_global_search_debounce():
-    """Global search input should be debounced."""
-    js = render_player_js()
-    assert "_globalSearchDebounce" in js
+    """Global search input should be debounced (wiring ported to folderBrowseUi.ts)."""
+    ts = _webui_src("folderBrowseUi.ts")
+    assert "_gsDebounce" in ts
+    assert "setTimeout" in ts and "200" in ts
 
 
 # ---------------------------------------------------------------------------
@@ -1688,40 +1690,26 @@ def test_enter_track_list_view_shows_global_search():
     """The header must be structurally identical in every view: the global
     search box is a header control, so it stays reachable from track-list
     views too (user playlist, favorites, duplicates, ...).
-
-    Regression guard: it used to be hidden by _enterTrackListView() under a
+    Regression guard: it used to be hidden by the track-list entry point under a
     "folder-grid-only control" rule, which made the header visibly differ
     between folder browsing and any playlist."""
-    js = render_player_js()
-    assert "function _applyHeaderState(opts)" in js
-    fn = js.split("function _applyHeaderState(opts)", 1)[1]
-    body = fn.split("function _enterTrackListView(", 1)[0]
-    assert "initGlobalSearch()" in body
-
-    # _enterTrackListView must not re-hide it behind the entry point's back
-    track_fn = js.split("function _enterTrackListView(opts)", 1)[1]
-    track_body = track_fn.split("function _enterFolderGridView(", 1)[0]
-    assert "_hideGlobalSearch()" not in track_body
+    header, track, _ = _view_entry_bodies()
+    assert "h.initGlobalSearch()" in header
+    # enterTrackListView must not re-hide it behind the entry point's back
+    assert "hideGlobalSearch" not in track
 
 
 def test_header_controls_only_touched_by_shared_state_function():
-    """Every header control must be driven by _applyHeaderState() alone —
+    """Every header control must be driven by applyHeaderState() alone ?
     the entry points delegate, so no view can show/hide a control the
     others don't have."""
-    js = render_player_js()
-    header_fn = js.split("function _applyHeaderState(opts)", 1)[1]
-    header_body = header_fn.split("function _enterTrackListView(", 1)[0]
-    for control in ("headerTitle.textContent", "backBtn.classList", "playAllBtn.classList", "applyViewMode()"):
-        assert control in header_body, control
-
+    header, track, grid = _view_entry_bodies()
+    for control in ("d.headerTitle.textContent", "d.backBtn.classList", "d.playAllBtn.classList", "h.applyViewMode()"):
+        assert control in header, control
     # Neither entry point may set header controls itself.
-    for start, end in (
-        ("function _enterTrackListView(opts)", "function _enterFolderGridView("),
-        ("function _enterFolderGridView(opts)", "function showPlaylist("),
-    ):
-        body = js.split(start, 1)[1].split(end, 1)[0]
-        assert "headerTitle.textContent" not in body, start
-        assert "backBtn.classList" not in body, start
+    for name, body in (("enterTrackListView", track), ("enterFolderGridView", grid)):
+        assert "headerTitle.textContent" not in body, name
+        assert "backBtn.classList" not in body, name
 
 
 def test_show_playlist_uses_shared_track_list_entry_point():
@@ -1738,11 +1726,13 @@ def test_show_playlist_uses_shared_track_list_entry_point():
 
 
 def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
-    """The global-search show/hide rule lives ONCE in _enterFolderGridView()
-    (`disableSearch` opt-out for loading/error states) — showFolderView()'s
+    """The global-search show/hide rule lives ONCE in applyHeaderState()
+    (`disableSearch` opt-out for loading/error states) ? showFolderView()'s
     branches delegate instead of re-inlining it."""
-    js = render_player_js()
-    assert js.count("if (!opts.disableSearch && allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();") == 1
+    header, _, _ = _view_entry_bodies()
+    assert "if (!o.disableSearch && st && st.allItems.length > 0) h.initGlobalSearch();" in header
+    assert "else h.hideGlobalSearch();" in header
+    js = _js()
     folder_view_fn = js.split("function showFolderView(", 1)[1]
     body = folder_view_fn.split("function _openPlaylistCtxMenu(", 1)[0]
     assert "initGlobalSearch()" not in body
@@ -1780,37 +1770,40 @@ def test_global_search_uses_shared_track_list_entry_point():
     """globalSearch() must delegate to _enterTrackListView() — it was the
     only track-list view skipping breadcrumb/view-toggle/router updates.
     skipFilter because renderSearchResults() renders the list itself."""
-    js = render_player_js()
-    fn = js.split("function globalSearch(", 1)[1]
-    body = fn.split("function renderSearchResults(", 1)[0]
-    assert "_enterTrackListView({" in body
-    assert "skipFilter: true" in body
-    assert "hideFilterBar: true" in body
-    assert "headerTitle.textContent" not in body
+    ts = _webui_src("searchView.ts")
+    fn = ts.split("export function globalSearch(", 1)[1]
+    assert "h.enterTrackListView({" in fn
+    assert "skipFilter: true" in fn
+    assert "hideFilterBar: true" in fn
+    assert "headerTitle.textContent" not in fn
+    assert "enterTrackListView: _enterTrackListView" in render_player_js()
 
 
 def test_enter_track_list_view_hides_recent_section():
-    """_enterTrackListView() must hide the recently-played strip — it is a
+    """enterTrackListView() must hide the recently-played strip ? it is a
     root/folder-grid-only section; previously only globalSearch() and
     showFolderView() hid it, so entering e.g. Favoriten from root left it
     visible above the track list (header/section drift)."""
-    js = render_player_js()
-    fn = js.split("function _enterTrackListView(opts)", 1)[1]
-    body = fn.split("function _enterFolderGridView(", 1)[0]
-    assert "recent-section" in body
-    assert ".hidden = true" in body
+    _, track, _ = _view_entry_bodies()
+    assert "recent-section" in track
+    assert ".hidden = true" in track
 
 
 def test_smart_and_user_playlist_view_uses_shared_track_list_entry_point():
-    """showUserPlaylistView() (favorites/all-titles/custom/smart playlists —
-    same code path for every playlist type) must delegate to
-    _enterTrackListView() for all three branches, matching
-    showPlaylist()/playDuplicates()."""
+    """showUserPlaylistView() (ported to webui/src/playlistViews.ts) must route
+    all three branches (favorites/all-titles/custom+smart) through the shared
+    _enterTrackListView() entry point, matching showPlaylist()/playDuplicates()."""
+    from pathlib import Path
+
+    import hometools.streaming.core as core_pkg
+
     js = render_player_js()
     assert "function showUserPlaylistView(plId)" in js
-    view_fn = js.split("function showUserPlaylistView(plId)", 1)[1]
-    body = view_fn.split("function playUserPlaylist(", 1)[0]
-    assert body.count("_enterTrackListView({") == 3  # __alltitles__, __favorites__, custom/smart
+    assert "enterTrackListView: _enterTrackListView" in js  # legacy hook wiring
+    ts = (Path(core_pkg.__file__).parent / "webui" / "src" / "playlistViews.ts").read_text(encoding="utf-8")
+    body = ts.split("export function showUserPlaylistView(", 1)[1].split("export function playUserPlaylist(", 1)[0]
+    assert body.count("h.enterTrackListView(") == 1  # single helper `enter()`
+    assert body.count("enter(") >= 3  # __alltitles__, __favorites__, custom/smart
 
 
 def test_play_duplicates_uses_shared_track_list_entry_point():
@@ -1825,21 +1818,14 @@ def test_play_duplicates_uses_shared_track_list_entry_point():
 
 
 def test_enter_track_list_view_refreshes_view_toggle():
-    """The view-toggle icon must be refreshed on every view change —
+    """The view-toggle icon must be refreshed on every view change ?
     otherwise the button keeps the previous view's icon (folder grid/list
-    vs track list/table). Now centralized in _applyHeaderState(), which
-    both entry points call."""
-    js = render_player_js()
-    fn = js.split("function _applyHeaderState(opts)", 1)[1]
-    body = fn.split("function _enterTrackListView(", 1)[0]
-    assert "applyViewMode();" in body
-    # Both entry points must route through it.
-    for start, end in (
-        ("function _enterTrackListView(opts)", "function _enterFolderGridView("),
-        ("function _enterFolderGridView(opts)", "function showPlaylist("),
-    ):
-        entry_body = js.split(start, 1)[1].split(end, 1)[0]
-        assert "_applyHeaderState({" in entry_body, start
+    vs track list/table). Centralized in applyHeaderState(), which both
+    entry points call."""
+    header, track, grid = _view_entry_bodies()
+    assert "h.applyViewMode();" in header
+    for name, body in (("enterTrackListView", track), ("enterFolderGridView", grid)):
+        assert "applyHeaderState(" in body, name
 
 
 # ---------------------------------------------------------------------------
@@ -2207,8 +2193,8 @@ def test_js_folder_card_renders_lang_select_btn():
 def test_js_lang_select_btn_click_navigates():
     """Clicking a lang-select-btn must navigate into the variant."""
     js = _js()
-    assert "data-variant-name" in js
-    assert "navigateInto" in js
+    assert "navigateInto" in js  # direct lang-select-btn handler + picker hook
+    assert "data-variant-name" in _webui_src("folderBrowseUi.ts")  # picker markup (ported)
 
 
 def test_js_card_click_uses_default_lang():
@@ -2687,7 +2673,7 @@ class TestTrackDetailTableView:
     def test_inline_edit_save_function_present(self):
         js = render_player_js()
         assert "_saveInlineTableEdit" in js
-        assert "contenteditable" in js
+        assert "contenteditable" in _webui_src("trackListDelegation.ts")
 
     def test_css_defines_table_mode_grid(self):
         """Table-view rules ported to webui/src/styles/tableView.css."""

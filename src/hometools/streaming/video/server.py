@@ -25,22 +25,31 @@ from hometools.config import (
     get_video_pwa_display_mode,
 )
 from hometools.constants import VIDEO_SUFFIX
-from hometools.streaming.core.catalog import list_artists, query_items, quick_folder_scan
+from hometools.streaming.core.catalog import list_artists, query_items
 from hometools.streaming.core.index_cache import IndexCache
 from hometools.streaming.core.openapi_schema import install_filtered_openapi
+from hometools.streaming.core.server_factory import (
+    register_audit_entries_route,
+    register_delete_file_route,
+    register_folder_order_routes,
+    register_health_route,
+    register_index_routes,
+    register_playlist_routes,
+    register_progress_routes,
+    register_pwa_routes,
+    register_reveal_route,
+    register_shortcuts_routes,
+    register_thumb_route,
+    register_todo_state_route,
+)
 from hometools.streaming.core.server_utils import (
-    build_index_status_payload,
     check_library_accessible,
     mount_static_assets,
     render_error_page,
     render_media_page,
-    render_pwa_icon_png,
-    render_pwa_icon_svg,
-    render_pwa_manifest,
-    render_pwa_service_worker,
     resolve_media_path,
 )
-from hometools.streaming.core.thumbnailer import get_thumbnail_path, start_background_thumbnail_generation
+from hometools.streaming.core.thumbnailer import start_background_thumbnail_generation
 from hometools.streaming.video.catalog import build_video_index, collect_thumbnail_work
 
 logger = logging.getLogger(__name__)
@@ -248,16 +257,6 @@ def create_app(
     # re-walk the filesystem every 2 seconds.
     _quick_cache: dict[str, object] = {"items": [], "at": 0.0}
 
-    @app.get("/health")
-    def health() -> dict[str, str]:
-        ok, msg = check_library_accessible(resolved_library_dir)
-        return {
-            "status": "ok" if ok else "degraded",
-            "library_dir": str(resolved_library_dir),
-            "library_accessible": str(ok),
-            "detail": msg,
-        }
-
     @app.get("/", response_class=HTMLResponse)
     def video_home() -> HTMLResponse:
         t0 = time.monotonic()
@@ -269,215 +268,6 @@ def create_app(
         elapsed = time.monotonic() - t0
         logger.info("GET / — shell rendered in %.2fs (HTML: %d bytes)", elapsed, len(html))
         return HTMLResponse(html)
-
-    @app.get("/api/video/items")
-    def video_items(q: str | None = None, artist: str | None = None, sort: str = "title") -> dict[str, object]:
-        t0 = time.monotonic()
-        logger.info("GET /api/video/items — start (q=%r, artist=%r, sort=%r)", q, artist, sort)
-        if resolved_safe_mode:
-            ok, msg = check_library_accessible(resolved_library_dir)
-            if not ok:
-                logger.warning("GET /api/video/items — library not accessible: %s", msg)
-                return {
-                    "library_dir": str(resolved_library_dir),
-                    "count": 0,
-                    "items": [],
-                    "artists": [],
-                    "error": msg,
-                    "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-                }
-            items = build_video_index(resolved_library_dir, cache_dir=None)
-            filtered = query_items(items, q=q, artist=artist, sort_by=sort)
-            logger.info(
-                "GET /api/video/items — SAFE MODE returned %d/%d items in %.1fs",
-                len(filtered),
-                len(items),
-                time.monotonic() - t0,
-            )
-            return {
-                "library_dir": str(resolved_library_dir),
-                "count": len(filtered),
-                "items": [i.to_dict() for i in filtered],
-                "artists": list_artists(items),
-                "safe_mode": True,
-                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-            }
-        cache_t0 = time.monotonic()
-        refresh_started = _video_index_cache.ensure_background_refresh(
-            resolved_library_dir,
-            cache_dir=resolved_cache_dir,
-        )
-        items = _video_index_cache.get_cached(resolved_library_dir, cache_dir=resolved_cache_dir)
-        building = _video_index_cache.is_building()
-        cache_elapsed = time.monotonic() - cache_t0
-        if building and not items:
-            ok, msg = check_library_accessible(resolved_library_dir)
-            if not ok:
-                logger.warning("GET /api/video/items — library not accessible: %s", msg)
-                return {
-                    "library_dir": str(resolved_library_dir),
-                    "count": 0,
-                    "items": [],
-                    "artists": [],
-                    "error": msg,
-                    "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-                }
-            cache_status = _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
-            status_payload = build_index_status_payload(
-                library_dir=resolved_library_dir,
-                item_label="video",
-                library_ok=True,
-                library_message="ok",
-                cache_status=cache_status,
-            )
-            # Reuse cached quick scan if available (avoid re-walking the
-            # filesystem on every 2-second poll while the index builds).
-            now = time.monotonic()
-            if _quick_cache["items"] and (now - _quick_cache["at"]) < 30.0:
-                quick_items = _quick_cache["items"]
-                logger.debug("GET /api/video/items — reusing cached quick scan (%d items)", len(quick_items))
-            else:
-                quick_items = quick_folder_scan(
-                    resolved_library_dir,
-                    suffixes=VIDEO_SUFFIX,
-                    media_type="video",
-                    stream_url_prefix="/video/stream",
-                )
-                _quick_cache["items"] = quick_items
-                _quick_cache["at"] = now
-            filtered = query_items(quick_items, q=q, artist=artist, sort_by=sort)
-            logger.info(
-                "GET /api/video/items — quick scan %d items in %.2fs (refresh_started=%s, status=%s)",
-                len(quick_items),
-                time.monotonic() - cache_t0,
-                refresh_started,
-                status_payload["detail"],
-            )
-            return {
-                "count": len(filtered),
-                "items": [i.to_dict() for i in filtered],
-                "artists": list_artists(quick_items),
-                "refreshing": True,
-                **status_payload,
-                "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-            }
-        query_t0 = time.monotonic()
-        filtered = query_items(items, q=q, artist=artist, sort_by=sort)
-        query_elapsed = time.monotonic() - query_t0
-        cache_status = _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
-        build_detail = (
-            build_index_status_payload(
-                library_dir=resolved_library_dir,
-                item_label="video",
-                library_ok=True,
-                library_message="ok",
-                cache_status=cache_status,
-            )["detail"]
-            if building
-            else ""
-        )
-        elapsed = time.monotonic() - t0
-        logger.info(
-            "GET /api/video/items — %d/%d items in %.1fs (cache=%.2fs, query=%.2fs, refresh_started=%s, building=%s, q=%r, artist=%r, sort=%r)",
-            len(filtered),
-            len(items),
-            elapsed,
-            cache_elapsed,
-            query_elapsed,
-            refresh_started,
-            building,
-            q,
-            artist,
-            sort,
-        )
-        return {
-            "library_dir": str(resolved_library_dir),
-            "count": len(filtered),
-            "items": [i.to_dict() for i in filtered],
-            "artists": list_artists(items),
-            "refreshing": building,
-            "cache": cache_status,
-            "detail": build_detail,
-            "query": {"q": q or "", "artist": artist or "all", "sort": sort},
-        }
-
-    @app.post("/api/video/refresh")
-    def video_refresh() -> dict[str, object]:
-        """Invalidate the index cache and trigger a fresh rebuild from the filesystem."""
-        _video_index_cache.invalidate()
-        _quick_cache["items"] = []
-        _quick_cache["at"] = 0.0
-        _video_index_cache.ensure_background_refresh(
-            resolved_library_dir,
-            cache_dir=resolved_cache_dir,
-        )
-        return {"ok": True, "detail": "Refresh started"}
-
-    @app.get("/api/video/status")
-    def video_status() -> dict[str, object]:
-        from hometools.streaming.core.issue_registry import summarize_issue_and_todos
-
-        ok, msg = check_library_accessible(resolved_library_dir)
-        cache_status = (
-            {
-                "label": "video-index",
-                "building": False,
-                "cached_count": 0,
-                "fresh": False,
-                "ttl_seconds": 0,
-                "cache_age_seconds": None,
-                "library_dir": str(resolved_library_dir),
-                "snapshot_path": "",
-                "snapshot_exists": False,
-                "build_running_for_seconds": None,
-                "last_build_started_at": None,
-                "last_build_finished_at": None,
-                "last_build_duration_seconds": None,
-                "last_build_reason": "safe-mode",
-                "last_error": "",
-            }
-            if resolved_safe_mode
-            else _video_index_cache.status(resolved_library_dir, cache_dir=resolved_cache_dir)
-        )
-        issue_todo_summary = summarize_issue_and_todos(resolved_cache_dir)
-        payload = build_index_status_payload(
-            library_dir=resolved_library_dir,
-            item_label="video",
-            library_ok=ok,
-            library_message="Safe mode active — no cache snapshot or thumbnail warmup" if resolved_safe_mode else msg,
-            cache_status=cache_status,
-            issues_summary=issue_todo_summary["issues"],
-            todo_summary=issue_todo_summary["todos"],
-        )
-        return payload
-
-    @app.post("/api/video/todos/state")
-    def video_todo_state(payload: dict[str, object]) -> dict[str, object]:
-        from hometools.streaming.core.issue_registry import summarize_todos, update_todo_state_action
-
-        todo_key = str(payload.get("todo_key") or "").strip()
-        action = str(payload.get("action") or "").strip().lower()
-        if not todo_key:
-            raise HTTPException(status_code=400, detail="todo_key is required")
-        if action not in {"acknowledge", "snooze", "clear"}:
-            raise HTTPException(status_code=400, detail="action must be acknowledge, snooze or clear")
-
-        result = update_todo_state_action(
-            resolved_cache_dir,
-            todo_key=todo_key,
-            action=action,
-            reason=str(payload.get("reason") or "").strip(),
-            seconds=int(payload.get("seconds") or 3600),
-        )
-        if not bool(result.get("ok", False)):
-            detail = str(result.get("message") or "Task state update failed")
-            raise HTTPException(status_code=404 if result.get("state") == "missing" else 400, detail=detail)
-
-        return {
-            "ok": True,
-            "result": result,
-            "todos": summarize_todos(resolved_cache_dir),
-        }
 
     @app.get("/api/video/metadata")
     def video_metadata(path: str) -> dict[str, object]:
@@ -521,27 +311,6 @@ def create_app(
 
         logger.debug("GET /api/video/metadata — %s → title=%r artist=%r", path, title, artist)
         return {"title": title, "artist": artist, "rating": 0.0}
-
-    @app.post("/api/video/progress")
-    def video_save_progress(payload: dict[str, object]) -> dict[str, object]:
-        """Save playback progress for a video file."""
-        from hometools.streaming.core.progress import save_progress
-
-        rp = str(payload.get("relative_path") or "").strip()
-        if not rp:
-            raise HTTPException(status_code=400, detail="relative_path is required")
-        pos = float(payload.get("position_seconds") or 0)
-        dur = float(payload.get("duration") or 0)
-        ok = save_progress(resolved_cache_dir, rp, pos, dur)
-        return {"ok": ok}
-
-    @app.get("/api/video/progress")
-    def video_load_progress(path: str) -> dict[str, object]:
-        """Load playback progress for a video file."""
-        from hometools.streaming.core.progress import load_progress
-
-        entry = load_progress(resolved_cache_dir, path)
-        return {"items": [entry] if entry else []}
 
     @app.get("/api/video/continue")
     def video_continue_watching(limit: int = 20) -> dict[str, object]:
@@ -697,30 +466,6 @@ def create_app(
         logger.debug("GET /video/stream — serving %s (%s)", file_path.name, media_type)
         return FileResponse(file_path, media_type=media_type, filename=file_path.name)
 
-    @app.get("/thumb")
-    def thumb(path: str, size: str = "sm") -> FileResponse:
-        """Serve a cached thumbnail image for a video file.
-
-        Pass ``?size=lg`` for the large (480 px) variant,
-        or ``?size=sprite`` for the sprite sheet image.
-        """
-        from urllib.parse import unquote
-
-        relative_path = unquote(path)
-        if size == "lg":
-            from hometools.streaming.core.thumbnailer import get_thumbnail_lg_path
-
-            thumb_path = get_thumbnail_lg_path(resolved_cache_dir, "video", relative_path)
-        elif size == "sprite":
-            from hometools.streaming.core.thumbnailer import get_sprite_path
-
-            thumb_path = get_sprite_path(resolved_cache_dir, relative_path)
-        else:
-            thumb_path = get_thumbnail_path(resolved_cache_dir, "video", relative_path)
-        if not thumb_path.exists():
-            raise HTTPException(status_code=404, detail="Thumbnail not found")
-        return FileResponse(thumb_path, media_type="image/jpeg")
-
     @app.get("/api/video/sprites")
     def video_sprites(path: str) -> dict[str, object]:
         """Return sprite sheet metadata for a video file (or 404)."""
@@ -737,182 +482,6 @@ def create_app(
             return {"ok": True, **meta}
         except Exception:
             raise HTTPException(status_code=500, detail="Sprite metadata corrupted") from None
-
-    # --- Playlists API ---
-
-    @app.get("/api/video/playlists/version")
-    def video_playlists_version() -> dict[str, object]:
-        """Return the current playlist revision number (lightweight)."""
-        from hometools.streaming.core.playlists import get_revision
-
-        return {"revision": get_revision(resolved_cache_dir, "video")}
-
-    @app.get("/api/video/playlists")
-    def video_playlists() -> dict[str, object]:
-        """Return all user playlists for the video server."""
-        from hometools.streaming.core.playlists import load_playlists_with_revision
-
-        playlists, revision = load_playlists_with_revision(resolved_cache_dir, "video")
-        return {"items": playlists, "revision": revision}
-
-    @app.post("/api/video/playlists")
-    def video_create_playlist(payload: dict[str, str]) -> dict[str, object]:
-        """Create a new empty playlist."""
-        from hometools.streaming.core.playlists import create_playlist
-
-        name = payload.get("name", "").strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="name is required")
-        pl = create_playlist(resolved_cache_dir, "video", name=name)
-        return {"playlist": pl}
-
-    @app.delete("/api/video/playlists")
-    def video_delete_playlist(id: str) -> dict[str, object]:
-        """Delete a playlist by id."""
-        from hometools.streaming.core.playlists import delete_playlist
-
-        remaining = delete_playlist(resolved_cache_dir, "video", id)
-        return {"items": remaining}
-
-    @app.patch("/api/video/playlists")
-    def video_rename_playlist(payload: dict[str, str]) -> dict[str, object]:
-        """Rename an existing playlist."""
-        from hometools.streaming.core.playlists import rename_playlist
-
-        playlist_id = payload.get("playlist_id", "")
-        name = payload.get("name", "").strip()
-        if not playlist_id or not name:
-            raise HTTPException(status_code=400, detail="playlist_id and name are required")
-        pl = rename_playlist(resolved_cache_dir, "video", playlist_id, name=name)
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    @app.post("/api/video/playlists/items")
-    def video_add_playlist_item(payload: dict[str, str]) -> dict[str, object]:
-        """Add a video to a playlist."""
-        from hometools.config import get_playlist_insert_position
-        from hometools.streaming.core.playlists import add_item
-
-        playlist_id = payload.get("playlist_id", "")
-        relative_path = payload.get("relative_path", "")
-        if not playlist_id or not relative_path:
-            raise HTTPException(status_code=400, detail="playlist_id and relative_path are required")
-        pl = add_item(
-            resolved_cache_dir,
-            "video",
-            playlist_id,
-            relative_path=relative_path,
-            insert_position=get_playlist_insert_position(),
-        )
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    @app.delete("/api/video/playlists/items")
-    def video_remove_playlist_item(playlist_id: str, path: str) -> dict[str, object]:
-        """Remove a video from a playlist."""
-        from hometools.streaming.core.playlists import remove_item
-
-        pl = remove_item(resolved_cache_dir, "video", playlist_id, relative_path=path)
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    @app.patch("/api/video/playlists/items")
-    def video_move_playlist_item(payload: dict[str, str]) -> dict[str, object]:
-        """Move a video up or down within a playlist."""
-        from hometools.streaming.core.playlists import move_item
-
-        playlist_id = payload.get("playlist_id", "")
-        relative_path = payload.get("relative_path", "")
-        direction = payload.get("direction", "")
-        if not playlist_id or not relative_path or direction not in ("up", "down"):
-            raise HTTPException(status_code=400, detail="playlist_id, relative_path, and direction (up/down) are required")
-        pl = move_item(resolved_cache_dir, "video", playlist_id, relative_path=relative_path, direction=direction)
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist or item not found")
-        return {"playlist": pl}
-
-    @app.put("/api/video/playlists/items")
-    def video_reorder_playlist_item(payload: dict[str, object]) -> dict[str, object]:
-        """Move a video to a specific index within a playlist."""
-        from hometools.streaming.core.playlists import reorder_item
-
-        playlist_id = str(payload.get("playlist_id", ""))
-        relative_path = str(payload.get("relative_path", ""))
-        to_index = payload.get("to_index")
-        if not playlist_id or not relative_path or to_index is None:
-            raise HTTPException(status_code=400, detail="playlist_id, relative_path, and to_index are required")
-        pl = reorder_item(resolved_cache_dir, "video", playlist_id, relative_path=relative_path, to_index=int(to_index))
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist or item not found")
-        return {"playlist": pl}
-
-    # --- Smart Playlists API ---
-
-    @app.post("/api/video/playlists/smart")
-    def video_create_smart_playlist(payload: dict[str, object]) -> dict[str, object]:
-        """Create a new smart playlist defined by ``smart`` rules."""
-        from hometools.streaming.core.playlists import create_playlist
-        from hometools.streaming.core.smart_playlists import validate_smart_rules
-
-        name = str(payload.get("name", "")).strip()
-        smart = payload.get("smart")
-        if not name:
-            raise HTTPException(status_code=400, detail="name is required")
-        ok, reason = validate_smart_rules(smart)
-        if not ok:
-            raise HTTPException(status_code=400, detail=reason)
-        pl = create_playlist(resolved_cache_dir, "video", name=name, smart=smart)  # type: ignore[arg-type]
-        return {"playlist": pl}
-
-    @app.put("/api/video/playlists/smart")
-    def video_update_smart_rules(payload: dict[str, object]) -> dict[str, object]:
-        """Update the smart-rule block of an existing playlist."""
-        from hometools.streaming.core.playlists import update_smart_rules
-        from hometools.streaming.core.smart_playlists import validate_smart_rules
-
-        playlist_id = str(payload.get("playlist_id", ""))
-        smart = payload.get("smart")
-        if not playlist_id:
-            raise HTTPException(status_code=400, detail="playlist_id is required")
-        ok, reason = validate_smart_rules(smart, own_id=playlist_id)
-        if not ok:
-            raise HTTPException(status_code=400, detail=reason)
-        pl = update_smart_rules(resolved_cache_dir, "video", playlist_id, smart=smart)  # type: ignore[arg-type]
-        if pl is None:
-            raise HTTPException(status_code=404, detail="Playlist not found")
-        return {"playlist": pl}
-
-    # --- Custom Order API (server-side folder/favorites reorder) ---
-
-    @app.get("/api/video/folder-order")
-    def video_get_folder_order(path: str = "") -> dict[str, object]:
-        """Return the custom item order for a folder (or __favorites__)."""
-        from hometools.streaming.core.custom_order import load_order
-
-        return {"items": load_order(resolved_cache_dir, "video", path)}
-
-    @app.put("/api/video/folder-order")
-    def video_save_folder_order(payload: dict[str, object]) -> dict[str, object]:
-        """Persist the custom item order for a folder (or __favorites__)."""
-        from hometools.streaming.core.custom_order import save_order
-
-        folder_path = str(payload.get("folder_path", ""))
-        items = payload.get("items", [])
-        if not isinstance(items, list):
-            raise HTTPException(status_code=400, detail="items must be a list")
-        saved = save_order(resolved_cache_dir, "video", folder_path, [str(i) for i in items])
-        return {"items": saved}
-
-    @app.delete("/api/video/folder-order")
-    def video_delete_folder_order(path: str = "") -> dict[str, object]:
-        """Delete the custom order for a folder."""
-        from hometools.streaming.core.custom_order import delete_order
-
-        ok = delete_order(resolved_cache_dir, "video", path)
-        return {"deleted": ok}
 
     # --- Skip-Intro markers API ---
 
@@ -963,96 +532,6 @@ def create_app(
         return {"deleted": ok}
 
     # --- File delete (soft-delete for duplicates) ---
-
-    @app.post("/api/video/delete-file")
-    def video_delete_file(payload: dict[str, object]) -> dict[str, object]:
-        """Delete a video file by sending it to the system Recycle Bin / Trash.
-
-        Body: ``{"path": "Folder/movie.mp4"}``
-        Returns ``{"ok": true, "entry_id": "..."}``
-        """
-        from hometools.streaming.core.audit_log import log_file_delete
-        from hometools.utils import send_to_trash
-
-        path = str(payload.get("path") or "").strip()
-        if not path:
-            raise HTTPException(status_code=400, detail="path is required")
-
-        try:
-            file_path = resolve_video_path(resolved_library_dir, path)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        try:
-            trash_dest = send_to_trash(file_path)
-        except Exception as exc:
-            logger.exception("Failed to delete file %s", file_path)
-            raise HTTPException(status_code=500, detail=f"Delete failed: {exc}") from exc
-
-        entry = log_file_delete(
-            resolved_audit_dir,
-            server="video",
-            path=path,
-            trash_path=trash_dest,
-        )
-
-        _video_index_cache.invalidate()
-
-        return {"ok": True, "entry_id": entry.entry_id}
-
-    @app.post("/api/video/reveal")
-    def video_reveal(payload: dict[str, object]) -> dict[str, object]:
-        """Return the absolute path of a video file and optionally open it in Explorer.
-
-        Body: ``{"path": "Series/episode.mp4"}``
-        Returns ``{"ok": true, "path": "/abs/path/to/episode.mp4", "revealed": true|false}``
-        """
-        from hometools.utils import reveal_in_explorer
-
-        path = str(payload.get("path") or "").strip()
-        if not path:
-            raise HTTPException(status_code=400, detail="path is required")
-        try:
-            file_path = resolve_video_path(resolved_library_dir, path)
-        except (FileNotFoundError, ValueError) as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-        abs_path = str(file_path.resolve())
-        revealed = reveal_in_explorer(file_path)
-        return {"ok": True, "path": abs_path, "revealed": revealed}
-
-    # --- Shortcuts API ---
-
-    @app.get("/api/video/shortcuts")
-    def video_shortcuts() -> dict[str, object]:
-        """Return saved PWA shortcuts for the video server."""
-        from hometools.streaming.core.shortcuts import load_shortcuts
-
-        return {"items": load_shortcuts(resolved_cache_dir, "video")}
-
-    @app.post("/api/video/shortcuts")
-    def video_add_shortcut(payload: dict[str, str]) -> dict[str, object]:
-        """Add or update a PWA shortcut."""
-        from hometools.streaming.core.shortcuts import save_shortcut
-
-        item_id = payload.get("id", "")
-        title = payload.get("title", "")
-        if not item_id or not title:
-            raise HTTPException(status_code=400, detail="id and title are required")
-        url = f"/?id={item_id}"
-        icon = payload.get("icon", f"/thumb?path={item_id}")
-        shortcuts = save_shortcut(resolved_cache_dir, "video", item_id=item_id, title=title, url=url, icon=icon)
-        return {"items": shortcuts}
-
-    @app.delete("/api/video/shortcuts")
-    def video_remove_shortcut(id: str) -> dict[str, object]:
-        """Remove a PWA shortcut by item id."""
-        from hometools.streaming.core.shortcuts import remove_shortcut
-
-        shortcuts = remove_shortcut(resolved_cache_dir, "video", id)
-        return {"items": shortcuts}
 
     # --- Audit log endpoints (read-only for video — no write ops yet) ---
 
@@ -1119,25 +598,6 @@ def create_app(
                 break
 
         return {"items": result}
-
-    @app.get("/api/video/audit")
-    def video_audit_entries(
-        limit: int = 200,
-        path_filter: str = "",
-        action_filter: str = "",
-        include_undone: bool = True,
-    ) -> dict[str, object]:
-        """Return audit log entries visible to the video server (shared audit dir)."""
-        from hometools.streaming.core.audit_log import load_entries
-
-        entries = load_entries(
-            resolved_audit_dir,
-            limit=limit,
-            path_filter=path_filter,
-            action_filter=action_filter,
-            include_undone=include_undone,
-        )
-        return {"items": entries, "total": len(entries)}
 
     @app.post("/api/video/audit/undo")
     def video_audit_undo(payload: dict[str, object]) -> dict[str, object]:
@@ -1208,60 +668,42 @@ def create_app(
             )
         )
 
-    # --- PWA endpoints ---
-    _VIDEO_THEME = "#bb86fc"
-
-    @app.get("/manifest.json")
-    def manifest():
-        from fastapi.responses import JSONResponse
-
-        from hometools.streaming.core.shortcuts import load_shortcuts
-
-        saved = load_shortcuts(resolved_cache_dir, "video")
-        pwa_shortcuts = [
-            {
-                "name": s["title"],
-                "short_name": s["title"][:25],
-                "url": s.get("url", f"/?id={s['id']}"),
-                "icons": [{"src": s.get("icon", "/icon.svg"), "sizes": "any"}],
-            }
-            for s in saved
-        ]
-        return JSONResponse(
-            content=_json.loads(
-                render_pwa_manifest(
-                    "hometools video",
-                    "Video",
-                    theme_color=_VIDEO_THEME,
-                    display_mode=get_video_pwa_display_mode(),
-                    shortcuts=pwa_shortcuts or None,
-                )
-            ),
-            media_type="application/manifest+json",
-        )
-
-    @app.get("/sw.js")
-    def service_worker():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_service_worker(), media_type="application/javascript")
-
-    @app.get("/icon.svg")
-    def icon_svg():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_icon_svg("🎬", _VIDEO_THEME), media_type="image/svg+xml")
-
-    @app.get("/icon-192.png")
-    def icon_192():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_icon_png("🎬", 192, _VIDEO_THEME), media_type="image/png")
-
-    @app.get("/icon-512.png")
-    def icon_512():
-        from fastapi.responses import Response
-
-        return Response(content=render_pwa_icon_png("🎬", 512, _VIDEO_THEME), media_type="image/png")
+    # --- Shared endpoints (core/server_factory.py) ---
+    register_health_route(app, resolved_library_dir)
+    register_index_routes(
+        app,
+        library_dir=resolved_library_dir,
+        cache_dir=resolved_cache_dir,
+        safe_mode=resolved_safe_mode,
+        media_type="video",
+        api_path="/api/video/items",
+        items_name="items",
+        default_sort="title",
+        suffixes=VIDEO_SUFFIX,
+        stream_url_prefix="/video/stream",
+        index_cache=_video_index_cache,
+        build_index=build_video_index,
+        query_fn=query_items,
+        list_artists_fn=list_artists,
+    )
+    register_thumb_route(app, resolved_cache_dir, "video", allow_sprite=True)
+    register_todo_state_route(app, resolved_cache_dir, "video")
+    register_audit_entries_route(app, resolved_audit_dir, "video")
+    register_reveal_route(app, resolved_library_dir, "video", resolve_video_path)
+    register_delete_file_route(app, resolved_library_dir, resolved_audit_dir, "video", resolve_video_path, _video_index_cache.invalidate)
+    register_progress_routes(app, resolved_cache_dir, "video")
+    register_playlist_routes(app, resolved_cache_dir, "video")
+    register_folder_order_routes(app, resolved_cache_dir, "video")
+    register_shortcuts_routes(app, resolved_cache_dir, "video")
+    register_pwa_routes(
+        app,
+        cache_dir=resolved_cache_dir,
+        media_type="video",
+        app_name="hometools video",
+        short_name="Video",
+        emoji="??",
+        theme_color="#bb86fc",
+        display_mode=get_video_pwa_display_mode(),
+    )
 
     return app

@@ -223,91 +223,30 @@ def render_folder_browse_js() -> str:
   function _openPlaylistCtxMenu(btn, plId) {
     var pl = _userPlaylists.find(function(p) { return p.id === plId; });
     if (!pl) return;
-    var isSmart = !!(pl.smart && pl.smart.rules);
-    var items = [];
-    if (isSmart) {
-      items.push({
-        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
-        label: 'Aktualisieren',
-        onClick: function() { refreshSmartPlaylist(plId); }
-      });
-      items.push({
-        icon: IC_EDIT,
-        label: 'Regeln bearbeiten',
-        onClick: function() { openSmartPlaylistEditor(pl); }
-      });
-    }
-    items.push({
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
-      label: 'Umbenennen',
-      onClick: function() { renameUserPlaylist(plId); }
-    });
-    items.push({
-      icon: IC_TRASH,
-      label: 'Löschen',
-      danger: true,
-      onClick: function() { deleteUserPlaylist(plId); }
-    });
-    _openCtxMenu(btn, items);
+    /* items: webui/src/folderBrowseUi.ts::playlistCtxMenuItems */
+    _openCtxMenu(btn, window._playlistCtxMenuItems(pl, {
+      refresh: refreshSmartPlaylist,
+      editRules: openSmartPlaylistEditor,
+      rename: renameUserPlaylist,
+      remove: deleteUserPlaylist,
+      icEdit: IC_EDIT,
+      icTrash: IC_TRASH
+    }));
   }
-
   /* ── Language picker for multi-language folders ── */
-  var _langPickerCleanup = null;
-  function closeLangPicker() {
-    if (_langPickerCleanup) { _langPickerCleanup(); _langPickerCleanup = null; }
-    var old = document.querySelector('.lang-picker-overlay');
-    if (old) old.remove();
-  }
+  /* Picker (private cleanup state) ported to webui/src/folderBrowseUi.ts. */
+  function closeLangPicker() { window._closeLangPicker(); }
   function showLangPicker(card, variants, playMode) {
-    closeLangPicker();
-    var overlay = document.createElement('div');
-    overlay.className = 'lang-picker-overlay';
-    var heading = playMode ? 'Sprache zum Abspielen w\u00e4hlen' : 'Sprachversion w\u00e4hlen';
-    var inner = '<div class="lang-picker-title">' + escHtml(heading) + '</div>';
-    variants.forEach(function(v) {
-      var flagSvg = v.lang && LANG_TO_FLAG[v.lang] ? LANG_TO_FLAG[v.lang] : '';
-      var langLabel = v.lang && _LANG_NAME_MAP[v.lang] ? _LANG_NAME_MAP[v.lang] : cleanFolderName(v.name);
-      var countLabel = v.count + ' ' + (v.count !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
-      inner += '<button class="lang-picker-item" data-variant-name="' + escHtml(v.name) + '">' +
-        (flagSvg ? '<span class="lang-picker-flag">' + flagSvg + '</span>' : '') +
-        '<span class="lang-picker-label">' + escHtml(langLabel) + '</span>' +
-        '<span class="lang-picker-count">' + countLabel + '</span>' +
-      '</button>';
+    window._showLangPicker(card, variants, playMode, {
+      esc: escHtml,
+      itemNoun: ITEM_NOUN,
+      langToFlag: LANG_TO_FLAG,
+      langNames: _LANG_NAME_MAP,
+      cleanFolderName: cleanFolderName,
+      playAllIn: playAllIn,
+      navigateInto: navigateInto
     });
-    overlay.innerHTML = inner;
-
-    /* Position near the card */
-    var rect = card.getBoundingClientRect();
-    overlay.style.position = 'fixed';
-    overlay.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 260)) + 'px';
-    var spaceBelow = window.innerHeight - rect.bottom;
-    if (spaceBelow > 200) {
-      overlay.style.top = rect.bottom + 4 + 'px';
-    } else {
-      overlay.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
-    }
-    document.body.appendChild(overlay);
-
-    overlay.querySelectorAll('.lang-picker-item').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var vName = btn.dataset.variantName;
-        closeLangPicker();
-        if (playMode) { playAllIn(vName); } else { navigateInto(vName); }
-      });
-    });
-
-    /* Close on click outside or Escape */
-    function onDocClick(e) { if (!overlay.contains(e.target) && !card.contains(e.target)) closeLangPicker(); }
-    function onKeyDown(e) { if (e.key === 'Escape') closeLangPicker(); }
-    document.addEventListener('click', onDocClick, true);
-    document.addEventListener('keydown', onKeyDown);
-    _langPickerCleanup = function() {
-      document.removeEventListener('click', onDocClick, true);
-      document.removeEventListener('keydown', onKeyDown);
-    };
   }
-
   function navigateInto(name) {
     currentPath = currentPath ? currentPath + '/' + name : name;
     _triggerSilentRefresh(); /* always fetch fresh catalog on folder navigation */
@@ -357,80 +296,30 @@ def render_folder_browse_js() -> str:
      browsing and any track list (user playlist, favorites, duplicates,
      ...). Searching the whole library is a global action and must stay
      reachable from every view. */
-  function _applyHeaderState(opts) {
-    opts = opts || {};
-    headerTitle.textContent = opts.title != null ? opts.title : (currentPath ? leafName(currentPath) : originalTitle);
-    backBtn.classList.toggle('disabled', !!opts.backDisabled);
-    playAllBtn.classList.toggle('disabled', !!opts.playAllDisabled);
-    renderBreadcrumb();
-    /* View-toggle icon depends on the *current* view (folder grid → grid/
-       list mode, track list → list/table mode), so it must be refreshed on
-       every view change or the button keeps the previous view's icon. */
-    applyViewMode();
-    /* Global search: present in every view once the catalog is loaded.
-       disableSearch is only for states with no catalog at all (loading,
-       load error), where a search box would be a dead control. */
-    if (!opts.disableSearch && allItems.length > 0) initGlobalSearch(); else _hideGlobalSearch();
+  /* Shared view-entry points ported to webui/src/viewEntry.ts (DOM elements +
+     legacy callbacks via hooks; currentPath/allItems/currentIndex via htState).
+     Wrappers keep bare-name call sites. */
+  function _entryHooks() {
+    return {
+      dom: {
+        headerTitle: headerTitle, backBtn: backBtn, playAllBtn: playAllBtn,
+        folderGrid: folderGrid, trackView: trackView, filterBar: filterBar,
+        playerBar: playerBar, trackCount: trackCount, searchInput: searchInput,
+        player: player
+      },
+      originalTitle: originalTitle,
+      renderBreadcrumb: renderBreadcrumb,
+      applyViewMode: applyViewMode,
+      initGlobalSearch: initGlobalSearch,
+      hideGlobalSearch: _hideGlobalSearch,
+      initFilterBarScrollReveal: _initFilterBarScrollReveal,
+      applyFilter: applyFilter,
+      routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); }
+    };
   }
-
-  function _enterTrackListView(opts) {
-    opts = opts || {};
-    _applyHeaderState({
-      title: opts.title,
-      backDisabled: opts.backDisabled,
-      /* Track-list views default to an enabled Play-All (the list itself
-         is playable); callers opt out explicitly. */
-      playAllDisabled: opts.playAllDisabled
-    });
-    folderGrid.classList.add('view-hidden');
-    trackView.classList.remove('view-hidden');
-    filterBar.classList.toggle('view-hidden', !!opts.hideFilterBar);
-    filterBar.classList.toggle('fb-scroll-hidden', !!opts.collapseFilterBar);
-    _initFilterBarScrollReveal();
-    playerBar.classList.remove('view-hidden');
-    /* Recently-played strip is a root/folder-grid-only section — every
-       track-list view hides it (was previously only done by globalSearch()
-       and showFolderView(), a drift bug: entering Favoriten from root left
-       the strip visible above the track list). */
-    var _rsEl = document.getElementById('recent-section');
-    if (_rsEl) _rsEl.hidden = true;
-    /* In-list filter box (#search-input, filter bar) — distinct from the
-       header's global search. Reset so a previous list's filter doesn't
-       silently hide items here. */
-    searchInput.value = '';
-    if (opts.resetIndex) currentIndex = -1;
-    /* skipFilter: views that render their own list (global search's
-       renderSearchResults) — applyFilter() would overwrite it. */
-    if (!opts.skipFilter) applyFilter();
-    if (opts.trackCount != null) trackCount.textContent = opts.trackCount;
-    if (typeof _router !== 'undefined') _router.update();
-  }
-
-  /* ── Shared folder-grid view entry point ──────────────────────────────
-     Counterpart to _enterTrackListView() for every "grid of folders" view
-     (normal browse, empty library, loading state, catalog-load error) —
-     same rationale: before this, showFolderView() (twice: empty + normal
-     branch), showLoadingState() and showCatalogLoadError() each hand-rolled
-     the identical header/toolbar toggles and drifted apart (e.g. the error
-     view hid the back button via style.display='none' — which nothing ever
-     reset — instead of the disabled class every other view uses). */
-  function _enterFolderGridView(opts) {
-    opts = opts || {};
-    _applyHeaderState({
-      title: opts.title,
-      backDisabled: opts.backDisabled != null ? !!opts.backDisabled : !currentPath,
-      playAllDisabled: opts.playAllDisabled,
-      disableSearch: opts.disableSearch
-    });
-    folderGrid.classList.remove('view-hidden');
-    trackView.classList.add('view-hidden');
-    filterBar.classList.add('view-hidden');
-    if (!player.currentSrc) playerBar.classList.add('view-hidden');
-    if (opts.trackCount != null) trackCount.textContent = opts.trackCount;
-    if (opts.contentHtml != null) folderGrid.innerHTML = opts.contentHtml;
-    if (typeof _router !== 'undefined') _router.update();
-  }
-
+  function _applyHeaderState(opts) { window._applyHeaderState(opts, _entryHooks()); }
+  function _enterTrackListView(opts) { window._enterTrackListView(opts, _entryHooks()); }
+  function _enterFolderGridView(opts) { window._enterFolderGridView(opts, _entryHooks()); }
   /* ── playlist view ── */
   function showPlaylist(items, autoplay, startIdx) {
     destroyPlaylistDragDrop();
@@ -515,57 +404,13 @@ def render_folder_browse_js() -> str:
   }
 
   /* ── global search (root view) ── */
-  var _globalSearchDebounce = null;
-  var _globalSearchListenersInit = false;
+  /* Header search wiring (private debounce/init state) ported to
+     webui/src/folderBrowseUi.ts; _globalSearchActive via htState. */
   function initGlobalSearch() {
-    var inp = document.getElementById('global-search-input');
-    if (!inp) return;
-    /* Show in header */
-    inp.classList.remove('view-hidden');
-    /* Wire events only once */
-    if (_globalSearchListenersInit) return;
-    _globalSearchListenersInit = true;
-    inp.addEventListener('input', function() {
-      clearTimeout(_globalSearchDebounce);
-      var val = inp.value.trim();
-      if (!val) {
-        if (_globalSearchActive) exitGlobalSearch();
-        return;
-      }
-      _globalSearchDebounce = setTimeout(function() { globalSearch(val); }, 200);
-    });
-    inp.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        inp.value = '';
-        if (_globalSearchActive) exitGlobalSearch();
-        inp.blur();
-      }
-    });
+    window._initGlobalSearch({ globalSearch: globalSearch, exitGlobalSearch: exitGlobalSearch });
   }
-
-  function _hideGlobalSearch() {
-    var inp = document.getElementById('global-search-input');
-    if (inp) { inp.classList.add('view-hidden'); inp.value = ''; }
-  }
-
+  function _hideGlobalSearch() { window._hideGlobalSearch(); }
   /* ── Filter bar scroll-reveal ── */
-  var _fbScrollInitDone = false;
-  var _fbLastScrollY = 0;
-  function _initFilterBarScrollReveal() {
-    if (_fbScrollInitDone) return;
-    _fbScrollInitDone = true;
-    var wrap = document.getElementById('track-view');
-    if (!wrap) return;
-    wrap.addEventListener('scroll', function() {
-      var y = wrap.scrollTop;
-      /* Reveal when near top (y < 10) or scrolling upward */
-      if (y < 10 || y < _fbLastScrollY - 2) {
-        filterBar.classList.remove('fb-scroll-hidden');
-      } else if (y > _fbLastScrollY + 8) {
-        filterBar.classList.add('fb-scroll-hidden');
-      }
-      _fbLastScrollY = y;
-    });
-  }
+  function _initFilterBarScrollReveal() { window._initFilterBarScrollReveal(filterBar); }
 
 """

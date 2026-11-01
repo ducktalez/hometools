@@ -194,10 +194,15 @@ class TestDeepLinking:
 
     def test_html_contains_pin_button_markup(self, tmp_path):
         """The JS must render pin buttons per track."""
+        from pathlib import Path
+
+        import hometools
         from hometools.streaming.core.server_utils import render_player_js
 
         js = render_player_js()
-        assert "track-pin-btn" in js
+        # pin-button class handling moved to webui/src/favorites.ts
+        ts = Path(hometools.__file__).parent / "streaming/core/webui/src/favorites.ts"
+        assert "track-pin-btn" in ts.read_text(encoding="utf-8")
         assert "IC_PIN" in js
         assert "toggleFavorite" in js
 

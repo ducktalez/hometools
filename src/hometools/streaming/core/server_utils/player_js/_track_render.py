@@ -49,44 +49,11 @@ def render_track_render_js() -> str:
       return;
     }
 
-    /* Pre-compute displayTracks (with episode-gap placeholders) and a map
-       from display index → filteredItems index (-1 for placeholder rows). */
-    var displayTracks = withMissingEpisodes(realTracks);
-    _renderAllItems   = displayTracks;
-    _renderRealIdxMap = [];
-    var rc = 0;
-    for (var mi = 0; mi < displayTracks.length; mi++) {
-      var mt = displayTracks[mi];
-      _renderRealIdxMap.push((mt._missing || mt._debugReason) ? -1 : rc++);
-    }
-    _renderBatchOffset = 0;
-
-    /* Sentinel <li> at bottom — IntersectionObserver fires _appendTrackBatch */
-    _renderSentinelEl = document.createElement('li');
-    _renderSentinelEl.className = 'track-list-sentinel';
-    _renderSentinelEl.setAttribute('aria-hidden', 'true');
-    _renderSentinelEl.style.cssText = 'height:1px;pointer-events:none;visibility:hidden;';
-    trackList.appendChild(_renderSentinelEl);
-
-    /* Wire event delegation once — covers all current + future batch items */
-    _wireTrackListDelegation();
-
-    /* Render first batch so the user sees content immediately */
-    _appendTrackBatch();
-
-    /* Set up observer for lazy-loading of remaining batches */
-    if (_renderBatchOffset < _renderAllItems.length) {
-      if (typeof IntersectionObserver !== 'undefined') {
-        _renderObserver = new IntersectionObserver(function(entries) {
-          if (entries[0].isIntersecting) _appendTrackBatch();
-        }, { rootMargin: '400px' });
-        _renderObserver.observe(_renderSentinelEl);
-      } else {
-        /* Fallback for old browsers: render everything synchronously */
-        while (_renderBatchOffset < _renderAllItems.length) _appendTrackBatch();
-      }
-    }
+    /* Episode-gap placeholders, sentinel, first batch, lazy-load observer:
+       webui/src/trackRenderWindow.ts (window state private there). */
+    _startWindowedRender(realTracks);
   }
+
 
   /* ── offline download management ── */
   var OFFLINE_SOFT_LIMIT = 500 * 1024 * 1024;
@@ -357,7 +324,7 @@ def render_track_render_js() -> str:
   }
 
   function updateAllDownloadButtons() {
-    if (!downloadDB) return;
+    if (!window.isDownloadDbReady()) return;
     getAllDownloads().then(function(downloads) {
       /* ready-set: webui/src/offlineDownloads.ts::readyStreamUrls */
       var cached = window._readyStreamUrls(downloads);
@@ -379,7 +346,7 @@ def render_track_render_js() -> str:
   }
 
   function downloadTrack(streamUrl, title, btn, meta) {
-    if (!downloadDB) return;
+    if (!window.isDownloadDbReady()) return;
     btn.classList.add('downloading');
     btn.classList.remove('cached');
     btn.textContent = '0%';
@@ -417,10 +384,7 @@ def render_track_render_js() -> str:
           return ensureStorageBudget(blob.size, streamUrl).then(function(stillOk) {
             if (!stillOk) throw new Error('Offline-Speicher voll');
             return deleteDownloadByStreamUrl(streamUrl).then(function() {
-              return new Promise(function(resolve, reject) {
-                var tx = downloadDB.transaction('downloads', 'readwrite');
-                var store = tx.objectStore('downloads');
-                store.add({
+              return window.addDownloadRecord({
                   streamUrl: streamUrl,
                   title: title,
                   artist: meta && meta.artist ? meta.artist : '',
@@ -432,9 +396,6 @@ def render_track_render_js() -> str:
                   timestamp: Date.now(),
                   status: 'ready'
                 });
-                tx.oncomplete = resolve;
-                tx.onerror = function() { reject(tx.error || new Error('IndexedDB write failed')); };
-              });
             });
           });
         });

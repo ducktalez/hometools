@@ -528,10 +528,11 @@ def test_debug_filter_css_present(tmp_path, monkeypatch):
 
     monkeypatch.setenv("HOMETOOLS_DEBUG_FILTER", "true")
     html = render_audio_index_html([])
-    assert ".debug-filtered" in html
-    css = (
-        Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "styles" / "tableView.css"
-    ).read_text(encoding="utf-8")
+    assert '"debugFilter": true' in html or '"debugFilter":true' in html
+    src = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src"
+    assert "debug-filtered" in (src / "trackRows.ts").read_text(encoding="utf-8")
+    assert "debug-filtered" in (src / "trackRenderWindow.ts").read_text(encoding="utf-8")
+    css = (src / "styles" / "tableView.css").read_text(encoding="utf-8")
     assert ".debug-reason" in css
 
 

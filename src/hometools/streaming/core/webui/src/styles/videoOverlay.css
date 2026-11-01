@@ -246,7 +246,8 @@
   bottom: 0;
   background: var(--surface); border-top: 1px solid #333;
   border-radius: 12px 12px 0 0;
-  z-index: 500; display: flex; flex-direction: column;
+  /* above .video-overlay (500): else overlay covers panel, close unreachable */
+  z-index: 600; display: flex; flex-direction: column;
   overflow: hidden;
   /* max-height set dynamically by _syncQueueBottom() — user-resizable via drag handle */
   max-height: 70vh;
@@ -513,4 +514,5 @@
 @media (max-width: 480px) {
   .video-float-container { width: 200px; height: 113px; bottom: 60px; right: 8px; }
 }
+
 

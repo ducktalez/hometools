@@ -32,79 +32,18 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   }
 
   function _syncQueueBottom() {
-    if (!_queuePanel) return;
-    var bar = document.querySelector('.player-bar');
-    var barH = bar ? bar.offsetHeight : 80;
-    _queuePanel.style.bottom = barH + 'px';
-    /* Compute available space: header top → player bar top */
-    var hdr = document.querySelector('header');
-    var hdrH = hdr ? hdr.offsetHeight : 56;
-    var available = window.innerHeight - hdrH - barH - 8; /* 8px breathing room */
-    if (available < _QUEUE_MIN_H) available = _QUEUE_MIN_H;
-    /* Apply user-chosen height if set, otherwise use full available space */
-    var h = _queueUserHeight ? Math.min(_queueUserHeight, available) : available;
-    if (h < _QUEUE_MIN_H) h = _QUEUE_MIN_H;
-    _queuePanel.style.maxHeight = h + 'px';
+    window._syncQueueBottom(_queuePanel, _queueUserHeight, _QUEUE_MIN_H);
   }
 
-  /* ── Queue drag-to-resize ── */
-  (function _initQueueResize() {
-    if (!_queueDragHandle || !_queuePanel) return;
-    var _dragging = false;
-    var _startY = 0;
-    var _startH = 0;
-
-    function _getAvailable() {
-      var bar = document.querySelector('.player-bar');
-      var barH = bar ? bar.offsetHeight : 80;
-      var hdr = document.querySelector('header');
-      var hdrH = hdr ? hdr.offsetHeight : 56;
-      return window.innerHeight - hdrH - barH - 8;
-    }
-
-    function onPointerDown(e) {
-      if (!_queueOpen) return;
-      e.preventDefault();
-      _dragging = true;
-      _startY = e.touches ? e.touches[0].clientY : e.clientY;
-      _startH = _queuePanel.offsetHeight;
-      _queuePanel.classList.add('dragging');
-      document.addEventListener('mousemove', onPointerMove, {passive: false});
-      document.addEventListener('touchmove', onPointerMove, {passive: false});
-      document.addEventListener('mouseup', onPointerUp);
-      document.addEventListener('touchend', onPointerUp);
-    }
-
-    function onPointerMove(e) {
-      if (!_dragging) return;
-      e.preventDefault();
-      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      var delta = _startY - clientY; /* positive = dragging up = taller */
-      var available = _getAvailable();
-      if (available < _QUEUE_MIN_H) available = _QUEUE_MIN_H;
-      var newH = Math.max(_QUEUE_MIN_H, Math.min(_startH + delta, available));
-      _queuePanel.style.maxHeight = newH + 'px';
-    }
-
-    function onPointerUp(e) {
-      if (!_dragging) return;
-      _dragging = false;
-      _queuePanel.classList.remove('dragging');
-      /* Persist the chosen height (enforce minimum) */
-      var finalH = _queuePanel.offsetHeight;
-      if (finalH >= _QUEUE_MIN_H) {
-        _queueUserHeight = finalH;
-        try { localStorage.setItem(_QUEUE_HEIGHT_KEY, String(finalH)); } catch(ex) {}
-      }
-      document.removeEventListener('mousemove', onPointerMove);
-      document.removeEventListener('touchmove', onPointerMove);
-      document.removeEventListener('mouseup', onPointerUp);
-      document.removeEventListener('touchend', onPointerUp);
-    }
-
-    _queueDragHandle.addEventListener('mousedown', onPointerDown);
-    _queueDragHandle.addEventListener('touchstart', onPointerDown, {passive: false});
-  })();
+  /* Queue drag-to-resize ported to webui/src/queuePanelUi.ts. */
+  window._initQueueResize({
+    handle: _queueDragHandle,
+    panel: _queuePanel,
+    minH: _QUEUE_MIN_H,
+    heightKey: _QUEUE_HEIGHT_KEY,
+    isOpen: function() { return _queueOpen; },
+    setUserHeight: function(h) { _queueUserHeight = h; }
+  });
   /* Recalc on window resize */
   window.addEventListener('resize', function() { if (_queueOpen) _syncQueueBottom(); });
 
@@ -113,7 +52,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     if (!_queuePanel) return;
     _queueOpen = true;
     /* Close lyrics panel if open */
-    if (_lyricsOpen) closeLyricsPanel();
+    if (window._lyrics.isOpen()) closeLyricsPanel();
     _syncQueueBottom();
     renderQueuePanel();
     _queuePanel.classList.add('visible');
@@ -134,51 +73,13 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     else openQueuePanel();
   }
 
-  /* Peek-handle above the player bar: click opens/closes the queue; a
-     drag-up gesture (beyond a small threshold) also opens it. This is the
-     sole entry point to the queue now — the old dedicated queue icon
-     button was removed. Only visible while the queue has items. */
-  (function _initQueuePeekHandle() {
-    if (!_queuePeekHandle) return;
-    var _peekDragging = false;
-    var _peekStartY = 0;
-    var _peekOpenedByDrag = false;
-    var _PEEK_OPEN_THRESHOLD = 12; /* px dragged upward before we open */
-
-    function onDown(e) {
-      _peekDragging = true;
-      _peekOpenedByDrag = false;
-      _peekStartY = e.touches ? e.touches[0].clientY : e.clientY;
-      document.addEventListener('mousemove', onMove, { passive: false });
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('mouseup', onUp);
-      document.addEventListener('touchend', onUp);
-    }
-    function onMove(e) {
-      if (!_peekDragging || _queueOpen) return;
-      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      var delta = _peekStartY - clientY; /* positive = dragged up */
-      if (delta > _PEEK_OPEN_THRESHOLD) {
-        _peekOpenedByDrag = true;
-        openQueuePanel();
-      }
-    }
-    function onUp() {
-      _peekDragging = false;
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.removeEventListener('touchend', onUp);
-    }
-    _queuePeekHandle.addEventListener('mousedown', onDown);
-    _queuePeekHandle.addEventListener('touchstart', onDown, { passive: false });
-    _queuePeekHandle.addEventListener('click', function() {
-      /* A drag-triggered open already happened — a plain click should not
-         immediately re-toggle (close) it right after. */
-      if (_peekOpenedByDrag) { _peekOpenedByDrag = false; return; }
-      toggleQueuePanel();
-    });
-  })();
+  /* Peek handle (click/drag-up opens queue) ported to webui/src/queuePanelUi.ts. */
+  window._initQueuePeekHandle({
+    handle: _queuePeekHandle,
+    isOpen: function() { return _queueOpen; },
+    open: openQueuePanel,
+    toggle: toggleQueuePanel
+  });
 
   if (_queueClose) {
     _queueClose.addEventListener('click', closeQueuePanel);
@@ -190,188 +91,14 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     });
   }
 
-  /* ── Queue drag-and-drop reorder ── */
-  function destroyQueueDragDrop() {
-    if (_queueDndCleanup) { _queueDndCleanup(); _queueDndCleanup = null; }
-  }
-
+  /* Queue drag-drop reorder ported to webui/src/queueDragDrop.ts (state +
+     cleanup handle private there). Wrappers keep bare-name call sites. */
+  function destroyQueueDragDrop() { window._destroyQueueDragDrop(); }
   function initQueueDragDrop() {
-    destroyQueueDragDrop();
-    var qList = document.getElementById('queue-list');
-    if (!qList) return;
-    var items = qList.querySelectorAll('.queue-item');
-    if (items.length < 2) return;
-
-    var _dragItem = null;
-    var _dragFromIdx = -1;
-    var _ghost = null;
-    var _dropTarget = null;
-    var _dropAbove = true;
-    var _longPressTimer = null;
-    var _touchStartY = 0;
-    var _touchStartX = 0;
-    var _dragActive = false;
-    var LONG_PRESS_MS = 400;
-    var MOVE_THRESHOLD = 8;
-
-    function getQueueItem(el) {
-      while (el && el !== qList) {
-        if (el.classList && el.classList.contains('queue-item')) return el;
-        el = el.parentElement;
-      }
-      return null;
-    }
-
-    function createGhost(item, x, y) {
-      var g = document.createElement('div');
-      g.className = 'playlist-drag-ghost';
-      var img = item.querySelector('.queue-item-thumb');
-      var title = item.querySelector('.queue-item-title');
-      if (img && img.src) g.innerHTML = '<img src="' + img.src + '">';
-      g.innerHTML += '<span>' + (title ? title.textContent : '') + '</span>';
-      g.style.left = (x - 20) + 'px';
-      g.style.top = (y - 20) + 'px';
-      document.body.appendChild(g);
-      return g;
-    }
-
-    function moveGhost(x, y) {
-      if (!_ghost) return;
-      _ghost.style.left = (x - 20) + 'px';
-      _ghost.style.top = (y - 20) + 'px';
-    }
-
-    function clearDropIndicator() {
-      qList.querySelectorAll('.drag-over-above,.drag-over-below').forEach(function(el) {
-        el.classList.remove('drag-over-above', 'drag-over-below');
-      });
-      _dropTarget = null;
-    }
-
-    function updateDropTarget(x, y) {
-      if (_ghost) _ghost.style.display = 'none';
-      var el = document.elementFromPoint(x, y);
-      if (_ghost) _ghost.style.display = '';
-      var target = el ? getQueueItem(el) : null;
-      if (!target || target === _dragItem) { clearDropIndicator(); return; }
-      var rect = target.getBoundingClientRect();
-      var above = (y - rect.top) < rect.height / 2;
-      clearDropIndicator();
-      _dropTarget = target;
-      _dropAbove = above;
-      target.classList.add(above ? 'drag-over-above' : 'drag-over-below');
-    }
-
-    function finishDrag() {
-      if (!_dragActive || !_dragItem || !_dropTarget) { cancelDrag(); return; }
-      var fromIdx = Number(_dragItem.dataset.queueIndex);
-      var toIdx = Number(_dropTarget.dataset.queueIndex);
-      if (!_dropAbove) toIdx += 1;
-      if (fromIdx < toIdx) toIdx -= 1;
-      window._queueMove(fromIdx, toIdx);
-      cancelDrag();
-      renderQueuePanel();
-    }
-
-    function cancelDrag() {
-      _dragActive = false;
-      if (_ghost) { _ghost.remove(); _ghost = null; }
-      clearDropIndicator();
-      if (_dragItem) _dragItem.style.opacity = '';
-      _dragItem = null;
-      _dragFromIdx = -1;
-      document.body.classList.remove('playlist-dragging');
-      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
-    }
-
-    function startDrag(item, x, y) {
-      _dragActive = true;
-      _dragItem = item;
-      _dragFromIdx = Number(item.dataset.queueIndex);
-      _ghost = createGhost(item, x, y);
-      item.style.opacity = '0.3';
-      document.body.classList.add('playlist-dragging');
-    }
-
-    /* Touch events */
-    function onTouchStart(e) {
-      var item = getQueueItem(e.target);
-      if (!item || e.target.closest('.queue-item-remove')) return;
-      _touchStartX = e.touches[0].clientX;
-      _touchStartY = e.touches[0].clientY;
-      _longPressTimer = setTimeout(function() {
-        _longPressTimer = null;
-        if (navigator.vibrate) navigator.vibrate(30);
-        startDrag(item, _touchStartX, _touchStartY);
-      }, LONG_PRESS_MS);
-    }
-    function onTouchMove(e) {
-      if (_longPressTimer) {
-        var dx = Math.abs(e.touches[0].clientX - _touchStartX);
-        var dy = Math.abs(e.touches[0].clientY - _touchStartY);
-        if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
-          clearTimeout(_longPressTimer); _longPressTimer = null;
-        }
-      }
-      if (_dragActive) {
-        e.preventDefault();
-        var tx = e.touches[0].clientX, ty = e.touches[0].clientY;
-        moveGhost(tx, ty);
-        updateDropTarget(tx, ty);
-      }
-    }
-    function onTouchEnd() {
-      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
-      if (_dragActive) finishDrag();
-    }
-
-    /* Mouse events */
-    var _mouseItem = null;
-    var _mouseStartX = 0, _mouseStartY = 0;
-    function onMouseDown(e) {
-      if (e.button !== 0) return;
-      var item = getQueueItem(e.target);
-      if (!item || e.target.closest('.queue-item-remove')) return;
-      _mouseItem = item;
-      _mouseStartX = e.clientX;
-      _mouseStartY = e.clientY;
-    }
-    function onMouseMove(e) {
-      if (_mouseItem && !_dragActive) {
-        var dx = Math.abs(e.clientX - _mouseStartX);
-        var dy = Math.abs(e.clientY - _mouseStartY);
-        if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
-          startDrag(_mouseItem, e.clientX, e.clientY);
-          _mouseItem = null;
-        }
-      }
-      if (_dragActive) {
-        e.preventDefault();
-        moveGhost(e.clientX, e.clientY);
-        updateDropTarget(e.clientX, e.clientY);
-      }
-    }
-    function onMouseUp() {
-      _mouseItem = null;
-      if (_dragActive) finishDrag();
-    }
-
-    qList.addEventListener('touchstart', onTouchStart, { passive: true });
-    qList.addEventListener('touchmove', onTouchMove, { passive: false });
-    qList.addEventListener('touchend', onTouchEnd);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    qList.addEventListener('mousedown', onMouseDown);
-
-    _queueDndCleanup = function() {
-      qList.removeEventListener('touchstart', onTouchStart);
-      qList.removeEventListener('touchmove', onTouchMove);
-      qList.removeEventListener('touchend', onTouchEnd);
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      qList.removeEventListener('mousedown', onMouseDown);
-      cancelDrag();
-    };
+    window._initQueueDragDrop({
+      move: function(f, t) { window._queueMove(f, t); },
+      render: renderQueuePanel
+    });
   }
 
   function scheduleBackgroundRefresh(delay) {
@@ -432,13 +159,8 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
         _silentRefreshInFlight = false;
         if (!data || data.error || data.loading) return;
         var fresh = _applyLocalMutations(Array.isArray(data.items) ? data.items : []);
-        /* Detect any change: count OR missing/added path */
-        var changed = fresh.length !== allItems.length;
-        if (!changed && fresh.length > 0) {
-          var freshSet = {};
-          fresh.forEach(function(it) { freshSet[it.relative_path] = true; });
-          changed = allItems.some(function(it) { return !freshSet[it.relative_path]; });
-        }
+        /* Detect any change: count OR missing/added path (webui/src/catalogRefresh.ts) */
+        var changed = window._catalogChanged(allItems, fresh);
         allItems = fresh;
         _invalidateDupeMap();
         _invalidateFolderCache();
@@ -486,8 +208,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
       var infoEl = document.getElementById('refresh-info');
       if (infoEl) {
         var dt = new Date();
-        var hhmm = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
-        infoEl.textContent = allItems.length + ' Titel (' + hhmm + ')';
+        infoEl.textContent = window._catalogRefreshInfo(allItems.length, dt);
         infoEl.title = 'Letzter Katalog-Refresh: ' + dt.toLocaleString();
       }
 
@@ -499,11 +220,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
       } else {
         showFolderView();
       }
-      var diff = allItems.length - oldCount;
-      var msg = allItems.length + ' Titel geladen';
-      if (diff > 0) msg += ' (+' + diff + ' neu)';
-      else if (diff < 0) msg += ' (' + diff + ' entfernt)';
-      showToast(msg);
+      showToast(window._refreshToastMessage(allItems.length, oldCount));
     })
     .catch(function() { setTimeout(_refreshPoll, 2000); });
   }
@@ -554,29 +271,14 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     .then(function(data) {
       if (!data || !data.ratings) return;
       var ratings = data.ratings;
-      var anyChange = data.changed > 0;
-      /* Patch allItems */
-      for (var i = 0; i < allItems.length; i++) {
-        var rp = allItems[i].relative_path;
-        if (ratings.hasOwnProperty(rp) && allItems[i].rating !== ratings[rp]) {
-          allItems[i] = Object.assign({}, allItems[i], { rating: ratings[rp] });
-        }
-      }
-      /* Patch playlistItems */
-      for (var j = 0; j < playlistItems.length; j++) {
-        var rp2 = playlistItems[j].relative_path;
-        if (ratings.hasOwnProperty(rp2) && playlistItems[j].rating !== ratings[rp2]) {
-          playlistItems[j] = Object.assign({}, playlistItems[j], { rating: ratings[rp2] });
-        }
-      }
+      /* Patch allItems + playlistItems in place (webui/src/catalogRefresh.ts) */
+      window._patchRatingsInPlace(allItems, ratings);
+      window._patchRatingsInPlace(playlistItems, ratings);
       /* Show refresh timestamp */
       var infoEl = document.getElementById('refresh-info');
       if (infoEl && data.last_refresh) {
         var dt = new Date(data.last_refresh);
-        var hhmm = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
-        var countInfo = Object.keys(ratings).length + ' Ratings gelesen';
-        if (anyChange) countInfo += ', ' + data.changed + ' aktualisiert';
-        infoEl.textContent = countInfo + ' (' + hhmm + ')';
+        infoEl.textContent = window._ratingRefreshInfo(Object.keys(ratings).length, data.changed, dt);
         infoEl.title = 'Letzte Rating-Aktualisierung: ' + dt.toLocaleString();
       }
       /* Re-render if still viewing the same folder */
@@ -686,16 +388,8 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
         .then(function(data) {
           if (!data || data.error || data.loading) return;
           var fresh = _applyLocalMutations(Array.isArray(data.items) ? data.items : []);
-          /* Detect deletions: check whether any currently cached path is absent
-             from the fresh catalog (count-only check misses e.g. replaced files). */
-          var freshPaths = null;
-          var hasDeletion = false;
-          if (fresh.length === allItems.length && allItems.length > 0) {
-            freshPaths = {};
-            fresh.forEach(function(i) { freshPaths[i.relative_path] = true; });
-            hasDeletion = allItems.some(function(i) { return !freshPaths[i.relative_path]; });
-          }
-          var changed = fresh.length !== allItems.length || hasDeletion;
+          /* Detect deletions/replacements, not just count (catalogRefresh.ts). */
+          var changed = window._catalogChanged(allItems, fresh);
           allItems = fresh;
           _invalidateDupeMap();
           _invalidateFolderCache();
