@@ -19,6 +19,10 @@ def render_folder_browse_js() -> str:
     var isRoot = !currentPath;
     var showOrigNames = _anyToolActive();
 
+    /* Extra library folders (video): webui/src/extraFolders.ts */
+    var _xAliases = window._extraFolderAliases();
+    if (isRoot && _xAliases.length) window._addExtraFolderPlaceholders(c.folders, _xAliases);
+
     /* empty library — still the folder-grid view, so the global search bar
        follows the same "folder-grid visible" rule as the normal branch below. */
     if (c.folders.length === 0 && c.files.length === 0) {
@@ -100,6 +104,8 @@ def render_folder_browse_js() -> str:
     c.folders.forEach(function(f) { html += window._folderCardHtml(f, _cardOpts); });
     c.files.forEach(function(it, i) { html += window._fileCardHtml(it, i, _cardOpts); });
     folderGrid.innerHTML = html;
+
+    if (isRoot && _xAliases.length) window._markExtraFolderCards(folderGrid, _xAliases);
 
     /* Offline folder card click → open offline library */
     var offFolderCard = document.getElementById('offline-folder-card');

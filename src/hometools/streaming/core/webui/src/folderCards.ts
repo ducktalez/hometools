@@ -97,7 +97,7 @@ export function fileCardHtml(it: LegacyMediaItem, idx: number, o: FolderCardOpts
   const ratingBar = rating > 0 ? '<div class="rating-bar" style="width:' + (rating / 5) * 100 + '%"></div>' : "";
   return (
     '<div class="folder-card file-card" data-file-idx="' + idx + '">' +
-    '<div class="thumb-wrap folder-thumb-wrap">' +
+    '<div class="thumb-wrap folder-thumb-wrap" data-preview-path="' + esc(it.relative_path || "") + '">' +
     '<img class="folder-thumb" src="' + esc(thumbSrc) + '" alt="" loading="lazy">' +
     ratingBar + "</div>" +
     '<div class="folder-name">' + esc(it.title) + "</div>" +

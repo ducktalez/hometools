@@ -74,6 +74,19 @@ def resolve_video_path(library_dir: Path, encoded_relative_path: str) -> Path:
     return resolve_media_path(library_dir, encoded_relative_path, VIDEO_SUFFIX)
 
 
+def resolve_video_path_extra(library_dir: Path, cache_dir: Path, encoded_relative_path: str) -> Path:
+    """Like :func:`resolve_video_path`, but also resolves ``<alias>/...`` into user-added extra folders."""
+    from urllib.parse import unquote
+
+    from hometools.streaming.core.extra_folders import extra_roots, split_extra_path
+
+    hit = split_extra_path(unquote(encoded_relative_path), extra_roots(cache_dir, "video"))
+    if hit is not None:
+        root, sub = hit
+        return resolve_media_path(root, sub, VIDEO_SUFFIX)
+    return resolve_media_path(library_dir, encoded_relative_path, VIDEO_SUFFIX)
+
+
 def render_video_index_html(items, *, safe_mode: bool = False, language_groups_json: str = "{}") -> str:
     """Render the video player UI — dark theme, folder grid, inline video element."""
     from hometools.config import get_debug_filter, get_default_language, get_min_rating, get_playlist_sync_interval
@@ -116,6 +129,14 @@ def create_app(
     resolved_cache_dir = cache_dir or get_cache_dir()
     resolved_audit_dir = audit_dir or get_audit_dir()
     resolved_safe_mode = get_stream_safe_mode() if safe_mode is None else safe_mode
+
+    def _resolve(lib: Path, path: str) -> Path:
+        return resolve_video_path_extra(lib, resolved_cache_dir, path)
+
+    def _rel_of(path: str) -> str:
+        from urllib.parse import unquote
+
+        return unquote(path).replace("\\", "/").lstrip("/")
 
     # Language group mapping for multi-language linking.
     # Loaded in a background thread because load_language_groups scans the
@@ -196,7 +217,7 @@ def create_app(
                     from hometools.streaming.core.intro_markers import start_background_intro_detection
                     from hometools.streaming.video.catalog import collect_intro_detection_work
 
-                    work = collect_intro_detection_work(resolved_library_dir)
+                    work = collect_intro_detection_work(resolved_library_dir, resolved_cache_dir)
                     started = start_background_intro_detection(work, resolved_cache_dir, "video")
                     logger.info(
                         "Video startup intro auto-detection prepared: %d files (started=%s)",
@@ -277,7 +298,7 @@ def create_app(
         from hometools.streaming.video.catalog import _folder_as_artist, _title_from_filename
 
         try:
-            file_path = resolve_video_path(resolved_library_dir, path)
+            file_path = _resolve(resolved_library_dir, path)
         except (FileNotFoundError, ValueError) as exc:
             logger.warning("GET /api/video/metadata — resolve failed: %s", exc)
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -371,7 +392,7 @@ def create_app(
         )
 
         try:
-            file_path = resolve_video_path(resolved_library_dir, path)
+            file_path = _resolve(resolved_library_dir, path)
         except FileNotFoundError as exc:
             logger.warning("GET /video/stream — not found: %s", path)
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -391,7 +412,7 @@ def create_app(
                 "GET /video/stream — %s lacks fast-start, using shadow-cache faststart copy",
                 file_path.name,
             )
-            relative_path = str(file_path.relative_to(resolved_library_dir)).replace("\\", "/")
+            relative_path = _rel_of(path)
             # Check if cache already exists (fast path, no ffmpeg spawn)
             cached = get_faststart_cache_path(resolved_cache_dir, relative_path)
             if not cached.exists() or cached.stat().st_mtime < file_path.stat().st_mtime:
@@ -416,7 +437,7 @@ def create_app(
 
         # --- Non-native container (MKV, AVI, …) or codec incompatibility ---
         if needs_remux(file_path):
-            relative_path = str(file_path.relative_to(resolved_library_dir)).replace("\\", "/")
+            relative_path = _rel_of(path)
 
             # Preferred path: serve a cached, fast-start MP4 copy via FileResponse.
             # FileResponse supports HTTP Range/206 requests — REQUIRED by iOS
@@ -619,6 +640,65 @@ def create_app(
             )
         )
 
+    # --- Extra library folders (outside the main library root) ---
+
+    def _after_folders_changed() -> None:
+        """Rebuild the index and thumbnails in the background (never blocks)."""
+        _video_index_cache.invalidate()
+        if resolved_safe_mode:
+            return
+        _video_index_cache.ensure_background_refresh(resolved_library_dir, cache_dir=resolved_cache_dir)
+
+        def _thumbs() -> None:
+            try:
+                work = collect_thumbnail_work(resolved_library_dir, resolved_cache_dir)
+                start_background_thumbnail_generation(work)
+            except Exception:
+                logger.debug("Thumbnail work after folder change failed", exc_info=True)
+
+        threading.Thread(target=_thumbs, daemon=True, name="video-thumb-extra").start()
+
+    @app.get("/api/video/folders")
+    def video_list_folders() -> dict[str, object]:
+        """List user-added extra folders (``alias`` = virtual top-level folder name)."""
+        from hometools.streaming.core.extra_folders import list_extra_folders
+
+        return {"items": list_extra_folders(resolved_cache_dir, "video")}
+
+    @app.post("/api/video/folders")
+    def video_add_folder(payload: dict[str, object]) -> dict[str, object]:
+        """Add an extra folder. Body: ``{"path": "/mnt/filme", "alias": "optional"}``."""
+        from hometools.streaming.core.extra_folders import add_extra_folder
+
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="path is required")
+        entry = add_extra_folder(
+            resolved_cache_dir,
+            "video",
+            path,
+            str(payload.get("alias") or ""),
+            library_dir=resolved_library_dir,
+        )
+        if entry is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Ordner ungültig, nicht vorhanden, bereits hinzugefügt oder innerhalb der Bibliothek",
+            )
+        _after_folders_changed()
+        return {"ok": True, "folder": entry}
+
+    @app.delete("/api/video/folders")
+    def video_remove_folder(alias: str) -> dict[str, object]:
+        """Remove an extra folder by alias (files on disk are untouched)."""
+        from hometools.streaming.core.extra_folders import remove_extra_folder
+
+        ok = remove_extra_folder(resolved_cache_dir, "video", alias)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Unknown folder alias")
+        _after_folders_changed()
+        return {"ok": True}
+
     # --- Tasks board (missing episodes + library hints) ---
 
     @app.get("/api/video/board")
@@ -689,8 +769,8 @@ def create_app(
     register_thumb_route(app, resolved_cache_dir, "video", allow_sprite=True)
     register_todo_state_route(app, resolved_cache_dir, "video")
     register_audit_entries_route(app, resolved_audit_dir, "video")
-    register_reveal_route(app, resolved_library_dir, "video", resolve_video_path)
-    register_delete_file_route(app, resolved_library_dir, resolved_audit_dir, "video", resolve_video_path, _video_index_cache.invalidate)
+    register_reveal_route(app, resolved_library_dir, "video", _resolve)
+    register_delete_file_route(app, resolved_library_dir, resolved_audit_dir, "video", _resolve, _video_index_cache.invalidate)
     register_progress_routes(app, resolved_cache_dir, "video")
     register_playlist_routes(app, resolved_cache_dir, "video")
     register_folder_order_routes(app, resolved_cache_dir, "video")

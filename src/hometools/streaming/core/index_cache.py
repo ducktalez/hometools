@@ -353,6 +353,22 @@ class IndexCache:
         self._progress_supported = supported
         return supported
 
+    @staticmethod
+    def _extras_fingerprint(cache_dir: Path | None) -> str:
+        """Content of user-added extra-folder lists (``core/extra_folders.py``).
+
+        Stored in the snapshot: changed extras => snapshot served as stale.
+        """
+        if cache_dir is None:
+            return ""
+        try:
+            d = cache_dir / "extra_folders"
+            if not d.is_dir():
+                return ""
+            return "|".join(f"{f.name}:{f.read_text(encoding='utf-8')}" for f in sorted(d.glob("*.json")))
+        except Exception:
+            return ""
+
     def _snapshot_path(self, cache_dir: Path | None, library_dir: Path | None = None) -> Path | None:
         if cache_dir is None:
             return None
@@ -399,6 +415,9 @@ class IndexCache:
             items = [MediaItem(**item) for item in raw_items if isinstance(item, dict)]
             saved_at = float(payload.get("saved_at", 0.0))
             snapshot_age = max(0.0, time.time() - saved_at) if saved_at else self._ttl
+            if payload.get("extras", "") != self._extras_fingerprint(cache_dir):
+                # Extra folders changed: serve items, but force background rebuild.
+                snapshot_age = max(snapshot_age, self._ttl + 1.0)
             built_at = time.monotonic() - snapshot_age
             return items, built_at
         except Exception:
@@ -421,6 +440,7 @@ class IndexCache:
                 "version": _SNAPSHOT_VERSION,
                 "label": self._label,
                 "library_dir": str(library_dir),
+                "extras": self._extras_fingerprint(cache_dir),
                 "saved_at": time.time(),
                 "items": [item.to_dict() for item in items],
             }

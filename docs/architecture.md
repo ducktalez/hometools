@@ -83,6 +83,8 @@ startup            → mount static assets, load cached index if fresh, start
 GET /               → render_media_page() (HTML skeleton + #ht-config + JS)
 GET /api/.../items  → IndexCache (rebuild only if stale/missing/forced)
 GET /thumb          → shadow cache lookup → background-generate if missing
+                      (video: size=sprite → sprite sheet; GET /api/video/sprites → meta;
+                       webui/src/hoverPreview.ts cycles frames on `[data-preview-path]` hover)
 GET /video/stream   → direct file, or faststart/remux cache, or live fallback
 POST /refresh       → IndexCache.invalidate() → full rebuild
 ```
@@ -131,7 +133,7 @@ is **done** — `_css.py`/`css/*.py` are gone, all rules live in
   `metricPill.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `recentMoveTargets.ts`,
   `catalogCache.ts`, `offlineDownloads.ts`, `langDetect.ts` (+ flag-badge HTML), `episodeGaps.ts`,
   `catalogQuery.ts`, `clickGuard.ts`, `toast.ts`, `folderCache.ts`,
-  `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `recentlyPlayed.ts`, `folderCards.ts`, `trackRows.ts`, `inlineWidgets.ts`, `panelBodies.ts`, `playerBarHtml.ts`, `rootCards.ts`, `smartEditorModal.ts`, `renderWindow.ts`, `playlistSync.ts` (playlist load + poll sync), `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
+  `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `recentlyPlayed.ts`, `folderCards.ts`, `trackRows.ts`, `inlineWidgets.ts`, `panelBodies.ts`, `playerBarHtml.ts`, `rootCards.ts`, `smartEditorModal.ts`, `renderWindow.ts`, `playlistSync.ts` (playlist load + poll sync), `extraFolders.ts` (video extra folders UI), `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
   cross-fragment globals still owned by the legacy script; `stateBridge.ts`
   types `window.htState` — the live getter/setter bridge `_core.py` defines
   over its IIFE-scoped state vars, used by ports that must *write* shared
@@ -177,8 +179,15 @@ content/enabled state · kebab menu `_openCtxMenu()`
 `POST /api/audio/move-file` · windowed rendering `_track_render.py` ·
 catalog cache `localStorage` (`webui/src/catalogCache.ts`, bridged onto
 `window` by `main.ts`, TTL `CATALOG_MAX_AGE_MS`) · skip-intro
-`GET/POST/DELETE /api/video/intro` · BPM `audio/metadata.py` +
-`audio/bpm.py` + `bpm_hints.py` + `metricPill.ts`.
+`GET/POST/DELETE /api/video/intro` · video extra folders (outside library;
+virtual top-level folder `<alias>/…`, stored `<cache>/extra_folders/video.json`)
+`core/extra_folders.py` + `GET/POST/DELETE /api/video/folders` +
+`video/catalog.py::_collect_video_entries` + `resolve_video_path_extra` +
+tools-row buttons `rootCards.ts` / `_queue.py::addExtraFolder` (no YAML overrides
+for extra folders) · BPM `audio/metadata.py` +
+`audio/bpm.py` + `bpm_hints.py` + `metricPill.ts` · video hover preview
+(sprite frames on thumbnail hover) `webui/src/hoverPreview.ts` +
+`thumbnailer.generate_sprite_sheet` + `GET /api/video/sprites`.
 
 **Backend features**: missing-episodes board `episode_gaps.py` +
 `GET /api/video/board` + `/board` · library scan `library_scan.py` +

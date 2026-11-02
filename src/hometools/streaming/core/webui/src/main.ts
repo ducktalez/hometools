@@ -263,6 +263,7 @@ import { closeCtxMenu, openCtxMenu, revealInExplorer } from "./ctxMenu";
 import { openDupePanel, closeDupePanel, collectDupeItems } from "./dupePanel";
 import { deleteTrackFromList, deleteDuplicateFile, removeGoneTrack, moveFileToFolder } from "./libraryOps";
 import { loadFavorites, updateFavoriteButtons, toggleFavorite } from "./favorites";
+import { loadExtraFolders, addExtraFolder, removeExtraFolder, addExtraFolderPlaceholders, markExtraFolderCards, extraFolderAliases } from "./extraFolders";
 import { isCrossfading, crossfadeCleanup, startCrossfade, finishCrossfade } from "./crossfade";
 import { initEditModalRatingEvents, openEditModal, closeEditModal, submitEditModal } from "./editModal";
 import { renderPlayerRating, patchAllItemsRating, updateTrackRatingBar, setRating, undoRating } from "./rating";
@@ -278,6 +279,7 @@ import {
   evictForBudget,
 } from "./offlineDb";
 import { installClickGuard, wasDrag } from "./clickGuard";
+import { installHoverPreview } from "./hoverPreview";
 import { showToast } from "./toast";
 import { getAllFolders, invalidateFolderCache } from "./folderCache";
 import { fisherYates, buildWeightedQueue, buildNormalQueue, rebuildShuffleQueue, nextIndex, prevIndex } from "./shuffle";
@@ -550,6 +552,12 @@ declare global {
     _removeGoneTrack: typeof removeGoneTrack;
     _moveFileToFolder: typeof moveFileToFolder;
     _loadFavorites: typeof loadFavorites;
+    _loadExtraFolders: typeof loadExtraFolders;
+    _addExtraFolder: typeof addExtraFolder;
+    _removeExtraFolder: typeof removeExtraFolder;
+    _addExtraFolderPlaceholders: typeof addExtraFolderPlaceholders;
+    _markExtraFolderCards: typeof markExtraFolderCards;
+    _extraFolderAliases: typeof extraFolderAliases;
     _updateFavoriteButtons: typeof updateFavoriteButtons;
     _toggleFavorite: typeof toggleFavorite;
     _renderPlayerRating: typeof renderPlayerRating;
@@ -802,6 +810,12 @@ window._deleteDuplicateFile = deleteDuplicateFile;
 window._removeGoneTrack = removeGoneTrack;
 window._moveFileToFolder = moveFileToFolder;
 window._loadFavorites = loadFavorites;
+window._loadExtraFolders = loadExtraFolders;
+window._addExtraFolder = addExtraFolder;
+window._removeExtraFolder = removeExtraFolder;
+window._addExtraFolderPlaceholders = addExtraFolderPlaceholders;
+window._markExtraFolderCards = markExtraFolderCards;
+window._extraFolderAliases = extraFolderAliases;
 window._updateFavoriteButtons = updateFavoriteButtons;
 window._toggleFavorite = toggleFavorite;
 window._renderPlayerRating = renderPlayerRating;
@@ -917,6 +931,5 @@ window._createAndAddToPlaylist = createAndAddToPlaylist;
 // listeners must be live before the legacy script wires any click handler.
 installClickGuard();
 
-
-
-
+// Video thumbnail hover preview (sprite-sheet frames); no-op for audio/touch.
+installHoverPreview({ enabled: !!document.getElementById("player") && document.getElementById("player")!.tagName === "VIDEO" });

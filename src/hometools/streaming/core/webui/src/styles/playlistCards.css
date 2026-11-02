@@ -171,8 +171,8 @@
   transition: border-color 0.12s, background 0.12s;
 }
 .tools-row-item:hover { border-color: var(--accent); background: var(--surface); }
-.tools-row-item.playlist-new-card { opacity: 0.75; border: 1px dashed #444; background: transparent; }
-.tools-row-item.playlist-new-card:hover { opacity: 1; border-color: var(--accent); background: var(--surface2); }
+.tools-row-item.playlist-new-card, .tools-row-item.add-folder-card { opacity: 0.75; border: 1px dashed #444; background: transparent; }
+.tools-row-item.playlist-new-card:hover, .tools-row-item.add-folder-card:hover { opacity: 1; border-color: var(--accent); background: var(--surface2); }
 .tools-row-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; color: var(--sub); flex-shrink: 0;
@@ -192,3 +192,7 @@
   flex-shrink: 0; background: var(--surface2);
 }
 
+
+/* User-added extra library folders (outside main library) */
+.folder-card.extra-folder { outline: 1px dashed var(--accent); outline-offset: -1px; }
+.extra-folder-badge { position: absolute; top: 6px; left: 6px; z-index: 2; display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; background: var(--accent); color: #fff; pointer-events: none; }

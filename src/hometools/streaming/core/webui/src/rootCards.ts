@@ -47,6 +47,28 @@ export function toolsRowHtml(o: ToolsRowOpts): string {
         "</button>"
     );
   }
+  if (o.isRoot && o.isVideo) {
+    parts.push(
+      '<button type="button" class="tools-row-item add-folder-card" id="add-folder-card"' +
+        ' title="Ordner von einem anderen Speicherort hinzufügen">' +
+        '<span class="tools-row-icon">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+        "</span>" +
+        '<span class="tools-row-label">Ordner hinzuf\u00fcgen\u2026</span>' +
+        '<span class="tools-row-count"></span>' +
+        "</button>"
+    );
+    parts.push(
+      '<button type="button" class="tools-row-item add-folder-card" id="remove-folder-card"' +
+        ' title="Hinzugef\u00fcgten Ordner entfernen (Dateien bleiben erhalten)">' +
+        '<span class="tools-row-icon">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+        "</span>" +
+        '<span class="tools-row-label">Ordner entfernen\u2026</span>' +
+        '<span class="tools-row-count"></span>' +
+        "</button>"
+    );
+  }
   if (o.isRoot && o.offlineEnabled) {
     parts.push(
       '<button type="button" class="tools-row-item offline-folder-card" id="offline-folder-card">' +

@@ -245,10 +245,24 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
       showToast('Refresh fehlgeschlagen');
     });
   }
+  /* Extra library folders (video only): webui/src/extraFolders.ts */
+  function _extraHooks() {
+    return {
+      apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
+      isVideo: ITEM_NOUN === 'video',
+      toast: showToast, refreshCatalog: refreshCatalog, showFolderView: showFolderView
+    };
+  }
+  function addExtraFolder() { window._addExtraFolder(_extraHooks()); }
+  function removeExtraFolder() { window._removeExtraFolder(_extraHooks()); }
+  window._loadExtraFolders(_extraHooks());
+
   /* Delegated click-handler for the dynamically rendered refresh-catalog-card in the tools-row */
   if (folderGrid) {
     folderGrid.addEventListener('click', function(e) {
       if (e.target.closest('.refresh-catalog-card')) refreshCatalog();
+      if (e.target.closest('#add-folder-card')) addExtraFolder();
+      if (e.target.closest('#remove-folder-card')) removeExtraFolder();
     });
   }
 

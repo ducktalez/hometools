@@ -17,8 +17,13 @@ describe("toolsRowHtml", () => {
   });
   it("video: no playlist tools", () => {
     const h = toolsRowHtml({ ...base, isVideo: true });
-    expect(h).not.toContain("playlist-new-card");
+    expect(h).not.toContain('id="playlist-new-card"');
     expect(h).toContain("offline-folder-card");
+    expect(h).toContain('id="add-folder-card"');
+    expect(h).toContain('id="remove-folder-card"');
+  });
+  it("audio: no extra-folder buttons", () => {
+    expect(toolsRowHtml(base)).not.toContain("add-folder-card");
   });
   it("count hidden at 0; not root -> empty", () => {
     expect(toolsRowHtml({ ...base, allItemsCount: 0 })).not.toContain('tools-row-count">0<span');

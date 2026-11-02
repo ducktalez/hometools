@@ -187,6 +187,31 @@ def _file_signature(p: Path) -> tuple[int, int]:
         return 0, 0
 
 
+def _collect_video_entries(library_dir: Path, cache_dir: Path | None) -> list[tuple[Path, str, str]]:
+    """Return ``(file, relative_path, artist)`` for the main library + extra folders.
+
+    Extra folders (``core/extra_folders.py``) appear as virtual top-level
+    folders: ``relative_path = "<alias>/<sub path>"``.
+    """
+    from hometools.streaming.core.extra_folders import extra_roots
+
+    root = safe_resolve(library_dir)
+    entries: list[tuple[Path, str, str]] = []
+    for f in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
+        entries.append((f, safe_resolve(f).relative_to(root).as_posix(), _folder_as_artist(f, root)))
+    for alias, xroot in extra_roots(cache_dir, "video").items():
+        if not xroot.is_dir():
+            continue
+        try:
+            for f in get_files_in_folder(xroot, suffix_accepted=VIDEO_SUFFIX):
+                sub = safe_resolve(f).relative_to(xroot)
+                artist = sub.parts[0] if len(sub.parts) > 1 else alias
+                entries.append((f, f"{alias}/{sub.as_posix()}", artist))
+        except Exception:
+            logger.debug("Scan of extra folder %s failed", xroot, exc_info=True)
+    return entries
+
+
 def build_video_index(
     library_dir: Path,
     *,
@@ -217,7 +242,7 @@ def build_video_index(
     root = safe_resolve(library_dir)
     _progress(0, 0, "scanning")
     scan_t0 = time.monotonic()
-    video_files = get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX)
+    video_files = _collect_video_entries(library_dir, cache_dir)
     scan_elapsed = time.monotonic() - scan_t0
     items: list[MediaItem] = []
     meta_hits = 0
@@ -242,8 +267,7 @@ def build_video_index(
         scan_elapsed,
     )
 
-    for file_index, video_file in enumerate(video_files):
-        relative_path = safe_resolve(video_file).relative_to(root).as_posix()
+    for file_index, (video_file, relative_path, default_folder) in enumerate(video_files):
         seen_relative_paths.add(relative_path)
 
         meta = None
@@ -301,7 +325,7 @@ def build_video_index(
         if meta_artist.strip():
             folder = meta_artist.strip()
         else:
-            folder = _folder_as_artist(video_file, root)
+            folder = default_folder
 
         # Detect language tag from folder name (e.g. "(engl)" → "en")
         _clean_folder, lang_code = parse_language_tag(folder)
@@ -399,17 +423,15 @@ def collect_thumbnail_work(
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
-    root = safe_resolve(library_dir)
     work: list[tuple[Path, Path, str, str]] = []
 
-    for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
-        relative_path = safe_resolve(video_file).relative_to(root).as_posix()
+    for video_file, relative_path, _artist in _collect_video_entries(library_dir, cache_dir):
         work.append((video_file, cache_dir, "video", relative_path))
 
     return work
 
 
-def collect_intro_detection_work(library_dir: Path) -> list[tuple[Path, str]]:
+def collect_intro_detection_work(library_dir: Path, cache_dir: Path | None = None) -> list[tuple[Path, str]]:
     """Return ``(absolute_path, relative_path)`` tuples for all video files.
 
     Ready for
@@ -418,10 +440,8 @@ def collect_intro_detection_work(library_dir: Path) -> list[tuple[Path, str]]:
     if not library_dir.exists() or not library_dir.is_dir():
         return []
 
-    root = safe_resolve(library_dir)
     work: list[tuple[Path, str]] = []
-    for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
-        relative_path = safe_resolve(video_file).relative_to(root).as_posix()
+    for video_file, relative_path, _artist in _collect_video_entries(library_dir, cache_dir):
         work.append((video_file, relative_path))
     return work
 
@@ -439,11 +459,9 @@ def collect_remux_work(library_dir: Path, cache_dir: Path) -> list[tuple[Path, P
 
     from hometools.streaming.core.remux import needs_remux
 
-    root = safe_resolve(library_dir)
     work: list[tuple[Path, Path, str]] = []
-    for video_file in get_files_in_folder(root, suffix_accepted=VIDEO_SUFFIX):
+    for video_file, relative_path, _artist in _collect_video_entries(library_dir, cache_dir):
         if not needs_remux(video_file):
             continue
-        relative_path = safe_resolve(video_file).relative_to(root).as_posix()
         work.append((video_file, cache_dir, relative_path))
     return work

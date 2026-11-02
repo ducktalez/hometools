@@ -347,6 +347,108 @@
         }
       }
     },
+    "/api/video/folders": {
+      "get": {
+        "summary": "Video List Folders",
+        "description": "List user-added extra folders (``alias`` = virtual top-level folder name).",
+        "operationId": "video_list_folders_api_video_folders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Video List Folders Api Video Folders Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Video Add Folder",
+        "description": "Add an extra folder. Body: ``{\"path\": \"/mnt/filme\", \"alias\": \"optional\"}``.",
+        "operationId": "video_add_folder_api_video_folders_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Video Add Folder Api Video Folders Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Video Remove Folder",
+        "description": "Remove an extra folder by alias (files on disk are untouched).",
+        "operationId": "video_remove_folder_api_video_folders_delete",
+        "parameters": [
+          {
+            "name": "alias",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Alias"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Video Remove Folder Api Video Folders Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/video/board": {
       "get": {
         "summary": "Video Board",

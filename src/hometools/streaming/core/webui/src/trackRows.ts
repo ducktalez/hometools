@@ -108,7 +108,7 @@ export function trackRowHtml(t: RowItem, idx: number, c: TrackRowCtx): string {
   return (
     '<li class="track-item' + extraCls + '" data-index="' + idx + '">' +
     '<span class="track-num"><span class="num-text">' + numLabel + "</span></span>" +
-    '<div class="thumb-wrap track-thumb-wrap">' +
+    '<div class="thumb-wrap track-thumb-wrap" data-preview-path="' + rp + '">' +
     '<img class="track-thumb" src="' + esc(thumbSrc) + '" alt="" loading="lazy">' +
     '<button class="track-play-btn" data-index="' + idx + '" title="Abspielen">' + c.ic.folderPlay + "</button>" +
     ratingBarHtml(t.rating) + "</div>" +
