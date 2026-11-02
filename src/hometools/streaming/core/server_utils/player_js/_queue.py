@@ -24,7 +24,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     var ni = nextIndex();
     if (ni < 0) {
       /* End of list, no repeat — stop playback */
-      wasPlaying = false;
+      window._setWasPlaying(false);
       btnPlay.innerHTML = IC_PLAY;
       return;
     }

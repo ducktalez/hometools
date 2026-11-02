@@ -375,27 +375,27 @@ def test_pip_button_in_audio_page():
 
 
 def test_pip_js_has_request_and_exit():
-    js = _js(style="classic")
-    assert "requestPiP" in js
-    assert "exitPiP" in js
+    ts = _webui_src("pip.ts")
+    assert "requestPip" in ts
+    assert "exitPip" in ts
 
 
 def test_pip_js_has_pip_supported_detection():
-    js = _js(style="classic")
-    assert "pictureInPictureEnabled" in js
-    assert "webkitSupportsPresentationMode" in js
+    ts = _webui_src("pip.ts")
+    assert "pictureInPictureEnabled" in ts
+    assert "webkitSupportsPresentationMode" in ts
 
 
 def test_pip_js_has_visibility_change_pip():
     js = _js(style="classic")
     assert "visibilitychange" in js
-    assert "pipActive" in js
+    assert "_isPipActive" in js
 
 
 def test_pip_js_has_enter_leave_events():
-    js = _js(style="waveform")
-    assert "enterpictureinpicture" in js
-    assert "leavepictureinpicture" in js
+    ts = _webui_src("pip.ts")
+    assert "enterpictureinpicture" in ts
+    assert "leavepictureinpicture" in ts
 
 
 def test_pip_css_styling():
@@ -405,10 +405,10 @@ def test_pip_css_styling():
 
 def test_bg_audio_runs_for_all_video_players():
     """bgAudio mirror is no longer restricted to iOS only."""
-    js = _js(style="classic")
-    assert "if (!isVideoPlayer) return;" in js
+    ts = _webui_src("bgAudio.ts")
+    assert "if (!hooks.isVideoPlayer) return;" in ts
     # The old iOS-only guard should be gone
-    assert "if (!isVideoPlayer || !isIOS) return;" not in js
+    assert "isIOS" not in ts
 
 
 # ---------------------------------------------------------------------------
@@ -419,16 +419,17 @@ def test_bg_audio_runs_for_all_video_players():
 def test_js_has_was_playing_flag():
     """The wasPlaying flag must exist and be set on 'playing' event."""
     js = _js(style="classic")
-    assert "wasPlaying" in js
-    assert "wasPlaying = true" in js
-    assert "wasPlaying = false" in js
+    assert "_setWasPlaying(false)" in js
+    ts = _webui_src("bgPlayback.ts")
+    assert "_was = true" in ts
+    assert '"playing"' in ts
 
 
 def test_js_uses_muted_not_volume():
     """bgAudio must use muted (not volume) because iOS ignores volume changes."""
     js = _js(style="classic")
-    assert "bgAudio.muted = true" in js or "bg.muted = true" in js
-    assert "bgAudio.muted = false" in js
+    assert "bg.muted = true" in _webui_src("bgAudio.ts")
+    assert "bg.muted = false" in _webui_src("bgPlayback.ts")
     # Must NOT use volume approach (read-only on iOS → double audio)
     assert "bgAudio.volume = 0" not in js
     assert "bgAudio.volume = 1" not in js
@@ -436,8 +437,7 @@ def test_js_uses_muted_not_volume():
 
 def test_js_visibility_checks_was_playing():
     """visibilitychange must check wasPlaying, not player.paused."""
-    js = _js(style="classic")
-    assert "document.hidden && wasPlaying" in js
+    assert "document.hidden && _was" in _webui_src("bgPlayback.ts")
 
 
 def test_js_has_bg_audio_is_active():
@@ -489,8 +489,7 @@ def test_js_has_fullscreen_logic():
 
 def test_js_sets_media_session_playback_state():
     """When going to background, playbackState should be set to 'playing'."""
-    js = _js(style="classic")
-    assert "mediaSession.playbackState" in js
+    assert "mediaSession.playbackState" in _webui_src("bgPlayback.ts")
 
 
 def test_pause_handler_checks_document_hidden():
@@ -503,9 +502,9 @@ def test_pause_handler_clears_was_playing():
     """The pause event must clear wasPlaying so tab-switch does not resume."""
     js = _js(style="classic")
     # The pause handler should set wasPlaying = false when visible (user-initiated)
-    assert "wasPlaying = false" in js
+    assert "_setWasPlaying(false)" in js
     # Must also stop bgAudio and sync timer
-    assert "bgAudio.pause()" in js or "bgAudio.muted = true" in js
+    assert "_bgEl().pause()" in js or "_bgEl().muted = true" in js
 
 
 def test_pause_handler_stops_bg_audio():
@@ -962,8 +961,9 @@ def test_queue_next_logic_is_centralized_in_play_next_item():
     js = render_player_js()
     assert "function playNextItem()" in js
     assert "btnNext.addEventListener('click', playNextItem);" in js
-    assert "navigator.mediaSession.setActionHandler('nexttrack', function() {" in js
-    assert "bgAudio.addEventListener('ended', function() {" in js
+    assert "nextTrack: playNextItem" in js
+    assert 'setActionHandler("nexttrack"' in _webui_src("mediaSession.ts")
+    assert 'addEventListener("ended"' in _webui_src("bgAudio.ts")
     assert "playNextItem();" in js
 
 
@@ -2484,9 +2484,9 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_hides_pip_button_on_touch_devices(self):
         """The custom PiP button must be suppressed on mobile/touch devices."""
-        js = render_player_js()
-        assert "isTouchDevice" in js
-        assert "(pointer: coarse)" in js
+        ts = _webui_src("pip.ts")
+        assert "isTouch" in ts
+        assert "(pointer: coarse)" in ts
 
     def test_js_missing_episode_placeholder_label(self):
         """Missing-episode placeholders must show a clear 'Folge fehlt' label."""

@@ -28,9 +28,10 @@ def render_search_filter_js() -> str:
 
   /* play all items under current path */
   function playAllCurrent() {
-    var items = itemsUnder(currentPath);
-    if (!items.length) items = contentsAt(currentPath).files;
-    if (items.length) showPlaylist(items, true);
+    window._playAllCurrent({
+      filesAt: function(p) { return contentsAt(p).files; },
+      showPlaylist: showPlaylist
+    });
   }
 
   /* ── filter / sort within playlist ── */

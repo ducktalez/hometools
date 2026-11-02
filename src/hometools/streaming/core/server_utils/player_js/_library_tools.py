@@ -159,86 +159,19 @@ def render_library_tools_js() -> str:
         this and enters PiP automatically when the page backgrounds.
         No user-gesture needed.  The manual PiP button works on all
         browsers that support the API. */
-  var bgAudio = null;
-  var bgSyncTimer = null;
   var isVideoPlayer = player.tagName === 'VIDEO';
   var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var pipActive = false;
-  var wasPlaying = false;
-  var btnPip = document.getElementById('btn-pip');
 
-  /* Track intentional playback state — survives browser auto-pause */
-  player.addEventListener('playing', function() { wasPlaying = true; });
+  /* PiP ported to webui/src/pip.ts (state private; legacy reads _isPipActive). */
+  window._initPip({
+    player: player, button: document.getElementById('btn-pip'),
+    isVideoPlayer: isVideoPlayer, isIOS: isIOS,
+    wasPlaying: function() { return window._wasPlaying(); }
+  });
 
-  /* Show PiP button only when the browser supports it for this player */
-  var pipSupported = isVideoPlayer && (
-    document.pictureInPictureEnabled ||
-    (typeof player.webkitSupportsPresentationMode === 'function' &&
-     player.webkitSupportsPresentationMode('picture-in-picture'))
-  );
-  /* On mobile / touch devices we do NOT show a dedicated PiP button — PiP works
-     "like a classic browser" via the native video controls and the automatic
-     `autopictureinpicture` transition when the page is backgrounded.  A custom
-     button there is redundant and confusing. */
-  var isTouchDevice = isIOS || (navigator.maxTouchPoints > 0 &&
-    typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
-  if (pipSupported && btnPip && !isTouchDevice) btnPip.hidden = false;
-
-  /* Enable Safari's automatic PiP on page background */
-  if (isVideoPlayer) {
-    player.setAttribute('autopictureinpicture', '');
-  }
-
-  function requestPiP() {
-    if (!pipSupported || pipActive) return Promise.resolve();
-    if (player.requestPictureInPicture) {
-      return player.requestPictureInPicture().then(function() {
-        pipActive = true;
-        if (btnPip) btnPip.classList.add('active');
-      }).catch(function() {});
-    } else if (player.webkitSetPresentationMode) {
-      player.webkitSetPresentationMode('picture-in-picture');
-      pipActive = true;
-      if (btnPip) btnPip.classList.add('active');
-      return Promise.resolve();
-    }
-    return Promise.resolve();
-  }
-
-  function exitPiP() {
-    if (!pipActive) return;
-    if (document.exitPictureInPicture && document.pictureInPictureElement) {
-      document.exitPictureInPicture().catch(function() {});
-    } else if (player.webkitSetPresentationMode) {
-      player.webkitSetPresentationMode('inline');
-    }
-    pipActive = false;
-    if (btnPip) btnPip.classList.remove('active');
-  }
-
-  /* Track PiP state changes from native controls */
-  if (isVideoPlayer) {
-    player.addEventListener('enterpictureinpicture', function() {
-      pipActive = true;
-      if (btnPip) btnPip.classList.add('active');
-    });
-    player.addEventListener('leavepictureinpicture', function() {
-      pipActive = false;
-      if (btnPip) btnPip.classList.remove('active');
-      /* If user closed PiP but wasPlaying, resume inline */
-      if (wasPlaying && !document.hidden) {
-        player.play().catch(function() {});
-      }
-    });
-  }
-
-  /* Manual PiP toggle button */
-  if (btnPip) {
-    btnPip.addEventListener('click', function() {
-      if (pipActive) { exitPiP(); } else { requestPiP(); }
-    });
-  }
+  /* wasPlaying flag + visibilitychange handler ported to webui/src/bgPlayback.ts. */
+  window._initBackgroundPlayback({ player: player, isVideoPlayer: isVideoPlayer, isIOS: isIOS });
 
   /* Fullscreen button — uses native fullscreen or iOS webkitEnterFullscreen */
   var btnFs = document.getElementById('btn-fs');
@@ -257,133 +190,22 @@ def render_library_tools_js() -> str:
     });
   }
 
-  function ensureBgAudio() {
-    if (bgAudio) return bgAudio;
-    bgAudio = document.createElement('audio');
-    bgAudio.style.display = 'none';
-    bgAudio.preload = 'auto';
-    bgAudio.playsInline = true;
-    bgAudio.muted = true;
-    document.body.appendChild(bgAudio);
-    /* When bg audio track ends, advance to next */
-    bgAudio.addEventListener('ended', function() {
-      playNextItem();
-    });
-    return bgAudio;
-  }
-
-  /* Is bg audio currently the active (unmuted) source? */
-  function bgAudioIsActive() {
-    return bgAudio && !bgAudio.muted && !bgAudio.paused;
-  }
-
-  /* Start the hidden <audio> muted, mirroring the video source.
-     The play() call happens inside user-initiated playback so the
-     browser allows it.  Because the element is already in a playing
-     state, unmuting it later in visibilitychange works instantly. */
+  /* Bg-audio mirror ported to webui/src/bgAudio.ts (element + sync timer
+     private there). Wrappers keep bare names; _bgEl() = element or null. */
+  function _bgEl() { return window._getBgAudio(); }
+  function bgAudioIsActive() { return window._bgAudioIsActive(); }
+  function stopBgSync() { window._stopBgSync(); }
   function startBgMirror() {
-    if (!isVideoPlayer) return;
-    var bg = ensureBgAudio();
-    if (bg.src !== player.src) {
-      bg.src = player.src;
-    }
-    bg.currentTime = player.currentTime;
-    bg.muted = true;
-    bg.play().catch(function() {});
-    /* keep bg audio roughly in sync while video plays */
-    stopBgSync();
-    bgSyncTimer = setInterval(function() {
-      if (!bgAudio || !bgAudio.muted) return;
-      if (!player.paused && Math.abs(bgAudio.currentTime - player.currentTime) > 0.5) {
-        bgAudio.currentTime = player.currentTime;
-      }
-    }, 2000);
+    window._startBgMirror({ player: player, isVideoPlayer: isVideoPlayer, playNext: playNextItem });
   }
-
-  function stopBgSync() {
-    if (bgSyncTimer) { clearInterval(bgSyncTimer); bgSyncTimer = null; }
-  }
-
-  /* ── Visibility change — the core background handler ──
-     Uses `wasPlaying` instead of `!player.paused` because the browser
-     has already paused the video by the time this fires on mobile. */
-  document.addEventListener('visibilitychange', function() {
-    if (!isVideoPlayer) return;
-    if (document.hidden && wasPlaying) {
-      /* Detect whether Safari has already pushed the video into system PiP
-         via the `autopictureinpicture` attribute.  On iOS 17+ the transition
-         starts BEFORE visibilitychange fires, so this check is reliable. */
-      var inPiP = (document.pictureInPictureElement === player) ||
-                  (player.webkitPresentationMode === 'picture-in-picture');
-      /* Desktop browsers keep a *playing* <video> running when its tab is
-         hidden (audio continues, only rendering is throttled).  So we do NOT
-         pause it — the player simply keeps playing, as the user expects.
-         iOS Safari suspends background <video>, so there we hand off to PiP
-         or the muted bg-audio mirror instead.  Pausing only happened on
-         desktop before and was the reason switching tabs "paused" playback. */
-      if (isIOS && !inPiP && bgAudio && !bgAudio.paused) {
-        bgAudio.currentTime = player.currentTime;
-        bgAudio.muted = false;
-      }
-      /* Signal to OS that playback is ongoing */
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'playing';
-      }
-    } else if (!document.hidden && wasPlaying) {
-      /* App coming back to foreground */
-      if (pipActive) exitPiP();
-      if (bgAudio && !bgAudio.muted) {
-        /* Sync video to where bg audio continued, resume video */
-        player.currentTime = bgAudio.currentTime;
-        player.play().catch(function() {});
-        bgAudio.muted = true;
-      } else if (player.paused) {
-        /* No bg audio ran — just resume the video */
-        player.play().catch(function() {});
-      }
-    }
-  });
-
-  /* Return whichever element is currently driving playback */
-  function activeMedia() {
-    if (bgAudioIsActive()) return bgAudio;
-    return player;
-  }
-
-  /* Media Session API — lock screen controls & background playback signal */
+  /* activeMedia/updateMediaSession ported to webui/src/mediaSession.ts. */
+  function activeMedia() { return window._activeMedia(player); }
   function updateMediaSession(t) {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: t.title,
-      artist: t.artist || '',
-      album: ITEM_NOUN === 'video' ? 'hometools video' : 'hometools audio',
-      artwork: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-                { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
+    window._updateMediaSession(t, {
+      player: player, itemNoun: ITEM_NOUN,
+      previousTrack: handlePreviousTrack, nextTrack: playNextItem
     });
-    navigator.mediaSession.setActionHandler('play', function() {
-      var m = activeMedia();
-      m.play();
-      wasPlaying = true;
-    });
-    navigator.mediaSession.setActionHandler('pause', function() {
-      /* Lockscreen pause = intentional user pause */
-      wasPlaying = false;
-      var m = activeMedia();
-      m.pause();
-      if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
-    });
-    navigator.mediaSession.setActionHandler('previoustrack', handlePreviousTrack);
-    navigator.mediaSession.setActionHandler('nexttrack', function() {
-      playNextItem();
-    });
-    try {
-      navigator.mediaSession.setActionHandler('seekto', function(details) {
-        var m = activeMedia();
-        m.currentTime = details.seekTime;
-      });
-    } catch(e) {}
   }
-
   function playItem(t, index) {
     currentIndex = typeof index === 'number' ? index : -1;
     currentStreamUrl = t.stream_url || '';
@@ -399,10 +221,10 @@ def render_library_tools_js() -> str:
 
     /* Reset bg audio for new track */
     stopBgSync();
-    if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; bgAudio.removeAttribute('src'); }
+    if (_bgEl()) { _bgEl().pause(); _bgEl().muted = true; _bgEl().removeAttribute('src'); }
     _xfadeCleanup();
     player.volume = 1;
-    wasPlaying = false;
+    window._setWasPlaying(false);
     revokeOfflineUrl();
 
     function onPlaySuccess() {
@@ -536,17 +358,17 @@ def render_library_tools_js() -> str:
     if (currentIndex < 0 && filteredItems.length) { playTrack(0); return; }
     if (player.paused) {
       /* If bg audio was driving playback (came back from background), sync first */
-      if (bgAudio && !bgAudio.muted) {
-        player.currentTime = bgAudio.currentTime;
-        bgAudio.muted = true;
+      if (_bgEl() && !_bgEl().muted) {
+        player.currentTime = _bgEl().currentTime;
+        _bgEl().muted = true;
       }
       player.play().then(function() { startBgMirror(); }).catch(function() {});
       btnPlay.innerHTML = IC_PAUSE;
     } else {
       /* Intentional user pause — clear wasPlaying */
-      wasPlaying = false;
+      window._setWasPlaying(false);
       player.pause();
-      if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
+      if (_bgEl()) { _bgEl().pause(); _bgEl().muted = true; }
       stopBgSync();
       btnPlay.innerHTML = IC_PLAY;
     }
@@ -788,9 +610,9 @@ def render_library_tools_js() -> str:
     if (document.hidden) return;
     if (bgAudioIsActive()) return;
     /* User-initiated pause (custom button OR native controls) */
-    wasPlaying = false;
+    window._setWasPlaying(false);
     if (window._isCrossfading()) { _xfadeCleanup(); player.volume = 1; }
-    if (bgAudio) { bgAudio.pause(); bgAudio.muted = true; }
+    if (_bgEl()) { _bgEl().pause(); _bgEl().muted = true; }
     stopBgSync();
     if (!player.ended) btnPlay.innerHTML = IC_PLAY;
     saveProgressNow();
@@ -839,7 +661,7 @@ def render_library_tools_js() -> str:
     if (!progressTrack) return;
     var seeking = false;
     function effDuration() {
-      if (bgAudio && !bgAudio.muted && document.hidden && isFinite(bgAudio.duration)) return bgAudio.duration;
+      if (_bgEl() && !_bgEl().muted && document.hidden && isFinite(_bgEl().duration)) return _bgEl().duration;
       if (isFinite(player.duration)) return player.duration;
       /* Fallback: use catalog metadata duration while the browser has not yet
          determined the real duration (common with long files / non-seekable streams) */
@@ -854,7 +676,7 @@ def render_library_tools_js() -> str:
       frac = Math.max(0, Math.min(1, frac));
       var t = frac * d;
       try { player.currentTime = t; } catch (e) {}
-      if (bgAudio) { try { bgAudio.currentTime = t; } catch (e) {} }
+      if (_bgEl()) { try { _bgEl().currentTime = t; } catch (e) {} }
       if (progressBar) { progressBar.max = d; progressBar.value = t; }
       if (timeCur) timeCur.textContent = fmtTime(t);
       drawWaveform(frac);
@@ -897,12 +719,12 @@ def render_library_tools_js() -> str:
   /* bg audio events — keep UI in sync when playing in background */
   if (isVideoPlayer) {
     setInterval(function() {
-      if (bgAudio && !bgAudio.muted && document.hidden) {
-        if (isFinite(bgAudio.duration)) {
-          progressBar.max = bgAudio.duration;
-          progressBar.value = bgAudio.currentTime;
-          timeCur.textContent = fmtTime(bgAudio.currentTime);
-          drawWaveform(bgAudio.currentTime / bgAudio.duration);
+      if (_bgEl() && !_bgEl().muted && document.hidden) {
+        if (isFinite(_bgEl().duration)) {
+          progressBar.max = _bgEl().duration;
+          progressBar.value = _bgEl().currentTime;
+          timeCur.textContent = fmtTime(_bgEl().currentTime);
+          drawWaveform(_bgEl().currentTime / _bgEl().duration);
         }
       }
     }, 1000);
