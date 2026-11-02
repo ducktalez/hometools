@@ -212,12 +212,8 @@ def render_library_tools_js() -> str:
     _currentItemDuration = t.duration || 0;  /* catalog metadata duration — fallback before browser loads it */
     _setCurrentIntro(t);
 
-    /* Sync shuffle queue position to the chosen index */
-    if (shuffleMode && shuffleQueue.length && currentIndex >= 0) {
-      var qpos = shuffleQueue.indexOf(currentIndex);
-      if (qpos >= 0) shufflePos = qpos;
-      else { shuffleQueue.unshift(currentIndex); shufflePos = 0; }
-    }
+    /* shuffle sync: webui/src/playbackStart.ts */
+    window._syncShufflePosition();
 
     /* Reset bg audio for new track */
     stopBgSync();
@@ -227,41 +223,14 @@ def render_library_tools_js() -> str:
     window._setWasPlaying(false);
     revokeOfflineUrl();
 
-    function onPlaySuccess() {
-      btnPlay.innerHTML = IC_PAUSE;
-      startBgMirror();
-    }
-
-    function retryAfterCanPlay() {
-      player.addEventListener('canplay', function() {
-        player.play().then(onPlaySuccess).catch(function(e) {
-          console.error('playTrack retry also failed:', e);
-          btnPlay.innerHTML = IC_PLAY;
-        });
-      }, { once: true });
-    }
-
+    /* start/retry/offline-fallback chain: webui/src/playbackStart.ts */
     function beginPlayback(playback) {
-      player.src = playback.url;
-      player.load();
-      player.play().then(onPlaySuccess).catch(function(err) {
-        if (playback.offline) {
-          console.warn('Offline playback failed, falling back to stream:', err);
-          revokeOfflineUrl();
-          player.src = playback.fallbackUrl;
-          player.load();
-          player.play().then(onPlaySuccess).catch(function(fallbackErr) {
-            console.warn('Stream fallback play() failed, waiting for canplay:', fallbackErr);
-            retryAfterCanPlay();
-          });
-          return;
-        }
-        console.warn('playTrack play() failed, waiting for canplay:', err);
-        retryAfterCanPlay();
+      window._beginPlayback(playback, t.relative_path, {
+        player: player, btnPlay: btnPlay, icPause: IC_PAUSE, icPlay: IC_PLAY,
+        revokeOfflineUrl: revokeOfflineUrl, onStarted: startBgMirror,
+        generateWaveform: generateWaveform
       });
-      generateWaveform(playback.url, t.relative_path);
     }
-
     playerTitle.textContent = t.title;
     playerArtist.textContent = t.artist || t.relative_path;
     if (t.thumbnail_url) {

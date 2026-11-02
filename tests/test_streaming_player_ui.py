@@ -326,9 +326,8 @@ def test_waveform_js_has_video_mode_class():
 
 
 def test_waveform_js_calls_generate_on_play():
-    js = _js(style="waveform")
     # generateWaveform now accepts (url, relativePath) — url used in waveform mode
-    assert "generateWaveform(playback.url, t.relative_path)" in js
+    assert "h.generateWaveform(playback.url, relPath)" in _webui_src("playbackStart.ts")
 
 
 # ---------------------------------------------------------------------------
@@ -527,8 +526,7 @@ def test_visibility_hidden_pauses_video():
 
 def test_js_play_track_calls_load():
     """playTrack must call player.load() before play() for reliable playback."""
-    js = _js(style="classic")
-    assert "player.load()" in js
+    assert "player.load()" in _webui_src("playbackStart.ts")
 
 
 def test_js_play_track_has_canplay_retry():

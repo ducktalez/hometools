@@ -365,9 +365,9 @@ class TestOfflinePlaybackIntegrationHooks:
         assert "window.revokeOfflineUrl = revokeOfflineUrl;" in main_ts
 
     def test_js_has_stream_fallback_when_blob_playback_fails(self):
-        js = _js()
-        assert "Offline playback failed, falling back to stream" in js
-        assert "fallbackUrl" in js
+        ts = _webui_src("playbackStart.ts")
+        assert "Offline playback failed, falling back to stream" in ts
+        assert "fallbackUrl" in ts
 
     def test_js_listens_to_online_offline_events(self):
         js = _js()
