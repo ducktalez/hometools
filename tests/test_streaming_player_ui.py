@@ -667,7 +667,7 @@ def test_shuffle_js_has_next_prev_index():
     assert "function nextIndex" not in js
     assert "function prevIndex" not in js
     assert "nextIndex()" in js
-    assert "prevIndex()" in js
+    assert "prevIndex()" in _webui_src("transport.ts")
     # Legacy direct state touches must keep working through the live bridge
     assert "shuffleQueue" in js
     assert "shufflePos" in js
@@ -2072,7 +2072,7 @@ class TestHtStateBridge:
         js = _js()
         assert js.count("rebuildShuffleQueue(") >= 6
         assert "nextIndex()" in js
-        assert "prevIndex()" in js
+        assert "prevIndex()" in _webui_src("transport.ts")
 
 
 def test_js_breadcrumb_uses_clean_folder_name():

@@ -281,6 +281,7 @@ import { wasPlaying, setWasPlaying, initBackgroundPlayback } from "./bgPlayback"
 import { activeMedia, updateMediaSession } from "./mediaSession";
 import { syncShufflePosition, beginPlayback } from "./playbackStart";
 import { showNowPlaying } from "./nowPlaying";
+import { togglePlay, handlePreviousTrack } from "./transport";
 import { getBgAudio, bgAudioIsActive, stopBgSync, startBgMirror } from "./bgAudio";
 import { initEditModalRatingEvents, openEditModal, closeEditModal, submitEditModal } from "./editModal";
 import { renderPlayerRating, patchAllItemsRating, updateTrackRatingBar, setRating, undoRating } from "./rating";
@@ -598,6 +599,8 @@ declare global {
     _exitPip: typeof exitPip;
     _playAllCurrent: typeof playAllCurrent;
     _getBgAudio: typeof getBgAudio;
+    _togglePlay: typeof togglePlay;
+    _handlePreviousTrack: typeof handlePreviousTrack;
     _showNowPlaying: typeof showNowPlaying;
     _syncShufflePosition: typeof syncShufflePosition;
     _beginPlayback: typeof beginPlayback;
@@ -879,6 +882,8 @@ window._isPipActive = isPipActive;
 window._exitPip = exitPip;
 window._playAllCurrent = playAllCurrent;
 window._getBgAudio = getBgAudio;
+window._togglePlay = togglePlay;
+window._handlePreviousTrack = handlePreviousTrack;
 window._showNowPlaying = showNowPlaying;
 window._syncShufflePosition = syncShufflePosition;
 window._beginPlayback = beginPlayback;

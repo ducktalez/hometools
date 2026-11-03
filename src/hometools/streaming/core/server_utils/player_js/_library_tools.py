@@ -311,26 +311,15 @@ def render_library_tools_js() -> str:
       .catch(function() {});
   }
 
-  function togglePlay() {
-    if (currentIndex < 0 && filteredItems.length) { playTrack(0); return; }
-    if (player.paused) {
-      /* If bg audio was driving playback (came back from background), sync first */
-      if (_bgEl() && !_bgEl().muted) {
-        player.currentTime = _bgEl().currentTime;
-        _bgEl().muted = true;
-      }
-      player.play().then(function() { startBgMirror(); }).catch(function() {});
-      btnPlay.innerHTML = IC_PAUSE;
-    } else {
-      /* Intentional user pause — clear wasPlaying */
-      window._setWasPlaying(false);
-      player.pause();
-      if (_bgEl()) { _bgEl().pause(); _bgEl().muted = true; }
-      stopBgSync();
-      btnPlay.innerHTML = IC_PLAY;
-    }
+  /* togglePlay: webui/src/transport.ts */
+  function _transportHooks() {
+    return {
+      player: player, btnPlay: btnPlay, icPlay: IC_PLAY, icPause: IC_PAUSE,
+      playTrack: playTrack, startBgMirror: startBgMirror, stopBgSync: stopBgSync,
+      currentItemDuration: function() { return _currentItemDuration; }
+    };
   }
-
+  function togglePlay() { window._togglePlay(_transportHooks()); }
   /* ── Shuffle logic ──
      fisherYates/buildWeightedQueue/buildNormalQueue/rebuildShuffleQueue/
      nextIndex/prevIndex: ported to webui/src/shuffle.ts via the htState
@@ -341,23 +330,8 @@ def render_library_tools_js() -> str:
   function _firstPlayableIndex() { return 0; }
 
 
-  function handlePreviousTrack() {
-    /* Smart previous: restart current track if already playing for >= 3s,
-       unless the track is very short (< 10s, then go to previous). */
-    var currentTime = player.currentTime || 0;
-    var PREV_THRESHOLD_S = 3;
-    var SHORT_TRACK_S = 10;
-    var duration = _currentItemDuration || 0;
-    var isShortTrack = duration > 0 && duration < SHORT_TRACK_S;
-    
-    if (currentTime >= PREV_THRESHOLD_S && !isShortTrack) {
-      /* Restart current track */
-      playTrack(currentIndex);
-    } else {
-      /* Go to previous track */
-      playTrack(prevIndex());
-    }
-  }
+  /* smart previous: webui/src/transport.ts */
+  function handlePreviousTrack() { window._handlePreviousTrack(_transportHooks()); }
 
   /* Toggle shuffle mode: off → normal → weighted → off */
   function cycleShuffle() {
