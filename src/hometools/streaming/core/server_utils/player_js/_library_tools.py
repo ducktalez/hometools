@@ -231,26 +231,14 @@ def render_library_tools_js() -> str:
         generateWaveform: generateWaveform
       });
     }
-    playerTitle.textContent = t.title;
-    playerArtist.textContent = t.artist || t.relative_path;
-    if (t.thumbnail_url) {
-      playerThumb.src = t.thumbnail_lg_url || t.thumbnail_url;
-      playerThumb.style.display = '';
-    } else {
-      playerThumb.src = FILE_PLACEHOLDER;
-      playerThumb.style.display = '';
-    }
-    btnPlay.innerHTML = IC_PAUSE;
-    playerBar.classList.remove('view-hidden');
-    /* In video mode: open the overlay and sync the mini-bar title/thumb */
-    if (isVideoMode) {
-      openVideoOverlay();
-      _syncMiniBar(t);
-      if (videoOverlayTitleText) videoOverlayTitleText.textContent = t.title || '';
-    }
-    /* Show video player element before playback starts — the CSS sets
-       #player { display:none }, so we must override with inline block */
-    if (player.tagName === 'VIDEO') player.style.display = 'block';
+    /* title/artist/thumb/icon/video overlay: webui/src/nowPlaying.ts */
+    window._showNowPlaying(t, {
+      title: playerTitle, artist: playerArtist, thumb: playerThumb, btnPlay: btnPlay,
+      playerBar: playerBar, player: player, overlayTitle: videoOverlayTitleText
+    }, {
+      icPause: IC_PAUSE, filePlaceholder: FILE_PLACEHOLDER, isVideoMode: isVideoMode,
+      openVideoOverlay: openVideoOverlay, syncMiniBar: _syncMiniBar
+    });
     markActive();
     updateMediaSession(t);
     renderPlayerRating(t.rating || 0);
