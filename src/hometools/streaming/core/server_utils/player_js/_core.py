@@ -496,7 +496,7 @@ def render_core_js(waveform_js) -> str:
   }
 
   function _saveIntroMarker(start, end) {
-    var relPath = _progressRelPath || '';
+    var relPath = window._getProgressPath() || '';
     if (!relPath) return;
     _introStart = Math.max(0, start || 0);
     _introEnd = Math.max(0, end || 0);
@@ -677,74 +677,18 @@ def render_core_js(waveform_js) -> str:
      window by main.ts. Bare wasDrag(e) call sites unchanged. */
 
   /* ── playback progress persistence ── */
-  var _progressTimer = 0;
-  var _progressRelPath = '';
-  /* progressApiBase/buildProgressPayload: webui/src/progress.ts */
-  function _progressApiBase() {
-    return window._progressApiBase(API_PATH);
+  /* Progress state (relPath + timer) + save/load chain: webui/src/progress.ts.
+     Wrappers keep bare names; path via window._getProgressPath()/_setProgressPath(). */
+  function _progHooks() {
+    return {
+      player: player, apiPath: API_PATH,
+      saveLastPlayedLocal: _saveLastPlayedLocal, showToast: showToast, fmtTime: fmtTime
+    };
   }
-  function saveProgressNow() {
-    var rp = _progressRelPath;
-    if (!rp) return;
-    var pos = player.currentTime;
-    var dur = player.duration;
-    if (!isFinite(pos) || !isFinite(dur)) return;
-    /* Always update localStorage so the episode is restored after server restarts,
-       even in the first/last 5 s where the server save is intentionally skipped. */
-    _saveLastPlayedLocal(rp, pos);
-    var payload = window._buildProgressPayload(rp, pos, dur);
-    if (!payload) return;
-    /* Prefer sendBeacon — it survives page unload / app backgrounding on mobile,
-       where a regular fetch() would be cancelled. */
-    if (navigator.sendBeacon) {
-      try {
-        var blob = new Blob([payload], {type: 'application/json'});
-        if (navigator.sendBeacon(_progressApiBase(), blob)) return;
-      } catch (e) {}
-    }
-    fetch(_progressApiBase(), {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: payload,
-      keepalive: true
-    }).catch(function() {});
-  }
-  function saveProgressDebounced() {
-    clearTimeout(_progressTimer);
-    _progressTimer = setTimeout(saveProgressNow, 5000);
-  }
-  function clearProgressFor(rp) {
-    if (!rp) return;
-    fetch(_progressApiBase(), {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({relative_path: rp, position_seconds: 0, duration: 0})
-    }).catch(function() {});
-  }
-  function loadAndSeekProgress(rp) {
-    if (!rp) return;
-    fetch(_progressApiBase() + '?path=' + encodeURIComponent(rp))
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(data) {
-        if (!data || !data.items || !data.items.length) return;
-        var entry = data.items[0];
-        var pos = entry.position_seconds || 0;
-        if (pos < 5) return;
-        function doSeek() {
-          if (isFinite(player.duration) && pos < player.duration - 5) {
-            player.currentTime = pos;
-            showToast('Fortfahren bei ' + fmtTime(pos), 3000);
-          }
-        }
-        if (isFinite(player.duration) && player.duration > 0) {
-          doSeek();
-        } else {
-          player.addEventListener('loadedmetadata', doSeek, { once: true });
-        }
-      })
-      .catch(function() {});
-  }
-
+  function saveProgressNow() { window._saveProgressNow(_progHooks()); }
+  function saveProgressDebounced() { window._saveProgressDebounced(_progHooks()); }
+  function clearProgressFor(rp) { window._clearProgressFor(rp, _progHooks()); }
+  function loadAndSeekProgress(rp) { window._loadAndSeekProgress(rp, _progHooks()); }
   var _indexToastEl = null;
   var _indexRefreshTimer = null;
   /* Per-run dismissal: once the user taps the toast away it stays hidden for

@@ -88,7 +88,7 @@ def render_library_tools_js() -> str:
       saveCatalogCache: _saveCatalogCache,
       applyFilter: applyFilter, showFolderView: showFolderView, playTrack: playTrack,
       itemsUnder: itemsUnder,
-      progressRelPath: function() { return _progressRelPath; },
+      progressRelPath: function() { return window._getProgressPath(); },
       showPausedIcon: function() { btnPlay.innerHTML = IC_PLAY; },
       reopenDupePanel: openDupePanel
     };
@@ -249,13 +249,13 @@ def render_library_tools_js() -> str:
 
     /* playback progress: track current item and try to resume */
     saveProgressNow();   /* flush the outgoing track's position before switching */
-    clearTimeout(_progressTimer);
-    _progressRelPath = t.relative_path || '';
+    window._cancelProgressTimer();
+    window._setProgressPath(t.relative_path || '');
     /* Also persist to localStorage so the episode can be restored after a
        server restart or page reload — even if < 5 s have elapsed (which
        saveProgressNow would otherwise skip). */
-    _saveLastPlayedLocal(_progressRelPath, 0);
-    if (AUTO_RESUME_ENABLED) loadAndSeekProgress(_progressRelPath);
+    _saveLastPlayedLocal(window._getProgressPath(), 0);
+    if (AUTO_RESUME_ENABLED) loadAndSeekProgress(window._getProgressPath());
 
     /* load sprite sheet for video scrubber preview */
     loadSpriteData(t.relative_path || '');
@@ -286,7 +286,7 @@ def render_library_tools_js() -> str:
            call (e.g. rapid track switching or a fast list reload while
            Tools mode is active). Without this guard the UI can briefly show
            a swapped/mismatched title+artist pair. */
-        if (_progressRelPath !== _requestedFor) return;
+        if (window._getProgressPath() !== _requestedFor) return;
         var changed = false;
         if (meta.title && meta.title !== t.title) {
           t.title = meta.title;
@@ -495,7 +495,7 @@ def render_library_tools_js() -> str:
   function _xfadeHooks() {
     return {
       player: player, durationSec: CROSSFADE_DURATION,
-      flushOutgoingProgress: function() { saveProgressNow(); clearProgressFor(_progressRelPath); },
+      flushOutgoingProgress: function() { saveProgressNow(); clearProgressFor(window._getProgressPath()); },
       playTrack: playTrack, playFromQueue: playFromQueue
     };
   }
@@ -519,7 +519,7 @@ def render_library_tools_js() -> str:
       btnPlay.innerHTML = IC_PLAY;
       return;
     }
-    clearProgressFor(_progressRelPath);
+    clearProgressFor(window._getProgressPath());
     if (window._isCrossfading()) {
       /* Crossfade already handled transition — just finish it */
       _finishCrossfade();
@@ -538,7 +538,7 @@ def render_library_tools_js() -> str:
     /* MEDIA_ERR_ABORTED (1) = user-initiated stop, ignore */
     if (err.code === 1) return;
     var checkUrl = currentStreamUrl || player.currentSrc || '';
-    var rp = _progressRelPath;
+    var rp = window._getProgressPath();
     if (err.code === 2 && checkUrl && rp) {
       /* Network error — confirm with HEAD before removing */
       fetch(checkUrl, { method: 'HEAD', cache: 'no-store' })
@@ -665,7 +665,7 @@ def render_library_tools_js() -> str:
      closed on mobile, making the server-side "Continue watching" list lag
      behind by several episodes. */
   function _flushProgress() {
-    clearTimeout(_progressTimer);
+    window._cancelProgressTimer();
     saveProgressNow();
   }
   document.addEventListener('visibilitychange', function() {

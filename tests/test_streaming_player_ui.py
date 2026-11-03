@@ -2472,7 +2472,7 @@ class TestPlayerBugfixes2026_06:
     def test_js_progress_uses_sendbeacon(self):
         """Progress save must use sendBeacon so it survives backgrounding/unload."""
         js = render_player_js()
-        assert "sendBeacon" in js
+        assert "sendBeacon" in _webui_src("progress.ts")
         assert "pagehide" in js
 
     def test_js_flushes_progress_before_switching_track(self):

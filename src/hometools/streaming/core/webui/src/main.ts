@@ -224,7 +224,17 @@ import { cleanFolderName, renderBreadcrumbHtml } from "./breadcrumb";
 import { formatDate, sortDownloads, getAppDownloadUsage, estimateOfflineStorage, storageSummaryView, readyStreamUrls, offlineDownloadListHtml } from "./offlineDownloads";
 import type { OfflineStorageInfo, StorageSummaryView } from "./offlineDownloads";
 import { detectLangFromName, detectSubLangFromName, langBadgesHtml, compositeFlagHtml } from "./langDetect";
-import { progressApiBase, buildProgressPayload } from "./progress";
+import {
+  progressApiBase,
+  buildProgressPayload,
+  getProgressPath,
+  setProgressPath,
+  cancelProgressTimer,
+  saveProgressNow,
+  saveProgressDebounced,
+  clearProgressFor,
+  loadAndSeekProgress,
+} from "./progress";
 import { filterPopoverBodyHtml, filterCombinedChipView, filterHiddenChipView } from "./filterPopover";
 import { FAVORITES_ORDER_KEY, folderOrderKey, loadOrder, sortByOrder } from "./customOrder";
 import { buildDuplicateIndex } from "./dupeUtils";
@@ -493,6 +503,13 @@ declare global {
     _compositeFlagHtml: typeof compositeFlagHtml;
     _findItemByStreamUrl: typeof findItemByStreamUrl;
     _progressApiBase: typeof progressApiBase;
+    _getProgressPath: typeof getProgressPath;
+    _setProgressPath: typeof setProgressPath;
+    _cancelProgressTimer: typeof cancelProgressTimer;
+    _saveProgressNow: typeof saveProgressNow;
+    _saveProgressDebounced: typeof saveProgressDebounced;
+    _clearProgressFor: typeof clearProgressFor;
+    _loadAndSeekProgress: typeof loadAndSeekProgress;
     _filterPopoverBodyHtml: typeof filterPopoverBodyHtml;
     _folderOrderKey: typeof folderOrderKey;
     _loadOrder: typeof loadOrder;
@@ -766,6 +783,13 @@ window._langBadgesHtml = langBadgesHtml;
 window._compositeFlagHtml = compositeFlagHtml;
 window._findItemByStreamUrl = findItemByStreamUrl;
 window._progressApiBase = progressApiBase;
+window._getProgressPath = getProgressPath;
+window._setProgressPath = setProgressPath;
+window._cancelProgressTimer = cancelProgressTimer;
+window._saveProgressNow = saveProgressNow;
+window._saveProgressDebounced = saveProgressDebounced;
+window._clearProgressFor = clearProgressFor;
+window._loadAndSeekProgress = loadAndSeekProgress;
 window._filterPopoverBodyHtml = filterPopoverBodyHtml;
 window._folderOrderKey = folderOrderKey;
 window._loadOrder = loadOrder;
