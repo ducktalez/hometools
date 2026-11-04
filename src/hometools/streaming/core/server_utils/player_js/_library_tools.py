@@ -333,42 +333,8 @@ def render_library_tools_js() -> str:
   /* smart previous: webui/src/transport.ts */
   function handlePreviousTrack() { window._handlePreviousTrack(_transportHooks()); }
 
-  /* Toggle shuffle mode: off → normal → weighted → off */
-  function cycleShuffle() {
-    shuffleMode = window._nextShuffleMode(shuffleMode);
-    localStorage.setItem('ht-shuffle-mode', shuffleMode || '');
-    updateShuffleBtn();
-    rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
-  }  /* Activate weighted shuffle directly (long-press) */
-  function activateWeightedShuffle() {
-    shuffleMode = 'weighted';
-    localStorage.setItem('ht-shuffle-mode', 'weighted');
-    updateShuffleBtn();
-    rebuildShuffleQueue(currentIndex >= 0 ? currentIndex : 0);
-    showToast('Gewichteter Shuffle aktiv (nach Bewertung)');
-  }
-
-  /* mode transitions + labels: webui/src/playerControls.ts */
-  function updateShuffleBtn() {
-    if (!btnShuffle) return;
-    var v = window._shuffleBtnView(shuffleMode);
-    btnShuffle.classList.toggle('shuffle-active', v.active);
-    btnShuffle.classList.toggle('shuffle-weighted', v.variant);
-    btnShuffle.title = v.title;
-  }  /* ── Repeat mode: off → all → one → off ── */
-  function cycleRepeat() {
-    repeatMode = window._nextRepeatMode(repeatMode);
-    localStorage.setItem('ht-repeat-mode', repeatMode || '');
-    updateRepeatBtn();
-  }
-  function updateRepeatBtn() {
-    if (!btnRepeat) return;
-    var v = window._repeatBtnView(repeatMode);
-    btnRepeat.classList.toggle('repeat-active', v.active);
-    btnRepeat.classList.toggle('repeat-one', v.variant);
-    btnRepeat.innerHTML = repeatMode === 'one' ? IC_REPEAT_ONE : IC_REPEAT;
-    btnRepeat.title = v.title;
-  }  /* ── Rating stars (audio-only write, display-only for video) ── */
+  /* Shuffle/repeat buttons (cycle, persist, long-press): webui/src/modeButtons.ts */
+  /* ── Rating stars (audio-only write, display-only for video) ── */
   /* Rating stars/patch/POST/undo ported to webui/src/rating.ts; _justRatedPath
      stays here (read by applyFilter), reached via htState.justRatedPath. */
   function _ratingHooks() {
@@ -412,58 +378,16 @@ def render_library_tools_js() -> str:
   }
 
 
-  if (SHUFFLE_ENABLED) {
-    var _savedShuffle = localStorage.getItem('ht-shuffle-mode');
-    if (_savedShuffle === 'normal' || _savedShuffle === 'weighted') {
-      shuffleMode = _savedShuffle;
-    }
-    updateShuffleBtn();
-  }
-
+  window._initModeButtons({
+    btnShuffle: btnShuffle, btnRepeat: btnRepeat,
+    shuffleEnabled: !!SHUFFLE_ENABLED, repeatEnabled: !!REPEAT_ENABLED,
+    icRepeat: IC_REPEAT, icRepeatOne: IC_REPEAT_ONE, showToast: showToast
+  });
   btnPlay.addEventListener('click', togglePlay);
   btnPrev.addEventListener('click', handlePreviousTrack);
   btnNext.addEventListener('click', playNextItem);
   /* Album cover click → jump to current track in list */
   if (playerThumb) playerThumb.addEventListener('click', jumpToCurrentTrack);
-
-  /* ── Shuffle button: click = cycle modes, long-press (600 ms) = weighted ── */
-  if (SHUFFLE_ENABLED && btnShuffle) {
-    var _shuffleLongPressed = false;
-    var _shuffleLongPressTimer = null;
-    function _startShuffleLongPress() {
-      _shuffleLongPressed = false;
-      _shuffleLongPressTimer = setTimeout(function() {
-        _shuffleLongPressed = true;
-        activateWeightedShuffle();
-      }, 600);
-    }
-    function _cancelShuffleLongPress() { clearTimeout(_shuffleLongPressTimer); }
-    btnShuffle.addEventListener('mousedown', _startShuffleLongPress);
-    btnShuffle.addEventListener('mouseup', _cancelShuffleLongPress);
-    btnShuffle.addEventListener('mouseleave', _cancelShuffleLongPress);
-    btnShuffle.addEventListener('touchstart', function(e) {
-      e.preventDefault();
-      _startShuffleLongPress();
-    }, { passive: false });
-    btnShuffle.addEventListener('touchend', _cancelShuffleLongPress);
-    btnShuffle.addEventListener('touchcancel', _cancelShuffleLongPress);
-    btnShuffle.addEventListener('click', function() {
-      if (!_shuffleLongPressed) cycleShuffle();
-      _shuffleLongPressed = false;
-    });
-  }
-
-  /* ── Repeat button: click = cycle modes (off → all → one → off) ── */
-  if (REPEAT_ENABLED) {
-    var _savedRepeat = localStorage.getItem('ht-repeat-mode');
-    if (_savedRepeat === 'all' || _savedRepeat === 'one') {
-      repeatMode = _savedRepeat;
-    }
-    updateRepeatBtn();
-  }
-  if (REPEAT_ENABLED && btnRepeat) {
-    btnRepeat.addEventListener('click', cycleRepeat);
-  }
 
   /* Crossfade ported to webui/src/crossfade.ts (_xfade* state private there). */
   function _xfadeHooks() {

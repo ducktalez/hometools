@@ -714,8 +714,7 @@ class TestRepeatParity:
             m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
             assert m
             assert json.loads(m.group(1))["enableRepeat"] is True
-            assert "cycleRepeat" in html
-            assert "updateRepeatBtn" in html
+            assert "_initModeButtons" in html
             assert "repeatMode" in html
 
 

@@ -652,9 +652,10 @@ def test_shuffle_js_has_core_functions():
     assert "buildWeightedQueue" in js
     assert "buildNormalQueue" in js
     assert "rebuildShuffleQueue" in js
-    assert "cycleShuffle" in js
-    assert "activateWeightedShuffle" in js
-    assert "updateShuffleBtn" in js
+    ts = _webui_src("modeButtons.ts")
+    assert "cycleShuffle" in ts
+    assert "activateWeightedShuffle" in ts
+    assert "updateShuffleBtn" in ts
 
 
 def test_shuffle_js_has_next_prev_index():
@@ -675,9 +676,9 @@ def test_shuffle_js_has_next_prev_index():
 
 def test_shuffle_js_restores_from_localstorage():
     """Shuffle preference must be loaded from localStorage on startup."""
-    js = _js()
-    assert "ht-shuffle-mode" in js
-    assert "localStorage.getItem" in js
+    ts = _webui_src("modeButtons.ts")
+    assert "ht-shuffle-mode" in ts
+    assert "localStorage" in ts and "getItem" in ts
 
 
 def test_queue_data_ops_ported_to_ts():
@@ -749,10 +750,10 @@ def test_intro_helpers_ported_to_ts():
 
 def test_shuffle_js_has_long_press_binding():
     """Shuffle button must support long-press for weighted shuffle mode."""
-    js = _js()
-    assert "_startShuffleLongPress" in js
-    assert "touchstart" in js
-    assert "activateWeightedShuffle" in js
+    ts = _webui_src("modeButtons.ts")
+    assert "startLongPress" in ts
+    assert "touchstart" in ts
+    assert "activateWeightedShuffle" in ts
 
 
 def test_shuffle_css_has_active_styles():
@@ -851,17 +852,17 @@ def test_repeat_js_has_core_functions():
     """Repeat logic functions must always be present (not gated by a flag —
     only the runtime REPEAT_ENABLED boolean toggles UI behavior)."""
     js = _js()
-    assert "cycleRepeat" in js
-    assert "updateRepeatBtn" in js
-    assert "repeatMode" in js
+    ts = _webui_src("modeButtons.ts")
+    assert "cycleRepeat" in ts
+    assert "updateRepeatBtn" in ts
+    assert "repeatMode" in ts
     assert "IC_REPEAT_ONE" in js
     assert "IC_REPEAT" in js
 
 
 def test_repeat_js_restores_from_localstorage():
     """Repeat preference must be loaded from localStorage on startup."""
-    js = _js()
-    assert "ht-repeat-mode" in js
+    assert "ht-repeat-mode" in _webui_src("modeButtons.ts")
 
 
 def test_repeat_css_has_active_styles():
@@ -2070,7 +2071,7 @@ class TestHtStateBridge:
 
     def test_shuffle_call_sites_still_present(self):
         js = _js()
-        assert js.count("rebuildShuffleQueue(") >= 6
+        assert js.count("rebuildShuffleQueue(") >= 4
         assert "nextIndex()" in js
         assert "prevIndex()" in _webui_src("transport.ts")
 
