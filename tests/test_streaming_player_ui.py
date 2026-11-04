@@ -963,7 +963,8 @@ def test_queue_next_logic_is_centralized_in_play_next_item():
     assert "nextTrack: playNextItem" in js
     assert 'setActionHandler("nexttrack"' in _webui_src("mediaSession.ts")
     assert 'addEventListener("ended"' in _webui_src("bgAudio.ts")
-    assert "playNextItem();" in js
+    assert "playNextItem: playNextItem" in js
+    assert "h.playNextItem()" in _webui_src("playerEvents.ts")
 
 
 def test_queue_dom_refs_requery_detached_nodes():
@@ -2472,8 +2473,7 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_ended_guard_against_spurious_end(self):
         """The ended handler must only advance when playback actually reached the end."""
-        js = render_player_js()
-        assert "reachedEnd" in js
+        assert "reachedEnd" in _webui_src("playerEvents.ts")
 
     def test_js_progress_uses_sendbeacon(self):
         """Progress save must use sendBeacon so it survives backgrounding/unload."""

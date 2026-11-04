@@ -393,82 +393,17 @@ def render_library_tools_js() -> str:
   function _finishCrossfade() { window._finishCrossfade(_xfadeHooks()); }
 
 
-  player.addEventListener('ended', function() {
-    /* Guard against spurious 'ended' events: some browsers (and stream/network
-       errors after a connection loss) fire 'ended' even though playback did NOT
-       reach the end.  Auto-advancing then would jump to the next item — with
-       repeat-all this wraps to the first episode (S01E01).  Only treat it as a
-       real completion when we are actually near the end of the media. */
-    var dur = player.duration;
-    var pos = player.currentTime;
-    var reachedEnd = !isFinite(dur) || dur <= 0 || pos >= dur - 1.5;
-    if (!reachedEnd) {
-      /* Likely a stall/stream error, not a real end — keep position, don't advance. */
-      saveProgressNow();
-      btnPlay.innerHTML = IC_PLAY;
-      return;
-    }
-    clearProgressFor(window._getProgressPath());
-    if (window._isCrossfading()) {
-      /* Crossfade already handled transition — just finish it */
-      _finishCrossfade();
-      return;
-    }
-    playNextItem();
-  });
-  /* ── Player error: detect missing/gone files (404) ──────────────────────
-     MEDIA_ERR_NETWORK (2) fires when the browser gets a 4xx/5xx on the
-     stream URL.  We do a quick HEAD to confirm it is a 404 before removing
-     the item from the list — this avoids wrongly deleting items on a
-     transient Wi-Fi drop. */
-  player.addEventListener('error', function() {
-    var err = player.error;
-    if (!err) { btnPlay.innerHTML = IC_PLAY; return; }
-    /* MEDIA_ERR_ABORTED (1) = user-initiated stop, ignore */
-    if (err.code === 1) return;
-    var checkUrl = currentStreamUrl || player.currentSrc || '';
-    var rp = window._getProgressPath();
-    if (err.code === 2 && checkUrl && rp) {
-      /* Network error — confirm with HEAD before removing */
-      fetch(checkUrl, { method: 'HEAD', cache: 'no-store' })
-        .then(function(r) {
-          if (r.status === 404) {
-            _removeGoneTrack(rp);
-          } else {
-            showToast('Wiedergabe fehlgeschlagen');
-            btnPlay.innerHTML = IC_PLAY;
-          }
-        })
-        .catch(function() {
-          /* Offline or CORS blocked — don't remove, might be transient */
-          showToast('Verbindungsfehler');
-          btnPlay.innerHTML = IC_PLAY;
-        });
-    } else {
-      /* MEDIA_ERR_DECODE (3) or MEDIA_ERR_SRC_NOT_SUPPORTED (4) */
-      showToast('Wiedergabe fehlgeschlagen');
-      btnPlay.innerHTML = IC_PLAY;
-    }
-  });
-  player.addEventListener('pause', function() {
-    /* Don't change state when the browser auto-paused for background,
-       or when bg audio has taken over playback */
-    if (document.hidden) return;
-    if (bgAudioIsActive()) return;
-    /* User-initiated pause (custom button OR native controls) */
-    window._setWasPlaying(false);
-    if (window._isCrossfading()) { _xfadeCleanup(); player.volume = 1; }
-    if (_bgEl()) { _bgEl().pause(); _bgEl().muted = true; }
-    stopBgSync();
-    if (!player.ended) btnPlay.innerHTML = IC_PLAY;
-    saveProgressNow();
-    /* Show controls on pause so user can interact */
-    if (isVideoMode) _showVidControls();
-  });
-  player.addEventListener('play',  function() {
-    btnPlay.innerHTML = IC_PAUSE;
-    /* Schedule auto-hide when playback resumes */
-    if (isVideoMode) _showVidControls();
+  /* ended/error/pause/play handlers ported to webui/src/playerEvents.ts. */
+  window._initPlayerEvents({
+    player: player, btnPlay: btnPlay, icPlay: IC_PLAY, icPause: IC_PAUSE, isVideoMode: isVideoMode,
+    showVidControls: function() { _showVidControls(); },
+    saveProgressNow: saveProgressNow,
+    clearProgressFor: clearProgressFor,
+    finishCrossfade: _finishCrossfade,
+    playNextItem: playNextItem,
+    currentStreamUrl: function() { return currentStreamUrl; },
+    removeGoneTrack: _removeGoneTrack,
+    showToast: showToast
   });
   player.addEventListener('timeupdate', function() {
     var dur = isFinite(player.duration) ? player.duration : _currentItemDuration;
