@@ -5,34 +5,25 @@ from __future__ import annotations
 
 def render_library_tools_js() -> str:
     """Return the library tools section of the player JS."""
-    return """  /* grouping/safety: webui/src/dupeUtils.ts::buildDuplicateIndex (allItems explicit). */
-  function _buildDuplicateMap() {
-    var idx = window._buildDuplicateIndex(allItems);
-    _dupeMap = idx.map;
-    _dupePaths = idx.paths;
-    _dupeSafety = idx.safety;
-  }  function _invalidateDupeMap() {
-    _dupeMap = null;
-    _dupePaths = null;
-    _dupeSafety = null;
+    return """  /* Dupe index state + build/ensure/count/invalidate: webui/src/dupeState.ts. */
+  function _invalidateDupeMap() {
+    window._invalidateDupeIndex();
     _rgKey = '';  /* force re-render when allItems changes */
   }
 
   function _ensureDupeMap() {
-    if (!_dupeMap) _buildDuplicateMap();
+    window._ensureDupeIndex(allItems);
   }
 
   function _getDupeCount() {
-    _ensureDupeMap();
-    return Object.keys(_dupeMap).length;
+    return window._dupeCount(allItems);
   }
 
-  /* Panel open/close/wiring: webui/src/dupePanel.ts (dupe state stays here,
-     read by track rendering). Row click navigates to folder + plays. */
+  /* Panel open/close/wiring: webui/src/dupePanel.ts. Row click navigates to folder + plays. */
   function openDupePanel() {
-    _ensureDupeMap();
+    var di = window._ensureDupeIndex(allItems);
     window._openDupePanel(
-      { allItems: allItems, dupeMap: _dupeMap, dupeSafety: _dupeSafety, dupePaths: _dupePaths },
+      { allItems: allItems, dupeMap: di.map, dupeSafety: di.safety, dupePaths: di.paths },
       {
         escHtml: escHtml, filePlaceholder: FILE_PLACEHOLDER, icDuplicate: IC_DUPLICATE, icTrash: IC_TRASH,
         deleteDuplicate: _deleteDuplicateFile,
@@ -54,10 +45,10 @@ def render_library_tools_js() -> str:
 
 
   function playDuplicates() {
-    _ensureDupeMap();
-    var keys = Object.keys(_dupeMap);
+    var dupeMap = window._ensureDupeIndex(allItems).map;
+    var keys = Object.keys(dupeMap);
     if (!keys.length) { showToast('Keine Duplikate gefunden'); return; }
-    var dupeItems = window._collectDupeItems(_dupeMap, allItems);
+    var dupeItems = window._collectDupeItems(dupeMap, allItems);
     if (!dupeItems.length) return;
     closeDupePanel();
     /* Show as virtual playlist. Header/toolbar state via _enterTrackListView()

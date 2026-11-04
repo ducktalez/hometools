@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { queuePanelMaxHeight, clampQueueHeight, initQueuePeekHandle } from "../src/queuePanelUi";
+import { openQueuePanel, closeQueuePanel, toggleQueuePanel } from "../src/queuePanelUi";
+import type { QueuePanelHooks } from "../src/queuePanelUi";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -66,3 +68,59 @@ describe("initQueuePeekHandle", () => {
   });
 });
 
+describe("queue panel open/close/toggle", () => {
+  it("open sets state, renders, marks visible, closes lyrics", () => {
+    const t = panelHooks(true);
+    openQueuePanel(t.h);
+    expect(t.isOpen()).toBe(true);
+    expect(t.h.closeLyrics).toHaveBeenCalled();
+    expect(t.h.sync).toHaveBeenCalled();
+    expect(t.h.render).toHaveBeenCalled();
+    expect(t.panel.set.has("visible")).toBe(true);
+    expect(t.peek.set.has("queue-active")).toBe(true);
+  });
+  it("open without panel is no-op", () => {
+    const t = panelHooks(false, false);
+    openQueuePanel(t.h);
+    expect(t.isOpen()).toBe(false);
+  });
+  it("close resets state and destroys dnd", () => {
+    const t = panelHooks();
+    openQueuePanel(t.h);
+    closeQueuePanel(t.h);
+    expect(t.isOpen()).toBe(false);
+    expect(t.h.destroyDnd).toHaveBeenCalled();
+    expect(t.panel.set.has("visible")).toBe(false);
+    expect(t.peek.set.has("queue-active")).toBe(false);
+  });
+  it("toggle flips", () => {
+    const t = panelHooks();
+    toggleQueuePanel(t.h);
+    expect(t.isOpen()).toBe(true);
+    toggleQueuePanel(t.h);
+    expect(t.isOpen()).toBe(false);
+  });
+});
+
+function panelHooks(lyricsOpen = false, withPanel = true) {
+  const cls = () => {
+    const set = new Set<string>();
+    return { set, classList: { add: (c: string) => void set.add(c), remove: (c: string) => void set.delete(c) } };
+  };
+  const panel = cls();
+  const peek = cls();
+  let open = false;
+  const h = {
+    ensureDom: vi.fn(),
+    getPanel: () => (withPanel ? (panel as unknown as HTMLElement) : null),
+    getPeekHandle: () => peek as unknown as HTMLElement,
+    isOpen: () => open,
+    setOpen: (v: boolean) => (open = v),
+    lyricsOpen: () => lyricsOpen,
+    closeLyrics: vi.fn(),
+    sync: vi.fn(),
+    render: vi.fn(),
+    destroyDnd: vi.fn(),
+  } as unknown as QueuePanelHooks;
+  return { h, panel, peek, isOpen: () => open };
+}

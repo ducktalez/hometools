@@ -100,9 +100,6 @@ interface Window {
   _queueOpen: boolean;
   _effectiveThreshold: number;
   _savedFavorites: Record<string, boolean>;
-  _dupeMap: Record<string, number[]> | null;
-  _dupePaths: Set<string> | null;
-  _dupeSafety: Record<string, boolean> | null;
 
   // ── Config flags/constants (rendered once in `_player_js.py`'s header
   // from the `#ht-config` blob — see `PlayerConfig` in main.ts) ──

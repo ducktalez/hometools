@@ -690,7 +690,6 @@ def render_core_js(waveform_js) -> str:
   function clearProgressFor(rp) { window._clearProgressFor(rp, _progHooks()); }
   function loadAndSeekProgress(rp) { window._loadAndSeekProgress(rp, _progHooks()); }
   var _indexToastEl = null;
-  var _indexRefreshTimer = null;
   /* Per-run dismissal: once the user taps the toast away it stays hidden for
      the current indexing run.  The dismissal is persisted in localStorage
      (keyed by the run's start time) so it survives a page reload — but a
@@ -728,7 +727,7 @@ def render_core_js(waveform_js) -> str:
   }
   function hideIndexingToast() {
     if (_indexToastEl) _indexToastEl.classList.remove('visible');
-    if (_indexRefreshTimer) { clearTimeout(_indexRefreshTimer); _indexRefreshTimer = null; }
+    window._clearIndexRefreshTimer();
     _indexToastDismissed = false;
     /* The run is over — drop the persisted dismissal so a future run can
        show its toast again. */

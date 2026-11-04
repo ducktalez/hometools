@@ -97,6 +97,45 @@ export function initQueueResize(o: QueueResizeOptions): void {
   handle.addEventListener("touchstart", onPointerDown, { passive: false });
 }
 
+export interface QueuePanelHooks {
+  ensureDom(): void;
+  getPanel(): HTMLElement | null;
+  getPeekHandle(): HTMLElement | null;
+  isOpen(): boolean;
+  setOpen(v: boolean): void;
+  lyricsOpen(): boolean;
+  closeLyrics(): void;
+  sync(): void;
+  render(): void;
+  destroyDnd(): void;
+}
+
+export function openQueuePanel(h: QueuePanelHooks): void {
+  h.ensureDom();
+  const panel = h.getPanel();
+  if (!panel) return;
+  h.setOpen(true);
+  if (h.lyricsOpen()) h.closeLyrics();
+  h.sync();
+  h.render();
+  panel.classList.add("visible");
+  h.getPeekHandle()?.classList.add("queue-active");
+}
+
+export function closeQueuePanel(h: QueuePanelHooks): void {
+  h.ensureDom();
+  h.setOpen(false);
+  h.destroyDnd();
+  h.getPanel()?.classList.remove("visible");
+  h.getPeekHandle()?.classList.remove("queue-active");
+}
+
+export function toggleQueuePanel(h: QueuePanelHooks): void {
+  h.ensureDom();
+  if (h.isOpen()) closeQueuePanel(h);
+  else openQueuePanel(h);
+}
+
 export interface QueuePeekOptions {
   handle: HTMLElement | null;
   isOpen(): boolean;

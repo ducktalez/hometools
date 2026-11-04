@@ -667,7 +667,7 @@ def test_shuffle_js_has_next_prev_index():
     js = _js()
     assert "function nextIndex" not in js
     assert "function prevIndex" not in js
-    assert "nextIndex()" in js
+    assert "nextIndex()" in _webui_src("playNext.ts")
     assert "prevIndex()" in _webui_src("transport.ts")
     # Legacy direct state touches must keep working through the live bridge
     assert "shuffleQueue" in js
@@ -939,9 +939,9 @@ def test_repeat_nextindex_returns_minus_one_when_off():
 
 def test_play_next_item_handles_repeat_one():
     """playNextItem must restart current track when repeat mode is 'one'."""
-    js = render_player_js()
-    assert "repeatMode === 'one'" in js
-    assert "player.currentTime = 0" in js
+    js = _webui_src("playNext.ts")
+    assert 'repeatMode === "one"' in js
+    assert "currentTime = 0" in js
 
 
 def test_shuffle_queue_rebuild_in_render_tracks():
@@ -2014,7 +2014,11 @@ def test_js_invalidate_folder_cache_call_sites_still_present():
     still happen — a stale folder list would show deleted folders as move
     targets."""
     js = _js()
-    assert js.count("_invalidateFolderCache()") >= 8
+    assert js.count("_invalidateFolderCache()") >= 4
+    # refresh/fetch paths invalidate through catalogFetch.ts's invalidateCaches hook
+    assert "invalidateCaches: function() { _invalidateDupeMap(); _invalidateFolderCache(); }" in js
+    assert js.count("h.invalidateCaches()") == 0
+    assert _webui_src("catalogFetch.ts").count("h.invalidateCaches()") >= 4
 
 
 class TestHtStateBridge:
@@ -2072,7 +2076,7 @@ class TestHtStateBridge:
     def test_shuffle_call_sites_still_present(self):
         js = _js()
         assert js.count("rebuildShuffleQueue(") >= 4
-        assert "nextIndex()" in js
+        assert "nextIndex()" in _webui_src("playNext.ts")
         assert "prevIndex()" in _webui_src("transport.ts")
 
 
@@ -2082,8 +2086,9 @@ def test_js_breadcrumb_uses_clean_folder_name():
     building — that ported function uses cleanFolderName for folder
     labels internally."""
     js = _js()
-    assert "renderBreadcrumbHtml(currentPath, escHtml)" in js
+    assert "_renderBreadcrumb(" in js
     ts = _webui_src("breadcrumb.ts")
+    assert "renderBreadcrumbHtml(s.currentPath" in ts
     assert "cleanFolderName(part)" in ts
 
 
@@ -2577,30 +2582,29 @@ class TestCatalogLocalStorageCache:
 
     def test_background_refresh_saves_catalog(self):
         """scheduleBackgroundRefresh must persist the updated catalog."""
-        js = self._js()
-        bg_fn_start = js.index("function scheduleBackgroundRefresh(")
-        next_fn = js.index("\n  function ", bg_fn_start + 1)
-        fn_body = js[bg_fn_start:next_fn]
-        assert "_saveCatalogCache(allItems)" in fn_body, "_saveCatalogCache must be called inside scheduleBackgroundRefresh"
+        ts = _webui_src("catalogFetch.ts")
+        fn_start = ts.index("export function scheduleBackgroundRefresh(")
+        fn_body = ts[fn_start : ts.index("export function forceBackgroundRefresh(")]
+        assert "h.saveCache(s.allItems)" in fn_body, "saveCache must be called inside scheduleBackgroundRefresh"
+        assert "saveCache: function(items) { _saveCatalogCache(items); }" in self._js()
 
     def test_refresh_poll_saves_catalog(self):
         """_refreshPoll (manual refresh polling) must persist the updated catalog."""
-        js = self._js()
-        poll_fn_start = js.index("function _refreshPoll(")
-        next_fn = js.index("\n  function ", poll_fn_start + 1)
-        fn_body = js[poll_fn_start:next_fn]
-        assert "_saveCatalogCache(allItems)" in fn_body, "_saveCatalogCache must be called inside _refreshPoll"
+        ts = _webui_src("catalogFetch.ts")
+        fn_start = ts.index("export function refreshPoll(")
+        fn_body = ts[fn_start : ts.index("export function refreshCatalog(")]
+        assert "h.saveCache(s.allItems)" in fn_body, "saveCache must be called inside refreshPoll"
 
     # ── Explicit refresh must clear the cache ─────────────────────────────────
 
     def test_refresh_catalog_clears_cache(self):
         """User-triggered refreshCatalog must clear the localStorage cache
         so the next load fetches fresh data and doesn't serve stale items."""
-        js = self._js()
-        refresh_fn_start = js.index("function refreshCatalog(")
-        next_fn = js.index("\n  function ", refresh_fn_start + 1)
-        fn_body = js[refresh_fn_start:next_fn]
-        assert "_clearCatalogCache()" in fn_body, "_clearCatalogCache must be called inside refreshCatalog"
+        ts = _webui_src("catalogFetch.ts")
+        fn_body = ts[ts.index("export function refreshCatalog(") :]
+        assert "h.clearCache()" in fn_body, "clearCache must be called inside refreshCatalog"
+        assert "h.clearLocalDeleted()" in fn_body
+        assert "clearCache: function() { _clearCatalogCache(); }" in self._js()
 
     # ── Load function handles offline gracefully ──────────────────────────────
 
@@ -2662,8 +2666,7 @@ class TestTrackDetailTableView:
         assert "track-genre-cell" in ts
 
     def test_table_header_columns(self):
-        js = render_player_js()
-        assert "track-table-header" in js
+        assert "track-table-header" in _webui_src("trackViewMode.ts")
         ts = _webui_src("chromeHtml.ts")
         assert "Interpret" in ts
         assert "Dauer" in ts

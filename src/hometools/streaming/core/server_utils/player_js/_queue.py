@@ -6,30 +6,16 @@ from __future__ import annotations
 def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     """Return the queue section of the player JS."""
     return (
-        """  function dequeueNext() {
-    if (_userQueue.length === 0) return false;
-    playFromQueue(0);
-    return true;
-  }
-
-  function playNextItem() {
-    if (repeatMode === 'one') {
-      /* Repeat single: restart the current track */
-      player.currentTime = 0;
-      player.play().catch(function() {});
-      return;
-    }
-    if (dequeueNext()) return;
-    if (!filteredItems.length) return;
-    var ni = nextIndex();
-    if (ni < 0) {
-      /* End of list, no repeat — stop playback */
-      window._setWasPlaying(false);
-      btnPlay.innerHTML = IC_PLAY;
-      return;
-    }
-    playTrack(ni);
-  }
+        """  /* dequeueNext/playNextItem ported to webui/src/playNext.ts. */
+  var _playNextHooks = {
+    player: player,
+    playFromQueue: function(i) { playFromQueue(i); },
+    playTrack: function(i) { playTrack(i); },
+    setWasPlaying: function(v) { window._setWasPlaying(v); },
+    showStopped: function() { btnPlay.innerHTML = IC_PLAY; }
+  };
+  function dequeueNext() { return window._dequeueNext(_playNextHooks); }
+  function playNextItem() { window._playNextItem(_playNextHooks); }
 
   function _syncQueueBottom() {
     window._syncQueueBottom(_queuePanel, _queueUserHeight, _QUEUE_MIN_H);
@@ -47,31 +33,22 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   /* Recalc on window resize */
   window.addEventListener('resize', function() { if (_queueOpen) _syncQueueBottom(); });
 
-  function openQueuePanel() {
-    _ensureQueueDom();
-    if (!_queuePanel) return;
-    _queueOpen = true;
-    /* Close lyrics panel if open */
-    if (window._lyrics.isOpen()) closeLyricsPanel();
-    _syncQueueBottom();
-    renderQueuePanel();
-    _queuePanel.classList.add('visible');
-    if (_queuePeekHandle) _queuePeekHandle.classList.add('queue-active');
-  }
-
-  function closeQueuePanel() {
-    _ensureQueueDom();
-    _queueOpen = false;
-    destroyQueueDragDrop();
-    if (_queuePanel) _queuePanel.classList.remove('visible');
-    if (_queuePeekHandle) _queuePeekHandle.classList.remove('queue-active');
-  }
-
-  function toggleQueuePanel() {
-    _ensureQueueDom();
-    if (_queueOpen) closeQueuePanel();
-    else openQueuePanel();
-  }
+  /* Open/close/toggle ported to webui/src/queuePanelUi.ts. */
+  var _queuePanelHooks = {
+    ensureDom: function() { _ensureQueueDom(); },
+    getPanel: function() { return _queuePanel; },
+    getPeekHandle: function() { return _queuePeekHandle; },
+    isOpen: function() { return _queueOpen; },
+    setOpen: function(v) { _queueOpen = v; },
+    lyricsOpen: function() { return window._lyrics.isOpen(); },
+    closeLyrics: function() { closeLyricsPanel(); },
+    sync: function() { _syncQueueBottom(); },
+    render: function() { renderQueuePanel(); },
+    destroyDnd: function() { destroyQueueDragDrop(); }
+  };
+  function openQueuePanel() { window._openQueuePanel(_queuePanelHooks); }
+  function closeQueuePanel() { window._closeQueuePanel(_queuePanelHooks); }
+  function toggleQueuePanel() { window._toggleQueuePanel(_queuePanelHooks); }
 
   /* Peek handle (click/drag-up opens queue) ported to webui/src/queuePanelUi.ts. */
   window._initQueuePeekHandle({
@@ -101,150 +78,33 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     });
   }
 
-  function scheduleBackgroundRefresh(delay) {
-    if (_indexRefreshTimer) return;
-    _indexRefreshTimer = setTimeout(function() {
-      _indexRefreshTimer = null;
-      fetch(API_PATH, { cache: 'no-store' })
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(data) {
-          if (!data || data.error) return;
-          if (data.refreshing) {
-            var detail = data.detail || 'Building index…';
-            showIndexingToast(detail, data.cache);
-            scheduleBackgroundRefresh();
-            /* Update items if more are now available */
-            var newItems = data && Array.isArray(data.items) ? data.items : [];
-            if (newItems.length > allItems.length) {
-              allItems = newItems;
-              _invalidateDupeMap();
-              _invalidateFolderCache();
-              showFolderView();
-            }
-            return;
-          }
-          /* Full index ready */
-          hideIndexingToast();
-          allItems = _applyLocalMutations(data && Array.isArray(data.items) ? data.items : []);
-          _invalidateDupeMap();
-          _invalidateFolderCache();
-          _saveCatalogCache(allItems);
-          console.info('Background refresh complete:', allItems.length, 'items');
-          showFolderView();
-        })
-        .catch(function() { scheduleBackgroundRefresh(); });
-    }, delay !== undefined ? delay : 800);
-  }
-
-  /* Cancel the pending poll timer and re-fetch immediately.
-     Only acts when an index build is actually in progress. */
-  function forceBackgroundRefresh() {
-    if (!_indexRefreshTimer) return; /* nothing scheduled → no build in progress */
-    clearTimeout(_indexRefreshTimer);
-    _indexRefreshTimer = null;
-    scheduleBackgroundRefresh(0);
-  }
-
-  /* Trigger a silent catalog fetch immediately — called on every folder/playlist
-     navigation so the user always gets fresh data with the highest priority.
-     Shows cached data first (instant), then updates the view if something changed.
-     A flag prevents concurrent fetches; already-in-flight requests are reused. */
-  var _silentRefreshInFlight = false;
-  function _triggerSilentRefresh() {
-    if (_silentRefreshInFlight) return;
-    _silentRefreshInFlight = true;
-    fetch(API_PATH, { cache: 'no-store' })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(data) {
-        _silentRefreshInFlight = false;
-        if (!data || data.error || data.loading) return;
-        var fresh = _applyLocalMutations(Array.isArray(data.items) ? data.items : []);
-        /* Detect any change: count OR missing/added path (webui/src/catalogRefresh.ts) */
-        var changed = window._catalogChanged(allItems, fresh);
-        allItems = fresh;
-        _invalidateDupeMap();
-        _invalidateFolderCache();
-        _saveCatalogCache(allItems);
-        if (changed) {
-          if (inPlaylist) {
-            var newItems = itemsUnder(currentPath);
-            if (newItems.length) { playlistItems = newItems; applyFilter(); }
-            else { showFolderView(); }
-          } else {
-            showFolderView();
-          }
-        }
-        if (data.refreshing) scheduleBackgroundRefresh();
-      })
-      .catch(function() { _silentRefreshInFlight = false; });
-  }
-
-  /* ── Manual catalog refresh (user-triggered) ── */
-  /* The refresh button is rendered dynamically in the tools-row (root view only). */
-  function _getRefreshBtn() { return document.getElementById('refresh-catalog-card'); }
-
-  function _refreshPoll() {
-    fetch(API_PATH, { cache: 'no-store' })
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(data) {
-      var _rb = _getRefreshBtn();
-      if (!data) {
-        if (_rb) _rb.classList.remove('spinning');
-        showToast('Refresh fehlgeschlagen');
-        return;
-      }
-      if (data.refreshing) {
-        setTimeout(_refreshPoll, 800);
-        return;
-      }
-      var oldCount = allItems.length;
-      allItems = Array.isArray(data.items) ? data.items : [];
-      _invalidateDupeMap();
-      _invalidateFolderCache();
-      _saveCatalogCache(allItems);
-      if (_rb) _rb.classList.remove('spinning');
-
-      /* Show refresh timestamp */
-      var infoEl = document.getElementById('refresh-info');
-      if (infoEl) {
-        var dt = new Date();
-        infoEl.textContent = window._catalogRefreshInfo(allItems.length, dt);
-        infoEl.title = 'Letzter Katalog-Refresh: ' + dt.toLocaleString();
-      }
-
-      /* Re-render current view */
-      if (inPlaylist) {
-        var newItems = itemsUnder(currentPath);
-        if (newItems.length) playlistItems = newItems;
-        applyFilter();
-      } else {
-        showFolderView();
-      }
-      showToast(window._refreshToastMessage(allItems.length, oldCount));
-    })
-    .catch(function() { setTimeout(_refreshPoll, 2000); });
-  }
-
-  function refreshCatalog() {
-    var _rb = _getRefreshBtn(); if (_rb) _rb.classList.add('spinning');
-    _clearCatalogCache();  /* force fresh data — user explicitly requested a reload */
-    /* Clear in place (never reassign `= {}`) — window._locallyDeletedPaths
-       (bridged in _core.py for webui/src/catalogCache.ts) must keep pointing
-       at this same object, or _applyLocalMutations() silently stops seeing
-       future deletions. */
-    Object.keys(_locallyDeletedPaths).forEach(function(k) { delete _locallyDeletedPaths[k]; });
-    _ratingRefreshPath = null;
-
-    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
-    /* Invalidate server-side index cache and trigger full rebuild */
-    fetch(base + '/refresh', { method: 'POST' })
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function() { _refreshPoll(); })
-    .catch(function() {
-      var _rb2 = _getRefreshBtn(); if (_rb2) _rb2.classList.remove('spinning');
-      showToast('Refresh fehlgeschlagen');
-    });
-  }
+  /* Catalog fetch/refresh orchestration ported to webui/src/catalogFetch.ts
+     (timer + in-flight flag private). Every successful fetch must call
+     saveCache (-> _saveCatalogCache); refreshCatalog clears the cache first. */
+  var _catalogFetchHooks = {
+    apiPath: API_PATH,
+    showIndexingToast: function(d, c) { showIndexingToast(d, c); },
+    hideIndexingToast: function() { hideIndexingToast(); },
+    applyLocalMutations: function(items) { return _applyLocalMutations(items); },
+    invalidateCaches: function() { _invalidateDupeMap(); _invalidateFolderCache(); },
+    saveCache: function(items) { _saveCatalogCache(items); },
+    clearCache: function() { _clearCatalogCache(); },
+    /* Clear in place (never reassign `= {}`) - window._locallyDeletedPaths
+       must keep pointing at this same object. */
+    clearLocalDeleted: function() {
+      Object.keys(_locallyDeletedPaths).forEach(function(k) { delete _locallyDeletedPaths[k]; });
+    },
+    resetRatingRefresh: function() { window._resetRatingRefresh(); },
+    showFolderView: function() { showFolderView(); },
+    itemsUnder: function(p) { return itemsUnder(p); },
+    applyFilter: function() { applyFilter(); },
+    toast: function(m) { showToast(m); }
+  };
+  function scheduleBackgroundRefresh(delay) { window._scheduleBackgroundRefresh(_catalogFetchHooks, delay); }
+  function forceBackgroundRefresh() { window._forceBackgroundRefresh(_catalogFetchHooks); }
+  function _triggerSilentRefresh() { window._triggerSilentRefresh(_catalogFetchHooks); }
+  function _refreshPoll() { window._refreshPoll(_catalogFetchHooks); }
+  function refreshCatalog() { window._refreshCatalog(_catalogFetchHooks); }
   /* Extra library folders (video only): webui/src/extraFolders.ts */
   function _extraHooks() {
     return {
@@ -266,41 +126,13 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     });
   }
 
-  /* ── Lazy per-folder rating refresh ── */
-  var _ratingRefreshPath = null;
+  /* ── Lazy per-folder rating refresh: webui/src/ratingRefresh.ts ── */
   function refreshFolderRatings(folderItems) {
-    if (!RATING_WRITE_ENABLED || !folderItems.length) return;
-    var refreshPath = currentPath;
-    /* Skip if we just refreshed this exact folder */
-    if (_ratingRefreshPath === refreshPath) return;
-    _ratingRefreshPath = refreshPath;
-    var paths = folderItems.map(function(t) { return t.relative_path; });
-    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
-    fetch(base + '/refresh-ratings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: paths })
-    })
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(data) {
-      if (!data || !data.ratings) return;
-      var ratings = data.ratings;
-      /* Patch allItems + playlistItems in place (webui/src/catalogRefresh.ts) */
-      window._patchRatingsInPlace(allItems, ratings);
-      window._patchRatingsInPlace(playlistItems, ratings);
-      /* Show refresh timestamp */
-      var infoEl = document.getElementById('refresh-info');
-      if (infoEl && data.last_refresh) {
-        var dt = new Date(data.last_refresh);
-        infoEl.textContent = window._ratingRefreshInfo(Object.keys(ratings).length, data.changed, dt);
-        infoEl.title = 'Letzte Rating-Aktualisierung: ' + dt.toLocaleString();
-      }
-      /* Re-render if still viewing the same folder */
-      if (inPlaylist && currentPath === refreshPath) {
-        applyFilter();
-      }
-    })
-    .catch(function() { /* silent background refresh */ });
+    window._refreshFolderRatings(folderItems, {
+      enabled: !!RATING_WRITE_ENABLED,
+      apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
+      applyFilter: function() { applyFilter(); }
+    });
   }
 
 """
@@ -473,25 +305,12 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
      Only the path segments are rendered — no redundant "Home" entry, since
      the header-logo button already covers that. When visible, hides
      `.logo-title` so the current folder name isn't shown twice.
-     Markup building (segments, offline special-case, escaping) is ported
-     to `webui/src/breadcrumb.ts::renderBreadcrumbHtml()`, bridged onto
-     `window` (see main.ts) — this bare identifier resolves through the
-     normal JS scope chain to window.renderBreadcrumbHtml. Do not re-inline
-     that logic here; extend breadcrumb.ts instead. */
+     Markup + DOM wiring ported to `webui/src/breadcrumb.ts::renderBreadcrumb()`
+     (currentPath via htState). Extend breadcrumb.ts, don't re-inline. */
   function renderBreadcrumb() {
-    if (!currentPath) {
-      breadcrumb.classList.remove('visible');
-      headerTitle.style.display = '';
-      return;
-    }
-    breadcrumb.classList.add('visible');
-    headerTitle.style.display = 'none';
-    breadcrumb.innerHTML = renderBreadcrumbHtml(currentPath, escHtml);
-    breadcrumb.querySelectorAll('a').forEach(function(a) {
-      a.addEventListener('click', function() {
-        currentPath = a.dataset.path;
-        showFolderView();
-      });
+    window._renderBreadcrumb({
+      breadcrumb: breadcrumb, headerTitle: headerTitle, escHtml: escHtml,
+      showFolderView: function() { showFolderView(); }
     });
   }
 
@@ -500,39 +319,21 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   var IC_LIST = '<svg viewBox="0 0 24 24"><circle cx="4" cy="6" r="1.6" fill="currentColor"/><circle cx="4" cy="12" r="1.6" fill="currentColor"/><circle cx="4" cy="18" r="1.6" fill="currentColor"/><line x1="9" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="9" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="9" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
   var IC_FILENAMES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="14" y2="6"/><line x1="3" y1="12" x2="18" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><polyline points="17,15 20,18 17,21" stroke-linejoin="round"/></svg>';
   var IC_TABLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/><line x1="15" y1="10" x2="15" y2="20"/></svg>';
-  /* Toggle the track-list detail/table view (audio only). Rebuilds the
-     list (force=true) so column layout + inline-edit affordances update. */
-  function _toggleTrackViewMode() {
-    trackViewMode = (trackViewMode === 'table') ? 'rows' : 'table';
-    localStorage.setItem('ht-track-view-mode', trackViewMode);
-    _applyTrackViewMode();
-    renderTracks(playlistItems.length ? playlistItems : filteredItems, true);
+  /* Track-list table/rows toggle ported to webui/src/trackViewMode.ts
+     (trackViewMode itself stays here, read by rendering). */
+  function _trackViewHooks() {
+    return {
+      trackList: trackList, trackView: trackView, viewToggle: viewToggle,
+      isVideoMode: isVideoMode, tableHeaderHtml: window._trackTableHeaderHtml,
+      icList: IC_LIST, icTable: IC_TABLE,
+      getMode: function() { return trackViewMode; },
+      setMode: function(m) { trackViewMode = m; },
+      rerender: function() { renderTracks(playlistItems.length ? playlistItems : filteredItems, true); }
+    };
   }
-  function _applyTrackViewMode() {
-    var tableMode = trackViewMode === 'table' && !isVideoMode;
-    trackList.classList.toggle('table-mode', tableMode);
-    var hdr = document.getElementById('track-table-header');
-    if (tableMode) {
-      if (!hdr) {
-        hdr = document.createElement('div');
-        hdr.id = 'track-table-header';
-        hdr.className = 'track-table-header';
-        hdr.innerHTML = window._trackTableHeaderHtml; /* webui/src/chromeHtml.ts */
-        trackList.parentNode.insertBefore(hdr, trackList);
-      }
-    } else if (hdr) {
-      hdr.remove();
-    }
-    if (viewToggle && _isTrackViewVisible()) {
-      var _vt = window._viewToggleView(tableMode, isVideoMode); /* webui/src/chromeHtml.ts */
-      viewToggle.innerHTML = _vt.useListIcon ? IC_LIST : IC_TABLE;
-      viewToggle.title = _vt.title;
-      viewToggle.classList.toggle('view-toggle-locked', _vt.locked);
-    }
-  }
-  function _isTrackViewVisible() {
-    return trackView && !trackView.classList.contains('view-hidden');
-  }
+  function _toggleTrackViewMode() { window._toggleTrackViewMode(_trackViewHooks()); }
+  function _applyTrackViewMode() { window._applyTrackViewMode(_trackViewHooks()); }
+  function _isTrackViewVisible() { return window._isTrackViewVisible(trackView); }
   function applyViewMode() {
     if (_isTrackViewVisible()) {
       /* Track (playlist/folder) view is showing — the toggle button
@@ -540,27 +341,10 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
       _applyTrackViewMode();
       return;
     }
-    if (_anyToolActive()) {
-      /* Tools mode: force list view with raw filenames, toggle locked */
-      folderGrid.classList.add('list-mode');
-      folderGrid.classList.add('filenames-mode');
-      viewToggle.innerHTML = IC_LIST;
-      viewToggle.title = 'Tools aktiv \u2014 Listenansicht mit Dateinamen';
-      viewToggle.classList.add('view-toggle-locked');
-    } else if (viewMode === 'list') {
-      folderGrid.classList.add('list-mode');
-      folderGrid.classList.remove('filenames-mode');
-      viewToggle.innerHTML = IC_GRID;
-      viewToggle.title = 'Listenansicht \u2014 Klick f\u00fcr Kachelansicht';
-      viewToggle.classList.remove('view-toggle-locked');
-    } else {
-      /* 'grid' */
-      folderGrid.classList.remove('list-mode');
-      folderGrid.classList.remove('filenames-mode');
-      viewToggle.innerHTML = IC_LIST;
-      viewToggle.title = 'Kachelansicht \u2014 Klick f\u00fcr Listenansicht';
-      viewToggle.classList.remove('view-toggle-locked');
-    }
+    window._applyFolderViewMode({
+      folderGrid: folderGrid, viewToggle: viewToggle, icList: IC_LIST, icGrid: IC_GRID,
+      toolActive: _anyToolActive(), viewMode: viewMode
+    });
   }
 
   /* ── folder view ── */

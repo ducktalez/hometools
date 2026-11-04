@@ -7,18 +7,16 @@
  * segment/markup builders are pure (string/array in, string out) — no
  * dependency on the shared player state described in `legacy-globals.d.ts`.
  *
- * The DOM-wiring half of the old `renderBreadcrumb()` (toggling
- * `.breadcrumb`/`.logo-title` visibility, attaching click handlers that
- * call `showFolderView()`) stays in `player_js/_queue.py` — that part
- * *is* stateful/cross-fragment-coupled (reads `currentPath`, writes
- * `breadcrumb`/`headerTitle` DOM refs, calls a function owned by
- * `_folder_browse.py`), same split as `renderBpmPill` (pure, ported) vs.
- * `_openBpmAdjustMenu` (stateful, stays Python) in `metricPill.ts`.
+ * `renderBreadcrumb(hooks)` is the DOM-wiring half (visibility toggling,
+ * click handlers); `currentPath` via `htState`, DOM refs/`showFolderView`
+ * via hooks.
  *
  * `cleanFolderName` was previously declared as a legacy-owned function in
  * `legacy-globals.d.ts` (typed for future consumers) — now that it's a
  * real ported implementation, that ambient entry was removed there.
  */
+
+import { getState } from "./stateBridge";
 
 /** Strips the `#` favourite-prefix and any `(lang[, subLang])` tag suffix
  * from a raw folder name, e.g. `"#Show (engl, gersub)"` → `"Show"`. */
@@ -68,5 +66,40 @@ export function renderBreadcrumbHtml(currentPath: string, escHtmlFn: (s: unknown
       return sep + '<a data-path="' + escHtmlFn(seg.path) + '">' + escHtmlFn(seg.label) + "</a>";
     })
     .join("");
+}
+
+export interface BreadcrumbEl {
+  classList: { add(c: string): void; remove(c: string): void };
+  innerHTML: string;
+  querySelectorAll(sel: string): ArrayLike<{ dataset: { path?: string }; addEventListener(t: string, f: () => void): void }>;
+}
+
+export interface BreadcrumbHooks {
+  breadcrumb: BreadcrumbEl;
+  headerTitle: { style: { display: string } };
+  escHtml: (s: unknown) => string;
+  showFolderView(): void;
+}
+
+/** Render the header breadcrumb for htState.currentPath; link clicks navigate. */
+export function renderBreadcrumb(h: BreadcrumbHooks): void {
+  const s = getState();
+  if (!s) return;
+  if (!s.currentPath) {
+    h.breadcrumb.classList.remove("visible");
+    h.headerTitle.style.display = "";
+    return;
+  }
+  h.breadcrumb.classList.add("visible");
+  h.headerTitle.style.display = "none";
+  h.breadcrumb.innerHTML = renderBreadcrumbHtml(s.currentPath, h.escHtml);
+  const links = h.breadcrumb.querySelectorAll("a");
+  for (let i = 0; i < links.length; i++) {
+    const a = links[i];
+    a.addEventListener("click", () => {
+      s.currentPath = a.dataset.path || "";
+      h.showFolderView();
+    });
+  }
 }
 
