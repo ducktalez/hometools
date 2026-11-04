@@ -222,7 +222,7 @@ import { needsConversion, filenameFromPath, parentPath, leafName, currentFolderO
 import { _fmtDuration, _fmtFileSize, _fmtDate, _normalizeStem, _dupeKey, _isDupeGroupSafe } from "./dupeUtils";
 import { cleanFolderName, renderBreadcrumbHtml, renderBreadcrumb } from "./breadcrumb";
 import { refreshFolderRatings, resetRatingRefresh } from "./ratingRefresh";
-import { scheduleBackgroundRefresh, forceBackgroundRefresh, triggerSilentRefresh, refreshPoll, refreshCatalog, clearIndexRefreshTimer } from "./catalogFetch";
+import { scheduleBackgroundRefresh, forceBackgroundRefresh, triggerSilentRefresh, refreshPoll, refreshCatalog, clearIndexRefreshTimer, loadInitialCatalog } from "./catalogFetch";
 import { formatDate, sortDownloads, getAppDownloadUsage, estimateOfflineStorage, storageSummaryView, readyStreamUrls, offlineDownloadListHtml } from "./offlineDownloads";
 import type { OfflineStorageInfo, StorageSummaryView } from "./offlineDownloads";
 import { detectLangFromName, detectSubLangFromName, langBadgesHtml, compositeFlagHtml } from "./langDetect";
@@ -486,6 +486,7 @@ declare global {
     _refreshPoll: typeof refreshPoll;
     _refreshCatalog: typeof refreshCatalog;
     _clearIndexRefreshTimer: typeof clearIndexRefreshTimer;
+    _loadInitialCatalog: typeof loadInitialCatalog;
     _evaluateSmartPlaylist: typeof evaluateSmartPlaylist;
     _smartFieldType: typeof smartFieldType;
     _smartOpsFor: typeof smartOpsFor;
@@ -774,6 +775,7 @@ window._triggerSilentRefresh = triggerSilentRefresh;
 window._refreshPoll = refreshPoll;
 window._refreshCatalog = refreshCatalog;
 window._clearIndexRefreshTimer = clearIndexRefreshTimer;
+window._loadInitialCatalog = loadInitialCatalog;
 window._evaluateSmartPlaylist = evaluateSmartPlaylist;
 // _smartFieldType/_smartOpsFor + their backing constants: read-only after
 // init, so the plain-assignment bridge (like originalTitle) is safe — still

@@ -34,8 +34,6 @@ def render_core_js(waveform_js) -> str:
   var filteredItems = [];
   var currentIndex = -1;
   var inPlaylist = false;
-  var initialCatalogRetryTimer = null;
-  var initialCatalogRetryCount = 0;
   /* ── Shuffle state ── */
   var shuffleMode = false;       /* false = off, 'normal' = random, 'weighted' = rating-weighted */
   var repeatMode  = false;       /* false = off, 'all' = repeat playlist, 'one' = repeat single track */

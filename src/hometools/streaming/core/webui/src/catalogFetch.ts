@@ -182,3 +182,105 @@ export function refreshCatalog(h: CatalogFetchHooks): void {
     });
 }
 
+
+export interface InitialCatalogHooks extends CatalogFetchHooks {
+  loadCache(): LegacyMediaItem[] | null;
+  showLoadingState(msg: string): void;
+  showCatalogLoadError(msg: string): void;
+  /** False when the tools panel turned auto-refresh off. */
+  autoRefreshOn(): boolean;
+}
+let _retryTimer: ReturnType<typeof setTimeout> | null = null;
+let _retryCount = 0;
+function scheduleInitialRetry(h: InitialCatalogHooks, reason: string): void {
+  if (_retryTimer) return;
+  console.info("Initial catalog retry scheduled:", reason || "loading");
+  _retryTimer = setTimeout(() => {
+    _retryTimer = null;
+    void loadInitialCatalog(h);
+  }, 800);
+}
+/**
+ * Stale-while-revalidate startup load: serve a fresh localStorage snapshot
+ * instantly (silent verify fetch follows), else fetch with loading state.
+ */
+export function loadInitialCatalog(h: InitialCatalogHooks): Promise<LegacyMediaItem[]> {
+  const s = getState();
+  if (!s) return Promise.resolve([]);
+  if (s.allItems.length) {
+    console.info("Initial catalog already present in page payload:", s.allItems.length, "items");
+    return Promise.resolve(s.allItems);
+  }
+  const cached = h.loadCache();
+  if (cached && cached.length) {
+    console.info("Initial catalog: serving", cached.length, "items from localStorage cache (background refresh follows)");
+    s.allItems = cached;
+    h.invalidateCaches();
+    h.showFolderView();
+    fetchJson(h.apiPath, { cache: "no-store" })
+      .then((data) => {
+        if (!data || data.error || data.loading) return;
+        const fresh = h.applyLocalMutations(itemsOf(data));
+        const changed = catalogChanged(s.allItems, fresh);
+        s.allItems = fresh;
+        h.invalidateCaches();
+        h.saveCache(s.allItems);
+        if (changed) h.showFolderView();
+        if (data.refreshing) scheduleBackgroundRefresh(h);
+      })
+      .catch(() => {
+        /* server offline - cached data stays visible */
+      });
+    return Promise.resolve(s.allItems);
+  }
+  _retryCount += 1;
+  if (_retryCount <= 1) h.showLoadingState("Loading library\u2026");
+  const t0 = Date.now();
+  console.info("Initial catalog fetch started:", h.apiPath);
+  return fetch(h.apiPath, { cache: "no-store" })
+    .then((r) => {
+      console.info("Initial catalog response received after", Date.now() - t0, "ms with status", r.status);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then((data) => {
+      if (data && data.error) throw new Error(data.error);
+      if (data && data.loading && (!data.items || data.items.length === 0)) {
+        const detail = data.detail || "Library cache is warming in the background.";
+        console.info("Initial catalog still building (empty):", detail);
+        h.showIndexingToast(detail, data.cache);
+        scheduleInitialRetry(h, detail);
+        return [] as LegacyMediaItem[];
+      }
+      if (_retryTimer) {
+        clearTimeout(_retryTimer);
+        _retryTimer = null;
+      }
+      _retryCount = 0;
+      s.allItems = itemsOf(data);
+      h.invalidateCaches();
+      h.saveCache(s.allItems);
+      console.info("Initial catalog parsed after", Date.now() - t0, "ms:", s.allItems.length, "items");
+      h.showFolderView();
+      if (data && data.refreshing) {
+        const rd = data.detail || "Building index in background\u2026";
+        console.info("Catalog served from quick scan, index still building:", rd);
+        h.showIndexingToast(rd, data.cache);
+        if (h.autoRefreshOn()) scheduleBackgroundRefresh(h);
+      } else {
+        h.hideIndexingToast();
+      }
+      return s.allItems;
+    })
+    .catch((err) => {
+      console.error("Initial catalog load failed:", err);
+      h.showCatalogLoadError(err && err.message ? err.message : "Library could not be loaded.");
+      return [] as LegacyMediaItem[];
+    });
+}
+/** Test helper: reset retry state. */
+export function resetInitialCatalogState(): void {
+  if (_retryTimer) clearTimeout(_retryTimer);
+  _retryTimer = null;
+  _retryCount = 0;
+}

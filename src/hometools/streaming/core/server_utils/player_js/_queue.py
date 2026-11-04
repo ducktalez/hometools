@@ -202,103 +202,16 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     });
   }
 
-  function scheduleInitialCatalogRetry(reason) {
-    if (initialCatalogRetryTimer) return;
-    console.info('Initial catalog retry scheduled:', reason || 'loading');
-    initialCatalogRetryTimer = window.setTimeout(function() {
-      initialCatalogRetryTimer = null;
-      loadInitialCatalog();
-    }, 800);
-  }
-
+  /* loadInitialCatalog (stale-while-revalidate startup load + retry state)
+     ported to webui/src/catalogFetch.ts. */
   function loadInitialCatalog() {
-    if (allItems.length) {
-      console.info('Initial catalog already present in page payload:', allItems.length, 'items');
-      return Promise.resolve(allItems);
-    }
-    /* ── Stale-while-revalidate: show cached catalog immediately ───────────────
-       If localStorage holds a fresh snapshot (< _CATALOG_MAX_AGE_MS), display
-       it instantly with no loading spinner.  A silent background fetch follows
-       to pick up any changes; the UI only re-renders when the item count differs.
-       _loadCatalogCache() returns null when the entry is absent or expired.    */
-    var _cachedItems = _loadCatalogCache();
-    if (_cachedItems && _cachedItems.length) {
-      console.info('Initial catalog: serving', _cachedItems.length, 'items from localStorage cache (background refresh follows)');
-      allItems = _cachedItems;
-      _invalidateDupeMap();
-      _invalidateFolderCache();
-      showFolderView();
-      /* Verify against server silently — no loading state, no spinner */
-      fetch(API_PATH, { cache: 'no-store' })
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(data) {
-          if (!data || data.error || data.loading) return;
-          var fresh = _applyLocalMutations(Array.isArray(data.items) ? data.items : []);
-          /* Detect deletions/replacements, not just count (catalogRefresh.ts). */
-          var changed = window._catalogChanged(allItems, fresh);
-          allItems = fresh;
-          _invalidateDupeMap();
-          _invalidateFolderCache();
-          _saveCatalogCache(allItems);
-          if (changed) { showFolderView(); }
-          if (data.refreshing) scheduleBackgroundRefresh();
-        })
-        .catch(function() { /* server offline — cached data stays visible */ });
-      return Promise.resolve(allItems);
-    }
-    initialCatalogRetryCount += 1;
-    if (initialCatalogRetryCount <= 1) {
-      showLoadingState('Loading library…');
-    }
-    var t0 = Date.now();
-    console.info('Initial catalog fetch started:', API_PATH);
-    return fetch(API_PATH, { cache: 'no-store' })
-      .then(function(r) {
-        console.info('Initial catalog response received after', Date.now() - t0, 'ms with status', r.status);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function(data) {
-        if (data && data.error) {
-          throw new Error(data.error);
-        }
-        /* Handle loading state (truly empty, no quick scan available) */
-        if (data && data.loading && (!data.items || data.items.length === 0)) {
-          var detail = data.detail || 'Library cache is warming in the background.';
-          console.info('Initial catalog still building (empty):', detail);
-          showIndexingToast(detail, data.cache);
-          scheduleInitialCatalogRetry(detail);
-          return [];
-        }
-        if (initialCatalogRetryTimer) {
-          window.clearTimeout(initialCatalogRetryTimer);
-          initialCatalogRetryTimer = null;
-        }
-        initialCatalogRetryCount = 0;
-        allItems = data && Array.isArray(data.items) ? data.items : [];
-        _invalidateDupeMap();
-        _invalidateFolderCache();
-        _saveCatalogCache(allItems);
-        console.info('Initial catalog parsed after', Date.now() - t0, 'ms:', allItems.length, 'items');
-        showFolderView();
-        /* If still building, show indexing toast and poll for updates */
-        if (data && data.refreshing) {
-          var refreshDetail = data.detail || 'Building index in background…';
-          console.info('Catalog served from quick scan, index still building:', refreshDetail);
-          showIndexingToast(refreshDetail, data.cache);
-          if ((_toolState && _toolState.autoRefresh || 'auto') !== 'off') scheduleBackgroundRefresh();
-        } else {
-          hideIndexingToast();
-        }
-        return allItems;
-      })
-      .catch(function(err) {
-        console.error('Initial catalog load failed:', err);
-        showCatalogLoadError(err && err.message ? err.message : 'Library could not be loaded.');
-        return [];
-      });
+    return window._loadInitialCatalog(Object.assign({}, _catalogFetchHooks, {
+      loadCache: function() { return _loadCatalogCache(); },
+      showLoadingState: function(m) { showLoadingState(m); },
+      showCatalogLoadError: function(m) { showCatalogLoadError(m); },
+      autoRefreshOn: function() { return ((_toolState && _toolState.autoRefresh) || 'auto') !== 'off'; }
+    }));
   }
-
   /* ── breadcrumb ──────────────────────────────────────────────────────
      Lives inline in the header (between the Home button and the flexible
      spacer, see docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung").

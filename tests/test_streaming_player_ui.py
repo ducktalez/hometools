@@ -556,30 +556,34 @@ def test_js_has_api_path_variable():
 
 
 def test_js_loads_initial_catalog_async():
-    """The shell should fetch the catalog asynchronously after initial page render."""
+    """The shell should fetch the catalog asynchronously after initial page render
+    (loadInitialCatalog ported to webui/src/catalogFetch.ts)."""
     js = _js(style="classic")
+    ts = _webui_src("catalogFetch.ts")
     assert "function loadInitialCatalog" in js
-    assert "fetch(API_PATH, { cache: 'no-store' })" in js
-    assert "Loading library" in js
-    assert "Initial catalog fetch started" in js
-    assert "Initial catalog response received after" in js
+    assert "window._loadInitialCatalog(" in js
+    assert 'fetch(h.apiPath, { cache: "no-store" })' in ts
+    assert "Loading library" in ts
+    assert "Initial catalog fetch started" in ts
+    assert "Initial catalog response received after" in ts
 
 
 def test_js_retries_initial_catalog_while_server_is_loading():
     """The client should poll again when the server reports a loading state."""
-    js = _js(style="classic")
-    assert "scheduleInitialCatalogRetry" in js
-    assert "data && data.loading" in js
-    assert "fetch(API_PATH, { cache: 'no-store' })" in js
+    ts = _webui_src("catalogFetch.ts")
+    assert "scheduleInitialRetry" in ts
+    assert "data && data.loading" in ts
+    assert 'fetch(h.apiPath, { cache: "no-store" })' in ts
 
 
 def test_js_shows_indexing_toast_for_refreshing_state():
     """When data.refreshing is set, the UI should show an indexing toast, not a full-screen loader."""
     js = _js(style="classic")
+    ts = _webui_src("catalogFetch.ts")
     assert "showIndexingToast" in js
     assert "hideIndexingToast" in js
     assert "scheduleBackgroundRefresh" in js
-    assert "data.refreshing" in js
+    assert "data.refreshing" in ts
     assert "ht-indexing-toast" in js
 
 
@@ -1761,7 +1765,7 @@ def test_loading_and_error_states_use_shared_folder_grid_entry_point():
     loading_body = loading_fn.split("function showCatalogLoadError(", 1)[0]
     assert "_enterFolderGridView({" in loading_body
     error_fn = js.split("function showCatalogLoadError(", 1)[1]
-    error_body = error_fn.split("function scheduleInitialCatalogRetry(", 1)[0]
+    error_body = error_fn.split("function loadInitialCatalog(", 1)[0]
     assert "_enterFolderGridView({" in error_body
     assert "backBtn.style.display" not in js
 
@@ -2015,11 +2019,10 @@ def test_js_invalidate_folder_cache_call_sites_still_present():
     still happen — a stale folder list would show deleted folders as move
     targets."""
     js = _js()
-    assert js.count("_invalidateFolderCache()") >= 4
+    assert js.count("_invalidateFolderCache()") >= 2
     # refresh/fetch paths invalidate through catalogFetch.ts's invalidateCaches hook
     assert "invalidateCaches: function() { _invalidateDupeMap(); _invalidateFolderCache(); }" in js
-    assert js.count("h.invalidateCaches()") == 0
-    assert _webui_src("catalogFetch.ts").count("h.invalidateCaches()") >= 4
+    assert _webui_src("catalogFetch.ts").count("h.invalidateCaches()") >= 6
 
 
 class TestHtStateBridge:
@@ -2549,33 +2552,27 @@ class TestCatalogLocalStorageCache:
     # ── loadInitialCatalog must use the cache ─────────────────────────────────
 
     def test_load_initial_catalog_checks_cache_before_fetch(self):
-        """loadInitialCatalog must call _loadCatalogCache() before going to the network."""
-        js = self._js()
-        load_fn_start = js.index("function loadInitialCatalog(")
-        # _loadCatalogCache must appear inside loadInitialCatalog, before the fetch call
-        load_cache_pos = js.index("_loadCatalogCache()", load_fn_start)
-        fetch_pos = js.index("fetch(API_PATH", load_fn_start)
-        assert load_cache_pos < fetch_pos, "_loadCatalogCache() must be called BEFORE the network fetch inside loadInitialCatalog"
+        """loadInitialCatalog must call loadCache() before going to the network."""
+        ts = _webui_src("catalogFetch.ts")
+        start = ts.index("export function loadInitialCatalog(")
+        load_cache_pos = ts.index("h.loadCache()", start)
+        fetch_pos = ts.index("fetch(h.apiPath", start)
+        assert load_cache_pos < fetch_pos, "loadCache() must be called BEFORE the network fetch inside loadInitialCatalog"
+        assert "loadCache: function() { return _loadCatalogCache(); }" in self._js()
 
     def test_load_initial_catalog_saves_after_fetch(self):
         """After a successful network fetch, loadInitialCatalog must persist the result."""
-        js = self._js()
-        load_fn_start = js.index("function loadInitialCatalog(")
-        # Find next function definition to bound the search
-        next_fn = js.index("\n  function ", load_fn_start + 1)
-        fn_body = js[load_fn_start:next_fn]
-        assert "_saveCatalogCache(allItems)" in fn_body, "_saveCatalogCache must be called inside loadInitialCatalog after the fetch"
+        ts = _webui_src("catalogFetch.ts")
+        body = ts[ts.index("export function loadInitialCatalog(") :]
+        assert body.count("h.saveCache(s.allItems)") >= 2, "saveCache must run after the verify fetch and after the initial fetch"
 
     def test_load_initial_catalog_shows_cached_items_without_loading_state(self):
         """When cache is present, loadInitialCatalog must call showFolderView() immediately."""
-        js = self._js()
-        load_fn_start = js.index("function loadInitialCatalog(")
-        next_fn = js.index("\n  function ", load_fn_start + 1)
-        fn_body = js[load_fn_start:next_fn]
-        # showFolderView() must appear before the initialCatalogRetryCount increment
-        # (i.e. in the cache-hit branch, not the loading branch)
-        show_pos = fn_body.index("showFolderView()")
-        retry_pos = fn_body.index("initialCatalogRetryCount")
+        ts = _webui_src("catalogFetch.ts")
+        body = ts[ts.index("export function loadInitialCatalog(") :]
+        # showFolderView() must appear in the cache-hit branch, before the retry counter
+        show_pos = body.index("h.showFolderView()")
+        retry_pos = body.index("_retryCount += 1")
         assert show_pos < retry_pos, "showFolderView() must be called in the cache-hit branch, before the retry counter"
 
     # ── Cache must be updated on background/manual refresh ───────────────────
@@ -2610,13 +2607,10 @@ class TestCatalogLocalStorageCache:
 
     def test_cache_hit_handles_offline_server_gracefully(self):
         """When cache is used and the background fetch fails (server offline),
-        the cached data must remain visible — no crash or empty state."""
-        js = self._js()
-        load_fn_start = js.index("function loadInitialCatalog(")
-        next_fn = js.index("\n  function ", load_fn_start + 1)
-        fn_body = js[load_fn_start:next_fn]
-        # Must have a .catch() handler in the background fetch branch
-        assert ".catch(function()" in fn_body, "The background refresh fetch inside loadInitialCatalog must have a .catch() handler"
+        the cached data must remain visible ? no crash or empty state."""
+        ts = _webui_src("catalogFetch.ts")
+        body = ts[ts.index("export function loadInitialCatalog(") :]
+        assert ".catch(() => {" in body, "The background verify fetch inside loadInitialCatalog must have a .catch() handler"
 
     # ── Parity: both audio and video API paths produce distinct keys ──────────
 
