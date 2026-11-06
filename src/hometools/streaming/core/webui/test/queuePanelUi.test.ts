@@ -1,6 +1,58 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { queuePanelMaxHeight, clampQueueHeight, initQueuePeekHandle } from "../src/queuePanelUi";
 import { openQueuePanel, closeQueuePanel, toggleQueuePanel } from "../src/queuePanelUi";
+import { updateQueueBadge, updateQueueButtons, renderQueuePanel } from "../src/queuePanelUi";
+
+describe("renderQueuePanel", () => {
+  const base = () => ({
+    esc: (s: unknown) => String(s),
+    filePlaceholder: "ph",
+    icRemove: "x",
+    playFromQueue: vi.fn(),
+    removeFromQueue: vi.fn(),
+    initDnd: vi.fn(),
+  });
+  it("null body is no-op", () => {
+    const h = { ...base(), body: null, clearBtn: null, queue: [] };
+    expect(() => renderQueuePanel(h)).not.toThrow();
+    expect(h.initDnd).not.toHaveBeenCalled();
+  });
+  it("empty queue: message, hides clear button, no dnd", () => {
+    const body = { innerHTML: "" } as HTMLElement;
+    const clearBtn = { style: { display: "" } } as unknown as HTMLElement;
+    const h = { ...base(), body, clearBtn, queue: [] };
+    renderQueuePanel(h);
+    expect(body.innerHTML).toContain("queue-empty");
+    expect(clearBtn.style.display).toBe("none");
+    expect(h.initDnd).not.toHaveBeenCalled();
+  });
+  it("filled queue: wires item + remove clicks, inits dnd", () => {
+    type L = (e: unknown) => void;
+    const mkEl = (idx: string) => {
+      const l: Record<string, L> = {};
+      return { dataset: { queueIndex: idx }, addEventListener: (ev: string, f: L) => (l[ev] = f), l };
+    };
+    const item = mkEl("2");
+    const rm = mkEl("3");
+    const body = {
+      innerHTML: "",
+      querySelectorAll: (sel: string) => (sel === ".queue-item" ? [item] : [rm]),
+    } as unknown as HTMLElement;
+    const clearBtn = { style: { display: "none" } } as unknown as HTMLElement;
+    const h = { ...base(), body, clearBtn, queue: [{ relative_path: "a", title: "A" } as LegacyMediaItem] };
+    renderQueuePanel(h);
+    expect(clearBtn.style.display).toBe("");
+    expect(h.initDnd).toHaveBeenCalled();
+    item.l.click({ target: { closest: () => null } });
+    expect(h.playFromQueue).toHaveBeenCalledWith(2);
+    item.l.click({ target: { closest: () => ({}) } });
+    expect(h.playFromQueue).toHaveBeenCalledTimes(1);
+    const stop = vi.fn();
+    rm.l.click({ stopPropagation: stop });
+    expect(stop).toHaveBeenCalled();
+    expect(h.removeFromQueue).toHaveBeenCalledWith(3);
+  });
+});
 import type { QueuePanelHooks } from "../src/queuePanelUi";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -124,3 +176,4 @@ function panelHooks(lyricsOpen = false, withPanel = true) {
   } as unknown as QueuePanelHooks;
   return { h, panel, peek, isOpen: () => open };
 }
+

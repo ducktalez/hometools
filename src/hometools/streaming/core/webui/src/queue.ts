@@ -100,6 +100,50 @@ export function queueMove(fromIdx: number, toIdx: number): void {
   q.splice(Math.min(toIdx, q.length), 0, moved);
 }
 
+export interface QueueActionHooks {
+  onChanged(): void;
+  playItem(item: LegacyMediaItem, index: number): void;
+}
 
+/** Remove entry, refresh UI via hook. */
+export function removeFromQueue(index: number, h: Pick<QueueActionHooks, "onChanged">): void {
+  if (!queueRemoveAt(index)) return;
+  h.onChanged();
+}
 
+/** Empty queue, refresh UI via hook. */
+export function clearQueueAction(h: Pick<QueueActionHooks, "onChanged">): void {
+  queueClear();
+  h.onChanged();
+}
 
+/** Dequeue entry and play it (index in filteredItems if present, else -1). */
+export function playFromQueue(index: number, h: QueueActionHooks): void {
+  const item = queueRemoveAt(index);
+  if (!item) return;
+  h.onChanged();
+  const s = getState();
+  const fi = s ? s.filteredItems : [];
+  const idx = fi.findIndex((x) => x.relative_path === item.relative_path);
+  if (idx >= 0) h.playItem(fi[idx], idx);
+  else h.playItem(item, -1);
+}
+export interface AddToQueueHooks {
+  ensureDom(): void;
+  onChanged(): void;
+  toast(msg: string): void;
+  esc(s: unknown): string;
+  itemNoun: string;
+}
+/** Add to queue with toasts: duplicate -> notice, added -> refresh + confirmation. */
+export function addToQueue(item: LegacyMediaItem | null | undefined, h: AddToQueueHooks): void {
+  h.ensureDom();
+  const res = queueAdd(item, h.itemNoun);
+  if (res === "invalid" || !item) return;
+  if (res === "duplicate") {
+    h.toast("Bereits in der Warteschlange");
+    return;
+  }
+  h.onChanged();
+  h.toast("\u201e" + h.esc(item.title || "Titel") + "\u201c zur Warteschlange hinzugef\u00fcgt");
+}

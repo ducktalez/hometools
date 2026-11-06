@@ -370,43 +370,24 @@ def render_folder_browse_js() -> str:
      Priority: localStorage (instant, survives server restarts) → server recent API.
      Does NOT start playback — user must click explicitly. */
   function _restoreLastEpisode() {
-    /* ── 1. Try localStorage first (fast, works through server restarts) ─── */
-    var local = _loadLastPlayedLocal();
-    function _applyResume(hit, withPos) {
-      currentIndex = hit.idx;
-      markActive();
-      var li = trackList.querySelector('[data-index="' + hit.idx + '"]');
-      if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      showToast('Weiter bei: ' + hit.label + (withPos ? ' (' + fmtTime(hit.pos) + ')' : ''), 5000);
-    }
-    var hitLocal = window._findResumeLocal(filteredItems, local, currentIndex);
-    if (hitLocal) { _applyResume(hitLocal, hitLocal.pos > 2); return; }
-    /* ── 2. Fallback: server recent API ────────────────────────────────────── */
-    if (!RECENT_ENABLED) return;
-    fetch(RECENT_API_PATH + '?limit=100')
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(d) {
-        if (!d || !d.items) return;
-        var hit = window._findResumeRecent(filteredItems, d.items, currentIndex);
-        if (hit) _applyResume(hit, true);
-      })
-      .catch(function() {});
+    window._restoreLastEpisode({
+      loadLastPlayedLocal: _loadLastPlayedLocal,
+      recentEnabled: RECENT_ENABLED,
+      recentApiPath: RECENT_API_PATH,
+      selectResume: function(idx) {
+        currentIndex = idx;
+        markActive();
+        var li = trackList.querySelector('[data-index="' + idx + '"]');
+        if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      },
+      toast: showToast,
+      fmtTime: fmtTime
+    });
   }
 
   /* ── back ── */
   function goBack() {
-    if (_globalSearchActive) { exitGlobalSearch(); return; }
-    if (currentPath === '__offline__') {
-      currentPath = '';
-      showFolderView();
-      return;
-    }
-    if (inPlaylist) {
-      var c = contentsAt(currentPath);
-      if (c.folders.length > 0) { showFolderView(); return; }
-    }
-    currentPath = parentPath(currentPath);
-    showFolderView();
+    window._goBack({ exitGlobalSearch: exitGlobalSearch, showFolderView: showFolderView, contentsAt: contentsAt });
   }
 
   /* ── global search (root view) ── */

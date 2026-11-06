@@ -417,8 +417,7 @@ def test_bg_audio_runs_for_all_video_players():
 
 def test_js_has_was_playing_flag():
     """The wasPlaying flag must exist and be set on 'playing' event."""
-    js = _js(style="classic")
-    assert "_setWasPlaying(false)" in js
+    assert "setWasPlaying(false)" in _webui_src("playItem.ts")
     ts = _webui_src("bgPlayback.ts")
     assert "_was = true" in ts
     assert '"playing"' in ts
@@ -499,11 +498,11 @@ def test_pause_handler_checks_document_hidden():
 
 def test_pause_handler_clears_was_playing():
     """The pause event must clear wasPlaying so tab-switch does not resume."""
-    js = _js(style="classic")
+    ts = _webui_src("playerEvents.ts")
     # The pause handler should set wasPlaying = false when visible (user-initiated)
-    assert "_setWasPlaying(false)" in js
+    assert "setWasPlaying(false)" in ts
     # Must also stop bgAudio and sync timer
-    assert "_bgEl().pause()" in js or "_bgEl().muted = true" in js
+    assert "bg.muted = true" in ts and "stopBgSync" in ts
 
 
 def test_pause_handler_stops_bg_audio():
@@ -540,7 +539,7 @@ def test_js_has_refresh_metadata_function():
     """refreshMetadata function should exist and call the metadata API."""
     js = _js(style="classic")
     assert "refreshMetadata" in js
-    assert "/metadata?path=" in js
+    assert "/metadata?path=" in _webui_src("metadataRefresh.ts")
 
 
 def test_js_play_track_calls_refresh_metadata():
@@ -1078,7 +1077,8 @@ def test_rating_js_calls_render_on_play():
 def test_rating_js_updates_after_metadata_refresh():
     """After refreshMetadata, renderPlayerRating should be called with updated value."""
     js = render_player_js()
-    assert "renderPlayerRating(meta.rating)" in js
+    assert "renderPlayerRating: renderPlayerRating" in js  # hook wiring (legacy)
+    assert "h.renderPlayerRating(meta.rating)" in _webui_src("metadataRefresh.ts")
 
 
 def test_rating_css_has_star_styles():
@@ -1817,8 +1817,8 @@ def test_play_duplicates_uses_shared_track_list_entry_point():
     assert "function playDuplicates()" in js
     fn = js.split("function playDuplicates()", 1)[1]
     body = fn.split("function _deleteDuplicateFile(", 1)[0]
-    assert "_enterTrackListView({" in body
-    assert "collapseFilterBar: true" in body
+    assert "enterTrackListView: _enterTrackListView" in body
+    assert "collapseFilterBar: true" in _webui_src("dupePanel.ts")
 
 
 def test_enter_track_list_view_refreshes_view_toggle():
@@ -2079,7 +2079,8 @@ class TestHtStateBridge:
 
     def test_shuffle_call_sites_still_present(self):
         js = _js()
-        assert js.count("rebuildShuffleQueue(") >= 4
+        assert js.count("rebuildShuffleQueue(") >= 3
+        assert "h.rebuildShuffleQueue(0)" in _webui_src("dupePanel.ts")  # playDuplicates
         assert "nextIndex()" in _webui_src("playNext.ts")
         assert "prevIndex()" in _webui_src("transport.ts")
 
@@ -2486,8 +2487,9 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_flushes_progress_before_switching_track(self):
         """playItem must flush the outgoing track's progress before switching."""
-        js = render_player_js()
-        assert "flush the outgoing track" in js
+        ts = _webui_src("playItem.ts")
+        assert "h.saveProgressNow();" in ts
+        assert ts.index("h.saveProgressNow();") < ts.index("setProgressPath(rp)")
 
     def test_js_hides_pip_button_on_touch_devices(self):
         """The custom PiP button must be suppressed on mobile/touch devices."""

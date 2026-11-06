@@ -1,8 +1,9 @@
 /**
  * Auto-resume target picking. Ported from `player_js/_folder_browse.py::
  * _restoreLastEpisode` (pure half). DOM (markActive/scroll), fetch and toast
- * stay legacy.
+ * stay legacy. estoreLastEpisode (orchestration) also lives here.
  */
+import { getState } from "./stateBridge";
 export interface ResumeHit {
   idx: number;
   pos: number;
@@ -52,4 +53,46 @@ export function findResumeRecent(
   }
   return null;
 }
-
+export interface RestoreHooks {
+  /** localStorage snapshot of the last played item (or null). */
+  loadLastPlayedLocal(): { path?: string; position_seconds?: number } | null;
+  recentEnabled: boolean;
+  recentApiPath: string;
+  /** Mark item `idx` as current (sets currentIndex + highlights row, scrolls into view). */
+  selectResume(idx: number): void;
+  toast(msg: string, ms: number): void;
+  fmtTime(sec: number): string;
+}
+/**
+ * Preselect the last played episode (no playback). Priority: localStorage
+ * (instant, survives server restarts) -> server recent API.
+ */
+export function restoreLastEpisode(h: RestoreHooks): void {
+  const s = getState();
+  if (!s) return;
+  const apply = (hit: ResumeHit, withPos: boolean) => {
+    h.selectResume(hit.idx);
+    h.toast("Weiter bei: " + hit.label + (withPos ? " (" + h.fmtTime(hit.pos) + ")" : ""), 5000);
+  };
+  const hitLocal = findResumeLocal(s.filteredItems, h.loadLastPlayedLocal(), s.currentIndex);
+  if (hitLocal) {
+    apply(hitLocal, hitLocal.pos > 2);
+    return;
+  }
+  if (!h.recentEnabled) return;
+  let p: Promise<Response>;
+  try {
+    p = fetch(h.recentApiPath + "?limit=100");
+  } catch {
+    return;
+  }
+  p.then((r) => (r.ok ? r.json() : null))
+    .then((d: { items?: { relative_path?: string; position_seconds?: number }[] } | null) => {
+      if (!d || !d.items) return;
+      const st = getState();
+      if (!st) return;
+      const hit = findResumeRecent(st.filteredItems, d.items, st.currentIndex);
+      if (hit) apply(hit, true);
+    })
+    .catch(() => {});
+}

@@ -60,18 +60,7 @@ def render_track_render_js() -> str:
   var activeDownloads = {};
 
   function cancelDownload(streamUrl, btn) {
-    var controller = activeDownloads[streamUrl];
-    if (controller) {
-      controller.abort();
-      delete activeDownloads[streamUrl];
-    }
-    if (btn) {
-      btn.classList.remove('downloading');
-      btn.classList.remove('cached');
-      btn.innerHTML = IC_DL;
-      btn.title = 'Download';
-    }
-    showToast('Download abgebrochen');
+    window._cancelDownload(streamUrl, btn, activeDownloads, { icDl: IC_DL, toast: showToast });
   }
 
   /* revokeOfflineUrl/getOfflineUrl: ported to webui/src/offlineUrl.ts,
@@ -203,26 +192,9 @@ def render_track_render_js() -> str:
     });
   }
 
-  function closeOfflineLibrary() {
-    if (currentPath === '__offline__') {
-      currentPath = '';
-      showFolderView();
-    }
-  }
+  function closeOfflineLibrary() { window._closeOfflineLibrary({ showFolderView: showFolderView }); }
 
-  function updateOfflineFolderCount() {
-    getAllDownloads().then(function(downloads) {
-      var ready = downloads.filter(function(d) { return d.status === 'ready'; });
-      var el = document.getElementById('offline-folder-count');
-      if (el) {
-        el.textContent = String(ready.length);
-      }
-      if (downloadedPill) {
-        downloadedPill.textContent = 'Downloaded (' + ready.length + ')';
-        downloadedPill.classList.toggle('has-downloads', ready.length > 0);
-      }
-    });
-  }
+  function updateOfflineFolderCount() { window._updateOfflineFolderCount(downloadedPill); }
 
   /* ── Recently played section ── */
   function loadRecentlyPlayed() {
@@ -324,143 +296,34 @@ def render_track_render_js() -> str:
   }
 
   function updateAllDownloadButtons() {
-    if (!window.isDownloadDbReady()) return;
-    getAllDownloads().then(function(downloads) {
-      /* ready-set: webui/src/offlineDownloads.ts::readyStreamUrls */
-      var cached = window._readyStreamUrls(downloads);
-      document.querySelectorAll('.track-dl-btn').forEach(function(btn) {
-        var url = btn.dataset.streamUrl;
-        btn.classList.remove('cached');
-        if (!btn.classList.contains('downloading')) {
-          btn.innerHTML = IC_DL;
-          btn.title = 'Download';
-        }
-        if (cached[url]) {
-          btn.classList.add('cached');
-          btn.classList.remove('downloading');
-          btn.innerHTML = IC_CHECK;
-          btn.title = 'Offline gespeichert — klicken zum Entfernen';
-        }
-      });
-    });
+    window._updateAllDownloadButtons({ icDl: IC_DL, icCheck: IC_CHECK });
   }
 
+  /* downloadTrack/deleteTrackDownload/checkIfMediaCached/playOfflineOrStream:
+     webui/src/downloadButtons.ts. activeDownloads + storage budget stay here. */
+  function _dlHooks() {
+    return {
+      icDl: IC_DL, icCheck: IC_CHECK, itemNoun: ITEM_NOUN,
+      softLimit: OFFLINE_SOFT_LIMIT, formatBytes: formatBytes,
+      ensureStorageBudget: ensureStorageBudget, toast: showToast,
+      refreshLibrary: refreshOfflineLibrary, updateButtons: updateAllDownloadButtons
+    };
+  }
   function downloadTrack(streamUrl, title, btn, meta) {
-    if (!window.isDownloadDbReady()) return;
-    btn.classList.add('downloading');
-    btn.classList.remove('cached');
-    btn.textContent = '0%';
-    btn.title = 'Download l\\u00e4uft \\u2014 klicken zum Abbrechen';
-
-    var controller = new AbortController();
-    activeDownloads[streamUrl] = controller;
-
-    fetch(streamUrl, { signal: controller.signal }).then(function(response) {
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      var total = parseInt(response.headers.get('content-length'), 10) || 0;
-      if (total > OFFLINE_SOFT_LIMIT) {
-        throw new Error('Datei zu gro\\u00df f\\u00fcr Offline-Speicher (' + formatBytes(total) + ', max ' + formatBytes(OFFLINE_SOFT_LIMIT) + ')');
-      }
-      return Promise.resolve(total > 0 ? ensureStorageBudget(total, streamUrl) : true).then(function(ok) {
-        if (!ok) throw new Error('Offline-Speicher voll \\u2014 l\\u00f6sche alte Downloads oder erh\\u00f6he den Speicher');
-        var received = 0;
-        var reader = response.body.getReader();
-        var chunks = [];
-
-        function pump() {
-          return reader.read().then(function(result) {
-            if (result.done) return;
-            chunks.push(result.value);
-            received += result.value.length;
-            if (total > 0) {
-              btn.textContent = Math.round(received / total * 100) + '%';
-            }
-            return pump();
-          });
-        }
-
-        return pump().then(function() {
-          var blob = new Blob(chunks, { type: response.headers.get('content-type') || 'application/octet-stream' });
-          return ensureStorageBudget(blob.size, streamUrl).then(function(stillOk) {
-            if (!stillOk) throw new Error('Offline-Speicher voll');
-            return deleteDownloadByStreamUrl(streamUrl).then(function() {
-              return window.addDownloadRecord({
-                  streamUrl: streamUrl,
-                  title: title,
-                  artist: meta && meta.artist ? meta.artist : '',
-                  relativePath: meta && meta.relativePath ? meta.relativePath : '',
-                  thumbnailUrl: meta && meta.thumbnailUrl ? meta.thumbnailUrl : '',
-                  mediaType: meta && meta.mediaType ? meta.mediaType : ITEM_NOUN,
-                  blob: blob,
-                  size: blob.size,
-                  timestamp: Date.now(),
-                  status: 'ready'
-                });
-            });
-          });
-        });
-      });
-    }).then(function() {
-      delete activeDownloads[streamUrl];
-      btn.classList.remove('downloading');
-      btn.classList.add('cached');
-      btn.innerHTML = IC_CHECK;
-      btn.title = 'Offline gespeichert — klicken zum Entfernen';
-      updateAllDownloadButtons();
-      refreshOfflineLibrary();
-    }).catch(function(err) {
-      delete activeDownloads[streamUrl];
-      if (err && err.name === 'AbortError') return;
-      console.error('Download failed:', err);
-      btn.classList.remove('downloading');
-      btn.classList.remove('cached');
-      btn.innerHTML = IC_DL;
-      btn.title = 'Download fehlgeschlagen';
-      showToast(err && err.message ? err.message : 'Download fehlgeschlagen');
-      refreshOfflineLibrary();
-    });
+    window._downloadTrack(streamUrl, title, btn, meta, activeDownloads, _dlHooks());
   }
 
   function deleteTrackDownload(streamUrl, btn) {
-    deleteDownloadByStreamUrl(streamUrl).then(function(deleted) {
-      if (!deleted) return;
-      if (btn) {
-        btn.classList.remove('cached');
-        btn.classList.remove('downloading');
-        btn.innerHTML = IC_DL;
-        btn.title = 'Download';
-      }
-      refreshOfflineLibrary();
-      updateAllDownloadButtons();
-    });
+    window._deleteTrackDownload(streamUrl, btn, _dlHooks());
   }
 
-  function checkIfMediaCached(streamUrl) {
-    return getDownloadByStreamUrl(streamUrl).then(function(download) {
-      return download && download.status === 'ready' && download.blob ? download : null;
-    });
-  }
+  function checkIfMediaCached(streamUrl) { return window._checkIfMediaCached(streamUrl); }
 
   function getOfflineUrl(blob) {
     return window.getOfflineUrl(blob);
   }
 
-  function playOfflineOrStream(streamUrl) {
-    return checkIfMediaCached(streamUrl).then(function(download) {
-      if (download && download.blob) {
-        return {
-          url: getOfflineUrl(download.blob),
-          offline: true,
-          fallbackUrl: streamUrl
-        };
-      }
-      return {
-        url: streamUrl,
-        offline: false,
-        fallbackUrl: streamUrl
-      };
-    });
-  }
+  function playOfflineOrStream(streamUrl) { return window._playOfflineOrStream(streamUrl); }
 
   function playStoredDownload(streamUrl) {
     getDownloadByStreamUrl(streamUrl).then(function(download) {

@@ -784,81 +784,40 @@ def render_core_js(waveform_js) -> str:
   }
 
   function addToQueue(item) {
-    _ensureQueueDom();
-    var res = window._queueAdd(item, ITEM_NOUN);
-    if (res === 'invalid') return;
-    if (res === 'duplicate') {
-      showToast('Bereits in der Warteschlange');
-      return;
-    }
-    _onQueueChanged();
-    showToast('\u201e' + escHtml(item.title || 'Titel') + '\u201c zur Warteschlange hinzugef\u00fcgt');
+    window._addToQueue(item, {
+      ensureDom: _ensureQueueDom, onChanged: _onQueueChanged,
+      toast: showToast, esc: escHtml, itemNoun: ITEM_NOUN
+    });
   }
 
   function removeFromQueue(index) {
-    if (!window._queueRemoveAt(index)) return;
-    _onQueueChanged();
+    window._removeFromQueue(index, { onChanged: _onQueueChanged });
   }
 
   function clearQueue() {
-    window._queueClear();
-    _onQueueChanged();
+    window._clearQueueAction({ onChanged: _onQueueChanged });
   }
 
   function updateQueueBadge() {
     _ensureQueueDom();
-    if (_queueBadge) _queueBadge.textContent = _userQueue.length > 0 ? String(_userQueue.length) : '';
-    if (_queuePeekHandle) _queuePeekHandle.classList.toggle('has-items', _userQueue.length > 0);
+    window._updateQueueBadge(_queueBadge, _queuePeekHandle, _userQueue.length);
   }
 
   function updateQueueButtons() {
-    /* Update .track-queue-btn states in track list */
-    document.querySelectorAll('.track-queue-btn').forEach(function(btn) {
-      var rp = btn.dataset.relativePath;
-      var inQ = window._queueIndexOf(_userQueue, rp) >= 0;
-      btn.classList.toggle('in-queue', inQ);
-      btn.title = inQ ? 'Aus Warteschlange entfernen' : 'Zur Warteschlange hinzuf\u00fcgen';
-    });
+    window._updateQueueButtons(_userQueue);
   }
 
   function renderQueuePanel() {
-    if (!_queueBody) return;
-    if (_userQueue.length === 0) {
-      _queueBody.innerHTML = '<div class="queue-empty">Die Warteschlange ist leer.</div>';
-      if (_queueClearBtn) _queueClearBtn.style.display = 'none';
-      return;
-    }
-    if (_queueClearBtn) _queueClearBtn.style.display = '';
-    /* markup: webui/src/panelBodies.ts::queuePanelHtml */
-    _queueBody.innerHTML = window._queuePanelHtml(_userQueue, escHtml, FILE_PLACEHOLDER, IC_REMOVE);
-    /* Wire up click handlers */
-    _queueBody.querySelectorAll('.queue-item').forEach(function(el) {
-      el.addEventListener('click', function(e) {
-        if (e.target.closest('.queue-item-remove')) return;
-        var qi = Number(el.dataset.queueIndex);
-        playFromQueue(qi);
-      });
+    window._renderQueuePanel({
+      body: _queueBody, clearBtn: _queueClearBtn, queue: _userQueue,
+      esc: escHtml, filePlaceholder: FILE_PLACEHOLDER, icRemove: IC_REMOVE,
+      playFromQueue: playFromQueue, removeFromQueue: removeFromQueue,
+      initDnd: initQueueDragDrop
     });
-    _queueBody.querySelectorAll('.queue-item-remove').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        removeFromQueue(Number(btn.dataset.queueIndex));
-      });
-    });
-    initQueueDragDrop();
   }
 
   function playFromQueue(index) {
-    var item = window._queueRemoveAt(index);
-    if (!item) return;
-    _onQueueChanged();
-    /* Play via playItem — find in filteredItems for correct index, or play directly */
-    var fiIdx = filteredItems.findIndex(function(fi) { return fi.relative_path === item.relative_path; });
-    if (fiIdx >= 0) {
-      playItem(filteredItems[fiIdx], fiIdx);
-    } else {
-      playItem(item, -1);
-    }
+    window._playFromQueue(index, { onChanged: _onQueueChanged, playItem: playItem });
   }
 
   /** Dequeue next item from queue — returns true if an item was played */

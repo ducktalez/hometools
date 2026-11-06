@@ -3,7 +3,49 @@
  * (_syncQueueBottom, _initQueueResize, _initQueuePeekHandle). Drag state is
  * private; DOM nodes, `_queueOpen`, `_queueUserHeight` and open/toggle
  * actions come in as args/hooks (state is shared with `_core.py`).
+ * Also: updateQueueBadge / updateQueueButtons (from `_core.py`).
  */
+
+import { queueIndexOf } from "./queue";
+import { queuePanelHtml } from "./panelBodies";
+
+export interface QueueRenderHooks {
+  body: HTMLElement | null;
+  clearBtn: HTMLElement | null;
+  queue: LegacyMediaItem[];
+  esc(s: unknown): string;
+  filePlaceholder: string;
+  icRemove: string;
+  playFromQueue(index: number): void;
+  removeFromQueue(index: number): void;
+  initDnd(): void;
+}
+
+/** Render queue panel body + wire item/remove clicks; empty state hides clear button. */
+export function renderQueuePanel(h: QueueRenderHooks): void {
+  const body = h.body;
+  if (!body) return;
+  if (h.queue.length === 0) {
+    body.innerHTML = '<div class="queue-empty">Die Warteschlange ist leer.</div>';
+    if (h.clearBtn) h.clearBtn.style.display = "none";
+    return;
+  }
+  if (h.clearBtn) h.clearBtn.style.display = "";
+  body.innerHTML = queuePanelHtml(h.queue, h.esc, h.filePlaceholder, h.icRemove);
+  body.querySelectorAll<HTMLElement>(".queue-item").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".queue-item-remove")) return;
+      h.playFromQueue(Number(el.dataset.queueIndex));
+    });
+  });
+  body.querySelectorAll<HTMLElement>(".queue-item-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      h.removeFromQueue(Number(btn.dataset.queueIndex));
+    });
+  });
+  h.initDnd();
+}
 
 /** Panel max-height from window/header/player-bar heights and optional user height. */
 export function queuePanelMaxHeight(winH: number, hdrH: number, barH: number, userHeight: number | null, minH: number): number {
@@ -189,3 +231,17 @@ export function initQueuePeekHandle(o: QueuePeekOptions): void {
   });
 }
 
+/** Queue count badge text + peek-handle "has-items" class. */
+export function updateQueueBadge(badge: HTMLElement | null, peekHandle: HTMLElement | null, count: number): void {
+  if (badge) badge.textContent = count > 0 ? String(count) : "";
+  if (peekHandle) peekHandle.classList.toggle("has-items", count > 0);
+}
+
+/** Sync `.track-queue-btn` state (in-queue class + title) with the queue. */
+export function updateQueueButtons(queue: LegacyMediaItem[] | null | undefined): void {
+  document.querySelectorAll<HTMLElement>(".track-queue-btn").forEach((btn) => {
+    const inQ = queueIndexOf(queue, btn.dataset.relativePath || "") >= 0;
+    btn.classList.toggle("in-queue", inQ);
+    btn.title = inQ ? "Aus Warteschlange entfernen" : "Zur Warteschlange hinzufügen";
+  });
+}

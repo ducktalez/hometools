@@ -44,33 +44,16 @@ def render_library_tools_js() -> str:
   function closeDupePanel() { window._closeDupePanel(); }
 
 
+  /* playDuplicates: webui/src/dupePanel.ts (state via htState). */
   function playDuplicates() {
-    var dupeMap = window._ensureDupeIndex(allItems).map;
-    var keys = Object.keys(dupeMap);
-    if (!keys.length) { showToast('Keine Duplikate gefunden'); return; }
-    var dupeItems = window._collectDupeItems(dupeMap, allItems);
-    if (!dupeItems.length) return;
-    closeDupePanel();
-    /* Show as virtual playlist. Header/toolbar state via _enterTrackListView()
-       (_folder_browse.py) — same shared entry point as showPlaylist()/
-       showUserPlaylistView(); collapseFilterBar keeps the sort/filter row
-       initially hidden (dupe list has its own compact layout). */
-    destroyPlaylistDragDrop();
-    inPlaylist = true;
-    _currentPlaylistId = '__duplicates__';
-    currentPath = '';
-    playlistItems = dupeItems;
-    _enterTrackListView({
-      title: 'Duplikate (' + keys.length + ' Gruppen)',
-      playAllDisabled: true,
-      collapseFilterBar: true,
-      resetIndex: true
+    window._playDuplicates(window._ensureDupeIndex(allItems).map, {
+      toast: showToast,
+      closePanel: closeDupePanel,
+      destroyPlaylistDragDrop: destroyPlaylistDragDrop,
+      enterTrackListView: _enterTrackListView,
+      rebuildShuffleQueue: rebuildShuffleQueue
     });
-    if (shuffleMode) rebuildShuffleQueue(0);
-
-  }
-
-  /* Delete/move/gone-track ported to webui/src/libraryOps.ts (_deletePending
+  }  /* Delete/move/gone-track ported to webui/src/libraryOps.ts (_deletePending
      private there; state via htState). Hooks bundle the legacy side effects. */
   function _libOpsHooks() {
     return {
@@ -197,112 +180,63 @@ def render_library_tools_js() -> str:
       previousTrack: handlePreviousTrack, nextTrack: playNextItem
     });
   }
+  /* playItem sequencing: webui/src/playItem.ts. Legacy keeps state vars + UI side effects. */
   function playItem(t, index) {
-    currentIndex = typeof index === 'number' ? index : -1;
-    currentStreamUrl = t.stream_url || '';
-    _currentItemDuration = t.duration || 0;  /* catalog metadata duration — fallback before browser loads it */
-    _setCurrentIntro(t);
-
-    /* shuffle sync: webui/src/playbackStart.ts */
-    window._syncShufflePosition();
-
-    /* Reset bg audio for new track */
-    stopBgSync();
-    if (_bgEl()) { _bgEl().pause(); _bgEl().muted = true; _bgEl().removeAttribute('src'); }
-    _xfadeCleanup();
-    player.volume = 1;
-    window._setWasPlaying(false);
-    revokeOfflineUrl();
-
-    /* start/retry/offline-fallback chain: webui/src/playbackStart.ts */
-    function beginPlayback(playback) {
-      window._beginPlayback(playback, t.relative_path, {
-        player: player, btnPlay: btnPlay, icPause: IC_PAUSE, icPlay: IC_PLAY,
-        revokeOfflineUrl: revokeOfflineUrl, onStarted: startBgMirror,
-        generateWaveform: generateWaveform
-      });
-    }
-    /* title/artist/thumb/icon/video overlay: webui/src/nowPlaying.ts */
-    window._showNowPlaying(t, {
-      title: playerTitle, artist: playerArtist, thumb: playerThumb, btnPlay: btnPlay,
-      playerBar: playerBar, player: player, overlayTitle: videoOverlayTitleText
-    }, {
-      icPause: IC_PAUSE, filePlaceholder: FILE_PLACEHOLDER, isVideoMode: isVideoMode,
-      openVideoOverlay: openVideoOverlay, syncMiniBar: _syncMiniBar
+    window._playItem(t, index, {
+      player: player,
+      setCurrentIndex: function(i) { currentIndex = i; },
+      setCurrentStreamUrl: function(u) { currentStreamUrl = u; },
+      setCurrentDuration: function(d) { _currentItemDuration = d; },
+      setCurrentIntro: _setCurrentIntro,
+      beginPlayback: function(playback) {
+        window._beginPlayback(playback, t.relative_path, {
+          player: player, btnPlay: btnPlay, icPause: IC_PAUSE, icPlay: IC_PLAY,
+          revokeOfflineUrl: revokeOfflineUrl, onStarted: startBgMirror,
+          generateWaveform: generateWaveform
+        });
+      },
+      playOfflineOrStream: playOfflineOrStream,
+      showNowPlaying: function(tr) {
+        window._showNowPlaying(tr, {
+          title: playerTitle, artist: playerArtist, thumb: playerThumb, btnPlay: btnPlay,
+          playerBar: playerBar, player: player, overlayTitle: videoOverlayTitleText
+        }, {
+          icPause: IC_PAUSE, filePlaceholder: FILE_PLACEHOLDER, isVideoMode: isVideoMode,
+          openVideoOverlay: openVideoOverlay, syncMiniBar: _syncMiniBar
+        });
+      },
+      markActive: markActive,
+      updateMediaSession: updateMediaSession,
+      renderPlayerRating: renderPlayerRating,
+      updatePlayerBarActions: updatePlayerBarActions,
+      refreshMetadata: refreshMetadata,
+      refreshLyricsIfOpen: function(tr) {
+        if (LYRICS_ENABLED && window._lyrics.isOpen()) openLyricsPanel(tr.relative_path || '', tr.title);
+      },
+      saveProgressNow: saveProgressNow,
+      saveLastPlayedLocal: _saveLastPlayedLocal,
+      autoResume: AUTO_RESUME_ENABLED,
+      loadAndSeekProgress: loadAndSeekProgress,
+      loadSpriteData: loadSpriteData,
+      routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); }
     });
-    markActive();
-    updateMediaSession(t);
-    renderPlayerRating(t.rating || 0);
-    updatePlayerBarActions();
-    refreshMetadata(t);
-    /* Auto-update lyrics panel if currently open */
-    if (LYRICS_ENABLED && window._lyrics.isOpen()) openLyricsPanel(t.relative_path || '', t.title);
-
-    /* playback progress: track current item and try to resume */
-    saveProgressNow();   /* flush the outgoing track's position before switching */
-    window._cancelProgressTimer();
-    window._setProgressPath(t.relative_path || '');
-    /* Also persist to localStorage so the episode can be restored after a
-       server restart or page reload — even if < 5 s have elapsed (which
-       saveProgressNow would otherwise skip). */
-    _saveLastPlayedLocal(window._getProgressPath(), 0);
-    if (AUTO_RESUME_ENABLED) loadAndSeekProgress(window._getProgressPath());
-
-    /* load sprite sheet for video scrubber preview */
-    loadSpriteData(t.relative_path || '');
-
-    playOfflineOrStream(t.stream_url)
-      .then(beginPlayback)
-      .catch(function() {
-        beginPlayback({ url: t.stream_url, offline: false, fallbackUrl: t.stream_url });
-      });
-    if (typeof _router !== 'undefined') _router.update();
-  }
-
-  function playTrack(index) {
+  }  function playTrack(index) {
     if (index < 0 || index >= filteredItems.length) return;
     playItem(filteredItems[index], index);
   }
 
+  /* refreshMetadata: webui/src/metadataRefresh.ts */
   function refreshMetadata(t) {
-    var base = API_PATH.substring(0, API_PATH.lastIndexOf('/'));
-    var metaUrl = base + '/metadata?path=' + encodeURIComponent(t.relative_path);
-    var _requestedFor = t.relative_path;
-    fetch(metaUrl)
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(meta) {
-        if (!meta) return;
-        /* Guard against a stale/late response overwriting the title/artist
-           of a track that has since been superseded by a newer playItem()
-           call (e.g. rapid track switching or a fast list reload while
-           Tools mode is active). Without this guard the UI can briefly show
-           a swapped/mismatched title+artist pair. */
-        if (window._getProgressPath() !== _requestedFor) return;
-        var changed = false;
-        if (meta.title && meta.title !== t.title) {
-          t.title = meta.title;
-          playerTitle.textContent = meta.title;
-          changed = true;
-        }
-        if (meta.artist && meta.artist !== t.artist) {
-          t.artist = meta.artist;
-          playerArtist.textContent = meta.artist;
-          changed = true;
-        }
-        if (typeof meta.rating === 'number') {
-          t.rating = meta.rating;
-          renderPlayerRating(meta.rating);
-        }
-        if (changed) {
-          updateMediaSession(t);
-          applyFilter();
-          markActive();
-        }
-      })
-      .catch(function() {});
-  }
-
-  /* togglePlay: webui/src/transport.ts */
+    window._refreshMetadata(t, {
+      apiPath: API_PATH,
+      setTitle: function(s) { playerTitle.textContent = s; },
+      setArtist: function(s) { playerArtist.textContent = s; },
+      renderPlayerRating: renderPlayerRating,
+      updateMediaSession: updateMediaSession,
+      applyFilter: applyFilter,
+      markActive: markActive
+    });
+  }  /* togglePlay: webui/src/transport.ts */
   function _transportHooks() {
     return {
       player: player, btnPlay: btnPlay, icPlay: IC_PLAY, icPause: IC_PAUSE,
@@ -956,29 +890,10 @@ def render_library_tools_js() -> str:
   function _loadFolderOrder(folderPath) {
     return window._loadOrder(_folderOrderKey(folderPath));
   }  function _saveFolderOrder(folderPath, paths) {
-    try { localStorage.setItem(_folderOrderKey(folderPath), JSON.stringify(paths)); }
-    catch (e) { /* quota exceeded — ignore */ }
-    /* persist to server (fire-and-forget) */
-    fetch(FOLDER_ORDER_API_PATH, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder_path: folderPath || '__root__', items: paths })
-    }).catch(function() {});
+    window._saveOrder(FOLDER_ORDER_API_PATH, _folderOrderKey(folderPath), folderPath || '__root__', paths);
   }
   function _loadFolderOrderAsync(folderPath, cb) {
-    var key = folderPath || '__root__';
-    fetch(FOLDER_ORDER_API_PATH + '?path=' + encodeURIComponent(key))
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
-        var items = d.items || [];
-        if (items.length) {
-          try { localStorage.setItem(_folderOrderKey(folderPath), JSON.stringify(items)); }
-          catch (e) {}
-          cb(items);
-        } else {
-          cb(_loadFolderOrder(folderPath));
-        }
-      }).catch(function() { cb(_loadFolderOrder(folderPath)); });
+    window._loadOrderAsync(FOLDER_ORDER_API_PATH, _folderOrderKey(folderPath), folderPath || '__root__', cb);
   }
   function _sortByFolderOrder(folderPath, items) {
     return window._sortByOrder(items, _loadFolderOrder(folderPath));

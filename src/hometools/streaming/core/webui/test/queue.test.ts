@@ -1,6 +1,52 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { installState, item } from "./helpers";
-import { queueAdd, queueRemoveAt, queueClear, queueMove, queueIndexOf, resolveNext } from "../src/queue";
+import { queueAdd, queueRemoveAt, queueClear, queueMove, queueIndexOf, resolveNext, removeFromQueue, clearQueueAction, playFromQueue, addToQueue } from "../src/queue";
+
+describe("addToQueue", () => {
+  const hooks = () => ({ ensureDom: vi.fn(), onChanged: vi.fn(), toast: vi.fn(), esc: (s: unknown) => String(s), itemNoun: "track" });
+  it("adds, refreshes, toasts with title", () => {
+    const s = installState();
+    const h = hooks();
+    addToQueue(item("a", { title: "A" }), h);
+    expect(s.userQueue.length).toBe(1);
+    expect(h.onChanged).toHaveBeenCalled();
+    expect(h.toast.mock.calls[0][0]).toContain("A");
+  });
+  it("duplicate -> notice only; invalid -> silent", () => {
+    installState({ userQueue: [item("a")] });
+    const h = hooks();
+    addToQueue(item("a"), h);
+    expect(h.toast).toHaveBeenCalledWith("Bereits in der Warteschlange");
+    expect(h.onChanged).not.toHaveBeenCalled();
+    const h2 = hooks();
+    addToQueue(null, h2);
+    expect(h2.toast).not.toHaveBeenCalled();
+  });
+});
+
+describe("queue actions", () => {
+  it("removeFromQueue/clearQueueAction fire onChanged only on change", () => {
+    installState({ userQueue: [item("a")] });
+    const onChanged = vi.fn();
+    removeFromQueue(9, { onChanged });
+    expect(onChanged).not.toHaveBeenCalled();
+    removeFromQueue(0, { onChanged });
+    clearQueueAction({ onChanged });
+    expect(onChanged).toHaveBeenCalledTimes(2);
+  });
+  it("playFromQueue uses filteredItems index when present, else -1", () => {
+    const f = item("b");
+    const s = installState({ userQueue: [item("b"), item("z")], filteredItems: [item("a"), f] });
+    const h = { onChanged: vi.fn(), playItem: vi.fn() };
+    playFromQueue(0, h);
+    expect(h.playItem).toHaveBeenLastCalledWith(f, 1);
+    playFromQueue(0, h);
+    expect(h.playItem.mock.calls[1][1]).toBe(-1);
+    expect(s.userQueue).toEqual([]);
+    playFromQueue(0, h);
+    expect(h.playItem).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("queue ops", () => {
   it("add: slim entry, default media type, duplicate + invalid detection", () => {

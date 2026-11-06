@@ -172,7 +172,7 @@ class TestTrackDownloadButtons:
     def test_js_has_track_dl_btn_in_render(self):
         """Each track item must contain a download button."""
         js = _js()
-        assert "track-dl-btn" in js
+        assert "track-dl-btn" in js or "track-dl-btn" in _webui_src("trackRows.ts")
 
     def test_js_has_init_download_db(self):
         """IndexedDB layer ported to webui/src/offlineDb.ts (behaviour:
@@ -188,9 +188,10 @@ class TestTrackDownloadButtons:
         """downloadTrack must fetch with progress and store blob in IndexedDB."""
         js = _js()
         assert "function downloadTrack" in js
-        assert "fetch(streamUrl" in js
-        assert "getReader()" in js
-        assert "new Blob" in js
+        ts = _webui_src("downloadButtons.ts")
+        assert "fetch(streamUrl" in ts
+        assert "getReader()" in ts
+        assert "new Blob" in ts
 
     def test_js_has_delete_track_download_function(self):
         """deleteTrackDownload must remove a cached download from IndexedDB."""
@@ -203,8 +204,9 @@ class TestTrackDownloadButtons:
         """updateAllDownloadButtons must check cached status for all track buttons."""
         js = _js()
         assert "function updateAllDownloadButtons" in js
-        assert "track-dl-btn" in js
-        assert "cached" in js
+        ts = _webui_src("downloadButtons.ts")
+        assert "track-dl-btn" in ts
+        assert "cached" in ts
 
     def test_js_dl_btn_click_stops_propagation(self):
         """Download button click must not bubble to track click (play)."""
@@ -245,23 +247,22 @@ class TestTrackDownloadButtons:
         """cancelDownload must abort an active download via AbortController."""
         js = _js()
         assert "function cancelDownload" in js
-        assert "controller.abort()" in js
+        assert "controller.abort()" in _webui_src("downloadButtons.ts")
         assert "activeDownloads" in js
         assert "AbortError" in js
 
     def test_js_download_uses_abort_controller(self):
         """downloadTrack must use AbortController for cancellation support."""
-        js = _js()
-        assert "new AbortController" in js
-        assert "signal: controller.signal" in js
-        assert "delete activeDownloads[streamUrl]" in js
+        ts = _webui_src("downloadButtons.ts")
+        assert "new AbortController" in ts
+        assert "signal: controller.signal" in ts
+        assert "delete active[streamUrl]" in ts
 
     def test_js_download_uses_store_add(self):
         """downloadTrack must use store.add() not store.put() for Chrome compat."""
-        js = _js()
         # store.add() works with autoIncrement keyPath without providing the key;
         # the write lives in webui/src/offlineDb.ts::addDownloadRecord
-        assert "window.addDownloadRecord(" in js
+        assert "addDownloadRecord(" in _webui_src("downloadButtons.ts")
         from pathlib import Path
 
         import hometools
@@ -358,7 +359,7 @@ class TestOfflinePlaybackIntegrationHooks:
         click, before the player-bar title/artist even update. Must stay
         exported + bridged onto window by main.ts."""
         js = _js()
-        assert "revokeOfflineUrl();" in js
+        assert "revokeOfflineUrl: revokeOfflineUrl" in js  # bare ref, needs window bridge
         ts = _webui_src("offlineUrl.ts")
         assert "export function revokeOfflineUrl" in ts
         main_ts = _webui_src("main.ts")

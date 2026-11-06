@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { item } from "./helpers";
-import { findResumeLocal, findResumeRecent } from "../src/resume";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { item, installState } from "./helpers";
+import { findResumeLocal, findResumeRecent, restoreLastEpisode } from "../src/resume";
 
 const items = [item("a", { title: "A" }), item("b", { title: "" }), item("c", { title: "C" })];
 
@@ -33,4 +33,67 @@ describe("findResumeRecent", () => {
     expect(findResumeRecent(items, [], -1)).toBeNull();
   });
 });
-
+describe("restoreLastEpisode", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const hooks = (over = {}) => ({
+    loadLastPlayedLocal: vi.fn(() => null as { path?: string; position_seconds?: number } | null),
+    recentEnabled: true,
+    recentApiPath: "/api/recent",
+    selectResume: vi.fn(),
+    toast: vi.fn(),
+    fmtTime: (s: number) => "t" + s,
+    ...over,
+  });
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  it("local hit with position: selects + toast with time", () => {
+    installState({ filteredItems: items, currentIndex: -1 });
+    const h = hooks({ loadLastPlayedLocal: vi.fn(() => ({ path: "c", position_seconds: 90 })) });
+    restoreLastEpisode(h);
+    expect(h.selectResume).toHaveBeenCalledWith(2);
+    expect(h.toast).toHaveBeenCalledWith("Weiter bei: C (t90)", 5000);
+  });
+  it("local hit with tiny position: no time suffix; no fetch", () => {
+    installState({ filteredItems: items, currentIndex: -1 });
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    const h = hooks({ loadLastPlayedLocal: vi.fn(() => ({ path: "a", position_seconds: 1 })) });
+    restoreLastEpisode(h);
+    expect(h.toast).toHaveBeenCalledWith("Weiter bei: A", 5000);
+    expect(f).not.toHaveBeenCalled();
+  });
+  it("falls back to server recent API", async () => {
+    installState({ filteredItems: items, currentIndex: -1 });
+    const f = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [{ relative_path: "a", position_seconds: 60 }] }) }));
+    vi.stubGlobal("fetch", f);
+    const h = hooks();
+    restoreLastEpisode(h);
+    await flush();
+    expect(f).toHaveBeenCalledWith("/api/recent?limit=100");
+    expect(h.selectResume).toHaveBeenCalledWith(0);
+    expect(h.toast).toHaveBeenCalledWith("Weiter bei: A (t60)", 5000);
+  });
+  it("recent disabled / http error / network error: silent", async () => {
+    installState({ filteredItems: items, currentIndex: -1 });
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    restoreLastEpisode(hooks({ recentEnabled: false }));
+    expect(f).not.toHaveBeenCalled();
+    const h = hooks();
+    vi.stubGlobal("fetch", () => Promise.resolve({ ok: false }));
+    restoreLastEpisode(h);
+    vi.stubGlobal("fetch", () => Promise.reject(new Error("x")));
+    restoreLastEpisode(h);
+    vi.stubGlobal("fetch", () => {
+      throw new Error("sync");
+    });
+    expect(() => restoreLastEpisode(h)).not.toThrow();
+    await flush();
+    expect(h.selectResume).not.toHaveBeenCalled();
+  });
+  it("already selected item: nothing happens", () => {
+    installState({ filteredItems: items, currentIndex: 1 });
+    const h = hooks({ loadLastPlayedLocal: vi.fn(() => ({ path: "a" })), recentEnabled: false });
+    restoreLastEpisode(h);
+    expect(h.selectResume).not.toHaveBeenCalled();
+  });
+});
