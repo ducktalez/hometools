@@ -266,6 +266,7 @@ import { buildFolderMatches, searchItems } from "./search";
 import { applyFilterChain } from "./filterChain";
 import { parseIntro, introButtonMode, patchIntroLocal } from "./intro";
 import { initIntroUi, setCurrentIntro, updateSkipIntroBtn } from "./introUi";
+import { showIndexingToast, hideIndexingToast } from "./indexingToast";
 import { queueIndexOf, queueAdd, queueRemoveAt, queueClear, queueMove, resolveNext, removeFromQueue, clearQueueAction, playFromQueue, addToQueue } from "./queue";
 import { contentsAt } from "./folderContents";
 import { folderCardHtml, fileCardHtml } from "./folderCards";
@@ -580,6 +581,8 @@ declare global {
     _initIntroUi: typeof initIntroUi;
     _setCurrentIntro: typeof setCurrentIntro;
     _updateSkipIntroBtn: typeof updateSkipIntroBtn;
+    _showIndexingToast: typeof showIndexingToast;
+    _hideIndexingToast: typeof hideIndexingToast;
     _queueIndexOf: typeof queueIndexOf;
     _queueAdd: typeof queueAdd;
     _queueRemoveAt: typeof queueRemoveAt;
@@ -913,6 +916,8 @@ window._patchIntroLocal = patchIntroLocal;
 window._initIntroUi = initIntroUi;
 window._setCurrentIntro = setCurrentIntro;
 window._updateSkipIntroBtn = updateSkipIntroBtn;
+window._showIndexingToast = showIndexingToast;
+window._hideIndexingToast = hideIndexingToast;
 // Queue data ops — htState.userQueue bridge (see queue.ts header).
 window._queueIndexOf = queueIndexOf;
 window._queueAdd = queueAdd;

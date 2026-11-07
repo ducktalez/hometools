@@ -583,7 +583,7 @@ def test_js_shows_indexing_toast_for_refreshing_state():
     assert "hideIndexingToast" in js
     assert "scheduleBackgroundRefresh" in js
     assert "data.refreshing" in ts
-    assert "ht-indexing-toast" in js
+    assert "ht-indexing-toast" in _webui_src("indexingToast.ts")
 
 
 def test_js_loading_state_shows_message_in_folder_grid():

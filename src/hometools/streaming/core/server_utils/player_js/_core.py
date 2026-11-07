@@ -615,50 +615,9 @@ def render_core_js(waveform_js) -> str:
   function saveProgressDebounced() { window._saveProgressDebounced(_progHooks()); }
   function clearProgressFor(rp) { window._clearProgressFor(rp, _progHooks()); }
   function loadAndSeekProgress(rp) { window._loadAndSeekProgress(rp, _progHooks()); }
-  var _indexToastEl = null;
-  /* Per-run dismissal: once the user taps the toast away it stays hidden for
-     the current indexing run.  The dismissal is persisted in localStorage
-     (keyed by the run's start time) so it survives a page reload — but a
-     genuinely *new* indexing run (different start time) shows the toast
-     again.  hideIndexingToast() clears it when the run finishes. */
-  var _indexToastDismissed = false;
-  var _indexCurrentRunId = '';
-  var _INDEX_DISMISS_KEY = 'ht-index-toast-dismissed';
-  function _indexDismissedRunId() {
-    try { return localStorage.getItem(_INDEX_DISMISS_KEY) || ''; } catch (e) { return ''; }
-  }
-  function showIndexingToast(msg, prog) {
-    /* Identify the current indexing run so a dismissal can be scoped to it. */
-    var runId = (prog && prog.last_build_started_at != null) ? String(prog.last_build_started_at) : '';
-    _indexCurrentRunId = runId;
-    if (_indexToastDismissed) return;
-    /* Persisted dismissal for *this* run survives reloads. */
-    if (runId && _indexDismissedRunId() === runId) { _indexToastDismissed = true; return; }
-    if (!_indexToastEl) {
-      _indexToastEl = document.createElement('div');
-      _indexToastEl.className = 'ht-indexing-toast';
-      _indexToastEl.title = 'Antippen zum Ausblenden';
-      _indexToastEl.addEventListener('click', function() {
-        _indexToastDismissed = true;
-        if (_indexCurrentRunId) {
-          try { localStorage.setItem(_INDEX_DISMISS_KEY, _indexCurrentRunId); } catch (e) {}
-        }
-        if (_indexToastEl) _indexToastEl.classList.remove('visible');
-      });
-      document.body.appendChild(_indexToastEl);
-    }
-    /* markup + progress: webui/src/chromeHtml.ts::indexingToastHtml */
-    _indexToastEl.innerHTML = window._indexingToastHtml(msg, prog, escHtml);
-    _indexToastEl.classList.add('visible');
-  }
-  function hideIndexingToast() {
-    if (_indexToastEl) _indexToastEl.classList.remove('visible');
-    window._clearIndexRefreshTimer();
-    _indexToastDismissed = false;
-    /* The run is over — drop the persisted dismissal so a future run can
-       show its toast again. */
-    try { localStorage.removeItem(_INDEX_DISMISS_KEY); } catch (e) {}
-  }
+  /* Indexing toast (element + per-run dismissal) ported to webui/src/indexingToast.ts. */
+  function showIndexingToast(msg, prog) { window._showIndexingToast(msg, prog, escHtml); }
+  function hideIndexingToast() { window._hideIndexingToast(); }
 
   /* ── Lyrics panel ── */
   /* cache/open-state/DOM wiring: webui/src/lyricsPanel.ts. Wrappers keep the
