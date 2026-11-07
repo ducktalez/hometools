@@ -112,6 +112,10 @@
  * data half of _core.py's queue block). htState.userQueue added (getter+
  * setter) — clearQueue reassigns, so plain window-bridge was not enough.
  *
+ * Latest slice: introUi.ts (skip-intro button DOM/click/long-press +
+ * _intro* state, from _core.py; legacy calls _setCurrentIntro /
+ * _updateSkipIntroBtn via window).
+ *
  * Previous slice: intro.ts (parseIntro/introButtonMode/patchIntroLocal, from
  * _core.py's skip-intro block). Pure decision/parse logic only; DOM, fetch
  * and _intro* IIFE vars stay in _core.py.
@@ -261,6 +265,7 @@ import { itemsUnder, collectGenres, sortTracks, replaceItemFields, findItemByStr
 import { buildFolderMatches, searchItems } from "./search";
 import { applyFilterChain } from "./filterChain";
 import { parseIntro, introButtonMode, patchIntroLocal } from "./intro";
+import { initIntroUi, setCurrentIntro, updateSkipIntroBtn } from "./introUi";
 import { queueIndexOf, queueAdd, queueRemoveAt, queueClear, queueMove, resolveNext, removeFromQueue, clearQueueAction, playFromQueue, addToQueue } from "./queue";
 import { contentsAt } from "./folderContents";
 import { folderCardHtml, fileCardHtml } from "./folderCards";
@@ -572,6 +577,9 @@ declare global {
     _parseIntro: typeof parseIntro;
     _introButtonMode: typeof introButtonMode;
     _patchIntroLocal: typeof patchIntroLocal;
+    _initIntroUi: typeof initIntroUi;
+    _setCurrentIntro: typeof setCurrentIntro;
+    _updateSkipIntroBtn: typeof updateSkipIntroBtn;
     _queueIndexOf: typeof queueIndexOf;
     _queueAdd: typeof queueAdd;
     _queueRemoveAt: typeof queueRemoveAt;
@@ -902,6 +910,9 @@ window._applyFilterChain = applyFilterChain;
 window._parseIntro = parseIntro;
 window._introButtonMode = introButtonMode;
 window._patchIntroLocal = patchIntroLocal;
+window._initIntroUi = initIntroUi;
+window._setCurrentIntro = setCurrentIntro;
+window._updateSkipIntroBtn = updateSkipIntroBtn;
 // Queue data ops — htState.userQueue bridge (see queue.ts header).
 window._queueIndexOf = queueIndexOf;
 window._queueAdd = queueAdd;

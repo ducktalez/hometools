@@ -458,87 +458,15 @@ def render_core_js(waveform_js) -> str:
        • "set"   — no marker yet on a *series* episode, early in playback:
                    tapping stores intro_end = current position so the next
                    episodes (and this one on replay) get a real skip button. */
-  var _introStart = 0;
-  var _introEnd = 0;
-  var _curIsSeries = false;
-  var _introBtnMode = '';       /* '', 'skip' or 'set' */
-  var _introLongPressTimer = null;
-  var _introLongPressed = false;
-
-  /* Pure parts (parseIntro/introButtonMode/patchIntroLocal) ported to
-     webui/src/intro.ts, bridged onto window by main.ts. DOM + state here. */
-  function _setCurrentIntro(t) {
-    var info = window._parseIntro(t);
-    _introStart = info.start;
-    _introEnd = info.end;
-    _curIsSeries = info.isSeries;
-    if (videoSkipIntroBtn) { videoSkipIntroBtn.hidden = true; _introBtnMode = ''; }
-  }
-
-  function _updateSkipIntroBtn() {
-    if (!SKIP_INTRO_ENABLED || !videoSkipIntroBtn || !isVideoMode) return;
-    var cur = player.currentTime || 0;
-    var dur = isFinite(player.duration) ? player.duration : 0;
-    var mode = window._introButtonMode(cur, dur, _introStart, _introEnd, _curIsSeries);
-    if (mode) {
-      if (_introBtnMode !== mode) {
-        _introBtnMode = mode;
-        var label = videoSkipIntroBtn.querySelector('span');
-        videoSkipIntroBtn.classList.toggle('set-mode', mode === 'set');
-        if (label) label.textContent = (mode === 'skip') ? 'Intro \\u00fcberspringen' : 'Intro-Ende setzen';
-        videoSkipIntroBtn.hidden = false;
-      }
-      return;
-    }
-    if (!videoSkipIntroBtn.hidden) { videoSkipIntroBtn.hidden = true; _introBtnMode = ''; }
-  }
-
-  function _saveIntroMarker(start, end) {
-    var relPath = window._getProgressPath() || '';
-    if (!relPath) return;
-    _introStart = Math.max(0, start || 0);
-    _introEnd = Math.max(0, end || 0);
-    window._patchIntroLocal([allItems, filteredItems], relPath, _introStart, _introEnd);
-    try {
-      fetch(INTRO_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: relPath, start: _introStart, end: _introEnd })
-      }).catch(function() {});
-    } catch (e) { /* ignore */ }
-  }
-
-  if (SKIP_INTRO_ENABLED && videoSkipIntroBtn) {
-    videoSkipIntroBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      if (_introLongPressed) { _introLongPressed = false; return; }
-      if (_introBtnMode === 'skip') {
-        try { player.currentTime = _introEnd; } catch (err) {}
-        if (typeof showToast === 'function') showToast('Intro \\u00fcbersprungen');
-      } else if (_introBtnMode === 'set') {
-        var pos = Math.round((player.currentTime || 0) * 10) / 10;
-        _saveIntroMarker(0, pos);
-        videoSkipIntroBtn.hidden = true; _introBtnMode = '';
-        if (typeof showToast === 'function') showToast('Intro-Ende gesetzt bei ' + fmtTime(pos));
-      }
-    });
-    /* Long-press in skip mode → recalibrate the intro end to the current pos */
-    videoSkipIntroBtn.addEventListener('pointerdown', function() {
-      if (_introBtnMode !== 'skip') return;
-      _introLongPressed = false;
-      _introLongPressTimer = setTimeout(function() {
-        _introLongPressed = true;
-        var pos = Math.round((player.currentTime || 0) * 10) / 10;
-        _saveIntroMarker(_introStart, pos);
-        if (typeof showToast === 'function') showToast('Intro-Ende neu gesetzt bei ' + fmtTime(pos));
-      }, 650);
-    });
-    function _cancelIntroLongPress() { if (_introLongPressTimer) { clearTimeout(_introLongPressTimer); _introLongPressTimer = null; } }
-    videoSkipIntroBtn.addEventListener('pointerup', _cancelIntroLongPress);
-    videoSkipIntroBtn.addEventListener('pointercancel', _cancelIntroLongPress);
-    videoSkipIntroBtn.addEventListener('pointerleave', _cancelIntroLongPress);
-  }
-
+  /* Button DOM/click/long-press + _intro* state ported to webui/src/introUi.ts
+     (legacy calls window._setCurrentIntro / window._updateSkipIntroBtn). */
+  window._initIntroUi({
+    player: player, button: videoSkipIntroBtn,
+    enabled: SKIP_INTRO_ENABLED, isVideoMode: isVideoMode,
+    apiPath: INTRO_API_PATH,
+    getProgressPath: function() { return window._getProgressPath(); },
+    fmtTime: fmtTime, toast: function(m) { showToast(m); }
+  });
   /* ── Fullscreen exit → float player ── */
   function _handleFullscreenChange() {
     var fsEl = document.fullscreenElement || document.webkitFullscreenElement;

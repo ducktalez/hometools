@@ -744,11 +744,17 @@ def test_intro_helpers_ported_to_ts():
     # Threshold semantics: skip window ends 0.3s early, set window 5s..min(25%, 180s)
     assert "cur < end - 0.3" in ts
     assert "Math.min(dur * 0.25, 180)" in ts
+    ui = _webui_src("introUi.ts")
+    assert "parseIntro(" in ui
+    assert "introButtonMode(" in ui
+    assert "patchIntroLocal(" in ui
     js = _js()
     assert "function _patchIntroLocal" not in js
-    assert "window._parseIntro(" in js
-    assert "window._introButtonMode(" in js
-    assert "window._patchIntroLocal(" in js
+    assert "function _setCurrentIntro" not in js
+    assert "function _updateSkipIntroBtn" not in js
+    assert "window._initIntroUi(" in js
+    assert "window._updateSkipIntroBtn()" in js
+    assert "window._setCurrentIntro" in js
 
 
 def test_shuffle_js_has_long_press_binding():

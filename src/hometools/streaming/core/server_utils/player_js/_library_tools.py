@@ -187,7 +187,7 @@ def render_library_tools_js() -> str:
       setCurrentIndex: function(i) { currentIndex = i; },
       setCurrentStreamUrl: function(u) { currentStreamUrl = u; },
       setCurrentDuration: function(d) { _currentItemDuration = d; },
-      setCurrentIntro: _setCurrentIntro,
+      setCurrentIntro: window._setCurrentIntro,
       beginPlayback: function(playback) {
         window._beginPlayback(playback, t.relative_path, {
           player: player, btnPlay: btnPlay, icPause: IC_PAUSE, icPlay: IC_PLAY,
@@ -350,7 +350,7 @@ def render_library_tools_js() -> str:
       drawWaveform(player.currentTime / _currentItemDuration);
     }
     saveProgressDebounced();
-    _updateSkipIntroBtn();
+    window._updateSkipIntroBtn();
     /* Crossfade trigger: start fading when remaining time <= CROSSFADE_DURATION
        Skip crossfade for repeat-one (track restarts itself) */
     if (CROSSFADE_DURATION > 0 && !window._isCrossfading() && !isVideoPlayer && repeatMode !== 'one') {
