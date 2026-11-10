@@ -513,9 +513,10 @@ def test_pause_handler_stops_bg_audio():
 
 def test_visibility_hidden_pauses_video():
     """Going hidden must pause the video to prevent double audio on desktop."""
-    js = _js(style="classic")
-    # The visibilitychange handler should call player.pause() when going hidden
-    assert "player.pause()" in js
+    # Pause handling lives in playerEvents.ts (ignores browser auto-pause when hidden);
+    # user pause via video-area/mini-bar click lives in videoOverlay.ts.
+    assert "document.hidden" in _webui_src("playerEvents.ts")
+    assert "p.pause()" in _webui_src("videoOverlay.ts")
 
 
 # ---------------------------------------------------------------------------

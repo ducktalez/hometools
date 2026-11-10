@@ -221,112 +221,22 @@ def render_core_js(waveform_js) -> str:
         + (waveform_js)
         + """
 
-  /* ── Video overlay helpers (no-op in audio mode) ── */
-  var _isFloating = false;
-
-  function _fixOverlaySize() {
-    /* iOS Safari clips position:fixed inside body{overflow:hidden} to the flex
-       container height. Setting an explicit pixel height via JS is the only
-       reliable cross-browser fix. */
-    if (!videoOverlay) return;
-    var h = window.innerHeight;
-    videoOverlay.style.height = h + 'px';
-    videoOverlay.style.width  = window.innerWidth + 'px';
-  }
-  if (isVideoMode) {
-    window.addEventListener('resize', _fixOverlaySize);
-    _fixOverlaySize();
-  }
-
-  function openVideoOverlay() {
-    if (!videoOverlay) return;
-    _isFloating = false;
-    _fixOverlaySize(); /* ensure pixel-perfect height before showing */
-    videoOverlay.classList.remove('view-hidden');
-    if (videoMiniBar) videoMiniBar.hidden = true;
-    if (videoFloatContainer) videoFloatContainer.classList.remove('active');
-    /* Move <video> back to overlay if it was in float container */
-    if (videoWrap && player.parentNode !== videoWrap) videoWrap.appendChild(player);
-    player.style.display = 'block';
-    _showVidControls(); /* always show controls when overlay opens */
-  }
-
-  /* ── Video overlay: auto-hide controls ──────────────────────────────────
-     Controls (header + player bar) overlay the video. They fade out after
-     3 s of uninterrupted playback. Tap the video area to toggle them.     */
-  var _vidCtrlTimer = null;
-  var _VID_CTRL_HIDE_MS = 3000;
-
-  function _showVidControls() {
-    if (!videoOverlay) return;
-    videoOverlay.classList.remove('controls-hidden');
-    clearTimeout(_vidCtrlTimer);
-    /* Schedule auto-hide only while playing */
-    if (!player.paused) {
-      _vidCtrlTimer = setTimeout(_hideVidControls, _VID_CTRL_HIDE_MS);
-    }
-  }
-  function _hideVidControls() {
-    if (!videoOverlay) return;
-    videoOverlay.classList.add('controls-hidden');
-    clearTimeout(_vidCtrlTimer);
-    _vidCtrlTimer = null;
-  }
-  function _toggleVidControls() {
-    if (!videoOverlay) return;
-    if (videoOverlay.classList.contains('controls-hidden')) {
-      _showVidControls();
-    } else {
-      _hideVidControls();
-    }
-  }
-  function closeVideoOverlay() {
-    if (!videoOverlay) return;
-    videoOverlay.classList.add('view-hidden');
-    /* Show mini-bar only when a video source is loaded */
-    if (videoMiniBar) videoMiniBar.hidden = !player.currentSrc;
-  }
-  function enterFloatPlayer() {
-    /* Move <video> to float container and show it without closing the overlay completely */
-    if (!videoFloatContainer || !videoFloatWrap || !isVideoMode) return;
-    if (_isFloating) return; /* already floating */
-    _isFloating = true;
-    videoOverlay.classList.add('view-hidden');
-    if (videoMiniBar) videoMiniBar.hidden = true;
-    /* Move <video> into float wrap */
-    videoFloatWrap.appendChild(player);
-    player.style.display = 'block';
-    videoFloatContainer.classList.add('active');
-    /* Reset position to default bottom-right */
-    videoFloatContainer.style.bottom = '80px';
-    videoFloatContainer.style.right = '16px';
-    videoFloatContainer.style.left = '';
-    videoFloatContainer.style.top = '';
-  }
-  function exitFloatPlayer() {
-    if (!_isFloating) return;
-    _isFloating = false;
-    videoFloatContainer.classList.remove('active');
-    /* Move <video> back to overlay */
-    if (videoWrap) videoWrap.appendChild(player);
-    player.style.display = 'block';
-    openVideoOverlay();
-  }
-  function _syncMiniBar(t) {
-    if (!videoMiniBar) return;
-    if (miniTitle)  miniTitle.textContent  = t.title  || '';
-    if (miniArtist) miniArtist.textContent = t.artist || '';
-    if (miniThumb) {
-      var src = t.thumbnail_lg_url || t.thumbnail_url || '';
-      miniThumb.src = src;
-      miniThumb.style.display = src ? '' : 'none';
-    }
-    if (videoOverlayTitleText) videoOverlayTitleText.textContent = t.title || '';
-  }
-  function _syncMiniPlayBtn() {
-    if (!miniPlayBtn) return;
-    miniPlayBtn.innerHTML = player.paused ? IC_PLAY : IC_PAUSE;
-  }
+  /* ?? Video overlay / float player / mini bar ??
+     Ported to webui/src/videoOverlay.ts (state private). Wrappers keep the
+     bare names used by _library_tools.py hooks. */
+  window._initVideoOverlay({
+    player: player, isVideoMode: isVideoMode,
+    overlay: videoOverlay, miniBar: videoMiniBar,
+    miniTitle: miniTitle, miniArtist: miniArtist, miniThumb: miniThumb,
+    miniPlayBtn: miniPlayBtn, miniExpandBtn: miniExpandBtn,
+    overlayTitleText: videoOverlayTitleText, videoWrap: videoWrap,
+    floatContainer: videoFloatContainer, floatWrap: videoFloatWrap,
+    floatCloseBtn: floatCloseBtn, floatExpandBtn: floatExpandBtn,
+    closeBtn: videoCloseBtn, icPlay: IC_PLAY, icPause: IC_PAUSE
+  });
+  function openVideoOverlay() { window._openVideoOverlay(); }
+  function _showVidControls() { window._showVidControls(); }
+  function _syncMiniBar(t) { window._syncMiniBar(t); }
 
   /* ── Background-tab resume ──────────────────────────────────────────────
      Chrome (and other browsers) can pause media when a tab becomes hidden.
@@ -342,41 +252,6 @@ def render_core_js(waveform_js) -> str:
       }
     }
   });
-
-  if (videoCloseBtn) {
-    videoCloseBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      closeVideoOverlay();
-    });
-  }
-  if (miniExpandBtn) {
-    miniExpandBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      openVideoOverlay();
-    });
-  }
-  if (videoMiniBar) {
-    videoMiniBar.addEventListener('click', function(e) {
-      /* Clicking the bar (not its buttons) reopens the overlay */
-      if (e.target === miniPlayBtn || miniPlayBtn && miniPlayBtn.contains(e.target)) return;
-      if (e.target === miniExpandBtn || miniExpandBtn && miniExpandBtn.contains(e.target)) return;
-      openVideoOverlay();
-    });
-  }
-  if (miniPlayBtn) {
-    miniPlayBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      if (player.paused) { player.play(); } else { player.pause(); }
-    });
-  }
-  /* ── Tap on video area → toggle overlay controls ── */
-  if (isVideoMode && videoWrap) {
-    videoWrap.addEventListener('click', function(e) {
-      /* Ignore clicks on the skip-intro button or other interactive children */
-      if (e.target.closest && e.target.closest('button')) return;
-      _toggleVidControls();
-    });
-  }
 
   /* ── Fullscreen button — uses requestFullscreen on the OVERLAY div ── */
   if (videoFsBtn) {
@@ -467,118 +342,6 @@ def render_core_js(waveform_js) -> str:
     getProgressPath: function() { return window._getProgressPath(); },
     fmtTime: fmtTime, toast: function(m) { showToast(m); }
   });
-  /* ── Fullscreen exit → float player ── */
-  function _handleFullscreenChange() {
-    var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-    if (!fsEl && !videoOverlay.classList.contains('view-hidden') && player.currentSrc) {
-      /* Exited native fullscreen (Escape / browser UI) while overlay was visible */
-      enterFloatPlayer();
-    }
-  }
-  document.addEventListener('fullscreenchange', _handleFullscreenChange);
-  document.addEventListener('webkitfullscreenchange', _handleFullscreenChange);
-
-  /* ── Escape key in overlay → float player ── */
-  document.addEventListener('keydown', function(e) {
-    if (!isVideoMode) return;
-    if (e.key !== 'Escape') return;
-    /* Escape while overlay is open (and not in native fullscreen) → float */
-    if (!videoOverlay.classList.contains('view-hidden') && !document.fullscreenElement) {
-      enterFloatPlayer();
-    }
-  });
-
-  /* ── Float player: close and expand buttons ── */
-  if (floatCloseBtn) {
-    floatCloseBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      player.pause();
-      videoFloatContainer.classList.remove('active');
-      _isFloating = false;
-      /* Move <video> back to overlay (hidden) */
-      if (videoWrap) videoWrap.appendChild(player);
-    });
-  }
-  if (floatExpandBtn) {
-    floatExpandBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      exitFloatPlayer();
-    });
-  }
-
-  /* ── Float player: drag to reposition ── */
-  if (videoFloatContainer && isVideoMode) {
-    (function _initFloatDrag() {
-      var _dragging = false;
-      var _startX = 0, _startY = 0;
-      var _origLeft = 0, _origTop = 0;
-
-      function _getControlled(e) {
-        /* Don't start drag if clicking a button */
-        var t = e.target;
-        while (t && t !== videoFloatContainer) {
-          if (t.tagName === 'BUTTON') return false;
-          t = t.parentNode;
-        }
-        return true;
-      }
-      function _onDown(e) {
-        if (!videoFloatContainer.classList.contains('active')) return;
-        if (!_getControlled(e)) return;
-        _dragging = true;
-        var rect = videoFloatContainer.getBoundingClientRect();
-        var cx = e.touches ? e.touches[0].clientX : e.clientX;
-        var cy = e.touches ? e.touches[0].clientY : e.clientY;
-        _startX = cx - rect.left;
-        _startY = cy - rect.top;
-        videoFloatContainer.classList.add('dragging');
-        /* Switch to left/top positioning */
-        videoFloatContainer.style.right = '';
-        videoFloatContainer.style.bottom = '';
-        videoFloatContainer.style.left = rect.left + 'px';
-        videoFloatContainer.style.top  = rect.top  + 'px';
-        e.preventDefault();
-      }
-      function _onMove(e) {
-        if (!_dragging) return;
-        var cx = e.touches ? e.touches[0].clientX : e.clientX;
-        var cy = e.touches ? e.touches[0].clientY : e.clientY;
-        var newLeft = cx - _startX;
-        var newTop  = cy - _startY;
-        var maxL = window.innerWidth  - videoFloatContainer.offsetWidth;
-        var maxT = window.innerHeight - videoFloatContainer.offsetHeight;
-        newLeft = Math.max(0, Math.min(newLeft, maxL));
-        newTop  = Math.max(0, Math.min(newTop, maxT));
-        videoFloatContainer.style.left = newLeft + 'px';
-        videoFloatContainer.style.top  = newTop  + 'px';
-        e.preventDefault();
-      }
-      function _onUp() {
-        if (!_dragging) return;
-        _dragging = false;
-        videoFloatContainer.classList.remove('dragging');
-      }
-      videoFloatContainer.addEventListener('mousedown',  _onDown, {passive: false});
-      videoFloatContainer.addEventListener('touchstart', _onDown, {passive: false});
-      document.addEventListener('mousemove',  _onMove, {passive: false});
-      document.addEventListener('touchmove',  _onMove, {passive: false});
-      document.addEventListener('mouseup',  _onUp);
-      document.addEventListener('touchend', _onUp);
-    })();
-  }
-
-  /* Toggle play/pause by clicking the video area */
-  if (isVideoMode) {
-    var _videoWrap = document.querySelector('.video-wrap');
-    if (_videoWrap) {
-      _videoWrap.addEventListener('click', function() {
-        if (player.paused) { player.play(); } else { player.pause(); }
-      });
-    }
-  }
-  /* Keep mini-bar play button icon in sync */
-  player.addEventListener('play',  _syncMiniPlayBtn);
-  player.addEventListener('pause', _syncMiniPlayBtn);
 
   /* ── helpers ──
      fmtTime/escHtml/formatBytes used to be defined here as plain function
