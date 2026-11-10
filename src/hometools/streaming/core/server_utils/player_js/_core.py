@@ -253,76 +253,9 @@ def render_core_js(waveform_js) -> str:
     }
   });
 
-  /* ── Fullscreen button — uses requestFullscreen on the OVERLAY div ── */
-  if (videoFsBtn) {
-    videoFsBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var target = videoOverlay || player;
-      if (document.fullscreenEnabled && target.requestFullscreen) {
-        target.requestFullscreen().catch(function() {
-          /* fallback: iOS webkitEnterFullscreen on video element */
-          if (player.webkitEnterFullscreen) player.webkitEnterFullscreen();
-        });
-      } else if (target.webkitRequestFullscreen) {
-        target.webkitRequestFullscreen();
-      } else if (player.webkitEnterFullscreen) {
-        player.webkitEnterFullscreen(); /* iOS Safari */
-      }
-    });
-  }
-
-  /* ── Cast button (HTML5 Remote Playback API) ─────────────────────────
-     Streams the playing <video> element to any reachable Chromecast /
-     AirPlay target.  Implementation uses only standard browser APIs —
-     no Cast SDK, no app-id setup.  Visibility is driven by availability
-     callbacks, so the button stays hidden on browsers without support
-     (Firefox desktop, embedded WebViews without media-router). */
-  if (videoCastBtn && player && player.tagName === 'VIDEO') {
-    var _castInitialised = false;
-
-    /* Chromium / Android Chrome / Desktop Chrome — Remote Playback API */
-    if (player.remote && typeof player.remote.watchAvailability === 'function') {
-      _castInitialised = true;
-      try {
-        player.remote.watchAvailability(function(available) {
-          videoCastBtn.hidden = !available;
-        }).catch(function() { /* unsupported / disabled in iframe */ });
-      } catch (_e) { /* ignore */ }
-
-      videoCastBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (player.remote && typeof player.remote.prompt === 'function') {
-          player.remote.prompt().catch(function(err) {
-            console.warn('Cast prompt cancelled or failed:', err);
-          });
-        }
-      });
-
-      try {
-        player.remote.addEventListener('connect', function() {
-          videoCastBtn.classList.add('active');
-        });
-        player.remote.addEventListener('disconnect', function() {
-          videoCastBtn.classList.remove('active');
-        });
-      } catch (_e) { /* ignore */ }
-    }
-
-    /* iOS Safari fallback — AirPlay picker */
-    if (!_castInitialised && window.WebKitPlaybackTargetAvailabilityEvent) {
-      player.addEventListener('webkitplaybacktargetavailabilitychanged', function(ev) {
-        videoCastBtn.hidden = (ev.availability !== 'available');
-      });
-      videoCastBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (typeof player.webkitShowPlaybackTargetPicker === 'function') {
-          player.webkitShowPlaybackTargetPicker();
-        }
-      });
-    }
-    /* If neither API is available the button stays hidden — no regression. */
-  }
-
+  /* Fullscreen + cast buttons ported to webui/src/videoButtons.ts. */
+  window._initFullscreenButton({ button: videoFsBtn, overlay: videoOverlay, player: player });
+  window._initCastButton({ button: videoCastBtn, player: player });
   /* ── Skip-Intro (Netflix-style) ───────────────────────────────────────
      Markers come from the item's intro_start/intro_end fields (manual UI
      markers, YAML overrides or chapter auto-detection — merged server-side).
