@@ -225,12 +225,15 @@ def test_waveform_html_video_page():
 
 def test_classic_js_has_no_waveform_data():
     js = _js()
-    # Classic mode uses server-side cached waveform (no client-side AudioContext decoding)
+    ts = _webui_src("waveform.ts")
+    # Server-side cached waveform (no client-side AudioContext decoding)
     assert "decodeAudioData" not in js
-    # Classic mode DOES use waveformAbort to cancel in-flight waveform fetches
-    assert "waveformAbort" in js
-    # Classic mode fetches waveform from the server API, not the audio file itself
-    assert "WAVEFORM_API_PATH" in js
+    assert "decodeAudioData" not in ts
+    # In-flight waveform fetches are cancelled via AbortController
+    assert "_abort" in ts
+    assert "AbortController" in ts
+    # Waveform comes from the server API, not the audio file itself
+    assert "'/waveform'" in js
 
 
 def test_classic_js_has_no_thumb_video():
@@ -269,19 +272,20 @@ def test_waveform_js_has_audio_mode_detection():
 
 def test_waveform_js_has_generate_waveform():
     js = _js()
-    assert "generateWaveform" in js
-    assert "AbortController" in js
+    assert "window._generateWaveform(" in js
+    assert "export function generateWaveform(" in _webui_src("waveform.ts")
 
 
 def test_waveform_js_has_draw_waveform():
     js = _js()
-    assert "drawWaveform" in js
-    assert "slotW" in js
+    assert "window._drawWaveform(" in js
+    assert "slotW" in _webui_src("waveform.ts")
 
 
-def test_waveform_js_has_waveform_data():
+def test_waveform_peaks_state_is_private_to_ts():
     js = _js()
-    assert "waveformData" in js
+    assert "waveformData" not in js
+    assert "let _peaks" in _webui_src("waveform.ts")
 
 
 def test_waveform_js_calls_generate_on_play():

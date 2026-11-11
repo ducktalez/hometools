@@ -248,7 +248,7 @@ class TestTrackDownloadButtons:
         assert "function cancelDownload" in js
         assert "controller.abort()" in _webui_src("downloadButtons.ts")
         assert "activeDownloads" in js
-        assert "AbortError" in js
+        assert "AbortError" in _webui_src("downloadButtons.ts")
 
     def test_js_download_uses_abort_controller(self):
         """downloadTrack must use AbortController for cancellation support."""

@@ -270,6 +270,7 @@ import { showIndexingToast, hideIndexingToast } from "./indexingToast";
 import { initVideoOverlay, openVideoOverlay, showVidControls, syncMiniBar } from "./videoOverlay";
 import { initFullscreenButton, initCastButton } from "./videoButtons";
 import { initSpritePreview, loadSpriteData } from "./spritePreview";
+import { initWaveform, drawWaveform, generateWaveform } from "./waveform";
 import { queueIndexOf, queueAdd, queueRemoveAt, queueClear, queueMove, resolveNext, removeFromQueue, clearQueueAction, playFromQueue, addToQueue } from "./queue";
 import { contentsAt } from "./folderContents";
 import { folderCardHtml, fileCardHtml } from "./folderCards";
@@ -593,6 +594,9 @@ declare global {
     _initCastButton: typeof initCastButton;
     _initSpritePreview: typeof initSpritePreview;
     _loadSpriteData: typeof loadSpriteData;
+    _initWaveform: typeof initWaveform;
+    _drawWaveform: typeof drawWaveform;
+    _generateWaveform: typeof generateWaveform;
     _queueIndexOf: typeof queueIndexOf;
     _queueAdd: typeof queueAdd;
     _queueRemoveAt: typeof queueRemoveAt;
@@ -936,6 +940,9 @@ window._initFullscreenButton = initFullscreenButton;
 window._initCastButton = initCastButton;
 window._initSpritePreview = initSpritePreview;
 window._loadSpriteData = loadSpriteData;
+window._initWaveform = initWaveform;
+window._drawWaveform = drawWaveform;
+window._generateWaveform = generateWaveform;
 // Queue data ops — htState.userQueue bridge (see queue.ts header).
 window._queueIndexOf = queueIndexOf;
 window._queueAdd = queueAdd;
