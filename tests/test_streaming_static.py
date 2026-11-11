@@ -355,7 +355,8 @@ def test_player_bar_css_ported_out_of_python():
     text = ported.read_text(encoding="utf-8")
     assert ".player-bar-move-select {" in text
     assert ".ctrl-btn.play-pause {" in text
-    assert ".player-bar.waveform {" in text
+    assert ".player-bar.classic {" in text
+    assert ".player-bar.waveform {" not in text
 
 
 def test_table_view_css_ported_out_of_python():

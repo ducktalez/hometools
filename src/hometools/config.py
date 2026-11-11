@@ -200,18 +200,6 @@ def get_audit_dir() -> Path:
 # ---------------------------------------------------------------------------
 
 
-def get_player_bar_style() -> str:
-    """Return the player bar style: ``'classic'`` or ``'waveform'``.
-
-    ``classic``  — simple single-row range input (reliable, lightweight).
-    ``waveform`` — two-row layout with audio waveform / video thumbnails.
-    """
-    raw = os.environ.get("HOMETOOLS_PLAYER_BAR_STYLE", "classic").strip().lower()
-    if raw not in ("classic", "waveform"):
-        return "classic"
-    return raw
-
-
 # ---------------------------------------------------------------------------
 # Video PWA display mode
 # ---------------------------------------------------------------------------

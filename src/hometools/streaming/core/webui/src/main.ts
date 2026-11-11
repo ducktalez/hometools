@@ -392,7 +392,6 @@ export interface PlayerConfig {
   languageGroups: Record<string, string[]>;
   defaultLanguage: string;
   audiobookDirs: string[];
-  playerBarStyle: "classic" | "waveform";
   bpmMin: number;
   bpmMax: number;
 }

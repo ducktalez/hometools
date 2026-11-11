@@ -27,24 +27,9 @@ import pytest
 
 from hometools.streaming.core.server_utils import render_player_js
 
-# Representative parameter combinations mirroring the real audio/video
-# server configs (see streaming/audio/server.py:render_audio_index_html and
-# streaming/video/server.py:render_video_index_html) plus the two
-# `player_bar_style` branches, which are the only branches that actually
-# change the generated JS structure (waveform setup vs. none).
-#
-# Vite/TS migration Phase 3 (docs/IMPLEMENTATION_PLAN.md): render_player_js()
-# now only accepts `player_bar_style` — every other former parameter
-# (api_path, item_noun, enable_*, min_rating, ...) is read at runtime from
-# the `#ht-config` JSON blob instead. audio_classic/video_classic (and
-# audio_waveform/video_waveform) therefore produce byte-identical output;
-# the distinct keys are kept only for readable test IDs / historical parity
-# with the render_media_page()-level config that used to vary per key here.
+# render_player_js() takes no parameters (all request-varying config is read
+# at runtime from the `#ht-config` JSON blob), so there is a single config.
 CONFIGS = {
-    "audio_classic": dict(player_bar_style="classic"),
-    "audio_waveform": dict(player_bar_style="waveform"),
-    "video_classic": dict(player_bar_style="classic"),
-    "video_waveform": dict(player_bar_style="waveform"),
     "defaults": dict(),
 }
 

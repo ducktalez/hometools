@@ -19,7 +19,6 @@ from hometools.config import (
     get_audio_port,
     get_channel_port,
     get_channel_schedule_file,
-    get_player_bar_style,
     get_stream_host,
     get_video_library_dir,
     get_video_port,
@@ -54,7 +53,6 @@ def streaming_config_table() -> str:
     audio_url = f"http://{host}:{audio_port}/"
     video_url = f"http://{host}:{video_port}/"
     channel_url = f"http://{host}:{channel_port}/"
-    bar_style = get_player_bar_style()
 
     # Adapt column width to longest value
     values = [
@@ -67,7 +65,6 @@ def streaming_config_table() -> str:
         audio_url,
         video_url,
         channel_url,
-        bar_style,
     ]
     w = max(len(v) for v in values) + 2
 
@@ -92,8 +89,6 @@ def streaming_config_table() -> str:
         row("", video_dir),
         sep,
         row("Channel", f"port {channel_port}"),
-        sep,
-        row("Player", bar_style),
         sep,
         row("URLs", audio_url),
         row("", video_url),

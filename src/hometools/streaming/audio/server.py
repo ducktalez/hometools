@@ -21,7 +21,6 @@ from hometools.config import (
     get_audio_library_dir,
     get_audit_dir,
     get_cache_dir,
-    get_player_bar_style,
     get_stream_index_cache_ttl,
     get_stream_safe_mode,
 )
@@ -102,7 +101,6 @@ def render_audio_index_html(tracks: list[AudioTrack], *, safe_mode: bool = False
         api_path="/api/audio/tracks",
         item_noun="track",
         theme_color="#1db954",
-        player_bar_style="classic" if safe_mode else get_player_bar_style(),
         safe_mode=safe_mode,
         enable_shuffle=True,
         enable_repeat=True,

@@ -1,4 +1,4 @@
-/* Thumbnail rating overlay, bottom player bar (classic + waveform layouts),
+/* Thumbnail rating overlay, bottom player bar,
    transport controls. Ported verbatim from
    server_utils/css/_player_bar.py::render_player_bar_css(). */
 .thumb-wrap {
@@ -180,37 +180,7 @@
   -webkit-appearance: none; width: 1px; height: 1px; background: transparent;
 }
 
-/* ── Waveform player bar — two rows ── */
-.player-bar.waveform {
-  display: flex; flex-direction: column;
-}
-.player-bar-top {
-  display: flex; align-items: center;
-  padding: 0.4rem max(0.75rem, var(--sal)) 0 max(0.75rem, var(--sar));
-  gap: 0.65rem;
-}
-.player-bar-top .player-info { flex: 0 1 auto; max-width: 45%; }
-.player-bar-top .player-controls { flex: 1 1 0; justify-content: center; }
-.player-bar.waveform .progress-wrap {
-  display: flex; align-items: center; gap: 0.4rem;
-  padding: 0.25rem max(0.75rem, var(--sal)) 0.5rem max(0.75rem, var(--sar));
-}
-.player-bar.waveform .progress-track {
-  flex: 1 1 0; position: relative; height: 48px; min-width: 0; cursor: pointer;
-  touch-action: none;
-}
-.player-bar.waveform .progress-track.video-mode { height: 28px; }
 .waveform-canvas {
   display: block; width: 100%; height: 100%; border-radius: 4px;
-}
-.player-bar.waveform .progress-track input[type=range] {
-  -webkit-appearance: none; appearance: none;
-  position: absolute; top: 0; left: 0;
-  width: 100%; height: 100%; opacity: 0;
-  cursor: pointer; margin: 0; z-index: 2;
-  background: transparent;
-}
-.player-bar.waveform .progress-track input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 1px; height: 1px; background: transparent;
 }
 

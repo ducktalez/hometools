@@ -52,7 +52,6 @@ def _render_player_config_json(
     playlist_sync_interval_ms: int,
     language_groups_json: str,
     default_language: str,
-    player_bar_style: str,
     bpm_min: int,
     bpm_max: int,
 ) -> str:
@@ -97,7 +96,6 @@ def _render_player_config_json(
         "languageGroups": language_groups,
         "defaultLanguage": default_language,
         "audiobookDirs": audiobook_dirs,
-        "playerBarStyle": player_bar_style,
         "bpmMin": bpm_min,
         "bpmMax": bpm_max,
     }
@@ -115,7 +113,6 @@ def render_media_page(
     api_path: str,
     item_noun: str = "track",
     theme_color: str = "#1db954",
-    player_bar_style: str = "classic",
     safe_mode: bool = False,
     enable_shuffle: bool = False,
     enable_repeat: bool = False,
@@ -140,10 +137,6 @@ def render_media_page(
     The page starts in folder-grid view.  Clicking a folder shows the
     track list with the player.  A back button returns to the grid.
     *media_element_tag* should be ``audio`` or ``video``.
-
-    *player_bar_style* selects the bottom player layout:
-    ``classic``  — single-row with inline range slider (default).
-    ``waveform`` — two-row layout with audio waveform / video thumbnails.
 
     *enable_rating_write* adds clickable rating stars to the player bar
     and wires up the ``POST /api/<media>/rating`` endpoint (audio only).
@@ -173,11 +166,10 @@ def render_media_page(
         playlist_sync_interval_ms=playlist_sync_interval_ms,
         language_groups_json=language_groups_json,
         default_language=default_language,
-        player_bar_style=player_bar_style,
         bpm_min=bpm_min,
         bpm_max=bpm_max,
     )
-    js = render_player_js(player_bar_style=player_bar_style)
+    js = render_player_js()
     # Vite/TS migration Phase 4/5 (docs/IMPLEMENTATION_PLAN.md): the built
     # webui bundle (if present — see server_utils/_static.py) provides
     # already-ported symbols (fmtTime/escHtml/formatBytes, ...) as `window.*`
@@ -449,43 +441,7 @@ def render_media_page(
     </div>
   </div>"""
 
-    if player_bar_style == "waveform":
-        player_bar_html = f"""
-  <div class="player-bar waveform view-hidden">
-    {queue_peek_html}
-    <div class="player-bar-top">
-      <img class="track-thumb player-thumb-clickable" id="player-thumb" src="" alt="" style="display:none" title="Zum aktuellen Titel in der Liste springen">
-      <div class="player-info">
-        <div class="player-title"  id="player-title">No {item_noun} selected</div>
-        <div class="player-artist" id="player-artist">&ndash;</div>
-        <div class="player-rating" id="player-rating" hidden></div>
-      </div>
-      <div class="player-controls">
-        <button class="ctrl-btn"            id="btn-prev" title="Previous">{SVG_PREV}</button>
-        <button class="ctrl-btn play-pause" id="btn-play" title="Play / Pause">{SVG_PLAY}</button>
-        <button class="ctrl-btn"            id="btn-next" title="Next">{SVG_NEXT}</button>
-        <button class="ctrl-btn pip-btn"    id="btn-pip"  title="Bild-in-Bild" hidden>{SVG_PIP}</button>
-        {lyrics_btn_html}
-        {shuffle_btn_html}
-        {repeat_btn_html}
-      </div>
-      <div class="player-bar-actions" id="player-bar-actions"></div>
-    </div>
-    <div class="progress-wrap">
-      <span class="time-label"     id="time-cur">0:00</span>
-      <div class="progress-track" id="progress-track">
-        <canvas id="waveform-canvas"></canvas>
-        <input type="range" id="progress-bar" min="0" step="0.1" value="0" />
-        <div class="thumb-preview" id="thumb-preview">
-          <canvas id="thumb-canvas" width="160" height="90"></canvas>
-          <span class="thumb-time" id="thumb-time"></span>
-        </div>
-      </div>
-      <span class="time-label end" id="time-dur">0:00</span>
-    </div>
-  </div>"""
-    else:
-        player_bar_html = f"""
+    player_bar_html = f"""
   <div class="player-bar classic view-hidden">
     {queue_peek_html}
     <img class="track-thumb player-thumb-clickable" id="player-thumb" src="" alt="" style="display:none" title="Zum aktuellen Titel in der Liste springen">

@@ -362,7 +362,6 @@ def create_app(
             api_path="/api/channel/items",
             item_noun="video",
             theme_color="#f44336",
-            player_bar_style="classic",
             safe_mode=False,
             enable_shuffle=False,
             enable_recent=False,

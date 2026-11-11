@@ -59,9 +59,7 @@ from .player_js import (
 )
 
 
-def render_player_js(
-    player_bar_style: str = "classic",
-) -> str:
+def render_player_js() -> str:
     """Return the media player JavaScript with hierarchical folder navigation.
 
     Default view is a folder list (configurable via toggle to grid).
@@ -70,10 +68,7 @@ def render_player_js(
     back button allow navigating up.  View preference is stored in
     localStorage.
 
-    *player_bar_style* is the only remaining Python parameter — it's a
-    genuinely structural choice (waveform vs. classic emits different JS
-    for the progress bar/scrubber), unlike every other former parameter
-    here. All request-varying config (``api_path``, ``enable_shuffle``,
+    All request-varying config (``api_path``, ``enable_shuffle``,
     ``min_rating``, ``language_groups_json``, ...) is now read at runtime
     from the ``#ht-config`` JSON blob (``CFG.*``, rendered by
     ``_html.py::_render_player_config_json``) — see "Vite/TypeScript
@@ -81,21 +76,8 @@ def render_player_js(
     shuffle button activates weighted shuffle (items with higher ratings
     are more likely to play). Works with offline downloads too.
     """
-    # -- waveform/thumbnail JS (only for waveform mode) -----------------------
-    if player_bar_style == "waveform":
-        waveform_js = """
-  /* ── waveform & thumbnail elements ── */
-  var progressTrack  = document.getElementById('progress-track');
-  var waveformCanvas = document.getElementById('waveform-canvas');
-  var waveformCtx    = waveformCanvas ? waveformCanvas.getContext('2d') : null;
-  var isAudioMode    = player.tagName === 'AUDIO';
-  var isVideoMode    = player.tagName === 'VIDEO';
-  var waveformData   = null;
-  var waveformDataR  = null;   /* peaks_r — null when mono or not yet loaded */
-  var waveformAbort  = null;
-"""
-    else:
-        waveform_js = """
+    # -- waveform/thumbnail element setup -------------------------------------
+    waveform_js = """
   var progressTrack  = document.getElementById('progress-track');
   var waveformCanvas = document.getElementById('waveform-canvas');
   var waveformCtx    = waveformCanvas ? waveformCanvas.getContext('2d') : null;
@@ -120,89 +102,7 @@ def render_player_js(
   function loadSpriteData(relativePath) { window._loadSpriteData(relativePath); }
 """
 
-    if player_bar_style == "waveform":
-        waveform_setup_js = """
-  /* ── waveform (audio) & video mode setup ── */
-  if (isVideoMode && progressTrack) {
-    progressTrack.classList.add('video-mode');
-  }
-
-  function generateWaveform(url) {
-    if (!isAudioMode || !waveformCanvas) return;
-    if (waveformAbort) waveformAbort.abort();
-    waveformAbort = new AbortController();
-    waveformData = null;
-    drawWaveform(0);
-    fetch(url, { signal: waveformAbort.signal })
-      .then(function(r) { return r.arrayBuffer(); })
-      .then(function(buf) {
-        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        return audioCtx.decodeAudioData(buf).then(function(decoded) {
-          audioCtx.close();
-          return decoded;
-        });
-      })
-      .then(function(audioBuffer) {
-        var rawData = audioBuffer.getChannelData(0);
-        var samples = 120;
-        var blockSize = Math.floor(rawData.length / samples);
-        if (blockSize < 1) return;
-        var data = [];
-        for (var i = 0; i < samples; i++) {
-          var sum = 0;
-          for (var j = 0; j < blockSize; j++) sum += Math.abs(rawData[i * blockSize + j]);
-          data.push(sum / blockSize);
-        }
-        var max = Math.max.apply(null, data);
-        if (max > 0) data = data.map(function(d) { return d / max; });
-        waveformData = data;
-        var prog = player.duration > 0 ? player.currentTime / player.duration : 0;
-        drawWaveform(prog);
-      })
-      .catch(function(e) {
-        if (e.name !== 'AbortError') waveformData = null;
-      });
-  }
-
-  function drawWaveform(progress) {
-    if (!waveformCanvas || !waveformCtx) return;
-    var W = 600, H = 48;
-    waveformCanvas.width = W;
-    waveformCanvas.height = H;
-    waveformCtx.clearRect(0, 0, W, H);
-    var accent = getComputedStyle(document.documentElement)
-      .getPropertyValue('--accent').trim() || '#1db954';
-    if (isAudioMode && waveformData && waveformData.length) {
-      var BAR_COUNT = 120;
-      var slotW = W / BAR_COUNT;
-      var gapW = slotW * 0.15;
-      var barW = slotW - gapW;
-      var playedBars = Math.floor(progress * BAR_COUNT);
-      for (var i = 0; i < BAR_COUNT; i++) {
-        var di = Math.min(Math.floor(i * waveformData.length / BAR_COUNT), waveformData.length - 1);
-        var bh = Math.max(2, waveformData[di] * H * 0.85);
-        var x = i * slotW, y = (H - bh) / 2;
-        waveformCtx.fillStyle = i < playedBars ? accent : '#555';
-        waveformCtx.fillRect(x, y, barW, bh);
-      }
-    } else {
-      var barH = 6, cy = H / 2, ty = cy - barH / 2;
-      var playedW = W * progress;
-      waveformCtx.fillStyle = '#555';
-      waveformCtx.fillRect(0, ty, W, barH);
-      if (playedW > 0) {
-        waveformCtx.fillStyle = accent;
-        waveformCtx.fillRect(0, ty, playedW, barH);
-      }
-      waveformCtx.fillStyle = '#fff';
-      waveformCtx.beginPath();
-      waveformCtx.arc(Math.max(7, Math.min(W - 7, playedW)), cy, 7, 0, Math.PI * 2);
-      waveformCtx.fill();
-    }
-  }
-"""
-    else:
-        waveform_setup_js = """
+    waveform_setup_js = """
   /* ── classic mode: cached stereo waveform overlay ── */
   var WAVEFORM_API_PATH = _apiBase() + '/waveform';
 

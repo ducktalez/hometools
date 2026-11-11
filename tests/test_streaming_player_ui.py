@@ -1,4 +1,4 @@
-"""Tests for the configurable player bar (classic and waveform modes)."""
+"""Tests for the player bar (single classic layout with waveform canvas)."""
 
 import re as _re
 from pathlib import Path
@@ -10,7 +10,7 @@ from hometools.streaming.core.server_utils import render_media_page, render_play
 # ---------------------------------------------------------------------------
 
 
-def _page(media="audio", style="classic"):
+def _page(media="audio"):
     return render_media_page(
         title="Test",
         emoji="",
@@ -18,12 +18,11 @@ def _page(media="audio", style="classic"):
         media_element_tag=media,
         api_path="/api/test",
         item_noun="track" if media == "audio" else "video",
-        player_bar_style=style,
     )
 
 
-def _js(style="classic"):
-    return render_player_js(player_bar_style=style)
+def _js():
+    return render_player_js()
 
 
 def _webui_src(filename):
@@ -50,7 +49,7 @@ def _extract_ht_config(page):
 
 
 # ---------------------------------------------------------------------------
-# CSS: both modes have their styles
+# CSS: player bar styles
 # ---------------------------------------------------------------------------
 
 
@@ -58,11 +57,6 @@ def test_css_contains_classic_player_bar():
     """Player-bar rules ported to webui/src/styles/playerBar.css."""
     css = _webui_src("styles/playerBar.css")
     assert ".player-bar.classic" in css
-
-
-def test_css_contains_waveform_player_bar():
-    css = _webui_src("styles/playerBar.css")
-    assert ".player-bar.waveform" in css
 
 
 def test_css_classic_is_single_row():
@@ -80,11 +74,6 @@ def test_css_classic_progress_wraps_on_small_screens():
     assert "min-height" in css  # bar grows instead of clipping
 
 
-def test_css_waveform_is_column_layout():
-    css = _webui_src("styles/playerBar.css")
-    assert "flex-direction: column" in css
-
-
 def test_css_contains_progress_track():
     css = _webui_src("styles/playerBar.css")
     assert ".progress-track" in css
@@ -93,6 +82,7 @@ def test_css_contains_progress_track():
 def test_css_contains_waveform_canvas():
     css = _webui_src("styles/playerBar.css")
     assert ".waveform-canvas" in css
+    assert ".player-bar.waveform" not in css
 
 
 def test_css_contains_thumb_preview():
@@ -163,12 +153,12 @@ def test_css_contains_classic_range_styling():
 
 
 def test_classic_html_has_classic_class():
-    page = _page(style="classic")
+    page = _page()
     assert "player-bar classic" in page
 
 
 def test_classic_html_has_inline_range():
-    page = _page(style="classic")
+    page = _page()
     assert 'id="progress-bar"' in page
     # Classic mode now has waveform-canvas for canvas-based progress drawing (pre-waveform placeholder)
     assert 'id="waveform-canvas"' in page
@@ -177,69 +167,52 @@ def test_classic_html_has_inline_range():
 
 
 def test_classic_html_has_controls():
-    page = _page(style="classic")
+    page = _page()
     assert 'id="btn-play"' in page
     assert 'id="btn-prev"' in page
     assert 'id="btn-next"' in page
 
 
 def test_classic_html_has_time_labels():
-    page = _page(style="classic")
+    page = _page()
     assert 'id="time-cur"' in page
     assert 'id="time-dur"' in page
 
 
 def test_classic_html_audio_element():
-    page = _page(media="audio", style="classic")
+    page = _page(media="audio")
     assert "<audio" in page
 
 
 def test_classic_html_video_element():
-    page = _page(media="video", style="classic")
+    page = _page(media="video")
     assert "<video" in page
 
 
 # ---------------------------------------------------------------------------
-# HTML: waveform mode
+# HTML: progress track / waveform canvas
 # ---------------------------------------------------------------------------
 
 
-def test_waveform_html_has_waveform_class():
-    page = _page(style="waveform")
-    assert "player-bar waveform" in page
-
-
-def test_waveform_html_has_player_bar_top():
-    page = _page(style="waveform")
-    assert 'class="player-bar-top"' in page
-
-
 def test_waveform_html_has_progress_track():
-    page = _page(style="waveform")
+    page = _page()
     assert 'id="progress-track"' in page
 
 
 def test_waveform_html_has_canvas():
-    page = _page(style="waveform")
+    page = _page()
     assert 'id="waveform-canvas"' in page
 
 
 def test_waveform_html_has_thumb_preview():
-    page = _page(style="waveform")
+    page = _page()
     assert 'id="thumb-preview"' in page
     assert 'id="thumb-canvas"' in page
     assert 'id="thumb-time"' in page
 
 
-def test_waveform_html_controls_before_progress():
-    page = _page(style="waveform")
-    top_pos = page.index('class="player-bar-top"')
-    wrap_pos = page.index('class="progress-wrap"')
-    assert top_pos < wrap_pos
-
-
 def test_waveform_html_video_page():
-    page = _page(media="video", style="waveform")
+    page = _page(media="video")
     assert 'id="progress-track"' in page
     assert 'id="waveform-canvas"' in page
     assert "<video" in page
@@ -251,7 +224,7 @@ def test_waveform_html_video_page():
 
 
 def test_classic_js_has_no_waveform_data():
-    js = _js(style="classic")
+    js = _js()
     # Classic mode uses server-side cached waveform (no client-side AudioContext decoding)
     assert "decodeAudioData" not in js
     # Classic mode DOES use waveformAbort to cancel in-flight waveform fetches
@@ -261,7 +234,7 @@ def test_classic_js_has_no_waveform_data():
 
 
 def test_classic_js_has_no_thumb_video():
-    js = _js(style="classic")
+    js = _js()
     assert "thumbVideo" not in js
     # Classic mode now has sprite-based mousemove for video scrubber preview
     ts = _webui_src("spritePreview.ts")
@@ -271,62 +244,44 @@ def test_classic_js_has_no_thumb_video():
 
 
 def test_classic_js_has_stub_functions():
-    js = _js(style="classic")
+    js = _js()
     assert "generateWaveform" in js
     assert "drawWaveform" in js
 
 
 def test_classic_js_has_core_player():
-    js = _js(style="classic")
+    js = _js()
     assert "playTrack" in js
     assert "fmtTime" in js
     assert "progressBar" in js
 
 
 # ---------------------------------------------------------------------------
-# JS: waveform mode
+# JS: waveform drawing
 # ---------------------------------------------------------------------------
 
 
 def test_waveform_js_has_audio_mode_detection():
-    js = _js(style="waveform")
+    js = _js()
     assert "isAudioMode" in js
     assert "isVideoMode" in js
 
 
 def test_waveform_js_has_generate_waveform():
-    js = _js(style="waveform")
+    js = _js()
     assert "generateWaveform" in js
-    assert "decodeAudioData" in js
     assert "AbortController" in js
 
 
 def test_waveform_js_has_draw_waveform():
-    js = _js(style="waveform")
+    js = _js()
     assert "drawWaveform" in js
     assert "slotW" in js
 
 
 def test_waveform_js_has_waveform_data():
-    js = _js(style="waveform")
+    js = _js()
     assert "waveformData" in js
-
-
-def test_waveform_js_has_thumb_video():
-    js = _js(style="waveform")
-    # thumbVideo replaced by sprite sheet approach (webui/src/spritePreview.ts)
-    ts = _webui_src("spritePreview.ts")
-    assert "_meta" in ts
-    assert "_img" in ts
-    assert "mousemove" in ts
-    assert "mouseleave" in ts
-    assert "drawImage" in ts
-    assert "window._initSpritePreview(" in js
-
-
-def test_waveform_js_has_video_mode_class():
-    js = _js(style="waveform")
-    assert "video-mode" in js
 
 
 def test_waveform_js_calls_generate_on_play():
@@ -339,19 +294,11 @@ def test_waveform_js_calls_generate_on_play():
 # ---------------------------------------------------------------------------
 
 
-def test_config_get_player_bar_style():
-    from hometools.config import get_player_bar_style
-
-    style = get_player_bar_style()
-    assert style in ("classic", "waveform")
-
-
-def test_render_media_page_accepts_style_param():
-    for style in ("classic", "waveform"):
-        page = _page(style=style)
-        assert 'id="progress-bar"' in page
-        assert 'id="btn-play"' in page
-        assert 'id="folder-grid"' in page
+def test_render_media_page_basic_elements():
+    page = _page()
+    assert 'id="progress-bar"' in page
+    assert 'id="btn-play"' in page
+    assert 'id="folder-grid"' in page
 
 
 # ---------------------------------------------------------------------------
@@ -360,20 +307,14 @@ def test_render_media_page_accepts_style_param():
 
 
 def test_pip_button_in_classic_html():
-    page = _page(media="video", style="classic")
-    assert 'id="btn-pip"' in page
-    assert "pip-btn" in page
-
-
-def test_pip_button_in_waveform_html():
-    page = _page(media="video", style="waveform")
+    page = _page(media="video")
     assert 'id="btn-pip"' in page
     assert "pip-btn" in page
 
 
 def test_pip_button_in_audio_page():
     """Audio pages also get the button (hidden by JS when not a video player)."""
-    page = _page(media="audio", style="classic")
+    page = _page(media="audio")
     assert 'id="btn-pip"' in page
 
 
@@ -390,7 +331,7 @@ def test_pip_js_has_pip_supported_detection():
 
 
 def test_pip_js_has_visibility_change_pip():
-    js = _js(style="classic")
+    js = _js()
     assert "visibilitychange" in js
     assert "_isPipActive" in js
 
@@ -429,7 +370,7 @@ def test_js_has_was_playing_flag():
 
 def test_js_uses_muted_not_volume():
     """bgAudio must use muted (not volume) because iOS ignores volume changes."""
-    js = _js(style="classic")
+    js = _js()
     assert "bg.muted = true" in _webui_src("bgAudio.ts")
     assert "bg.muted = false" in _webui_src("bgPlayback.ts")
     # Must NOT use volume approach (read-only on iOS → double audio)
@@ -444,13 +385,13 @@ def test_js_visibility_checks_was_playing():
 
 def test_js_has_bg_audio_is_active():
     """Helper function bgAudioIsActive must exist."""
-    js = _js(style="classic")
+    js = _js()
     assert "bgAudioIsActive" in js
 
 
 def test_video_has_autopictureinpicture_attribute():
     """Video pages should have autopictureinpicture on the element."""
-    page = _page(media="video", style="waveform")
+    page = _page(media="video")
     assert "autopictureinpicture" in page
 
 
@@ -458,32 +399,32 @@ def test_video_has_no_native_controls():
     """Video element must NOT have native controls — custom player-bar is used instead.
     Native controls were removed to fix the overlay height bug (the browser's control
     bar took space inside the video element, causing the video to appear small)."""
-    page = _page(media="video", style="classic")
+    page = _page(media="video")
     assert '<video id="player" preload="auto" playsinline autopictureinpicture>' in page
     assert "controls" not in page.split('<video id="player"', 1)[1].split(">", 1)[0]
 
 
 def test_audio_element_has_no_controls():
     """Audio element should NOT have controls or autopictureinpicture."""
-    page = _page(media="audio", style="classic")
+    page = _page(media="audio")
     assert '<audio id="player" preload="auto" playsinline>' in page
     assert '<audio id="player" preload="auto" playsinline controls' not in page
 
 
 def test_video_page_no_apple_web_app_capable():
     """Video pages must NOT set apple-mobile-web-app-capable (blocks PiP on iOS)."""
-    page = _page(media="video", style="classic")
+    page = _page(media="video")
     assert "apple-mobile-web-app-capable" not in page
 
 
 def test_audio_page_has_apple_web_app_capable():
     """Audio pages should keep apple-mobile-web-app-capable for standalone mode."""
-    page = _page(media="audio", style="classic")
+    page = _page(media="audio")
     assert "apple-mobile-web-app-capable" in page
 
 
 def test_js_has_fullscreen_logic():
-    js = _js(style="classic")
+    js = _js()
     assert "requestFullscreen" in js
     assert "webkitEnterFullscreen" in js
     assert "fullscreenEnabled" in js
@@ -496,7 +437,7 @@ def test_js_sets_media_session_playback_state():
 
 def test_pause_handler_checks_document_hidden():
     """The pause handler must not react when browser auto-pauses (hidden)."""
-    js = _js(style="classic")
+    js = _js()
     assert "document.hidden" in js
 
 
@@ -511,7 +452,7 @@ def test_pause_handler_clears_was_playing():
 
 def test_pause_handler_stops_bg_audio():
     """A user pause (native controls) must also stop bgAudio and sync timer."""
-    js = _js(style="classic")
+    js = _js()
     assert "stopBgSync()" in js
 
 
@@ -535,34 +476,34 @@ def test_js_play_track_calls_load():
 
 def test_js_play_track_has_canplay_retry():
     """If play() fails, playTrack should retry on canplay event."""
-    js = _js(style="classic")
+    js = _js()
     assert "canplay" in js
     assert "once: true" in js
 
 
 def test_js_has_refresh_metadata_function():
     """refreshMetadata function should exist and call the metadata API."""
-    js = _js(style="classic")
+    js = _js()
     assert "refreshMetadata" in js
     assert "/metadata?path=" in _webui_src("metadataRefresh.ts")
 
 
 def test_js_play_track_calls_refresh_metadata():
     """playTrack should call refreshMetadata to update track info on play."""
-    js = _js(style="classic")
+    js = _js()
     assert "refreshMetadata(t)" in js
 
 
 def test_js_has_api_path_variable():
     """The API_PATH variable should be injected into the JavaScript."""
-    js = _js(style="classic")
+    js = _js()
     assert "API_PATH" in js
 
 
 def test_js_loads_initial_catalog_async():
     """The shell should fetch the catalog asynchronously after initial page render
     (loadInitialCatalog ported to webui/src/catalogFetch.ts)."""
-    js = _js(style="classic")
+    js = _js()
     ts = _webui_src("catalogFetch.ts")
     assert "function loadInitialCatalog" in js
     assert "window._loadInitialCatalog(" in js
@@ -582,7 +523,7 @@ def test_js_retries_initial_catalog_while_server_is_loading():
 
 def test_js_shows_indexing_toast_for_refreshing_state():
     """When data.refreshing is set, the UI should show an indexing toast, not a full-screen loader."""
-    js = _js(style="classic")
+    js = _js()
     ts = _webui_src("catalogFetch.ts")
     assert "showIndexingToast" in js
     assert "hideIndexingToast" in js
@@ -592,7 +533,7 @@ def test_js_shows_indexing_toast_for_refreshing_state():
 
 
 def test_js_loading_state_shows_message_in_folder_grid():
-    js = _js(style="classic")
+    js = _js()
     assert "Loading library" in js
     assert "empty-hint" in js
 
@@ -777,20 +718,18 @@ def test_shuffle_css_has_active_styles():
     assert "shuffle-weighted" in css
 
 
-def test_shuffle_btn_in_both_player_bar_styles():
-    """Shuffle button must appear in both classic and waveform player bars."""
-    for style in ("classic", "waveform"):
-        page = render_media_page(
-            title="Test",
-            emoji="",
-            items_json="[]",
-            media_element_tag="audio",
-            api_path="/api/audio/tracks",
-            item_noun="track",
-            player_bar_style=style,
-            enable_shuffle=True,
-        )
-        assert 'id="btn-shuffle"' in page, f"Missing shuffle button in {style} player bar"
+def test_shuffle_btn_in_in_player_bar():
+    """Shuffle button must appear in the player bar."""
+    page = render_media_page(
+        title="Test",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_shuffle=True,
+    )
+    assert 'id="btn-shuffle"' in page
 
 
 def test_audio_server_enables_shuffle():
@@ -886,20 +825,18 @@ def test_repeat_css_has_active_styles():
     assert "repeat-one" in css
 
 
-def test_repeat_btn_in_both_player_bar_styles():
-    """Repeat button must appear in both classic and waveform player bars."""
-    for style in ("classic", "waveform"):
-        page = render_media_page(
-            title="Test",
-            emoji="",
-            items_json="[]",
-            media_element_tag="audio",
-            api_path="/api/audio/tracks",
-            item_noun="track",
-            player_bar_style=style,
-            enable_repeat=True,
-        )
-        assert 'id="btn-repeat"' in page, f"Missing repeat button in {style} player bar"
+def test_repeat_btn_in_in_player_bar():
+    """Repeat button must appear in the player bar."""
+    page = render_media_page(
+        title="Test",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_repeat=True,
+    )
+    assert 'id="btn-repeat"' in page
 
 
 def test_audio_server_enables_repeat():
@@ -992,20 +929,18 @@ def test_queue_dom_refs_requery_detached_nodes():
 
 def test_queue_panel_outside_player_bar():
     """Queue panel must NOT be a child of .player-bar (stacking context trap)."""
-    for style in ("classic", "waveform"):
-        page = render_media_page(
-            title="Test",
-            emoji="",
-            items_json="[]",
-            media_element_tag="audio",
-            api_path="/api/test",
-            item_noun="track",
-            player_bar_style=style,
-        )
-        # queue-panel must appear BEFORE the player-bar in the HTML
-        queue_pos = page.index('id="queue-panel"')
-        bar_pos = page.index('class="player-bar')
-        assert queue_pos < bar_pos, f"Queue panel must be outside (before) player-bar in {style} mode"
+    page = render_media_page(
+        title="Test",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/test",
+        item_noun="track",
+    )
+    # queue-panel must appear BEFORE the player-bar in the HTML
+    queue_pos = page.index('id="queue-panel"')
+    bar_pos = page.index('class="player-bar')
+    assert queue_pos < bar_pos
 
 
 # ---------------------------------------------------------------------------
@@ -1251,20 +1186,18 @@ def test_video_server_does_not_enable_rating_write():
     assert json.loads(m.group(1))["enableRatingWrite"] is False
 
 
-def test_rating_in_both_player_bar_styles():
-    """Rating container must appear in both classic and waveform player bars."""
-    for style in ("classic", "waveform"):
-        page = render_media_page(
-            title="Test",
-            emoji="",
-            items_json="[]",
-            media_element_tag="audio",
-            api_path="/api/audio/tracks",
-            item_noun="track",
-            player_bar_style=style,
-            enable_rating_write=True,
-        )
-        assert 'id="player-rating"' in page, f"Missing rating container in {style} player bar"
+def test_rating_in_in_player_bar():
+    """Rating container must appear in the player bar."""
+    page = render_media_page(
+        title="Test",
+        emoji="",
+        items_json="[]",
+        media_element_tag="audio",
+        api_path="/api/audio/tracks",
+        item_noun="track",
+        enable_rating_write=True,
+    )
+    assert 'id="player-rating"' in page
 
 
 # ---------------------------------------------------------------------------

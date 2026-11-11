@@ -6,7 +6,7 @@ from hometools.streaming.core.server_utils import render_media_page, render_play
 
 
 def _js():
-    return render_player_js(player_bar_style="classic")
+    return render_player_js()
 
 
 def _webui_src(filename):
@@ -23,7 +23,6 @@ def _page():
         media_element_tag="audio",
         api_path="/api/test",
         item_noun="track",
-        player_bar_style="classic",
     )
 
 

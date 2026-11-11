@@ -18,7 +18,6 @@ from typing import Any
 from hometools.config import (
     get_audit_dir,
     get_cache_dir,
-    get_player_bar_style,
     get_stream_index_cache_ttl,
     get_stream_safe_mode,
     get_video_library_dir,
@@ -102,7 +101,6 @@ def render_video_index_html(items, *, safe_mode: bool = False, language_groups_j
         api_path="/api/video/items",
         item_noun="video",
         theme_color="#bb86fc",
-        player_bar_style="classic" if safe_mode else get_player_bar_style(),
         safe_mode=safe_mode,
         enable_repeat=True,
         enable_playlists=True,
