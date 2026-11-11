@@ -108,56 +108,16 @@ def render_player_js(
 
     # -- sprite sheet preview (always available for video, both modes) ----------
     sprite_preview_js = """
-  /* ── sprite sheet preview (video scrubber thumbnails) ── */
-  var thumbPreview   = document.getElementById('thumb-preview');
-  var thumbCanvas    = document.getElementById('thumb-canvas');
-  var thumbCtx       = thumbCanvas ? thumbCanvas.getContext('2d') : null;
-  var thumbTimeEl    = document.getElementById('thumb-time');
-  var spriteData     = null;
-  var spriteImg      = null;
-
-  function loadSpriteData(relativePath) {
-    spriteData = null;
-    spriteImg = null;
-    if (!isVideoMode || !relativePath) return;
-    fetch('/api/video/sprites?path=' + encodeURIComponent(relativePath))
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(meta) {
-        if (!meta || !meta.cols) return;
-        spriteData = meta;
-        var img = new Image();
-        img.onload = function() { spriteImg = img; };
-        img.src = '/thumb?path=' + encodeURIComponent(relativePath) + '&size=sprite';
-      })
-      .catch(function() {});
-  }
-
-  if (isVideoMode && progressTrack) {
-    progressTrack.addEventListener('mousemove', function(e) {
-      if (!spriteData || !spriteImg || !player.duration || !isFinite(player.duration)) return;
-      var rect = progressTrack.getBoundingClientRect();
-      var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      var seekTime = ratio * player.duration;
-      var pctLeft = Math.max(5, Math.min(95, ratio * 100));
-      thumbPreview.style.left = pctLeft + '%';
-      thumbPreview.classList.add('visible');
-      thumbTimeEl.textContent = fmtTime(seekTime);
-      var idx = Math.min(Math.floor(seekTime / spriteData.interval), spriteData.count - 1);
-      var col = idx % spriteData.cols;
-      var row = Math.floor(idx / spriteData.cols);
-      if (thumbCtx) {
-        thumbCanvas.width = spriteData.frame_w;
-        thumbCanvas.height = spriteData.frame_h;
-        thumbCtx.drawImage(spriteImg,
-          col * spriteData.frame_w, row * spriteData.frame_h,
-          spriteData.frame_w, spriteData.frame_h,
-          0, 0, spriteData.frame_w, spriteData.frame_h);
-      }
-    });
-    progressTrack.addEventListener('mouseleave', function() {
-      thumbPreview.classList.remove('visible');
-    });
-  }
+  /* sprite sheet preview (video scrubber thumbnails): webui/src/spritePreview.ts */
+  window._initSpritePreview({
+    player: player, isVideoMode: isVideoMode,
+    track: progressTrack,
+    preview: document.getElementById('thumb-preview'),
+    canvas: document.getElementById('thumb-canvas'),
+    timeEl: document.getElementById('thumb-time'),
+    fmtTime: fmtTime
+  });
+  function loadSpriteData(relativePath) { window._loadSpriteData(relativePath); }
 """
 
     if player_bar_style == "waveform":

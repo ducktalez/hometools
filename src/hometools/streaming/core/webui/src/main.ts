@@ -269,6 +269,7 @@ import { initIntroUi, setCurrentIntro, updateSkipIntroBtn } from "./introUi";
 import { showIndexingToast, hideIndexingToast } from "./indexingToast";
 import { initVideoOverlay, openVideoOverlay, showVidControls, syncMiniBar } from "./videoOverlay";
 import { initFullscreenButton, initCastButton } from "./videoButtons";
+import { initSpritePreview, loadSpriteData } from "./spritePreview";
 import { queueIndexOf, queueAdd, queueRemoveAt, queueClear, queueMove, resolveNext, removeFromQueue, clearQueueAction, playFromQueue, addToQueue } from "./queue";
 import { contentsAt } from "./folderContents";
 import { folderCardHtml, fileCardHtml } from "./folderCards";
@@ -591,6 +592,8 @@ declare global {
     _syncMiniBar: typeof syncMiniBar;
     _initFullscreenButton: typeof initFullscreenButton;
     _initCastButton: typeof initCastButton;
+    _initSpritePreview: typeof initSpritePreview;
+    _loadSpriteData: typeof loadSpriteData;
     _queueIndexOf: typeof queueIndexOf;
     _queueAdd: typeof queueAdd;
     _queueRemoveAt: typeof queueRemoveAt;
@@ -932,6 +935,8 @@ window._showVidControls = showVidControls;
 window._syncMiniBar = syncMiniBar;
 window._initFullscreenButton = initFullscreenButton;
 window._initCastButton = initCastButton;
+window._initSpritePreview = initSpritePreview;
+window._loadSpriteData = loadSpriteData;
 // Queue data ops — htState.userQueue bridge (see queue.ts header).
 window._queueIndexOf = queueIndexOf;
 window._queueAdd = queueAdd;

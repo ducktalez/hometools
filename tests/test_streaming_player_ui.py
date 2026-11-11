@@ -264,8 +264,10 @@ def test_classic_js_has_no_thumb_video():
     js = _js(style="classic")
     assert "thumbVideo" not in js
     # Classic mode now has sprite-based mousemove for video scrubber preview
-    assert "spriteData" in js
-    assert "mousemove" in js
+    ts = _webui_src("spritePreview.ts")
+    assert "_meta" in ts
+    assert "mousemove" in ts
+    assert "window._initSpritePreview(" in js
 
 
 def test_classic_js_has_stub_functions():
@@ -312,12 +314,14 @@ def test_waveform_js_has_waveform_data():
 
 def test_waveform_js_has_thumb_video():
     js = _js(style="waveform")
-    # thumbVideo replaced by sprite sheet approach
-    assert "spriteData" in js
-    assert "spriteImg" in js
-    assert "mousemove" in js
-    assert "mouseleave" in js
-    assert "drawImage" in js
+    # thumbVideo replaced by sprite sheet approach (webui/src/spritePreview.ts)
+    ts = _webui_src("spritePreview.ts")
+    assert "_meta" in ts
+    assert "_img" in ts
+    assert "mousemove" in ts
+    assert "mouseleave" in ts
+    assert "drawImage" in ts
+    assert "window._initSpritePreview(" in js
 
 
 def test_waveform_js_has_video_mode_class():
