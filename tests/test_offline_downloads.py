@@ -196,7 +196,7 @@ class TestTrackDownloadButtons:
         """deleteTrackDownload must remove a cached download from IndexedDB."""
         js = _js()
         assert "function deleteTrackDownload" in js
-        assert "deleteDownloadById" in js
+        assert "export function deleteDownloadById" in _webui_src("offlineDb.ts")
         assert ".delete(id)" in _webui_src("offlineDb.ts")
 
     def test_js_has_update_all_download_buttons(self):
@@ -230,17 +230,17 @@ class TestTrackDownloadButtons:
 
     def test_js_listens_for_sw_download_messages(self):
         """JS should listen for DOWNLOAD_CACHED messages from service worker."""
-        js = _js()
-        assert "DOWNLOAD_CACHED" in js
-        assert "serviceWorker" in js
+        ts = _webui_src("offlineLibrary.ts")
+        assert "DOWNLOAD_CACHED" in ts
+        assert "serviceWorker" in ts
 
     def test_js_track_download_stores_metadata_for_offline_library(self):
         """Downloads should persist enough metadata for the offline list UI."""
         js = _js()
-        assert "thumbnailUrl" in js
-        assert "relativePath" in js
-        assert "mediaType" in js
-        assert "artist" in js
+        ts = _webui_src("offlineLibrary.ts") + _webui_src("downloadButtons.ts")
+        for key in ("thumbnailUrl", "relativePath", "mediaType", "artist"):
+            assert key in ts
+        assert "_initOfflineLibrary" in js
 
     def test_js_has_cancel_download_function(self):
         """cancelDownload must abort an active download via AbortController."""
@@ -288,15 +288,14 @@ class TestOfflineLibraryUI:
     def test_js_has_offline_library_rendering(self):
         js = _js()
         assert "function refreshOfflineLibrary" in js
-        assert "function renderOfflineDownloadList" in js
         assert "Offline-Bibliothek" not in js
-        assert "offline-download-item" in js
+        assert "export function downloadToItem" in _webui_src("offlineLibrary.ts")
 
     def test_js_can_play_from_offline_library(self):
-        js = _js()
-        assert "function playStoredDownload" in js
-        assert "findItemByStreamUrl" in js
-        assert "playItem(" in js
+        ts = _webui_src("offlineLibrary.ts")
+        assert "export function downloadToItem" in ts
+        assert "function open()" in ts
+        assert "enterTrackListView" in ts
 
 
 class TestStorageQuotaHandling:
@@ -310,24 +309,22 @@ class TestStorageQuotaHandling:
         assert "storage.persisted" in ts
         js = _js()
         assert "function estimateOfflineStorage" not in js
-        assert "function requestPersistentStorage" in js
+        assert "requestPersistentStorage" in _webui_src("offlineLibrary.ts")
 
     def test_js_has_soft_limit_and_prune_logic(self):
         js = _js()
         assert "OFFLINE_SOFT_LIMIT" in js
-        assert "function pruneOldDownloads" in js
-        assert "function ensureStorageBudget" in js
+        ts = _webui_src("offlineLibrary.ts")
+        assert "function prune(" in ts
+        assert "ensureStorageBudget" in js and "ensureStorageBudget" in ts
         assert "500 * 1024 * 1024" in js
         # eviction logic ported (behaviour: webui/test/offlineBudget.test.ts)
-        assert "window._evictForBudget(requiredBytes, OFFLINE_SOFT_LIMIT, protectedStreamUrl)" in js
+        assert "evictForBudget(requiredBytes, cfg.softLimit, protectedStreamUrl)" in ts
         assert "candidates.shift()" not in js
         assert "export function pickEvictionVictims<" in _webui_src("offlineDownloads.ts")
 
     def test_js_updates_storage_summary(self):
-        js = _js()
-        assert "function renderStorageSummary" in js
-        assert "offline-storage-summary" in js
-        assert "offline-storage-detail" in js
+        assert "storageSummaryView" in _webui_src("offlineDownloads.ts")
 
 
 class TestOfflinePlaybackIntegrationHooks:
@@ -370,9 +367,9 @@ class TestOfflinePlaybackIntegrationHooks:
         assert "fallbackUrl" in ts
 
     def test_js_listens_to_online_offline_events(self):
-        js = _js()
-        assert "window.addEventListener('online'" in js
-        assert "window.addEventListener('offline'" in js
+        ts = _webui_src("offlineLibrary.ts")
+        assert 'addEventListener("online"' in ts
+        assert 'addEventListener("offline"' in ts
 
 
 class TestTrackDownloadCSS:

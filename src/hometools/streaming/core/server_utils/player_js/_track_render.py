@@ -55,7 +55,7 @@ def render_track_render_js() -> str:
   }
 
 
-  /* ── offline download management ── */
+  /* -- offline downloads -- */
   var OFFLINE_SOFT_LIMIT = 500 * 1024 * 1024;
   var activeDownloads = {};
 
@@ -63,140 +63,26 @@ def render_track_render_js() -> str:
     window._cancelDownload(streamUrl, btn, activeDownloads, { icDl: IC_DL, toast: showToast });
   }
 
-  /* revokeOfflineUrl/getOfflineUrl: ported to webui/src/offlineUrl.ts,
-     bridged onto window.getOfflineUrl by main.ts (see that file's header
-     comment for why currentOfflineUrl moved as private state). */
-
-  /* IndexedDB layer (initDownloadDB/getDownloadByStreamUrl/getAllDownloads/
-     deleteDownloadById/deleteDownloadByStreamUrl + downloadDB handle):
-     ported to webui/src/offlineDb.ts, bridged onto window by main.ts under
-     the same names — bare call sites below unchanged. DB name/version is a
-     contract with the Service Worker (_pwa.py), see offlineDb.ts header. */
-
-  /* formatBytes() lives in _core.py — kept as the single canonical
-     definition (was accidentally duplicated here during the module split). */
-
-  /* formatDate/sortDownloads/getAppDownloadUsage: ported to
-     webui/src/offlineDownloads.ts, bridged onto window by main.ts. */
-
-  /* findItemByStreamUrl: webui/src/catalogQuery.ts (explicit lists). */
-  function findItemByStreamUrl(streamUrl) {
-    return window._findItemByStreamUrl(streamUrl, filteredItems, allItems);
+  /* Offline library (refresh/open/budget/prune/persist, SW listener, pill/sort/close wiring):
+     webui/src/offlineLibrary.ts. IndexedDB: offlineDb.ts (DB name/version = SW contract). */
+  var _offlineLib = window._initOfflineLibrary({
+    itemNoun: ITEM_NOUN, softLimit: OFFLINE_SOFT_LIMIT, formatBytes: formatBytes,
+    currentStreamUrl: function() { return currentStreamUrl; },
+    updateDownloadButtons: function() { updateAllDownloadButtons(); },
+    applyFilter: function() { applyFilter(); },
+    showFolderView: function() { showFolderView(); },
+    enterTrackListView: function(o) { _enterTrackListView(o); },
+    destroyPlaylistDragDrop: function() { destroyPlaylistDragDrop(); }
+  });
+  function refreshOfflineLibrary() { return _offlineLib.refresh(); }
+  function openOfflineLibrary() { _offlineLib.open(); }
+  function ensureStorageBudget(requiredBytes, protectedStreamUrl) {
+    return _offlineLib.ensureStorageBudget(requiredBytes, protectedStreamUrl);
   }
-
-
-  /* estimateOfflineStorage: ported to webui/src/offlineDownloads.ts,
-     bridged onto window by main.ts. softLimit now explicit 2nd arg. */
-
-  /* texts/flags: webui/src/offlineDownloads.ts::storageSummaryView. DOM here. */
-  function renderStorageSummary(info) {
-    if (!info) return;
-    var v = window._storageSummaryView(info);
-    if (offlineStorageSummary) {
-      offlineStorageSummary.classList.toggle('warn', v.warn);
-      offlineStorageSummary.textContent = v.summary;
-    }
-    if (offlineStorageDetail) offlineStorageDetail.textContent = v.detail;
-    if (downloadedPill) {
-      downloadedPill.textContent = v.pill;
-      downloadedPill.classList.toggle('has-downloads', v.hasDownloads);
-    }
-    updateOfflineFolderCount();
-  }  function renderOfflineDownloadList(downloads) {
-    if (!offlineDownloadList) return;
-    offlineDownloadList.innerHTML = window._offlineDownloadListHtml(downloads, escHtml, formatBytes, FILE_PLACEHOLDER);
-    if (!downloads.length) return;
-    offlineDownloadList.querySelectorAll('.offline-download-item').forEach(function(el) {
-      el.addEventListener('click', function(e) {
-        if (e.target && e.target.classList && e.target.classList.contains('offline-download-delete')) return;
-        playStoredDownload(el.dataset.streamUrl);
-      });
-    });
-    offlineDownloadList.querySelectorAll('.offline-download-delete').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        deleteTrackDownload(btn.dataset.streamUrl);
-      });
-    });
-  }
-
-  function refreshOfflineLibrary() {
-    return getAllDownloads().then(function(downloads) {
-      /* If currently viewing the offline playlist, refresh it */
-      if (currentPath === '__offline__') {
-        var ready = downloads.filter(function(d) { return d.status === 'ready'; });
-        var sortBy = offlineSort ? offlineSort.value : 'newest';
-        var sorted = sortDownloads(ready, sortBy);
-        var items = sorted.map(function(d) {
-          return {
-            title: d.title || 'Offline-Download',
-            artist: d.artist || '',
-            relative_path: d.relativePath || d.title || d.streamUrl,
-            stream_url: d.streamUrl,
-            thumbnail_url: d.thumbnailUrl || '',
-            media_type: d.mediaType || ITEM_NOUN,
-            rating: 0
-          };
-        });
-        playlistItems = items;
-        applyFilter();
-        estimateOfflineStorage(ready, OFFLINE_SOFT_LIMIT).then(function(info) {
-          if (info && info.appUsage > 0) {
-            trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +
-              ' · ' + formatBytes(info.appUsage);
-          }
-        });
-      }
-      updateOfflineFolderCount();
-      return downloads;
-    });
-  }
-
-  function openOfflineLibrary() {
-    getAllDownloads().then(function(downloads) {
-      var ready = downloads.filter(function(d) { return d.status === 'ready'; });
-      var sortBy = offlineSort ? offlineSort.value : 'newest';
-      var sorted = sortDownloads(ready, sortBy);
-      var items = sorted.map(function(d) {
-        return {
-          title: d.title || 'Offline-Download',
-          artist: d.artist || '',
-          relative_path: d.relativePath || d.title || d.streamUrl,
-          stream_url: d.streamUrl,
-          thumbnail_url: d.thumbnailUrl || '',
-          media_type: d.mediaType || ITEM_NOUN,
-          rating: 0
-        };
-      });
-      currentPath = '__offline__';
-      /* Enter via _enterTrackListView() directly (same shared entry point as
-         showPlaylist()/showUserPlaylistView()/playDuplicates() — see
-         docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung") instead
-         of calling showPlaylist() and patching headerTitle.textContent
-         afterward. The previous patch-after approach raced _enterTrackListView's
-         own title logic (currentPath='__offline__' would otherwise render as
-         the literal folder name via leafName()) and duplicated the router
-         update showPlaylist() already performs. Also skips showPlaylist()'s
-         folder-order fetch/sort, which is meaningless for a virtual list. */
-      destroyPlaylistDragDrop();
-      inPlaylist = true;
-      _currentPlaylistId = '__offline__';
-      playlistItems = items;
-      _enterTrackListView({ title: 'Downloaded', backDisabled: false, resetIndex: true });
-      estimateOfflineStorage(ready, OFFLINE_SOFT_LIMIT).then(function(info) {
-        if (info && info.appUsage > 0) {
-          trackCount.textContent = ready.length + ' download' + (ready.length !== 1 ? 's' : '') +
-            ' · ' + formatBytes(info.appUsage);
-        }
-      });
-    });
-  }
-
   function closeOfflineLibrary() { window._closeOfflineLibrary({ showFolderView: showFolderView }); }
-
   function updateOfflineFolderCount() { window._updateOfflineFolderCount(downloadedPill); }
 
-  /* ── Recently played section ── */
+  /* -- Recently played section -- */
   function loadRecentlyPlayed() {
     var section = document.getElementById('recent-section');
     if (!section) return;
@@ -263,38 +149,6 @@ def render_track_render_js() -> str:
 
 
 
-  function requestPersistentStorage() {
-    if (!(navigator.storage && navigator.storage.persist)) return Promise.resolve(false);
-    if (offlinePersistBtn) offlinePersistBtn.textContent = 'Prüfe persistenten Speicher…';
-    return navigator.storage.persist().then(function(persistent) {
-      if (offlinePersistBtn) {
-        offlinePersistBtn.textContent = persistent ? 'Persistenter Speicher aktiv' : 'Persistenz nicht verfügbar';
-      }
-      return refreshOfflineLibrary().then(function() { return persistent; });
-    }).catch(function() {
-      if (offlinePersistBtn) offlinePersistBtn.textContent = 'Persistenz fehlgeschlagen';
-      return false;
-    });
-  }
-
-  function pruneOldDownloads(requiredBytes, protectedStreamUrl) {
-    /* selection + deletion: webui/src/offlineDb.ts::evictForBudget
-       (pickEvictionVictims in offlineDownloads.ts). UI refresh stays here. */
-    return window._evictForBudget(requiredBytes, OFFLINE_SOFT_LIMIT, protectedStreamUrl).then(function(ok) {
-      updateAllDownloadButtons();
-      refreshOfflineLibrary();
-      return ok;
-    });
-  }
-
-  function ensureStorageBudget(requiredBytes, protectedStreamUrl) {
-    return getAllDownloads().then(function(downloads) {
-      var total = getAppDownloadUsage(downloads);
-      if (total + requiredBytes <= OFFLINE_SOFT_LIMIT) return true;
-      return pruneOldDownloads(requiredBytes, protectedStreamUrl);
-    });
-  }
-
   function updateAllDownloadButtons() {
     window._updateAllDownloadButtons({ icDl: IC_DL, icCheck: IC_CHECK });
   }
@@ -324,67 +178,6 @@ def render_track_render_js() -> str:
   }
 
   function playOfflineOrStream(streamUrl) { return window._playOfflineOrStream(streamUrl); }
-
-  function playStoredDownload(streamUrl) {
-    getDownloadByStreamUrl(streamUrl).then(function(download) {
-      if (!download) return;
-      /* If currently in offline playlist, find track in filtered items */
-      if (currentPath === '__offline__') {
-        var offIdx = filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; });
-        if (offIdx >= 0) { playTrack(offIdx); return; }
-      }
-      var match = findItemByStreamUrl(streamUrl);
-      if (match) {
-        playTrack(match.index >= 0 ? match.index : filteredItems.findIndex(function(it) { return it.stream_url === streamUrl; }));
-        if (match.index < 0) {
-          playItem(match.item, -1);
-        }
-        return;
-      }
-      playItem({
-        title: download.title || 'Offline-Download',
-        artist: download.artist || '',
-        relative_path: download.relativePath || download.title || streamUrl,
-        stream_url: download.streamUrl,
-        thumbnail_url: download.thumbnailUrl || '',
-        media_type: download.mediaType || ITEM_NOUN,
-        rating: 0
-      }, -1);
-    });
-  }
-
-  /* Listen for Service Worker download notifications */
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.addEventListener('message', function(e) {
-      if (e.data && (e.data.type === 'DOWNLOAD_CACHED' || e.data.type === 'DOWNLOAD_DELETED')) {
-        updateAllDownloadButtons();
-        refreshOfflineLibrary();
-      }
-    });
-  }
-
-  if (downloadedPill) downloadedPill.addEventListener('click', openOfflineLibrary);
-  if (offlineClose) offlineClose.addEventListener('click', closeOfflineLibrary);
-  if (offlineLibrary) {
-    offlineLibrary.addEventListener('click', function(e) {
-      if (e.target === offlineLibrary) closeOfflineLibrary();
-    });
-  }
-  if (offlineSort) offlineSort.addEventListener('change', refreshOfflineLibrary);
-  if (offlinePersistBtn) {
-    if (!(navigator.storage && navigator.storage.persist)) {
-      offlinePersistBtn.hidden = true;
-    } else {
-      offlinePersistBtn.addEventListener('click', requestPersistentStorage);
-    }
-  }
-  if (offlinePruneBtn) {
-    offlinePruneBtn.addEventListener('click', function() {
-      pruneOldDownloads(0, currentStreamUrl);
-    });
-  }
-  window.addEventListener('online', refreshOfflineLibrary);
-  window.addEventListener('offline', refreshOfflineLibrary);
 
   /* ── Tools panel ── */
   var toolsPill = document.getElementById('tools-pill');

@@ -148,14 +148,6 @@ def render_core_js(waveform_js) -> str:
      the .player-bar INSIDE the overlay, so existing classList calls work
      on the inner controls and the overlay is managed separately. */
   var playAllBtn   = document.getElementById('play-all-btn');
-  var offlineLibrary = document.getElementById('offline-library');
-  var offlineClose = document.getElementById('offline-close');
-  var offlineSort  = document.getElementById('offline-sort');
-  var offlinePersistBtn = document.getElementById('offline-persist-btn');
-  var offlinePruneBtn = document.getElementById('offline-prune-btn');
-  var offlineDownloadList = document.getElementById('offline-download-list');
-  var offlineStorageSummary = document.getElementById('offline-storage-summary');
-  var offlineStorageDetail = document.getElementById('offline-storage-detail');
   var downloadedPill = document.getElementById('downloaded-pill');
   var originalTitle = headerTitle.textContent;
   /* Bridge onto window — read by the ported leafName() (webui/src/pathUtils.ts,
