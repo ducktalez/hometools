@@ -72,6 +72,22 @@ describe("showUserPlaylistView", () => {
     showUserPlaylistView("q", h2);
     expect(h2.toast).toHaveBeenCalledWith("Keine Titel in dieser Playlist gefunden");
   });
+  it("empty manual playlist opens empty view (no toast); smart empty still toasts", () => {
+    const s = installState();
+    (s as unknown as { userPlaylists: unknown[] }).userPlaylists = [
+      { id: "new", name: "Neu", items: [] },
+      { id: "sm", name: "Smart", smart: { rules: [] } },
+    ];
+    const h = hooks();
+    showUserPlaylistView("new", h);
+    expect(h.toast).not.toHaveBeenCalled();
+    expect(s.currentPlaylistId).toBe("new");
+    expect(s.playlistItems).toEqual([]);
+    expect(h.enterTrackListView).toHaveBeenCalledWith({ title: "Neu" });
+    const h2 = hooks();
+    showUserPlaylistView("sm", h2);
+    expect(h2.toast).toHaveBeenCalledWith("Keine Titel in dieser Playlist gefunden");
+  });
 });
 
 describe("playUserPlaylist", () => {

@@ -70,6 +70,13 @@ export function showUserPlaylistView(plId: string, h: PlaylistViewHooks): void {
   }
   const data = h.resolvePlaylist(plId);
   if (!data) {
+    /* Existing manual playlist without (resolvable) items: open the empty view
+       so the user can see/rename it instead of a dead-end toast. */
+    const pl = ((st.userPlaylists || []) as { id?: string; name?: string; smart?: unknown }[]).find((p) => p.id === plId);
+    if (pl && !pl.smart) {
+      enter(plId, [], pl.name || "");
+      return;
+    }
     h.toast("Keine Titel in dieser Playlist gefunden");
     return;
   }
