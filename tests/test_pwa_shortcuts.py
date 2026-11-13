@@ -183,14 +183,17 @@ class TestDeepLinking:
     """Test that the rendered HTML supports deep linking."""
 
     def test_html_contains_deep_link_js(self, tmp_path):
-        """The generated HTML must include deep-link handling code (router + legacy shim)."""
+        """The generated HTML must wire the TS URL router (popstate lives in router.ts)."""
+        from pathlib import Path
+
+        import hometools
         from hometools.streaming.audio.server import render_audio_index_html
 
         html = render_audio_index_html([])
-        assert "handleDeepLink" in html
-        # New URL router supersedes the legacy _deepLinkId variable.
         assert "_router" in html
-        assert "popstate" in html
+        assert "_createRouter" in html
+        ts = Path(hometools.__file__).parent / "streaming/core/webui/src/router.ts"
+        assert "popstate" in ts.read_text(encoding="utf-8")
 
     def test_html_contains_pin_button_markup(self, tmp_path):
         """The JS must render pin buttons per track."""

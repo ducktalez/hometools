@@ -108,7 +108,6 @@ def render_player_js() -> str:
     resizeFraction: function() { return progressBar && progressBar.max > 0 ? progressBar.value / progressBar.max : 0; }
   });
   function generateWaveform(url, relativePath) { window._generateWaveform(url, relativePath); }
-  function drawWaveform(progress) { window._drawWaveform(progress); }
 """
 
     return (

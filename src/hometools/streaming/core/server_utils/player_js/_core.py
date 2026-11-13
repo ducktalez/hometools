@@ -6,11 +6,8 @@ from __future__ import annotations
 def render_core_js(waveform_js) -> str:
     """Return the core section of the player JS."""
     return (
-        """  var _LANG_NAME_MAP = {
-    'de': 'Deutsch', 'en': 'English', 'fr': 'Fran\u00e7ais', 'es': 'Espa\u00f1ol',
-    'it': 'Italiano', 'ja': '\u65e5\u672c\u8a9e', 'ko': '\ud55c\uad6d\uc5b4',
-    'zh': '\u4e2d\u6587', 'pt': 'Portugu\u00eas', 'ru': '\u0420\u0443\u0441\u0441\u043a\u0438\u0439'
-  };
+        """  /* Language names ported to webui/src/langNames.ts. */
+  var _LANG_NAME_MAP = window._LANG_NAME_MAP;
 
   var allItems = Array.isArray(INITIAL) ? INITIAL : [];
   var currentPath = '';
@@ -42,7 +39,6 @@ def render_core_js(waveform_js) -> str:
 
   /* ── Queue (Warteschlange) state ── */
   var _userQueue = [];           /* Array of item objects {title, artist, stream_url, relative_path, thumbnail_url, ...} */
-  var _queueOpen = false;
 
   /* ── State bridge for ported TS modules (webui/src/stateBridge.ts) ──
      Getter/setter closures: TS reads see live values, TS writes reassign
@@ -188,7 +184,6 @@ def render_core_js(waveform_js) -> str:
                to the same "Alle Titel" view).                                */
   var _RENDER_BATCH_SIZE  = 100;
   var _rgKey              = '';   /* render-guard key from last completed renderTracks call */
-  var _searchDebounceTimer = null; /* debounce timer for search-input */
 
   /* ── Catalog cache (localStorage, stale-while-revalidate) ──────────────────
      Ported to webui/src/catalogCache.ts (_saveCatalogCache/_loadCatalogCache/
@@ -238,20 +233,8 @@ def render_core_js(waveform_js) -> str:
   function _showVidControls() { window._showVidControls(); }
   function _syncMiniBar(t) { window._syncMiniBar(t); }
 
-  /* ── Background-tab resume ──────────────────────────────────────────────
-     Chrome (and other browsers) can pause media when a tab becomes hidden.
-     We track whether the player was running before hide and resume it when
-     the tab becomes visible again. Works for both audio and video mode.     */
-  var _wasPlayingBeforeHide = false;
-  document.addEventListener('visibilitychange', function() {
-    if (document.hidden) {
-      _wasPlayingBeforeHide = !player.paused;
-    } else {
-      if (_wasPlayingBeforeHide && player.paused) {
-        player.play().catch(function() {});
-      }
-    }
-  });
+  /* Background-tab resume (audio + video) ported to webui/src/tabResume.ts; flag private. */
+  window._initTabResume({ player: player });
 
   /* Fullscreen + cast buttons ported to webui/src/videoButtons.ts. */
   window._initFullscreenButton({ button: videoFsBtn, overlay: videoOverlay, player: player });
@@ -325,83 +308,19 @@ def render_core_js(waveform_js) -> str:
   function openLyricsPanel(relativePath, trackTitle) { window._lyrics.open(relativePath, trackTitle); }
   function closeLyricsPanel() { window._lyrics.close(); }
 
-  /* ── Queue (Warteschlange) panel ── */
-  var _queuePeekHandle = document.getElementById('queue-peek-handle');
-  var _queuePanel = document.getElementById('queue-panel');
-  var _queueBody  = document.getElementById('queue-body');
-  var _queueClose = document.getElementById('queue-close-btn');
-  var _queueBadge = document.getElementById('queue-peek-badge');
-  var _queueClearBtn = document.getElementById('queue-clear-btn');
-  var _queueDragHandle = document.getElementById('queue-drag-handle');
-  var _queueUserHeight = null; /* user-chosen height in px, null = auto */
-  var _QUEUE_HEIGHT_KEY = 'hometools_queue_height';
-  var _QUEUE_MIN_H = 220; /* head ~57px + at least 3 items à 53px */
-  /* Restore saved height preference (enforce minimum) */
-  try {
-    var _sh = localStorage.getItem(_QUEUE_HEIGHT_KEY);
-    if (_sh) { var _sv = parseInt(_sh, 10); _queueUserHeight = (_sv >= _QUEUE_MIN_H) ? _sv : null; }
-  } catch(e) {}
-
-  /** Re-query queue DOM refs — called before every render to guard against
-   *  stale references (e.g. if the player-bar was not yet visible at init). */
-  function _domNodeMissingOrDetached(el) {
-    return !el || !el.isConnected;
-  }
-
-  function _ensureQueueDom() {
-    if (_domNodeMissingOrDetached(_queuePanel)) _queuePanel = document.getElementById('queue-panel');
-    if (_domNodeMissingOrDetached(_queueBody)) _queueBody = document.getElementById('queue-body');
-    if (_domNodeMissingOrDetached(_queueBadge)) _queueBadge = document.getElementById('queue-peek-badge');
-    if (_domNodeMissingOrDetached(_queueClearBtn)) _queueClearBtn = document.getElementById('queue-clear-btn');
-    if (_domNodeMissingOrDetached(_queuePeekHandle)) _queuePeekHandle = document.getElementById('queue-peek-handle');
-    if (_domNodeMissingOrDetached(_queueClose)) _queueClose = document.getElementById('queue-close-btn');
-    if (_domNodeMissingOrDetached(_queueDragHandle)) _queueDragHandle = document.getElementById('queue-drag-handle');
-  }
-
-  /* Queue data ops (add/remove/clear/indexOf) ported to webui/src/queue.ts
-     via htState.userQueue. These wrappers keep DOM/toast/playItem side. */
-  function _onQueueChanged() {
-    updateQueueBadge();
-    updateQueueButtons();
-    if (_queueOpen) renderQueuePanel();
-  }
-
-  function addToQueue(item) {
-    window._addToQueue(item, {
-      ensureDom: _ensureQueueDom, onChanged: _onQueueChanged,
-      toast: showToast, esc: escHtml, itemNoun: ITEM_NOUN
-    });
-  }
-
-  function removeFromQueue(index) {
-    window._removeFromQueue(index, { onChanged: _onQueueChanged });
-  }
-
-  function clearQueue() {
-    window._clearQueueAction({ onChanged: _onQueueChanged });
-  }
-
-  function updateQueueBadge() {
-    _ensureQueueDom();
-    window._updateQueueBadge(_queueBadge, _queuePeekHandle, _userQueue.length);
-  }
-
-  function updateQueueButtons() {
-    window._updateQueueButtons(_userQueue);
-  }
-
-  function renderQueuePanel() {
-    window._renderQueuePanel({
-      body: _queueBody, clearBtn: _queueClearBtn, queue: _userQueue,
-      esc: escHtml, filePlaceholder: FILE_PLACEHOLDER, icRemove: IC_REMOVE,
-      playFromQueue: playFromQueue, removeFromQueue: removeFromQueue,
-      initDnd: initQueueDragDrop
-    });
-  }
-
-  function playFromQueue(index) {
-    window._playFromQueue(index, { onChanged: _onQueueChanged, playItem: playItem });
-  }
+  /* Queue (Warteschlange): panel DOM, open flag, height, wiring, data ops in
+     webui/src/queueController.ts. Wrappers keep bare names for unported callers. */
+  var _queueCtl = window._initQueueController({
+    itemNoun: ITEM_NOUN, filePlaceholder: FILE_PLACEHOLDER, icRemove: IC_REMOVE,
+    esc: escHtml, toast: showToast,
+    playItem: function(item, i) { playItem(item, i); },
+    lyricsOpen: function() { return window._lyrics.isOpen(); },
+    closeLyrics: function() { closeLyricsPanel(); }
+  });
+  function addToQueue(item) { _queueCtl.add(item); }
+  function removeFromQueue(index) { _queueCtl.remove(index); }
+  function playFromQueue(index) { _queueCtl.playFrom(index); }
+  function updateQueueButtons() { _queueCtl.updateButtons(); }
 
   /** Dequeue next item from queue — returns true if an item was played */
 """

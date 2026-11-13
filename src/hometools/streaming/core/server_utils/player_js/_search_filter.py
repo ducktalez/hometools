@@ -144,16 +144,9 @@ def render_search_filter_js() -> str:
   function markActive() { window._markActive(_renderWindowHooks()); }
   function _startWindowedRender(realTracks) { window._startWindowedRender(realTracks, _renderWindowHooks()); }
 
-  /* Desktop-only row click: select/highlight without starting playback.
-     Actual playback on hover-capable devices is triggered via the
-     dedicated .track-play-btn overlay on the thumbnail. */
-  function _selectTrackRow(idx) {
-    document.querySelectorAll('.track-item.row-selected').forEach(function(el) {
-      el.classList.remove('row-selected');
-    });
-    var row = trackList.querySelector('.track-item[data-index="' + idx + '"]');
-    if (row) row.classList.add('row-selected');
-  }
+  /* Desktop-only row select ported to webui/src/rowSelect.ts. Playback on
+     hover devices via .track-play-btn overlay. */
+  function _selectTrackRow(idx) { window._selectTrackRow(trackList, idx); }
 
   /* jumpToCurrentTrack + updatePlayerBarActions ported to webui/src/playerNav.ts
      (state via htState, actions via hooks). Wrappers keep bare names. */

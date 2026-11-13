@@ -123,23 +123,20 @@ def test_queue_drag_handle_html_present():
 
 
 def test_queue_resize_js_persists_height():
-    """JS must contain localStorage persistence for queue height."""
-    js = render_player_js()
-    assert "hometools_queue_height" in js
+    """Queue controller must persist/restore queue height via localStorage."""
+    ctl = _webui_src("queueController.ts")
+    assert "hometools_queue_height" in ctl
+    assert "localStorage.getItem" in ctl
     assert "localStorage.setItem" in _webui_src("queuePanelUi.ts")
-    assert "localStorage.setItem" in js
-    assert "localStorage.getItem" in js
 
 
 def test_queue_panel_bottom_set_dynamically_by_js():
-    """openQueuePanel must measure player-bar height and set bottom + max-height."""
-    js = render_player_js()
+    """Queue panel must measure player-bar height and set bottom + max-height."""
     ts = _webui_src("queuePanelUi.ts")
-    assert "function _syncQueueBottom()" in js
+    assert "syncQueueBottom" in _webui_src("queueController.ts")
     assert ".offsetHeight" in ts
     assert "style.bottom" in ts
     assert "style.maxHeight" in ts
-    assert "_syncQueueBottom();" in js
 
 
 def test_css_contains_classic_range_styling():
@@ -249,7 +246,7 @@ def test_classic_js_has_no_thumb_video():
 def test_classic_js_has_stub_functions():
     js = _js()
     assert "generateWaveform" in js
-    assert "drawWaveform" in js
+    assert "drawWaveform" in _webui_src("waveform.ts")
 
 
 def test_classic_js_has_core_player():
@@ -277,8 +274,6 @@ def test_waveform_js_has_generate_waveform():
 
 
 def test_waveform_js_has_draw_waveform():
-    js = _js()
-    assert "window._drawWaveform(" in js
     assert "slotW" in _webui_src("waveform.ts")
 
 
@@ -428,10 +423,11 @@ def test_audio_page_has_apple_web_app_capable():
 
 
 def test_js_has_fullscreen_logic():
-    js = _js()
-    assert "requestFullscreen" in js
-    assert "webkitEnterFullscreen" in js
-    assert "fullscreenEnabled" in js
+    ts = _webui_src("playerBarUi.ts")
+    assert "requestFullscreen" in ts
+    assert "webkitEnterFullscreen" in ts
+    assert "fullscreenEnabled" in ts
+    assert "_initBarFullscreen" in _js()
 
 
 def test_js_sets_media_session_playback_state():
@@ -441,8 +437,7 @@ def test_js_sets_media_session_playback_state():
 
 def test_pause_handler_checks_document_hidden():
     """The pause handler must not react when browser auto-pauses (hidden)."""
-    js = _js()
-    assert "document.hidden" in js
+    assert "document.hidden" in _webui_src("playerEvents.ts")
 
 
 def test_pause_handler_clears_was_playing():
@@ -646,7 +641,7 @@ def test_queue_data_ops_ported_to_ts():
     assert "_userQueue.splice(" not in js
     # reassignment (clear) only via queueClear — declaration `var _userQueue = []` stays
     assert not _re.search(r"(?<!var )_userQueue = \[\];", js)
-    for fn in ("addToQueue", "removeFromQueue", "clearQueue", "playFromQueue"):
+    for fn in ("addToQueue", "removeFromQueue", "playFromQueue"):
         assert f"function {fn}(" in js
 
 
@@ -879,8 +874,7 @@ def test_video_server_enables_repeat():
 
 def test_repeat_one_suppresses_crossfade():
     """When repeat mode is 'one', the crossfade trigger must be skipped."""
-    js = render_player_js()
-    assert "repeatMode !== 'one'" in js
+    assert 'repeatMode === "one"' in _webui_src("timeline.ts")
 
 
 def test_repeat_nextindex_returns_minus_one_when_off():
@@ -922,13 +916,11 @@ def test_queue_next_logic_is_centralized_in_play_next_item():
     assert "h.playNextItem()" in _webui_src("playerEvents.ts")
 
 
-def test_queue_dom_refs_requery_detached_nodes():
-    """Queue DOM resolver must refresh detached references to avoid invisible panels."""
-    js = render_player_js()
-    assert "function _domNodeMissingOrDetached(el)" in js
-    assert "!el.isConnected" in js
-    assert "function openQueuePanel()" in js
-    assert "_ensureQueueDom();" in js
+def test_queue_dom_refs_looked_up_lazily():
+    """Queue controller must resolve DOM nodes per call (no stale refs -> no invisible panel)."""
+    ctl = _webui_src("queueController.ts")
+    assert "document.getElementById(id)" in ctl
+    assert "_queuePanel" not in render_player_js()
 
 
 def test_queue_panel_outside_player_bar():
@@ -1047,9 +1039,8 @@ def test_rating_css_has_active_and_hover_states():
 
 def test_rating_toggle_to_zero_via_player_bar():
     """Clicking the already-active star must pass 0 to setRating (toggle off)."""
-    js = render_player_js()
-    # The click handler must compute `current` from filteredItems and call setRating(0) on match
-    assert "clicked === current ? 0 : clicked" in js
+    assert "clicked === current ? 0 : clicked" in _webui_src("playerBarUi.ts")
+    assert "_initPlayerRatingEvents" in render_player_js()
 
 
 def test_rating_toggle_to_zero_via_inline_stars():
@@ -1546,15 +1537,15 @@ def test_crossfade_js_has_xfade_functions():
     js = render_player_js()
     assert "_startCrossfade" in js
     assert "_finishCrossfade" in js
-    assert "_xfadeCleanup" in js
     assert "_audio = document.createElement" in _webui_src("crossfade.ts")
 
 
 def test_crossfade_trigger_in_timeupdate():
     """timeupdate handler must check CROSSFADE_DURATION and trigger crossfade."""
-    js = render_player_js()
-    assert "CROSSFADE_DURATION > 0" in js
-    assert "_startCrossfade()" in js
+    ts = _webui_src("timeline.ts")
+    assert "crossfadeDuration > 0" in ts
+    assert "startCrossfade()" in ts
+    assert "crossfadeDuration: CROSSFADE_DURATION" in render_player_js()
 
 
 def test_crossfade_config_function():
@@ -2413,10 +2404,10 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_has_pointer_based_track_seek(self):
         """Seeking must work via tap/drag on the whole track (touch fix)."""
-        js = render_player_js()
-        assert "initTrackSeek" in js
-        assert "setPointerCapture" in js
-        assert "pointerdown" in js
+        ts = _webui_src("timeline.ts")
+        assert "initTrackSeek" in ts
+        assert "setPointerCapture" in ts
+        assert "pointerdown" in ts
 
     def test_css_progress_track_disables_touch_scroll(self):
         """progress-track needs touch-action:none so drag isn't stolen by scroll."""
@@ -2429,9 +2420,8 @@ class TestPlayerBugfixes2026_06:
 
     def test_js_progress_uses_sendbeacon(self):
         """Progress save must use sendBeacon so it survives backgrounding/unload."""
-        js = render_player_js()
         assert "sendBeacon" in _webui_src("progress.ts")
-        assert "pagehide" in js
+        assert "pagehide" in _webui_src("timeline.ts")
 
     def test_js_flushes_progress_before_switching_track(self):
         """playItem must flush the outgoing track's progress before switching."""
@@ -2600,9 +2590,8 @@ class TestTrackDetailTableView:
         assert "IC_TABLE" in js
 
     def test_table_view_locked_out_for_video(self):
-        js = render_player_js()
         # Toggling is a no-op for video (detail/table view is audio-only)
-        assert "detail/table view is audio-only" in js
+        assert "detail/table view is audio-only" in _webui_src("toolbarUi.ts")
 
     def test_track_row_has_duration_and_genre_cells(self):
         ts = _webui_src("trackRows.ts")
@@ -2702,10 +2691,3 @@ class TestHtConfigJson:
         )
         cfg = self._config(page)
         assert cfg["languageGroups"] == {}
-
-
-def test_player_rating_el_declared_before_use():
-    """Regression: ported rating block once dropped `var playerRatingEl`, throwing
-    at startup (ReferenceError) so the catalog never rendered."""
-    js = render_player_js()
-    assert "var playerRatingEl = document.getElementById('player-rating')" in js

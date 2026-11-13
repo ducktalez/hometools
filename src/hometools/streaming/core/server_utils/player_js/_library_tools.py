@@ -11,14 +11,6 @@ def render_library_tools_js() -> str:
     _rgKey = '';  /* force re-render when allItems changes */
   }
 
-  function _ensureDupeMap() {
-    window._ensureDupeIndex(allItems);
-  }
-
-  function _getDupeCount() {
-    return window._dupeCount(allItems);
-  }
-
   /* Panel open/close/wiring: webui/src/dupePanel.ts. Row click navigates to folder + plays. */
   function openDupePanel() {
     var di = window._ensureDupeIndex(allItems);
@@ -87,7 +79,6 @@ def render_library_tools_js() -> str:
   function renderMoveWidget(t, idx) {
     /* markup: webui/src/inlineWidgets.ts::moveWidgetHtml */
     return window._moveWidgetHtml(idx, _currentFolderOf(t), _getRecentMoveTargets(), _getAllFolders(), escHtml, IC_TRASH);
-    return html;
   }
 
   function moveFileToFolder(idx, targetFolder) { window._moveFileToFolder(idx, targetFolder, _libOpsHooks()); }
@@ -95,7 +86,6 @@ def render_library_tools_js() -> str:
   /* Generic kebab dropdown + reveal-in-explorer ported to webui/src/ctxMenu.ts
      (cleanup handle private there). Wrappers keep bare-name call sites.
      items: [{ icon, label, onClick, danger }] */
-  function _closeCtxMenu() { window._closeCtxMenu(); }
   function _openCtxMenu(btn, items) { window._openCtxMenu(btn, items, escHtml); }
   /* -- Track context menu (three-dot / kebab) -- */
   function _openTrackCtxMenu(btn, relativePath, title) {
@@ -147,26 +137,11 @@ def render_library_tools_js() -> str:
   /* wasPlaying flag + visibilitychange handler ported to webui/src/bgPlayback.ts. */
   window._initBackgroundPlayback({ player: player, isVideoPlayer: isVideoPlayer, isIOS: isIOS });
 
-  /* Fullscreen button — uses native fullscreen or iOS webkitEnterFullscreen */
-  var btnFs = document.getElementById('btn-fs');
-  var fsSupported = isVideoPlayer && (
-    document.fullscreenEnabled || document.webkitFullscreenEnabled ||
-    typeof player.webkitEnterFullscreen === 'function'
-  );
-  if (fsSupported && btnFs) btnFs.hidden = false;
-  if (btnFs) {
-    btnFs.addEventListener('click', function() {
-      if (player.requestFullscreen) {
-        player.requestFullscreen().catch(function() {});
-      } else if (player.webkitRequestFullscreen) {
-        player.webkitRequestFullscreen();
-      }
-    });
-  }
+  /* Bar fullscreen button ported to webui/src/playerBarUi.ts. */
+  window._initBarFullscreen(player, isVideoPlayer);
 
   /* Bg-audio mirror ported to webui/src/bgAudio.ts (element + sync timer
-     private there). Wrappers keep bare names; _bgEl() = element or null. */
-  function _bgEl() { return window._getBgAudio(); }
+     private there). Wrappers keep bare names. */
   function bgAudioIsActive() { return window._bgAudioIsActive(); }
   function stopBgSync() { window._stopBgSync(); }
   function startBgMirror() {
@@ -251,10 +226,6 @@ def render_library_tools_js() -> str:
      bridge (window.htState in _core.py) — they read/write
      shuffleQueue/shufflePos live. Bare call sites unchanged. */
 
-  /* First playable index — kept for API compat, returns 0 */
-  function _firstPlayableIndex() { return 0; }
-
-
   /* smart previous: webui/src/transport.ts */
   function handlePreviousTrack() { window._handlePreviousTrack(_transportHooks()); }
 
@@ -274,34 +245,12 @@ def render_library_tools_js() -> str:
   function _patchAllItemsRating(relativePath, rating) { window._patchAllItemsRating(relativePath, rating); }
   function _updateTrackRatingBar(idx, rating) { window._updateTrackRatingBar(idx, rating, _ratingHooks()); }
   function setRating(stars) { window._setRating(stars, _ratingHooks()); }
-  var playerRatingEl = document.getElementById('player-rating');
-
-
-  if (playerRatingEl) {
-    /* hover preview */
-    playerRatingEl.addEventListener('mouseover', function(e) {
-      var btn = e.target.closest('.player-rating-star');
-      if (!btn || !RATING_WRITE_ENABLED) return;
-      var n = parseInt(btn.dataset.star, 10);
-      playerRatingEl.querySelectorAll('.player-rating-star').forEach(function(b, i) {
-        b.classList.toggle('hover', i < n);
-      });
-    });
-    playerRatingEl.addEventListener('mouseleave', function() {
-      playerRatingEl.querySelectorAll('.player-rating-star').forEach(function(b) {
-        b.classList.remove('hover');
-      });
-    });
-    /* click to rate — clicking the currently-set star clears the rating (toggle to 0) */
-    playerRatingEl.addEventListener('click', function(e) {
-      var btn = e.target.closest('.player-rating-star');
-      if (!btn || !RATING_WRITE_ENABLED) return;
-      var clicked = parseInt(btn.dataset.star, 10);
-      var current = Math.round((filteredItems[currentIndex] && filteredItems[currentIndex].rating) || 0);
-      setRating(clicked === current ? 0 : clicked);
-    });
-  }
-
+  /* Rating-star hover/click ported to webui/src/playerBarUi.ts. */
+  window._initPlayerRatingEvents({
+    writeEnabled: !!RATING_WRITE_ENABLED,
+    currentRating: function() { return (filteredItems[currentIndex] && filteredItems[currentIndex].rating) || 0; },
+    setRating: setRating
+  });
 
   window._initModeButtons({
     btnShuffle: btnShuffle, btnRepeat: btnRepeat,
@@ -322,7 +271,6 @@ def render_library_tools_js() -> str:
       playTrack: playTrack, playFromQueue: playFromQueue
     };
   }
-  function _xfadeCleanup() { window._crossfadeCleanup(); }
   function _startCrossfade() { window._startCrossfade(_xfadeHooks()); }
   function _finishCrossfade() { window._finishCrossfade(_xfadeHooks()); }
 
@@ -339,112 +287,17 @@ def render_library_tools_js() -> str:
     removeGoneTrack: _removeGoneTrack,
     showToast: showToast
   });
-  player.addEventListener('timeupdate', function() {
-    var dur = isFinite(player.duration) ? player.duration : _currentItemDuration;
-    if (!dur) return;
-    progressBar.max = dur; progressBar.value = player.currentTime;
-    timeCur.textContent = fmtTime(player.currentTime);
-    if (isFinite(player.duration)) {
-      drawWaveform(player.currentTime / player.duration);
-    } else if (_currentItemDuration) {
-      drawWaveform(player.currentTime / _currentItemDuration);
-    }
-    saveProgressDebounced();
-    window._updateSkipIntroBtn();
-    /* Crossfade trigger: start fading when remaining time <= CROSSFADE_DURATION
-       Skip crossfade for repeat-one (track restarts itself) */
-    if (CROSSFADE_DURATION > 0 && !window._isCrossfading() && !isVideoPlayer && repeatMode !== 'one') {
-      var remaining = player.duration - player.currentTime;
-      if (remaining > 0 && remaining <= CROSSFADE_DURATION && player.duration > CROSSFADE_DURATION + 5) {
-        _startCrossfade();
-      }
-    }
+  /* timeupdate/loadedmetadata/seek/bg-sync/progress flush: webui/src/timeline.ts */
+  window._initTimeline({
+    player: player, progressBar: progressBar, timeCur: timeCur, timeDur: timeDur,
+    track: progressTrack, isVideoPlayer: isVideoPlayer, crossfadeDuration: CROSSFADE_DURATION,
+    fmtTime: fmtTime,
+    getItemDuration: function() { return _currentItemDuration; },
+    setItemDuration: function(d) { _currentItemDuration = d; },
+    saveProgressNow: saveProgressNow, saveProgressDebounced: saveProgressDebounced,
+    updateSkipIntroBtn: function() { window._updateSkipIntroBtn(); },
+    startCrossfade: _startCrossfade
   });
-  player.addEventListener('loadedmetadata', function() {
-    if (isFinite(player.duration)) _currentItemDuration = player.duration;
-    timeDur.textContent = fmtTime(isFinite(player.duration) ? player.duration : _currentItemDuration);
-    progressBar.max = isFinite(player.duration) ? player.duration : _currentItemDuration;
-  });
-  progressBar.addEventListener('input', function() { player.currentTime = progressBar.value; });
-
-  /* ── Tap / drag-to-seek on the whole progress track ──
-     The hidden range input has a 1px thumb, which on touch devices (iOS Safari)
-     is impossible to grab — tapping the track does not jump there either.  This
-     pointer handler makes the *entire* track tappable and draggable on mouse,
-     touch and pen, so seeking works on mobile again. */
-  (function initTrackSeek() {
-    if (!progressTrack) return;
-    var seeking = false;
-    function effDuration() {
-      if (_bgEl() && !_bgEl().muted && document.hidden && isFinite(_bgEl().duration)) return _bgEl().duration;
-      if (isFinite(player.duration)) return player.duration;
-      /* Fallback: use catalog metadata duration while the browser has not yet
-         determined the real duration (common with long files / non-seekable streams) */
-      return _currentItemDuration || 0;
-    }
-    function seekToClientX(clientX) {
-      var d = effDuration();
-      if (!d) return;
-      var rect = progressTrack.getBoundingClientRect();
-      if (!rect.width) return;
-      var frac = (clientX - rect.left) / rect.width;
-      frac = Math.max(0, Math.min(1, frac));
-      var t = frac * d;
-      try { player.currentTime = t; } catch (e) {}
-      if (_bgEl()) { try { _bgEl().currentTime = t; } catch (e) {} }
-      if (progressBar) { progressBar.max = d; progressBar.value = t; }
-      if (timeCur) timeCur.textContent = fmtTime(t);
-      drawWaveform(frac);
-    }
-    progressTrack.addEventListener('pointerdown', function(e) {
-      if (e.button != null && e.button !== 0) return;
-      seeking = true;
-      try { progressTrack.setPointerCapture(e.pointerId); } catch (err) {}
-      seekToClientX(e.clientX);
-      e.preventDefault();
-    });
-    progressTrack.addEventListener('pointermove', function(e) {
-      if (!seeking) return;
-      seekToClientX(e.clientX);
-      e.preventDefault();
-    });
-    function endSeek(e) {
-      if (!seeking) return;
-      seeking = false;
-      try { progressTrack.releasePointerCapture(e.pointerId); } catch (err) {}
-      saveProgressNow();
-    }
-    progressTrack.addEventListener('pointerup', endSeek);
-    progressTrack.addEventListener('pointercancel', endSeek);
-  })();
-
-  /* Flush playback progress immediately when the page is hidden or unloaded.
-     The 5s debounce would otherwise be lost when the app is backgrounded or
-     closed on mobile, making the server-side "Continue watching" list lag
-     behind by several episodes. */
-  function _flushProgress() {
-    window._cancelProgressTimer();
-    saveProgressNow();
-  }
-  document.addEventListener('visibilitychange', function() {
-    if (document.hidden) _flushProgress();
-  });
-  window.addEventListener('pagehide', _flushProgress);
-
-  /* bg audio events — keep UI in sync when playing in background */
-  if (isVideoPlayer) {
-    setInterval(function() {
-      if (_bgEl() && !_bgEl().muted && document.hidden) {
-        if (isFinite(_bgEl().duration)) {
-          progressBar.max = _bgEl().duration;
-          progressBar.value = _bgEl().currentTime;
-          timeCur.textContent = fmtTime(_bgEl().currentTime);
-          drawWaveform(_bgEl().currentTime / _bgEl().duration);
-        }
-      }
-    }, 1000);
-  }
-
   backBtn.addEventListener('click', goBack);
   playAllBtn.addEventListener('click', playAllCurrent);
 
@@ -501,72 +354,25 @@ def render_library_tools_js() -> str:
   /* showToast() lives in _core.py — kept as the single canonical
      definition (was accidentally duplicated here during the module split). */
 
-  viewToggle.addEventListener('click', function() {
-    if (_isTrackViewVisible()) {
-      if (isVideoMode) return; /* detail/table view is audio-only */
-      _toggleTrackViewMode();
-      return;
-    }
-    if (_anyToolActive()) return; /* locked while tools are active */
-    if (viewMode === 'list') viewMode = 'grid';
-    else viewMode = 'list';
-    localStorage.setItem('ht-view-mode', viewMode);
-    if (inPlaylist) {
-      applyViewMode();
-      applyFilter();
-    } else {
-      showFolderView();
-    }
-    if (typeof _router !== 'undefined') _router.update();
+  /* View toggle, search debounce, sort, filter chips: webui/src/toolbarUi.ts. */
+  window._initToolbar({
+    viewToggle: viewToggle, searchInput: searchInput, sortField: sortField,
+    filterCombinedBtn: filterCombinedBtn, filterHiddenBtn: filterHiddenBtn,
+    isVideoMode: isVideoMode,
+    isTrackViewVisible: _isTrackViewVisible, toggleTrackViewMode: _toggleTrackViewMode,
+    anyToolActive: _anyToolActive,
+    getViewMode: function() { return viewMode; },
+    setViewMode: function(m) { viewMode = m; },
+    getShowHidden: function() { return showHidden; },
+    setShowHidden: function(v) { showHidden = v; },
+    applyViewMode: applyViewMode, applyFilter: applyFilter, showFolderView: showFolderView,
+    toggleFilterPopover: _toggleFilterPopover, updateFilterChips: updateFilterChips,
+    routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); }
   });
-  searchInput.addEventListener('input', function() {
-    /* Debounce: wait 150 ms after last keystroke before re-rendering the
-       (potentially large) track list.  Keeps typing snappy at 6000 items. */
-    clearTimeout(_searchDebounceTimer);
-    _searchDebounceTimer = setTimeout(function() {
-      applyFilter();
-      if (typeof _router !== 'undefined') _router.update();
-    }, 150);
-  });
-  sortField.addEventListener('change', function() { applyFilter(); if (typeof _router !== 'undefined') _router.update(); });
-  if (filterCombinedBtn) {
-    filterCombinedBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      _toggleFilterPopover(filterCombinedBtn);
-    });
-  }
-  if (filterHiddenBtn) {
-    filterHiddenBtn.addEventListener('click', function() {
-      showHidden = !showHidden;
-      localStorage.setItem('ht-show-hidden', showHidden ? '1' : '0');
-      updateFilterChips();
-      applyFilter();
-      if (typeof _router !== 'undefined') _router.update();
-    });
-  }
-  updateFilterChips();
 
   /* ── init ── */
-  if (METADATA_EDIT_ENABLED) {
-    var _editCancelBtn = document.getElementById('edit-modal-cancel-btn');
-    var _editSaveBtn   = document.getElementById('edit-modal-save-btn');
-    var _editBackdrop  = document.getElementById('edit-modal-backdrop');
-    if (_editCancelBtn) _editCancelBtn.addEventListener('click', closeEditModal);
-    if (_editSaveBtn)   _editSaveBtn.addEventListener('click', submitEditModal);
-    /* Close on backdrop click (outside the panel) */
-    if (_editBackdrop) {
-      _editBackdrop.addEventListener('click', function(e) {
-        if (e.target === _editBackdrop) closeEditModal();
-      });
-    }
-    /* Submit on Enter inside inputs, Escape to close */
-    document.addEventListener('keydown', function(e) {
-      var backdrop = document.getElementById('edit-modal-backdrop');
-      if (!backdrop || backdrop.hasAttribute('hidden')) return;
-      if (e.key === 'Escape') { e.preventDefault(); closeEditModal(); }
-      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); submitEditModal(); }
-    });
-  }
+  /* Edit-modal buttons/keys: webui/src/toolbarUi.ts */
+  window._initEditModalEvents({ enabled: !!METADATA_EDIT_ENABLED, close: closeEditModal, submit: submitEditModal });
 
   if (!OFFLINE_ENABLED) {
     if (downloadedPill) {
@@ -585,268 +391,25 @@ def render_library_tools_js() -> str:
   }
   applyViewMode();
 
-  /* ── URL routing / deep linking ──
-     The browser URL mirrors the current view so reload / bookmarks /
-     share-links restore navigation state.
-
-     Query schema (all parameters optional):
-       ?view=folder       &path=<rel>                 → folder grid
-       ?view=playlist     &path=<rel>     [&track=<rel>]   → folder-playlist
-       ?view=userplaylist &id=<id>        [&track=<rel>]   → user playlist
-       ?view=favorites                    [&track=<rel>]   → favorites
-       ?view=offline                      [&track=<rel>]   → offline downloads
-       ?view=search       &q=<needle>     [&track=<rel>]   → global search results
-
-     Legacy ?id=<rel> (auto-play deep link) is still honoured. */
-  var _router = (function() {
-    var _suppress = true;      /* stays true until restore() runs — otherwise the initial
-                                  showFolderView() from loadInitialCatalog would overwrite
-                                  the deep-link URL the user reloaded with */
-    var _lastKey = '';         /* "view|path|id" of last pushed entry; track-only change → replace */
-
-    function _readUrl() {
-      var p = new URLSearchParams(window.location.search);
-      return {
-        view: p.get('view') || '',
-        path: p.get('path') || '',
-        id: p.get('id') || '',
-        track: p.get('track') || '',
-        q: p.get('q') || '',
-        sort: p.get('sort') || '',
-        fr: p.get('fr') || '',
-        ff: p.get('ff') || '',
-        fg: p.get('fg') || '',
-        fh: p.get('fh') || '',
-        vm: p.get('vm') || '',
-        panel: p.get('panel') || ''
-      };
-    }
-
-    function _buildUrl(s) {
-      var p = new URLSearchParams();
-      if (s.view) p.set('view', s.view);
-      if (s.path) p.set('path', s.path);
-      if (s.id) p.set('id', s.id);
-      if (s.track) p.set('track', s.track);
-      if (s.q) p.set('q', s.q);
-      if (s.sort) p.set('sort', s.sort);
-      if (s.fr) p.set('fr', s.fr);
-      if (s.ff) p.set('ff', s.ff);
-      if (s.fg) p.set('fg', s.fg);
-      if (s.fh) p.set('fh', s.fh);
-      if (s.vm) p.set('vm', s.vm);
-      if (s.panel) p.set('panel', s.panel);
-      var qs = p.toString();
-      return window.location.pathname + (qs ? '?' + qs : '');
-    }
-
-    function _collectUiState(s) {
-      /* Sort/filter/view-mode are always meaningful — encode whenever they differ from defaults. */
-      try {
-        if (sortField && sortField.value && sortField.value !== 'custom') s.sort = sortField.value;
-      } catch (e) { /* ignore */ }
-      if (typeof filterRating === 'number' && filterRating > 0) s.fr = String(filterRating);
-      if (filterFav) s.ff = '1';
-      if (filterGenre) s.fg = filterGenre;
-      /* showHidden default = true → only encode when explicitly disabled */
-      if (typeof showHidden === 'boolean' && !showHidden) s.fh = '0';
-      if (viewMode && viewMode !== 'list') s.vm = viewMode;
-      /* Tools-panel open? (audit is its own page, not a modal) */
-      try {
-        if (toolsBackdrop && !toolsBackdrop.hasAttribute('hidden')) s.panel = 'tools';
-      } catch (e) { /* ignore */ }
-      return s;
-    }
-
-    function _currentState() {
-      var s = { view: '', path: '', id: '', track: '', q: '',
-                sort: '', fr: '', ff: '', fg: '', fh: '', vm: '', panel: '' };
-      /* Active selection only meaningful inside a list view */
-      if (inPlaylist && filteredItems && currentIndex >= 0 && currentIndex < filteredItems.length) {
-        var t = filteredItems[currentIndex];
-        if (t && t.relative_path) s.track = t.relative_path;
-      }
-      if (_globalSearchActive) {
-        s.view = 'search';
-        var inp = document.getElementById('global-search-input');
-        if (inp && inp.value) s.q = inp.value.trim();
-        return _collectUiState(s);
-      }
-      if (currentPath === '__offline__') { s.view = 'offline'; return _collectUiState(s); }
-      if (_currentPlaylistId === '__favorites__') { s.view = 'favorites'; return _collectUiState(s); }
-      if (_currentPlaylistId && _currentPlaylistId !== '__folder__') {
-        s.view = 'userplaylist'; s.id = _currentPlaylistId; return _collectUiState(s);
-      }
-      if (inPlaylist) { s.view = 'playlist'; s.path = currentPath || ''; return _collectUiState(s); }
-      /* Default = folder grid (incl. root) */
-      s.view = 'folder'; s.path = currentPath || '';
-      return _collectUiState(s);
-    }
-
-    /* Key drives pushState vs replaceState: filter/sort/vm/panel changes share the
-       same key as the current view → no new history entry. */
-    function _key(s) { return (s.view || '') + '|' + (s.path || '') + '|' + (s.id || '') + '|' + (s.q || ''); }
-
-    function update() {
-      if (_suppress) return;
-      var s = _currentState();
-      var url = _buildUrl(s);
-      var cur = window.location.pathname + window.location.search;
-      if (url === cur) { _lastKey = _key(s); return; }
-      var k = _key(s);
-      try {
-        if (k === _lastKey) {
-          /* Same list/view, only track changed → replace (no extra history entry) */
-          history.replaceState(s, '', url);
-        } else {
-          history.pushState(s, '', url);
-        }
-      } catch (e) { /* ignore */ }
-      _lastKey = k;
-    }
-
-    function _markTrack(trackRp) {
-      if (!trackRp || !filteredItems || !filteredItems.length) return;
-      var i = filteredItems.findIndex(function(it) { return it && it.relative_path === trackRp; });
-      if (i >= 0) {
-        currentIndex = i;
-        if (typeof markActive === 'function') markActive();
-      }
-    }
-
-    function _applyUiStateFromUrl(st) {
-      /* URL wins over localStorage: explicit param overrides the saved value;
-         absence of param leaves localStorage default untouched. */
-      if (st.sort && sortField) {
-        try { sortField.value = st.sort; } catch (e) { /* unknown option */ }
-      }
-      if (st.fr !== '') {
-        var fr = parseInt(st.fr, 10);
-        if (!isNaN(fr) && fr >= 0 && fr <= 5) {
-          filterRating = fr;
-          try { localStorage.setItem('ht-filter-rating', String(fr)); } catch (e) { /* ignore */ }
-        }
-      }
-      if (st.ff !== '') {
-        filterFav = (st.ff === '1');
-        try { localStorage.setItem('ht-filter-fav', filterFav ? '1' : '0'); } catch (e) { /* ignore */ }
-      }
-      if (st.fg !== '') {
-        filterGenre = st.fg;
-        try { localStorage.setItem('ht-filter-genre', filterGenre); } catch (e) { /* ignore */ }
-      }
-      if (st.fh !== '') {
-        showHidden = (st.fh !== '0');
-        try { localStorage.setItem('ht-show-hidden', showHidden ? '1' : '0'); } catch (e) { /* ignore */ }
-      }
-      if (st.vm === 'grid' || st.vm === 'list') {
-        viewMode = st.vm;
-        try { localStorage.setItem('ht-view-mode', viewMode); } catch (e) { /* ignore */ }
-      }
-      try { if (typeof updateFilterChips === 'function') updateFilterChips(); } catch (e) { /* ignore */ }
-    }
-
-    function _applyPanelFromUrl(st) {
-      /* Run after the view has been rendered so DOM is in place. */
-      if (st.panel === 'tools' && typeof openToolsPanel === 'function') {
-        try { openToolsPanel(); } catch (e) { /* ignore */ }
-      }
-    }
-
-    function restore() {
-      var st = _readUrl();
-
-      /* Apply UI state (sort/filter/view-mode) BEFORE rendering — they affect what's shown. */
-      _applyUiStateFromUrl(st);
-
-      /* Legacy ?id= deep link → auto-play */
-      if (!st.view && st.id && allItems.length) {
-        var target = allItems.find(function(it) { return it.relative_path === st.id; });
-        if (target) {
-          var slash = st.id.lastIndexOf('/');
-          var parent = slash > 0 ? st.id.substring(0, slash) : '';
-          _suppress = true;
-          try {
-            currentPath = parent;
-            var c = contentsAt(parent);
-            var siblings = c.files.length ? c.files : itemsUnder(parent);
-            var idx = siblings.findIndex(function(it) { return it.relative_path === st.id; });
-            showPlaylist(siblings, true, idx >= 0 ? idx : 0);
-          } finally { _suppress = false; }
-          _applyPanelFromUrl(st);
-          update();
-          return;
-        }
-        _suppress = false;
-        return;
-      }
-
-      if (!st.view) {
-        _suppress = false;
-        _applyPanelFromUrl(st);
-        return;
-      } /* root — nothing to do */
-
-      _suppress = true;
-      try {
-        if (st.view === 'offline') {
-          openOfflineLibrary();
-          /* offline list is loaded async — defer track marker */
-          if (st.track) setTimeout(function() { _markTrack(st.track); }, 200);
-        } else if (st.view === 'favorites') {
-          showUserPlaylistView('__favorites__');
-          _markTrack(st.track);
-        } else if (st.view === 'userplaylist' && st.id) {
-          showUserPlaylistView(st.id);
-          _markTrack(st.track);
-        } else if (st.view === 'playlist') {
-          currentPath = st.path || '';
-          var pc = contentsAt(currentPath);
-          var pItems = pc.files.length ? pc.files : itemsUnder(currentPath);
-          if (pItems.length) {
-            var pStart = 0;
-            if (st.track) {
-              var pi = pItems.findIndex(function(it) { return it.relative_path === st.track; });
-              if (pi >= 0) pStart = pi;
-            }
-            showPlaylist(pItems, false, pStart);
-            _markTrack(st.track);
-          } else {
-            showFolderView();
-          }
-        } else if (st.view === 'search' && st.q) {
-          currentPath = '';
-          showFolderView();
-          var inp = document.getElementById('global-search-input');
-          if (inp) inp.value = st.q;
-          if (typeof globalSearch === 'function') globalSearch(st.q);
-          _markTrack(st.track);
-        } else {
-          /* folder (default) */
-          currentPath = st.path || '';
-          showFolderView();
-        }
-      } finally {
-        _suppress = false;
-      }
-      _applyPanelFromUrl(st);
-      /* Reflect the actually-restored state back to the URL (e.g. fallback to folder view) */
-      update();
-    }
-
-    function init() {
-      window.addEventListener('popstate', function() {
-        /* Browser back/forward → re-render. restore() handles its own suppression
-           and the final update() is a no-op because the URL already matches. */
-        restore();
-      });
-    }
-
-    return { update: update, restore: restore, init: init };
-  }());
-
-  /* Backwards-compat shim so any leftover call sites keep working. */
-  function handleDeepLink() { _router.restore(); }
+  /* URL routing / deep linking: webui/src/router.ts (state via htState, UI filter state via hooks). */
+  var _router = window._createRouter({
+    getUi: function() {
+      return { rating: filterRating, fav: filterFav, genre: filterGenre, showHidden: showHidden, viewMode: viewMode };
+    },
+    setUi: function(p) {
+      if (p.rating !== undefined) filterRating = p.rating;
+      if (p.fav !== undefined) filterFav = p.fav;
+      if (p.genre !== undefined) filterGenre = p.genre;
+      if (p.showHidden !== undefined) showHidden = p.showHidden;
+      if (p.viewMode !== undefined) viewMode = p.viewMode;
+    },
+    toolsOpen: function() { return !!toolsBackdrop && !toolsBackdrop.hasAttribute('hidden'); },
+    openToolsPanel: function() { openToolsPanel(); },
+    contentsAt: contentsAt, itemsUnder: itemsUnder,
+    showPlaylist: showPlaylist, showFolderView: showFolderView,
+    showUserPlaylistView: showUserPlaylistView, openOfflineLibrary: openOfflineLibrary,
+    globalSearch: globalSearch, markActive: markActive, updateFilterChips: updateFilterChips
+  });
 
   /* ── User Playlists ── */
   var _userPlaylists = [];

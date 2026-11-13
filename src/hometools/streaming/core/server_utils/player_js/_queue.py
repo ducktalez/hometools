@@ -17,67 +17,6 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   function dequeueNext() { return window._dequeueNext(_playNextHooks); }
   function playNextItem() { window._playNextItem(_playNextHooks); }
 
-  function _syncQueueBottom() {
-    window._syncQueueBottom(_queuePanel, _queueUserHeight, _QUEUE_MIN_H);
-  }
-
-  /* Queue drag-to-resize ported to webui/src/queuePanelUi.ts. */
-  window._initQueueResize({
-    handle: _queueDragHandle,
-    panel: _queuePanel,
-    minH: _QUEUE_MIN_H,
-    heightKey: _QUEUE_HEIGHT_KEY,
-    isOpen: function() { return _queueOpen; },
-    setUserHeight: function(h) { _queueUserHeight = h; }
-  });
-  /* Recalc on window resize */
-  window.addEventListener('resize', function() { if (_queueOpen) _syncQueueBottom(); });
-
-  /* Open/close/toggle ported to webui/src/queuePanelUi.ts. */
-  var _queuePanelHooks = {
-    ensureDom: function() { _ensureQueueDom(); },
-    getPanel: function() { return _queuePanel; },
-    getPeekHandle: function() { return _queuePeekHandle; },
-    isOpen: function() { return _queueOpen; },
-    setOpen: function(v) { _queueOpen = v; },
-    lyricsOpen: function() { return window._lyrics.isOpen(); },
-    closeLyrics: function() { closeLyricsPanel(); },
-    sync: function() { _syncQueueBottom(); },
-    render: function() { renderQueuePanel(); },
-    destroyDnd: function() { destroyQueueDragDrop(); }
-  };
-  function openQueuePanel() { window._openQueuePanel(_queuePanelHooks); }
-  function closeQueuePanel() { window._closeQueuePanel(_queuePanelHooks); }
-  function toggleQueuePanel() { window._toggleQueuePanel(_queuePanelHooks); }
-
-  /* Peek handle (click/drag-up opens queue) ported to webui/src/queuePanelUi.ts. */
-  window._initQueuePeekHandle({
-    handle: _queuePeekHandle,
-    isOpen: function() { return _queueOpen; },
-    open: openQueuePanel,
-    toggle: toggleQueuePanel
-  });
-
-  if (_queueClose) {
-    _queueClose.addEventListener('click', closeQueuePanel);
-  }
-  if (_queueClearBtn) {
-    _queueClearBtn.addEventListener('click', function() {
-      clearQueue();
-      showToast('Warteschlange geleert');
-    });
-  }
-
-  /* Queue drag-drop reorder ported to webui/src/queueDragDrop.ts (state +
-     cleanup handle private there). Wrappers keep bare-name call sites. */
-  function destroyQueueDragDrop() { window._destroyQueueDragDrop(); }
-  function initQueueDragDrop() {
-    window._initQueueDragDrop({
-      move: function(f, t) { window._queueMove(f, t); },
-      render: renderQueuePanel
-    });
-  }
-
   /* Catalog fetch/refresh orchestration ported to webui/src/catalogFetch.ts
      (timer + in-flight flag private). Every successful fetch must call
      saveCache (-> _saveCatalogCache); refreshCatalog clears the cache first. */
