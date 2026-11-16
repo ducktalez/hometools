@@ -66,3 +66,8 @@ clients/**/gradle/wrapper/gradle-wrapper.jar
 *.apk
 *.aab
 
+_debug_*.js
+_extract.py
+_tmp_fix.py
+/page.html
+page_ht_config.json
