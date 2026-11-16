@@ -39,6 +39,21 @@ def render_smart_playlists_js() -> str:
   function playUserPlaylist(plId) { window._playUserPlaylist(plId, _viewHooks()); }
   function openPlaylistModal(relativePath) { window._openPlaylistModal(relativePath, _viewHooks()); }
   function closePlaylistModal() { window._closePlaylistModal(); }
+  /* Track picker for empty manual playlists (webui/src/trackPicker.ts). */
+  function openTrackPicker(plId) {
+    window._openTrackPicker({
+      playlistId: plId,
+      esc: escHtml,
+      addToPlaylist: function(id, rp) { window._addToPlaylist(id, rp, { apiPath: PLAYLISTS_API_PATH, toast: showToast, refreshRoot: function() {} }); },
+      refresh: function() {
+        if (!inPlaylist || _currentPlaylistId !== plId) return;
+        var data = _resolvePlaylistItems(plId);
+        playlistItems = data ? data.resolved : [];
+        applyFilter();
+      }
+    });
+  }
+
 
   /* Playlist CRUD + optimistic UI ported to webui/src/playlistActions.ts
      (state via htState.userPlaylists). Wrappers keep bare-name call sites. */
@@ -54,6 +69,21 @@ def render_smart_playlists_js() -> str:
   function renameUserPlaylist(plId) { window._renameUserPlaylist(plId, _playlistHooks()); }
   function addToPlaylist(plId, relativePath) { window._addToPlaylist(plId, relativePath, _playlistHooks()); }
   function createAndAddToPlaylist(name, relativePath) { window._createAndAddToPlaylist(name, relativePath, _playlistHooks()); }
+  /* Remove a track from the manual playlist currently shown (webui/src/playlistActions.ts). */
+  function _isManualPlaylistView() {
+    if (!inPlaylist || !_currentPlaylistId || _currentPlaylistId.indexOf('__') === 0) return false;
+    var pl = _userPlaylists.find(function(p) { return p.id === _currentPlaylistId; });
+    return !!pl && !pl.smart;
+  }
+  function removeFromUserPlaylist(relativePath) {
+    var plId = _currentPlaylistId;
+    window._removeFromPlaylist(plId, relativePath, _playlistHooks(), function() {
+      if (!inPlaylist || _currentPlaylistId !== plId) return;
+      var data = _resolvePlaylistItems(plId);
+      playlistItems = data ? data.resolved : [];
+      applyFilter(true);
+    });
+  }
   /* Reorder (drag & drop target) ported to webui/src/playlistReorder.ts
      (state via htState incl. currentPlaylistId). movePlaylistItem had no callers. */
   function reorderPlaylistItem(relativePath, toIndex) {

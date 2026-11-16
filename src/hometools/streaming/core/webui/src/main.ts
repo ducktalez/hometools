@@ -283,14 +283,14 @@ import { smartEditorModalHtml, playlistModalListHtml } from "./smartEditorModal"
 import { batchEnd, renderTargetFor, jumpTarget } from "./renderWindow";
 import { indexingToastHtml, TRACK_TABLE_HEADER_HTML, viewToggleView } from "./chromeHtml";
 import { initLyricsPanel } from "./lyricsPanel";
-import { closeCtxMenu, openCtxMenu, revealInExplorer } from "./ctxMenu";
+import { closeCtxMenu, openCtxMenu, revealInExplorer, trackCtxMenuItems } from "./ctxMenu";
 import { openDupePanel, closeDupePanel, collectDupeItems, playDuplicates } from "./dupePanel";
 import { deleteTrackFromList, deleteDuplicateFile, removeGoneTrack, moveFileToFolder } from "./libraryOps";
 import { loadFavorites, updateFavoriteButtons, toggleFavorite } from "./favorites";
 import { loadExtraFolders, addExtraFolder, removeExtraFolder, addExtraFolderPlaceholders, markExtraFolderCards, extraFolderAliases } from "./extraFolders";
 import { isCrossfading, crossfadeCleanup, startCrossfade, finishCrossfade } from "./crossfade";
 import { initPip, isPipActive, exitPip } from "./pip";
-import { playAllCurrent } from "./playAll";
+import { playAllCurrent, navigateInto, playAllIn, showPlaylist } from "./playAll";
 import { wasPlaying, setWasPlaying, initBackgroundPlayback } from "./bgPlayback";
 import { initTabResume } from "./tabResume";
 import { selectTrackRow } from "./rowSelect";
@@ -306,7 +306,7 @@ import { initPlayerEvents } from "./playerEvents";
 import { getBgAudio, bgAudioIsActive, stopBgSync, startBgMirror } from "./bgAudio";
 import { initEditModalRatingEvents, openEditModal, closeEditModal, submitEditModal } from "./editModal";
 import { renderPlayerRating, patchAllItemsRating, updateTrackRatingBar, setRating, undoRating } from "./rating";
-import { recentCardsHtml, recentPlayContext } from "./recentlyPlayed";
+import { recentCardsHtml, recentPlayContext, loadRecentlyPlayed } from "./recentlyPlayed";
 import {
   initDownloadDB,
   getDownloadByStreamUrl,
@@ -328,7 +328,8 @@ import { updateOfflineFolderCount } from "./offlineCount";
 import { updateAllDownloadButtons, cancelDownload, downloadTrack, deleteTrackDownload, checkIfMediaCached, playOfflineOrStream } from "./downloadButtons";
 import { openSmartPlaylistEditor } from "./smartEditor";
 import { reorderPlaylistItem } from "./playlistReorder";
-import { applyHeaderState, enterTrackListView, enterFolderGridView } from "./viewEntry";
+import { applyHeaderState, enterTrackListView, enterFolderGridView, catalogStateOpts } from "./viewEntry";
+import { initFolderGridEvents } from "./folderGridEvents";
 import { closeLangPicker, showLangPicker, initFilterBarScrollReveal, initGlobalSearch, hideGlobalSearch, playlistCtxMenuItems } from "./folderBrowseUi";
 import { initPlaylistDragDrop, destroyPlaylistDragDrop } from "./playlistDragDrop";
 import { initSwipeGestures } from "./swipe";
@@ -350,7 +351,8 @@ import { jumpToCurrentTrack, updatePlayerBarActions } from "./playerNav";
 import { stopRenderObserver, appendTrackBatch, ensureRenderedTo, markActive, startWindowedRender } from "./trackRenderWindow";
 import { updateFilterChips, applyFilter } from "./filterApply";
 import { showUserPlaylistView, playUserPlaylist, openPlaylistModal, closePlaylistModal } from "./playlistViews";
-import { deleteUserPlaylist, renameUserPlaylist, addToPlaylist, createAndAddToPlaylist } from "./playlistActions";
+import { openTrackPicker, emptyManualPlaylistId, emptyPlaylistHtml, ADD_BTN_ID } from "./trackPicker";
+import { deleteUserPlaylist, renameUserPlaylist, addToPlaylist, createAndAddToPlaylist, removeFromPlaylist, refreshSmartPlaylist } from "./playlistActions";
 import {
   loadUserPlaylists,
   startPlaylistSync,
@@ -633,6 +635,7 @@ declare global {
     _closeCtxMenu: typeof closeCtxMenu;
     _openCtxMenu: typeof openCtxMenu;
     _revealInExplorer: typeof revealInExplorer;
+    _trackCtxMenuItems: typeof trackCtxMenuItems;
     _openDupePanel: typeof openDupePanel;
     _closeDupePanel: typeof closeDupePanel;
     _collectDupeItems: typeof collectDupeItems;
@@ -663,6 +666,9 @@ declare global {
     _isPipActive: typeof isPipActive;
     _exitPip: typeof exitPip;
     _playAllCurrent: typeof playAllCurrent;
+    _navigateInto: typeof navigateInto;
+    _playAllIn: typeof playAllIn;
+    _showPlaylist: typeof showPlaylist;
     _getBgAudio: typeof getBgAudio;
     _initPlayerEvents: typeof initPlayerEvents;
     _initModeButtons: typeof initModeButtons;
@@ -718,6 +724,7 @@ declare global {
     _jumpTarget: typeof jumpTarget;
     _recentCardsHtml: typeof recentCardsHtml;
     _recentPlayContext: typeof recentPlayContext;
+    _loadRecentlyPlayed: typeof loadRecentlyPlayed;
     initDownloadDB: typeof initDownloadDB;
     getDownloadByStreamUrl: typeof getDownloadByStreamUrl;
     getAllDownloads: typeof getAllDownloads;
@@ -773,10 +780,16 @@ declare global {
     _playUserPlaylist: typeof playUserPlaylist;
     _openPlaylistModal: typeof openPlaylistModal;
     _closePlaylistModal: typeof closePlaylistModal;
+    _openTrackPicker: typeof openTrackPicker;
+    _emptyManualPlaylistId: typeof emptyManualPlaylistId;
+    _emptyPlaylistHtml: typeof emptyPlaylistHtml;
+    _TRACK_PICKER_BTN_ID: string;
     _closeLangPicker: typeof closeLangPicker;
     _applyHeaderState: typeof applyHeaderState;
     _enterTrackListView: typeof enterTrackListView;
     _enterFolderGridView: typeof enterFolderGridView;
+    _catalogStateOpts: typeof catalogStateOpts;
+    _initFolderGridEvents: typeof initFolderGridEvents;
     _showLangPicker: typeof showLangPicker;
     _initFilterBarScrollReveal: typeof initFilterBarScrollReveal;
     _initGlobalSearch: typeof initGlobalSearch;
@@ -785,7 +798,9 @@ declare global {
     _deleteUserPlaylist: typeof deleteUserPlaylist;
     _renameUserPlaylist: typeof renameUserPlaylist;
     _addToPlaylist: typeof addToPlaylist;
+    _removeFromPlaylist: typeof removeFromPlaylist;
     _createAndAddToPlaylist: typeof createAndAddToPlaylist;
+    _refreshSmartPlaylist: typeof refreshSmartPlaylist;
   }
 }
 
@@ -975,6 +990,7 @@ window._initLyricsPanel = initLyricsPanel;
 window._closeCtxMenu = closeCtxMenu;
 window._openCtxMenu = openCtxMenu;
 window._revealInExplorer = revealInExplorer;
+window._trackCtxMenuItems = trackCtxMenuItems;
 window._openDupePanel = openDupePanel;
 window._closeDupePanel = closeDupePanel;
 window._collectDupeItems = collectDupeItems;
@@ -1005,6 +1021,9 @@ window._initPip = initPip;
 window._isPipActive = isPipActive;
 window._exitPip = exitPip;
 window._playAllCurrent = playAllCurrent;
+window._navigateInto = navigateInto;
+window._playAllIn = playAllIn;
+window._showPlaylist = showPlaylist;
 window._getBgAudio = getBgAudio;
 window._initPlayerEvents = initPlayerEvents;
 window._initModeButtons = initModeButtons;
@@ -1060,6 +1079,7 @@ window._renderTargetFor = renderTargetFor;
 window._jumpTarget = jumpTarget;
 window._recentCardsHtml = recentCardsHtml;
 window._recentPlayContext = recentPlayContext;
+window._loadRecentlyPlayed = loadRecentlyPlayed;
 // IndexedDB layer — same names as legacy (bare call sites unchanged).
 window.initDownloadDB = initDownloadDB;
 window.getDownloadByStreamUrl = getDownloadByStreamUrl;
@@ -1125,10 +1145,16 @@ window._showUserPlaylistView = showUserPlaylistView;
 window._playUserPlaylist = playUserPlaylist;
 window._openPlaylistModal = openPlaylistModal;
 window._closePlaylistModal = closePlaylistModal;
+window._openTrackPicker = openTrackPicker;
+window._emptyManualPlaylistId = emptyManualPlaylistId;
+window._emptyPlaylistHtml = emptyPlaylistHtml;
+window._TRACK_PICKER_BTN_ID = ADD_BTN_ID;
 window._closeLangPicker = closeLangPicker;
 window._applyHeaderState = applyHeaderState;
 window._enterTrackListView = enterTrackListView;
 window._enterFolderGridView = enterFolderGridView;
+window._catalogStateOpts = catalogStateOpts;
+window._initFolderGridEvents = initFolderGridEvents;
 window._showLangPicker = showLangPicker;
 window._initFilterBarScrollReveal = initFilterBarScrollReveal;
 window._initGlobalSearch = initGlobalSearch;
@@ -1137,6 +1163,8 @@ window._playlistCtxMenuItems = playlistCtxMenuItems;
 window._deleteUserPlaylist = deleteUserPlaylist;
 window._renameUserPlaylist = renameUserPlaylist;
 window._addToPlaylist = addToPlaylist;
+window._removeFromPlaylist = removeFromPlaylist;
+window._refreshSmartPlaylist = refreshSmartPlaylist;
 window._createAndAddToPlaylist = createAndAddToPlaylist;
 
 

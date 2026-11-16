@@ -120,5 +120,25 @@ body.playlist-dragging .track-list { overflow: visible; }
   border-radius: 6px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.8rem;
 }
 .playlist-modal-close button:hover { border-color: var(--text); color: var(--text); }
+/* ── Track picker (empty manual playlist) ── */
+.btn-add-tracks {
+  background: #22c55e; color: #000; border: none; border-radius: 8px;
+  padding: 0.55rem 1.1rem; cursor: pointer; font-size: 0.9rem; font-weight: 700;
+  margin-top: 0.9rem;
+}
+.btn-add-tracks:hover { background: #16a34a; }
+.playlist-modal-close .btn-add-tracks {
+  background: #22c55e; color: #000; border: none; margin-top: 0;
+  padding: 0.4rem 1rem; font-size: 0.85rem;
+}
+.playlist-modal-close .btn-add-tracks:hover { background: #16a34a; color: #000; border: none; }
+.track-picker { width: min(520px, 92vw); }
+.track-picker-search {
+  background: var(--surface2); border: 1px solid #444; border-radius: 6px;
+  color: var(--text); font-size: 0.85rem; padding: 0.45rem 0.6rem;
+  margin-bottom: 0.5rem; outline: none;
+}
+.track-picker-search:focus { border-color: var(--accent); }
+.track-picker-item.is-added { opacity: 0.5; cursor: default; }
+.track-picker-note { font-size: 0.75rem; color: var(--sub); margin-top: 0.4rem; }
 /* ── Playlist library panel (removed — playlists as pseudo-folders) ── */
-

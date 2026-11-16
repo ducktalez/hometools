@@ -1,5 +1,20 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { revealInExplorer } from "../src/ctxMenu";
+import { revealInExplorer, trackCtxMenuItems } from "../src/ctxMenu";
+
+describe("trackCtxMenuItems", () => {
+  const base = { icFolderOpen: "F", icTrash: "T", reveal: vi.fn(), removeFromPlaylist: vi.fn() };
+  it("only reveal outside manual playlists", () => {
+    const items = trackCtxMenuItems({ ...base, isManualPlaylist: false });
+    expect(items.map((i) => i.label)).toEqual(["Im Explorer anzeigen"]);
+  });
+  it("adds danger remove in manual playlists", () => {
+    const items = trackCtxMenuItems({ ...base, isManualPlaylist: true });
+    expect(items).toHaveLength(2);
+    expect(items[1].danger).toBe(true);
+    items[1].onClick!();
+    expect(base.removeFromPlaylist).toHaveBeenCalled();
+  });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 

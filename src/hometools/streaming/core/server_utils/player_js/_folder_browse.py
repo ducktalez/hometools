@@ -253,29 +253,17 @@ def render_folder_browse_js() -> str:
       navigateInto: navigateInto
     });
   }
-  function navigateInto(name) {
-    currentPath = currentPath ? currentPath + '/' + name : name;
-    _triggerSilentRefresh(); /* always fetch fresh catalog on folder navigation */
-    showFolderView();
+  /* navigateInto/playAllIn ported to webui/src/playAll.ts (currentPath via htState). */
+  function _folderNavHooks() {
+    return {
+      showFolderView: showFolderView,
+      triggerSilentRefresh: _triggerSilentRefresh,
+      loadLastPlayedLocal: _loadLastPlayedLocal,
+      showPlaylist: showPlaylist
+    };
   }
-
-  function playAllIn(name) {
-    var full = currentPath ? currentPath + '/' + name : name;
-    var items = itemsUnder(full);
-    if (!items.length) return;
-    currentPath = full;
-    /* Series folders: resume at the last-watched episode instead of
-       always restarting at episode 1 (hover-play button on the cover). */
-    var isSeries = items.some(function(it) { return (it.season || 0) > 0; });
-    if (isSeries) {
-      var local = _loadLastPlayedLocal();
-      if (local && local.path) {
-        var idx = items.findIndex(function(it) { return it.relative_path === local.path; });
-        if (idx >= 0) { showPlaylist(items, true, idx); return; }
-      }
-    }
-    showPlaylist(items, true);
-  }
+  function navigateInto(name) { window._navigateInto(name, _folderNavHooks()); }
+  function playAllIn(name) { window._playAllIn(name, _folderNavHooks()); }
 
   /* ── Shared track-list view entry point ───────────────────────────────
      Consolidates the header/toolbar DOM state that every "flat list of
@@ -327,41 +315,21 @@ def render_folder_browse_js() -> str:
   function _enterTrackListView(opts) { window._enterTrackListView(opts, _entryHooks()); }
   function _enterFolderGridView(opts) { window._enterFolderGridView(opts, _entryHooks()); }
   /* ── playlist view ── */
+  /* showPlaylist ported to webui/src/playAll.ts (state via htState). */
   function showPlaylist(items, autoplay, startIdx) {
-    destroyPlaylistDragDrop();
-    inPlaylist = true;
-    _currentPlaylistId = '__folder__';
-    _moveGhosts = {};  /* clear move ghosts when entering a new playlist */
-    playlistItems = _sortByFolderOrder(currentPath, items);
-
-    _enterTrackListView({ backDisabled: !currentPath, resetIndex: true });
-
-    /* Lazy refresh: re-read ratings from filesystem for visible items */
-    refreshFolderRatings(items);
-    /* Rebuild shuffle queue for the new playlist */
-    if (shuffleMode) rebuildShuffleQueue(startIdx || 0);
-    if (autoplay && playlistItems.length) {
-      /* When shuffle is on, start from shuffleQueue[0] instead of startIdx */
-      var firstIdx = shuffleMode && shuffleQueue.length ? shuffleQueue[0] : (startIdx || 0);
-      playTrack(firstIdx);
-    } else if (typeof startIdx === 'undefined') {
-      /* Passive folder navigation — highlight the last-watched episode (if any)
-         so the user can resume with a single click without starting playback. */
-      _restoreLastEpisode();
-    }
-    /* Pre-warm: fetch server-side order and re-sort if different */
-    var _showPlaylistPath = currentPath;
-    _loadFolderOrderAsync(currentPath, function(serverOrder) {
-      if (!serverOrder.length) return;
-      if (_currentPlaylistId !== '__folder__') return;
-      var localOrder = _loadFolderOrder(_showPlaylistPath);
-      if (JSON.stringify(localOrder) === JSON.stringify(serverOrder)) return;
-      /* Use itemsUnder() — reads from current allItems — NOT the stale 'items'
-         closure which still contains songs deleted during this session. */
-      playlistItems = _sortByFolderOrder(_showPlaylistPath, itemsUnder(_showPlaylistPath));
-      applyFilter();
+    window._showPlaylist(items, autoplay, startIdx, {
+      destroyPlaylistDragDrop: destroyPlaylistDragDrop,
+      clearMoveGhosts: function() { _moveGhosts = {}; },
+      sortByFolderOrder: _sortByFolderOrder,
+      enterTrackListView: _enterTrackListView,
+      refreshFolderRatings: refreshFolderRatings,
+      playTrack: playTrack,
+      restoreLastEpisode: _restoreLastEpisode,
+      loadFolderOrderAsync: _loadFolderOrderAsync,
+      loadFolderOrder: _loadFolderOrder,
+      applyFilter: applyFilter,
+      routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); }
     });
-    if (typeof _router !== 'undefined') _router.update();
   }
 
   /* ── Auto-resume: restore last-watched episode when navigating into a folder ─

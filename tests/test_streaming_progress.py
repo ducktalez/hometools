@@ -327,7 +327,10 @@ def test_load_recently_played_js_function():
     js = render_player_js()
     assert "loadRecentlyPlayed" in js
     assert "RECENT_API_PATH" in js
-    assert "recent-card" in js
+    from pathlib import Path
+
+    ts_path = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "recentlyPlayed.ts"
+    assert "recent-card" in ts_path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

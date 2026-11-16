@@ -23,7 +23,8 @@ def render_library_tools_js() -> str:
           var sl = (t.relative_path || '').lastIndexOf('/');
           if (sl <= 0) return;
           var folder = t.relative_path.substring(0, sl);
-          showPlaylist(itemsUnder(folder), folder);
+          currentPath = folder;
+          showPlaylist(itemsUnder(folder), false, 0); /* no autoplay; playTrack below picks the row */
           var localIdx = -1;
           for (var j = 0; j < filteredItems.length; j++) {
             if (filteredItems[j].relative_path === t.relative_path) { localIdx = j; break; }
@@ -90,9 +91,13 @@ def render_library_tools_js() -> str:
   /* -- Track context menu (three-dot / kebab) -- */
   function _openTrackCtxMenu(btn, relativePath, title) {
     var IC_FOLDER_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-    _openCtxMenu(btn, [
-      { icon: IC_FOLDER_OPEN, label: 'Im Explorer anzeigen', onClick: function() { _revealInExplorer(relativePath, title); } }
-    ]);
+    /* items: webui/src/ctxMenu.ts::trackCtxMenuItems */
+    _openCtxMenu(btn, window._trackCtxMenuItems({
+      icFolderOpen: IC_FOLDER_OPEN, icTrash: IC_TRASH,
+      isManualPlaylist: _isManualPlaylistView(),
+      reveal: function() { _revealInExplorer(relativePath, title); },
+      removeFromPlaylist: function() { removeFromUserPlaylist(relativePath); }
+    }));
   }
   function _revealInExplorer(relativePath, title) {
     window._revealInExplorer(relativePath, { apiPath: REVEAL_API_PATH, toast: showToast });
@@ -420,29 +425,12 @@ def render_library_tools_js() -> str:
   /* order loading/sorting: webui/src/customOrder.ts (server sync stays here). */
   function _loadFavoritesOrder() {
     return window._loadOrder(window.FAVORITES_ORDER_KEY);
-  }  function _saveFavoritesOrder(paths) {
-    try { localStorage.setItem('ht-favorites-order', JSON.stringify(paths)); }
-    catch (e) { /* quota exceeded — ignore */ }
-    /* persist to server (fire-and-forget) */
-    fetch(FOLDER_ORDER_API_PATH, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder_path: '__favorites__', items: paths })
-    }).catch(function() {});
+  }
+  function _saveFavoritesOrder(paths) {
+    window._saveOrder(FOLDER_ORDER_API_PATH, window.FAVORITES_ORDER_KEY, '__favorites__', paths);
   }
   function _loadFavoritesOrderAsync(cb) {
-    fetch(FOLDER_ORDER_API_PATH + '?path=__favorites__')
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
-        var items = d.items || [];
-        if (items.length) {
-          try { localStorage.setItem('ht-favorites-order', JSON.stringify(items)); }
-          catch (e) {}
-          cb(items);
-        } else {
-          cb(_loadFavoritesOrder());
-        }
-      }).catch(function() { cb(_loadFavoritesOrder()); });
+    window._loadOrderAsync(FOLDER_ORDER_API_PATH, window.FAVORITES_ORDER_KEY, '__favorites__', cb);
   }
   function _sortFavoritesByOrder(favItems) {
     return window._sortByOrder(favItems, _loadFavoritesOrder());

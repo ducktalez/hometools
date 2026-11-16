@@ -475,9 +475,9 @@ def test_js_play_track_calls_load():
 
 def test_js_play_track_has_canplay_retry():
     """If play() fails, playTrack should retry on canplay event."""
-    js = _js()
-    assert "canplay" in js
-    assert "once: true" in js
+    ts = _webui_src("playbackStart.ts")
+    assert "canplay" in ts
+    assert "once: true" in ts
 
 
 def test_js_has_refresh_metadata_function():
@@ -532,9 +532,9 @@ def test_js_shows_indexing_toast_for_refreshing_state():
 
 
 def test_js_loading_state_shows_message_in_folder_grid():
-    js = _js()
-    assert "Loading library" in js
-    assert "empty-hint" in js
+    assert "Loading library" in _webui_src("catalogFetch.ts")
+    assert "empty-hint" in _webui_src("viewEntry.ts")
+    assert "window._catalogStateOpts('loading'" in _js()
 
 
 def test_service_worker_uses_network_first_for_documents():
@@ -1664,8 +1664,10 @@ def test_show_playlist_uses_shared_track_list_entry_point():
     js = render_player_js()
     playlist_fn = js.split("function showPlaylist(", 1)[1]
     body = playlist_fn.split("function _restoreLastEpisode", 1)[0]
-    assert "_enterTrackListView({" in body
     assert "folderGrid.classList.add('view-hidden')" not in body
+    # showPlaylist ported to webui/src/playAll.ts; delegates via hooks.
+    assert "hooks.enterTrackListView({" in _webui_src("playAll.ts")
+    assert "window._showPlaylist(" in body
 
 
 def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
@@ -1702,10 +1704,10 @@ def test_loading_and_error_states_use_shared_folder_grid_entry_point():
     js = render_player_js()
     loading_fn = js.split("function showLoadingState(", 1)[1]
     loading_body = loading_fn.split("function showCatalogLoadError(", 1)[0]
-    assert "_enterFolderGridView({" in loading_body
+    assert "_enterFolderGridView(window._catalogStateOpts('loading'" in loading_body
     error_fn = js.split("function showCatalogLoadError(", 1)[1]
     error_body = error_fn.split("function loadInitialCatalog(", 1)[0]
-    assert "_enterFolderGridView({" in error_body
+    assert "_enterFolderGridView(window._catalogStateOpts('error'" in error_body
     assert "backBtn.style.display" not in js
 
 
@@ -2018,7 +2020,8 @@ class TestHtStateBridge:
 
     def test_shuffle_call_sites_still_present(self):
         js = _js()
-        assert js.count("rebuildShuffleQueue(") >= 3
+        assert js.count("rebuildShuffleQueue(") >= 2
+        assert "rebuildShuffleQueue(startIdx || 0)" in _webui_src("playAll.ts")
         assert "h.rebuildShuffleQueue(0)" in _webui_src("dupePanel.ts")  # playDuplicates
         assert "nextIndex()" in _webui_src("playNext.ts")
         assert "prevIndex()" in _webui_src("transport.ts")

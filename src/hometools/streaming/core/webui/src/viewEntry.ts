@@ -63,6 +63,18 @@ export interface FolderGridOpts extends HeaderOpts {
   contentHtml?: string | null;
 }
 
+/** Folder-grid opts for the catalog-less states (loading / load error). */
+export function catalogStateOpts(kind: "loading" | "error", message: string | undefined, esc: (s: unknown) => string): FolderGridOpts {
+  const loading = kind === "loading";
+  const text = message || (loading ? "Loading library\u2026" : "Library could not be loaded.");
+  return {
+    playAllDisabled: true,
+    disableSearch: true,
+    trackCount: loading ? "Loading\u2026" : "Library unavailable",
+    contentHtml: '<div class="empty-hint">' + esc(text) + "</div>",
+  };
+}
+
 export function applyHeaderState(opts: HeaderOpts | null | undefined, h: ViewHooks): void {
   const o = opts || {};
   const st = getState();
@@ -125,4 +137,3 @@ export function enterFolderGridView(opts: FolderGridOpts | null | undefined, h: 
   if (o.contentHtml != null) d.folderGrid.innerHTML = o.contentHtml;
   h.routerUpdate();
 }
-

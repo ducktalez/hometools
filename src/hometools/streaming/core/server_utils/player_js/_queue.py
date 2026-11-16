@@ -56,14 +56,13 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   function removeExtraFolder() { window._removeExtraFolder(_extraHooks()); }
   window._loadExtraFolders(_extraHooks());
 
-  /* Delegated click-handler for the dynamically rendered refresh-catalog-card in the tools-row */
-  if (folderGrid) {
-    folderGrid.addEventListener('click', function(e) {
-      if (e.target.closest('.refresh-catalog-card')) refreshCatalog();
-      if (e.target.closest('#add-folder-card')) addExtraFolder();
-      if (e.target.closest('#remove-folder-card')) removeExtraFolder();
-    });
-  }
+  /* Delegated tools-row card clicks: webui/src/folderGridEvents.ts */
+  window._initFolderGridEvents({
+    folderGrid: folderGrid,
+    refreshCatalog: refreshCatalog,
+    addExtraFolder: addExtraFolder,
+    removeExtraFolder: removeExtraFolder
+  });
 
   /* ── Lazy per-folder rating refresh: webui/src/ratingRefresh.ts ── */
   function refreshFolderRatings(folderItems) {
@@ -116,29 +115,13 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
      onto window (see main.ts) — these bare identifiers resolve through
      the normal JS scope chain to window.leafName/window.parentPath. */
 
+  /* Loading/error view opts: webui/src/viewEntry.ts::catalogStateOpts. */
   function showLoadingState(message) {
-    /* Header/toolbar via the shared folder-grid entry point
-       (_folder_browse.py::_enterFolderGridView) — same structure as
-       normal browse/empty/error views. disableSearch: catalog not
-       loaded yet, search would query an empty list. */
-    _enterFolderGridView({
-      playAllDisabled: true,
-      disableSearch: true,
-      trackCount: 'Loading…',
-      contentHtml: '<div class="empty-hint">' + escHtml(message || 'Loading library…') + '</div>'
-    });
+    _enterFolderGridView(window._catalogStateOpts('loading', message, escHtml));
   }
 
   function showCatalogLoadError(detail) {
-    /* Back button: disabled class like every other view — the old
-       style.display='none' here was the only place hiding it outright
-       (and nothing ever reset the inline style → header drift). */
-    _enterFolderGridView({
-      playAllDisabled: true,
-      disableSearch: true,
-      trackCount: 'Library unavailable',
-      contentHtml: '<div class="empty-hint">' + escHtml(detail || 'Library could not be loaded.') + '</div>'
-    });
+    _enterFolderGridView(window._catalogStateOpts('error', detail, escHtml));
   }
 
   /* loadInitialCatalog (stale-while-revalidate startup load + retry state)

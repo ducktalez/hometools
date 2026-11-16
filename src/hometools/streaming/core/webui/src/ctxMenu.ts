@@ -94,3 +94,20 @@ export function revealInExplorer(relativePath: string, h: RevealHooks): Promise<
     .catch(() => h.toast("Fehler beim Anzeigen"));
 }
 
+export interface TrackCtxHandlers {
+  icFolderOpen: string;
+  icTrash: string;
+  /** True when the current view is a manual (user-editable) playlist. */
+  isManualPlaylist: boolean;
+  reveal(): void;
+  removeFromPlaylist(): void;
+}
+
+/** Kebab items for a track row: reveal always, remove only in manual playlists. */
+export function trackCtxMenuItems(h: TrackCtxHandlers): CtxItem[] {
+  const items: CtxItem[] = [{ icon: h.icFolderOpen, label: "Im Explorer anzeigen", onClick: h.reveal }];
+  if (h.isManualPlaylist) {
+    items.push({ icon: h.icTrash, label: "Aus Playlist entfernen", danger: true, onClick: h.removeFromPlaylist });
+  }
+  return items;
+}

@@ -44,7 +44,7 @@ def render_pwa_manifest(
 def render_pwa_service_worker() -> str:
     """Return a service worker JS for PWA caching, offline UI, and download support."""
     return """\
-const CACHE_NAME = 'hometools-v8';
+const CACHE_NAME = 'hometools-v9';
 const DOWNLOAD_CACHE = 'hometools-downloads-v1';
 
 self.addEventListener('install', event => {

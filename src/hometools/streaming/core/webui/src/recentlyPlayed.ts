@@ -3,6 +3,8 @@
  * Ported from `_track_render.py::loadRecentlyPlayed` (card HTML + click-folder pick).
  */
 
+import { getState } from "./stateBridge";
+
 export interface RecentItem {
   relative_path?: string;
   position_seconds?: number;
@@ -60,3 +62,64 @@ export function recentPlayContext(path: string, allItems: LegacyMediaItem[]): Re
   return { folder, folderItems };
 }
 
+export interface RecentHooks {
+  /** `RECENT_API_PATH` */
+  apiPath: string;
+  esc(s: unknown): string;
+  placeholder: string;
+  player: HTMLMediaElement;
+  showPlaylist(items: LegacyMediaItem[], autoplay: boolean): void;
+  playItem(item: LegacyMediaItem, idx: number): void;
+}
+
+/** Open the folder of a recent card, play it, seek to the saved position. */
+export function playRecentCard(path: string, seekPos: number, h: RecentHooks): void {
+  const s = getState();
+  if (!s) return;
+  const ctx = recentPlayContext(path, s.allItems);
+  if (!ctx) return;
+  const found = s.allItems.find((it) => it.relative_path === path);
+  if (!found) return;
+  s.currentPath = ctx.folder;
+  s.inPlaylist = true;
+  h.showPlaylist(ctx.folderItems, false);
+  // Index AFTER showPlaylist sorted/filtered; pre-sort index would play the wrong next episode.
+  let idx = s.filteredItems.findIndex((it) => it.relative_path === path);
+  if (idx < 0) idx = 0;
+  h.playItem(found, idx);
+  if (seekPos > 2) {
+    h.player.addEventListener(
+      "canplay",
+      () => {
+        h.player.currentTime = seekPos;
+      },
+      { once: true },
+    );
+  }
+}
+
+/** Fetch + render the recent strip; hides the section when empty/failed. Never throws. */
+export function loadRecentlyPlayed(h: RecentHooks): void {
+  const section = document.getElementById("recent-section");
+  if (!section) return;
+  fetch(h.apiPath + "?limit=10")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d: { items?: RecentItem[] } | null) => {
+      if (!d || !d.items || d.items.length === 0) {
+        section.hidden = true;
+        return;
+      }
+      const scroll = section.querySelector(".recent-scroll");
+      if (!scroll) return;
+      scroll.innerHTML = recentCardsHtml(d.items, h.esc, h.placeholder);
+      section.hidden = false;
+      scroll.querySelectorAll<HTMLElement>(".recent-card").forEach((card) => {
+        card.addEventListener("click", () => {
+          playRecentCard(card.dataset.path || "", parseFloat(card.dataset.pos || "") || 0, h);
+        });
+      });
+    })
+    .catch(() => {
+      section.hidden = true;
+    });
+}

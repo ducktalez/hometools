@@ -136,7 +136,7 @@ def test_audio_home_renders_shell_without_building_index(tmp_path):
 
     assert response.status_code == 200
     assert 'id="initial-data"' in response.text
-    assert "Loading library" in response.text
+    assert "/static/player." in response.text  # shell links bundle; "Loading library" lives in webui/src/catalogFetch.ts
 
 
 def test_audio_tracks_returns_refreshing_state_with_quick_scan_while_index_builds(tmp_path):

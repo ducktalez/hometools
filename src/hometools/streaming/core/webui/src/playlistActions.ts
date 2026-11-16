@@ -10,6 +10,7 @@
 
 import { getState } from "./stateBridge";
 import { snapshotPlaylists, restorePlaylists } from "./playlistSync";
+import { evaluateSmartPlaylist, type UserPlaylist } from "./smartPlaylist";
 
 export interface PlaylistLike {
   id: string;
@@ -121,6 +122,34 @@ export function addToPlaylist(plId: string, relativePath: string, h: PlaylistHoo
     });
 }
 
+/** Remove one item from a manual playlist (optimistic; rollback on error). */
+export function removeFromPlaylist(plId: string, relativePath: string, h: PlaylistHooks, onDone?: () => void): void {
+  const snap = snapshotPlaylists();
+  const localPl = lists().find((p) => p.id === plId);
+  if (localPl) localPl.items = (localPl.items || []).filter((rp) => rp !== relativePath);
+  h.toast("Aus Playlist entfernt");
+  if (onDone) onDone();
+  fetch(h.apiPath + "/items?playlist_id=" + encodeURIComponent(plId) + "&path=" + encodeURIComponent(relativePath), {
+    method: "DELETE",
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then((d) => {
+      if (d.playlist) {
+        const l = lists();
+        const idx = l.findIndex((p) => p.id === plId);
+        if (idx >= 0) l[idx] = d.playlist;
+      }
+    })
+    .catch(() => {
+      restorePlaylists(snap);
+      h.toast("Fehler beim Entfernen \u2014 r\u00fcckg\u00e4ngig");
+      if (onDone) onDone();
+    });
+}
+
 export function createAndAddToPlaylist(name: string, relativePath: string, h: PlaylistHooks): void {
   fetch(h.apiPath, {
     method: "POST",
@@ -142,3 +171,26 @@ export function createAndAddToPlaylist(name: string, relativePath: string, h: Pl
     .catch(() => h.toast("Fehler beim Erstellen"));
 }
 
+export interface RefreshSmartHooks {
+  applyFilter(): void;
+  showFolderView(): void;
+  toast(msg: string): void;
+}
+
+/** Re-evaluate smart playlist `plId` locally; re-render in place if open, else refresh root. */
+export function refreshSmartPlaylist(plId: string, h: RefreshSmartHooks): void {
+  const s = getState();
+  if (!s) return;
+  const all = lists() as unknown as UserPlaylist[];
+  const pl = all.find((p) => p.id === plId);
+  if (!pl || !pl.smart) return;
+  if (s.inPlaylist && s.currentPlaylistId === plId) {
+    const resolved = evaluateSmartPlaylist(pl, s.allItems, all, s.savedFavorites);
+    s.playlistItems = resolved;
+    h.applyFilter();
+    h.toast("Aktualisiert: " + resolved.length + " Titel");
+  } else {
+    h.showFolderView();
+    h.toast("Intelligente Playlist aktualisiert");
+  }
+}

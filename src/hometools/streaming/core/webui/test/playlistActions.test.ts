@@ -5,8 +5,41 @@ import {
   renameUserPlaylist,
   addToPlaylist,
   createAndAddToPlaylist,
+  refreshSmartPlaylist,
   type PlaylistLike,
 } from "../src/playlistActions";
+
+describe("refreshSmartPlaylist", () => {
+  const smartPl = { id: "s", name: "S", smart: { rules: [{ field: "rating", op: "gte", value: 4 }] } };
+  const mk = () => ({ applyFilter: vi.fn(), showFolderView: vi.fn(), toast: vi.fn() });
+  it("re-renders in place when open", () => {
+    const s = installState({
+      userPlaylists: [smartPl],
+      allItems: [{ relative_path: "a", title: "a", artist: "", rating: 5 } as never, { relative_path: "b", title: "b", artist: "", rating: 1 } as never],
+      inPlaylist: true,
+      currentPlaylistId: "s",
+    });
+    const h = mk();
+    refreshSmartPlaylist("s", h);
+    expect(s.playlistItems.map((i) => i.relative_path)).toEqual(["a"]);
+    expect(h.applyFilter).toHaveBeenCalled();
+    expect(h.toast).toHaveBeenCalledWith("Aktualisiert: 1 Titel");
+  });
+  it("refreshes root when not open", () => {
+    installState({ userPlaylists: [smartPl] });
+    const h = mk();
+    refreshSmartPlaylist("s", h);
+    expect(h.showFolderView).toHaveBeenCalled();
+    expect(h.applyFilter).not.toHaveBeenCalled();
+  });
+  it("ignores non-smart/unknown", () => {
+    installState({ userPlaylists: [{ id: "m", name: "M", items: [] }] });
+    const h = mk();
+    refreshSmartPlaylist("m", h);
+    refreshSmartPlaylist("zz", h);
+    expect(h.toast).not.toHaveBeenCalled();
+  });
+});
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 

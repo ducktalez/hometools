@@ -38,21 +38,9 @@ def render_playlists_js() -> str:
      since the ported module takes them as explicit parameters instead of
      reading mutable globals (see that file's header comment). */
 
-  /* Refresh smart playlist: re-evaluate locally and re-render. */
+  /* Refresh smart playlist: webui/src/playlistActions.ts::refreshSmartPlaylist. */
   function refreshSmartPlaylist(plId) {
-    var pl = _userPlaylists.find(function(p) { return p.id === plId; });
-    if (!pl || !pl.smart) return;
-    /* If currently viewing this playlist, re-render in place. */
-    if (typeof inPlaylist !== 'undefined' && inPlaylist && _currentPlaylistId === plId) {
-      var resolved = _evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites);
-      playlistItems = resolved;
-      applyFilter();
-      showToast('Aktualisiert: ' + resolved.length + ' Titel');
-    } else {
-      /* Just refresh the root view to update the count. */
-      showFolderView();
-      showToast('Intelligente Playlist aktualisiert');
-    }
+    window._refreshSmartPlaylist(plId, { applyFilter: applyFilter, showFolderView: showFolderView, toast: showToast });
   }
 
   /* ── Smart Playlist Editor Modal ────────────────────────────────────── */

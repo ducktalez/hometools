@@ -1,6 +1,25 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { installState, item } from "./helpers";
-import { applyHeaderState, enterTrackListView, enterFolderGridView, type ViewHooks } from "../src/viewEntry";
+import { applyHeaderState, enterTrackListView, enterFolderGridView, catalogStateOpts, type ViewHooks } from "../src/viewEntry";
+
+describe("catalogStateOpts", () => {
+  const esc = (s: unknown) => String(s).replace(/</g, "&lt;");
+  it("loading: default text + count, search disabled", () => {
+    const o = catalogStateOpts("loading", undefined, esc);
+    expect(o.trackCount).toBe("Loading\u2026");
+    expect(o.contentHtml).toContain("Loading library\u2026");
+    expect(o.disableSearch).toBe(true);
+    expect(o.playAllDisabled).toBe(true);
+  });
+  it("error: escapes detail", () => {
+    const o = catalogStateOpts("error", "<b>x", esc);
+    expect(o.trackCount).toBe("Library unavailable");
+    expect(o.contentHtml).toContain("&lt;b>x");
+  });
+  it("error: default text", () => {
+    expect(catalogStateOpts("error", "", esc).contentHtml).toContain("Library could not be loaded.");
+  });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 

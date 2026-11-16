@@ -45,6 +45,14 @@ def render_track_render_js() -> str:
     trackList.classList.toggle('track-list--series', _hasSeriesItems);
 
     if (!tracks.length) {
+      /* Empty manual playlist: green "Titel hinzufuegen" button (webui/src/trackPicker.ts). */
+      var _emptyPlId = window._emptyManualPlaylistId ? window._emptyManualPlaylistId() : '';
+      if (_emptyPlId) {
+        trackList.innerHTML = window._emptyPlaylistHtml();
+        var _addBtn = document.getElementById(window._TRACK_PICKER_BTN_ID);
+        if (_addBtn) _addBtn.addEventListener('click', function() { openTrackPicker(_emptyPlId); });
+        return;
+      }
       trackList.innerHTML = '<li class="empty-hint">No matching items.</li>';
       return;
     }
@@ -82,69 +90,12 @@ def render_track_render_js() -> str:
   function closeOfflineLibrary() { window._closeOfflineLibrary({ showFolderView: showFolderView }); }
   function updateOfflineFolderCount() { window._updateOfflineFolderCount(downloadedPill); }
 
-  /* -- Recently played section -- */
+  /* -- Recently played section: webui/src/recentlyPlayed.ts -- */
   function loadRecentlyPlayed() {
-    var section = document.getElementById('recent-section');
-    if (!section) return;
-    fetch(RECENT_API_PATH + '?limit=10')
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(d) {
-        if (!d || !d.items || d.items.length === 0) {
-          section.hidden = true;
-          return;
-        }
-        var scroll = section.querySelector('.recent-scroll');
-        scroll.innerHTML = d.items.map(function(it) {
-          var pct = Math.min(100, Math.max(0, it.progress_pct || 0));
-          var thumb = it.thumbnail_url || FILE_PLACEHOLDER;
-          var isPlaceholder = !it.thumbnail_url;
-          var imgStyle = isPlaceholder ? ' style="object-fit:contain;padding:14px;opacity:.4"' : '';
-          return '<div class="recent-card" data-path="' + escHtml(it.relative_path || '') + '"'
-            + ' data-pos="' + (it.position_seconds || 0) + '" title="' + escHtml(it.title || '') + '">'
-            + '<div class="recent-thumb-wrap">'
-            + '<img class="recent-thumb" src="' + escHtml(thumb) + '" loading="lazy"' + imgStyle + '>'
-            + (pct > 2 ? '<div class="recent-progress-bar" style="width:' + pct + '%"></div>' : '')
-            + '</div>'
-            + '<div class="recent-title">' + escHtml(it.title || it.relative_path || '') + '</div>'
-            + '<div class="recent-sub">' + escHtml(it.artist || '') + '</div>'
-            + '</div>';
-        }).join('');
-        section.hidden = false;
-        /* attach click handlers */
-        scroll.querySelectorAll('.recent-card').forEach(function(card) {
-          card.addEventListener('click', function() {
-            var path = card.dataset.path;
-            var seekPos = parseFloat(card.dataset.pos) || 0;
-            /* item + folder siblings: webui/src/recentlyPlayed.ts::recentPlayContext */
-            var ctx = window._recentPlayContext(path, allItems);
-            if (!ctx) return;
-            var found = null;
-            for (var i = 0; i < allItems.length; i++) {
-              if (allItems[i].relative_path === path) { found = allItems[i]; break; }
-            }
-            currentPath = ctx.folder;
-            inPlaylist = true;
-            showPlaylist(ctx.folderItems, false);
-            /* Find the correct index in filteredItems *after* showPlaylist has
-               sorted them via applyFilter.  Computing idx from the unsorted
-               folderItems before showPlaylist would give a stale position and
-               cause the wrong next-episode to play when the current one ends. */
-            var filteredIdx = 0;
-            for (var k = 0; k < filteredItems.length; k++) {
-              if (filteredItems[k].relative_path === path) { filteredIdx = k; break; }
-            }
-            playItem(found, filteredIdx);
-            /* seek to saved position after canplay */
-            if (seekPos > 2) {
-              player.addEventListener('canplay', function onCp() {
-                player.removeEventListener('canplay', onCp);
-                player.currentTime = seekPos;
-              }, { once: true });
-            }
-          });
-        });
-      })
-      .catch(function() { if (section) section.hidden = true; });
+    window._loadRecentlyPlayed({
+      apiPath: RECENT_API_PATH, esc: escHtml, placeholder: FILE_PLACEHOLDER, player: player,
+      showPlaylist: showPlaylist, playItem: playItem
+    });
   }
 
 

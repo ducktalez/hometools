@@ -1,5 +1,48 @@
-import { describe, it, expect } from "vitest";
-import { recentCardsHtml, recentPlayContext } from "../src/recentlyPlayed";
+import { describe, it, expect, vi } from "vitest";
+import { recentCardsHtml, recentPlayContext, playRecentCard } from "../src/recentlyPlayed";
+import { installState, item } from "./helpers";
+
+describe("playRecentCard", () => {
+  const mkHooks = (s: { filteredItems: unknown[] }) => {
+    const listeners: Array<() => void> = [];
+    const player = {
+      currentTime: 0,
+      addEventListener: (_e: string, cb: () => void) => listeners.push(cb),
+    } as unknown as HTMLMediaElement;
+    const h = {
+      apiPath: "/r",
+      esc: String,
+      placeholder: "",
+      player,
+      showPlaylist: vi.fn((items: unknown[]) => {
+        s.filteredItems = [...items].reverse(); // simulate sort in showPlaylist
+      }),
+      playItem: vi.fn(),
+    };
+    return { h, listeners, player };
+  };
+  it("uses post-sort index, sets path/inPlaylist, seeks on canplay", () => {
+    const a = item("f/a.mp4");
+    const b = item("f/b.mp4");
+    const s = installState({ allItems: [a, b] });
+    const { h, listeners, player } = mkHooks(s);
+    playRecentCard("f/a.mp4", 30, h as never);
+    expect(s.currentPath).toBe("f");
+    expect(s.inPlaylist).toBe(true);
+    expect(h.showPlaylist).toHaveBeenCalledWith([a, b], false);
+    expect(h.playItem).toHaveBeenCalledWith(a, 1); // reversed -> a at 1
+    listeners[0]();
+    expect(player.currentTime).toBe(30);
+  });
+  it("no seek listener for short positions; no-op for unknown path", () => {
+    const s = installState({ allItems: [item("x.mp4")] });
+    const { h, listeners } = mkHooks(s);
+    playRecentCard("x.mp4", 1, h as never);
+    expect(listeners).toHaveLength(0);
+    playRecentCard("nope.mp4", 50, h as never);
+    expect(h.playItem).toHaveBeenCalledTimes(1);
+  });
+});
 
 const esc = (s: unknown) => String(s).replace(/</g, "&lt;");
 const mk = (p: string) => ({ relative_path: p }) as never;

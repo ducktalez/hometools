@@ -740,17 +740,11 @@ class TestRefreshParity:
         assert r2.json()["ok"] is True
 
     def test_both_home_pages_include_refresh_button(self, tmp_path):
-        """Both UIs must have the refresh-catalog-card button (rendered in JS tools-row)."""
-        from fastapi.testclient import TestClient
+        """Both UIs share the refresh-catalog-card button (rendered by webui/src/rootCards.ts)."""
+        from pathlib import Path
 
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        assert "refresh-catalog-card" in audio_html
-        assert "refresh-catalog-card" in video_html
+        ts = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "rootCards.ts"
+        assert "refresh-catalog-card" in ts.read_text(encoding="utf-8")
 
     def test_both_home_pages_include_refresh_js(self, tmp_path):
         """Both UIs must have the refreshCatalog JS function."""
@@ -798,13 +792,13 @@ class TestLazyRatingRefreshParity:
             assert "refreshFolderRatings" in html
 
     def test_lazy_refresh_called_in_showPlaylist(self, tmp_path):
-        """showPlaylist must call refreshFolderRatings for lazy rating updates."""
+        """showPlaylist (ported to webui/src/playAll.ts) must get the refreshFolderRatings hook."""
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
 
         html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        assert "refreshFolderRatings(items)" in html
+        assert "refreshFolderRatings: refreshFolderRatings" in html
 
 
 class TestGlobalSearchParity:
