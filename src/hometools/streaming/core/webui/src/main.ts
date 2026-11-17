@@ -372,6 +372,7 @@ import {
   bindPlaylistSync,
 } from "./playlistSync";
 import { createPlaylistWiring } from "./playlistWiring";
+import { createFolderWiring } from "./folderWiring";
 
 // CSS ports: Vite bundles these into one stylesheet, _html.py links it
 // AFTER the legacy inline <style> (later wins at equal specificity).
@@ -766,6 +767,7 @@ declare global {
     _startPlaylistSync: typeof startPlaylistSync;
     _bindPlaylistSync: typeof bindPlaylistSync;
     _createPlaylistWiring: typeof createPlaylistWiring;
+    _createFolderWiring: typeof createFolderWiring;
     _stopPlaylistSync: typeof stopPlaylistSync;
     _snapshotPlaylists: typeof snapshotPlaylists;
     _restorePlaylists: typeof restorePlaylists;
@@ -1155,6 +1157,7 @@ window._loadUserPlaylists = loadUserPlaylists;
 window._startPlaylistSync = startPlaylistSync;
 window._bindPlaylistSync = bindPlaylistSync;
 window._createPlaylistWiring = createPlaylistWiring;
+window._createFolderWiring = createFolderWiring;
 window._stopPlaylistSync = stopPlaylistSync;
 window._snapshotPlaylists = snapshotPlaylists;
 window._restorePlaylists = restorePlaylists;

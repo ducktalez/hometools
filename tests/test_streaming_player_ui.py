@@ -1669,7 +1669,8 @@ def test_show_playlist_uses_shared_track_list_entry_point():
     assert "folderGrid.classList.add('view-hidden')" not in body
     # showPlaylist ported to webui/src/playAll.ts; delegates via hooks.
     assert "hooks.enterTrackListView({" in _webui_src("playAll.ts")
-    assert "window._showPlaylist(" in body
+    assert "_fw.showPlaylist(" in body
+    assert "showPlaylist(items, autoplay, startIdx, {" in _webui_src("folderWiring.ts")
 
 
 def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
@@ -1680,7 +1681,7 @@ def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
     assert "if (!o.disableSearch && st && st.allItems.length > 0) h.initGlobalSearch();" in header
     assert "else h.hideGlobalSearch();" in header
     js = _js()
-    assert "window._showFolderView(" in js
+    assert "_fw.showFolderView()" in js
     assert "initGlobalSearch()" not in _webui_src("folderView.ts")
 
 
@@ -1694,7 +1695,7 @@ def test_show_folder_view_uses_shared_folder_grid_entry_point():
     ts = _webui_src("folderView.ts")
     assert ts.count("h.enterFolderGridView({") == 2  # empty branch + normal branch
     assert "folderGrid.classList.remove('view-hidden')" not in ts
-    assert "window._showFolderView(" in js
+    assert "_fw.showFolderView()" in js
 
 
 def test_loading_and_error_states_use_shared_folder_grid_entry_point():
