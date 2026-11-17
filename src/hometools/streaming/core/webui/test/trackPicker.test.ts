@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { installState, item } from "./helpers";
-import { emptyManualPlaylistId, emptyPlaylistHtml, pickerMatches, ADD_BTN_ID } from "../src/trackPicker";
+import { emptyManualPlaylistId, emptyPlaylistHtml, pickerMatches, isManualPlaylistView, reloadPlaylistView, ADD_BTN_ID } from "../src/trackPicker";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -50,3 +50,39 @@ describe("pickerMatches", () => {
   });
 });
 
+describe("isManualPlaylistView", () => {
+  const pls = [
+    { id: "m", name: "M", items: [] },
+    { id: "s", name: "S", smart: { rules: [] } },
+  ];
+  it("true only for manual user playlist in view", () => {
+    installState({ inPlaylist: true, currentPlaylistId: "m", userPlaylists: pls });
+    expect(isManualPlaylistView()).toBe(true);
+    installState({ inPlaylist: true, currentPlaylistId: "s", userPlaylists: pls });
+    expect(isManualPlaylistView()).toBe(false);
+    installState({ inPlaylist: true, currentPlaylistId: "__folder__", userPlaylists: pls });
+    expect(isManualPlaylistView()).toBe(false);
+    installState({ inPlaylist: false, currentPlaylistId: "m", userPlaylists: pls });
+    expect(isManualPlaylistView()).toBe(false);
+  });
+});
+
+describe("reloadPlaylistView", () => {
+  it("re-resolves and applies filter while playlist still shown", () => {
+    const st = installState({ inPlaylist: true, currentPlaylistId: "m", playlistItems: [] });
+    const apply = vi.fn();
+    reloadPlaylistView("m", () => ({ resolved: [item("a")] }), apply, true);
+    expect(st.playlistItems).toHaveLength(1);
+    expect(apply).toHaveBeenCalledWith(true);
+  });
+  it("no-op after navigation away; empty when unresolvable", () => {
+    const st = installState({ inPlaylist: true, currentPlaylistId: "other", playlistItems: [] });
+    const apply = vi.fn();
+    reloadPlaylistView("m", () => ({ resolved: [item("a")] }), apply);
+    expect(apply).not.toHaveBeenCalled();
+    st.currentPlaylistId = "m";
+    reloadPlaylistView("m", () => null, apply);
+    expect(st.playlistItems).toEqual([]);
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+});

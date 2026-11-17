@@ -40,6 +40,31 @@ export function emptyPlaylistHtml(): string {
   );
 }
 
+/** True when a manual (non-smart, non-virtual) user playlist is currently shown. */
+export function isManualPlaylistView(): boolean {
+  const st = getState();
+  if (!st || !st.inPlaylist || !st.currentPlaylistId || st.currentPlaylistId.indexOf("__") === 0) return false;
+  const pl = playlistById(st.currentPlaylistId);
+  return !!pl && !pl.smart;
+}
+
+/**
+ * Re-resolve playlist `plId` and re-render, but only while it is still the
+ * view on screen (async add/remove callbacks may fire after navigation).
+ */
+export function reloadPlaylistView(
+  plId: string,
+  resolve: (id: string) => { resolved: LegacyMediaItem[] } | null,
+  applyFilter: (force?: boolean) => void,
+  force?: boolean
+): void {
+  const st = getState();
+  if (!st || !st.inPlaylist || st.currentPlaylistId !== plId) return;
+  const data = resolve(plId);
+  st.playlistItems = data ? data.resolved : [];
+  applyFilter(force);
+}
+
 /** Library items matching `needle` (title/artist/path), capped. */
 export function pickerMatches(
   items: LegacyMediaItem[],

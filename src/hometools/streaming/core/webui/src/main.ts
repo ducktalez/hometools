@@ -67,6 +67,9 @@
  * search wiring, playlist kebab items, from _folder_browse.py; private state moved,
  * htState.globalSearchActive added).
  *
+ * Previous slice: trackPicker.ts::isManualPlaylistView/reloadPlaylistView (de-duped the
+ * "re-resolve playlist + applyFilter" callbacks of openTrackPicker/removeFromUserPlaylist).
+ *
  * Previous slice: playlistViews.ts (showUserPlaylistView/playUserPlaylist + add-to-
  * playlist modal, from _smart_playlists.py; htState.playlistAddPath added).
  *
@@ -351,7 +354,7 @@ import { jumpToCurrentTrack, updatePlayerBarActions } from "./playerNav";
 import { stopRenderObserver, appendTrackBatch, ensureRenderedTo, markActive, startWindowedRender } from "./trackRenderWindow";
 import { updateFilterChips, applyFilter } from "./filterApply";
 import { showUserPlaylistView, playUserPlaylist, openPlaylistModal, closePlaylistModal } from "./playlistViews";
-import { openTrackPicker, emptyManualPlaylistId, emptyPlaylistHtml, ADD_BTN_ID } from "./trackPicker";
+import { openTrackPicker, emptyManualPlaylistId, emptyPlaylistHtml, isManualPlaylistView, reloadPlaylistView, ADD_BTN_ID } from "./trackPicker";
 import { deleteUserPlaylist, renameUserPlaylist, addToPlaylist, createAndAddToPlaylist, removeFromPlaylist, refreshSmartPlaylist } from "./playlistActions";
 import {
   loadUserPlaylists,
@@ -782,6 +785,8 @@ declare global {
     _closePlaylistModal: typeof closePlaylistModal;
     _openTrackPicker: typeof openTrackPicker;
     _emptyManualPlaylistId: typeof emptyManualPlaylistId;
+    _isManualPlaylistView: typeof isManualPlaylistView;
+    _reloadPlaylistView: typeof reloadPlaylistView;
     _emptyPlaylistHtml: typeof emptyPlaylistHtml;
     _TRACK_PICKER_BTN_ID: string;
     _closeLangPicker: typeof closeLangPicker;
@@ -1147,6 +1152,8 @@ window._openPlaylistModal = openPlaylistModal;
 window._closePlaylistModal = closePlaylistModal;
 window._openTrackPicker = openTrackPicker;
 window._emptyManualPlaylistId = emptyManualPlaylistId;
+window._isManualPlaylistView = isManualPlaylistView;
+window._reloadPlaylistView = reloadPlaylistView;
 window._emptyPlaylistHtml = emptyPlaylistHtml;
 window._TRACK_PICKER_BTN_ID = ADD_BTN_ID;
 window._closeLangPicker = closeLangPicker;

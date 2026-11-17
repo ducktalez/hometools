@@ -45,12 +45,7 @@ def render_smart_playlists_js() -> str:
       playlistId: plId,
       esc: escHtml,
       addToPlaylist: function(id, rp) { window._addToPlaylist(id, rp, { apiPath: PLAYLISTS_API_PATH, toast: showToast, refreshRoot: function() {} }); },
-      refresh: function() {
-        if (!inPlaylist || _currentPlaylistId !== plId) return;
-        var data = _resolvePlaylistItems(plId);
-        playlistItems = data ? data.resolved : [];
-        applyFilter();
-      }
+      refresh: function() { window._reloadPlaylistView(plId, _resolvePlaylistItems, applyFilter); }
     });
   }
 
@@ -70,18 +65,11 @@ def render_smart_playlists_js() -> str:
   function addToPlaylist(plId, relativePath) { window._addToPlaylist(plId, relativePath, _playlistHooks()); }
   function createAndAddToPlaylist(name, relativePath) { window._createAndAddToPlaylist(name, relativePath, _playlistHooks()); }
   /* Remove a track from the manual playlist currently shown (webui/src/playlistActions.ts). */
-  function _isManualPlaylistView() {
-    if (!inPlaylist || !_currentPlaylistId || _currentPlaylistId.indexOf('__') === 0) return false;
-    var pl = _userPlaylists.find(function(p) { return p.id === _currentPlaylistId; });
-    return !!pl && !pl.smart;
-  }
+  function _isManualPlaylistView() { return window._isManualPlaylistView(); }
   function removeFromUserPlaylist(relativePath) {
     var plId = _currentPlaylistId;
     window._removeFromPlaylist(plId, relativePath, _playlistHooks(), function() {
-      if (!inPlaylist || _currentPlaylistId !== plId) return;
-      var data = _resolvePlaylistItems(plId);
-      playlistItems = data ? data.resolved : [];
-      applyFilter(true);
+      window._reloadPlaylistView(plId, _resolvePlaylistItems, applyFilter, true);
     });
   }
   /* Reorder (drag & drop target) ported to webui/src/playlistReorder.ts
