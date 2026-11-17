@@ -209,8 +209,7 @@ class TestTrackDownloadButtons:
 
     def test_js_dl_btn_click_stops_propagation(self):
         """Download button click must not bubble to track click (play)."""
-        js = _js()
-        assert "stopPropagation" in js
+        assert "stopPropagation" in _webui_src("trackListDelegation.ts")
 
     def test_js_dl_btn_toggle_behavior(self):
         """Clicking a cached button should delete, clicking uncached should download, clicking downloading should cancel."""

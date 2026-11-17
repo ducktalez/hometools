@@ -1680,9 +1680,8 @@ def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
     assert "if (!o.disableSearch && st && st.allItems.length > 0) h.initGlobalSearch();" in header
     assert "else h.hideGlobalSearch();" in header
     js = _js()
-    folder_view_fn = js.split("function showFolderView(", 1)[1]
-    body = folder_view_fn.split("function _openPlaylistCtxMenu(", 1)[0]
-    assert "initGlobalSearch()" not in body
+    assert "window._showFolderView(" in js
+    assert "initGlobalSearch()" not in _webui_src("folderView.ts")
 
 
 def test_show_folder_view_uses_shared_folder_grid_entry_point():
@@ -1692,10 +1691,10 @@ def test_show_folder_view_uses_shared_folder_grid_entry_point():
     _enterTrackListView() did for the track-list views."""
     js = render_player_js()
     assert "function _enterFolderGridView(opts)" in js
-    folder_view_fn = js.split("function showFolderView(", 1)[1]
-    body = folder_view_fn.split("function _openPlaylistCtxMenu(", 1)[0]
-    assert body.count("_enterFolderGridView({") == 2  # empty branch + normal branch
-    assert "folderGrid.classList.remove('view-hidden')" not in body
+    ts = _webui_src("folderView.ts")
+    assert ts.count("h.enterFolderGridView({") == 2  # empty branch + normal branch
+    assert "folderGrid.classList.remove('view-hidden')" not in ts
+    assert "window._showFolderView(" in js
 
 
 def test_loading_and_error_states_use_shared_folder_grid_entry_point():
@@ -1832,7 +1831,7 @@ def test_js_clean_folder_name_strips_lang_tag():
 def test_js_folder_card_renders_lang_badges():
     """Folder card rendering must include langBadgesHtml call."""
     assert "o.langBadgesHtml(f.languages)" in _webui_src("folderCards.ts")
-    assert "window._folderCardHtml(f, _cardOpts)" in _js()
+    assert "folderCardHtml(f, opts)" in _webui_src("folderView.ts")
 
 
 def test_js_contents_at_aggregates_languages():
@@ -1917,9 +1916,9 @@ def test_js_click_guard_ported_to_ts():
 
 def test_js_wasdrag_call_sites_still_present():
     """Regression guard: the ported wasDrag must still be *used* — the click
-    handlers that suppress clicks after a drag are the whole point."""
-    js = _js()
-    assert js.count("wasDrag(e)") >= 5
+    handlers that suppress clicks after a drag are the whole point
+    (folder-grid handlers ported to webui/src/folderView.ts)."""
+    assert _webui_src("folderView.ts").count("wasDrag(e)") >= 5
 
 
 def test_js_toast_ported_to_ts():
@@ -1937,7 +1936,8 @@ def test_js_toast_ported_to_ts():
 def test_js_toast_call_sites_still_present():
     """The ported showToast must still be called by the legacy script."""
     js = _js()
-    assert js.count("showToast(") >= 5
+    assert js.count("showToast(") >= 2
+    assert _webui_src("folderView.ts").count("h.toast(") >= 2
 
 
 def test_js_folder_cache_ported_to_ts():
@@ -2140,8 +2140,7 @@ def test_js_contents_at_aggregates_sub_langs():
 
 def test_js_folder_card_renders_lang_select_btn():
     """Folder card rendering must include lang-select-btn for multi-lang folders."""
-    js = _js()
-    assert "lang-select-btn" in js
+    assert "lang-select-btn" in _webui_src("folderCards.ts")
 
 
 def test_js_lang_select_btn_click_navigates():

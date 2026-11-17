@@ -5,240 +5,49 @@ from __future__ import annotations
 
 def render_folder_browse_js() -> str:
     """Return the folder browse section of the player JS."""
-    return """  function showFolderView() {
-    destroyPlaylistDragDrop();
-    closeLangPicker();
-    inPlaylist = false;
-    _currentPlaylistId = '';
-    _globalSearchActive = false;
-    _moveGhosts = {};  /* clear move ghosts when leaving playlist */
-    /* Clear refresh-info when leaving playlist view */
-    var rInfo = document.getElementById('refresh-info');
-    if (rInfo) rInfo.textContent = '';
-    var c = contentsAt(currentPath);
-    var isRoot = !currentPath;
-    var showOrigNames = _anyToolActive();
-
-    /* Extra library folders (video): webui/src/extraFolders.ts */
-    var _xAliases = window._extraFolderAliases();
-    if (isRoot && _xAliases.length) window._addExtraFolderPlaceholders(c.folders, _xAliases);
-
-    /* empty library — still the folder-grid view, so the global search bar
-       follows the same "folder-grid visible" rule as the normal branch below. */
-    if (c.folders.length === 0 && c.files.length === 0) {
-      _enterFolderGridView({
-        playAllDisabled: true,
-        trackCount: '',
-        contentHtml: '<div class="empty-hint">No items found. Run a sync first.</div>'
-      });
-      return;
-    }
-
-    /* leaf folder (no sub-folders) → playlist. Global search bar is a
-       folder-grid-only control (see docs/IMPLEMENTATION_PLAN.md
-       "UI-Template-Vereinheitlichung" Phase 2) — showPlaylist() hides it,
-       same as showUserPlaylistView() does for user/smart playlists, so
-       every track-list view behaves identically regardless of entry point. */
-    if (c.folders.length === 0) {
-      showPlaylist(c.files, false);
-      return;
-    }
-
-    var label = c.folders.length + ' folder' + (c.folders.length !== 1 ? 's' : '');
-    if (c.files.length > 0) {
-      label += ', ' + c.files.length + ' ' + (c.files.length !== 1 ? ITEM_NOUN + 's' : ITEM_NOUN);
-    }
-    /* Header/toolbar state via the shared folder-grid entry point —
-       content HTML is built below and assigned afterwards (identical
-       result; _enterFolderGridView only touches container-level state). */
-    _enterFolderGridView({ trackCount: label });
-
-    var html = '';
-
-    /* Compact tools row — only on root: Neue Playlist | Titel | Downloaded | reload.
-       Video server omits playlist tools (Neue Playlist / Intelligente Playlist / Titel)
-       since playlists are an audio-only feature there. */
-    var _isVideo = (ITEM_NOUN === 'video');
-    /* markup: webui/src/rootCards.ts::toolsRowHtml */
-    html += window._toolsRowHtml({
-      isRoot: isRoot, playlistsEnabled: !!PLAYLISTS_ENABLED, offlineEnabled: !!OFFLINE_ENABLED,
-      isVideo: _isVideo, allItemsCount: allItems.length, icSmartPlaylist: IC_SMART_PLAYLIST,
-      icPlaylist: IC_PLAYLIST, icDl: IC_DL, icRefresh: IC_REFRESH
-    });
-
-    /* Auto-Favorites playlist card — only on root when favorites exist */
-    if (isRoot && PLAYLISTS_ENABLED) {
-      var _favCount = allItems.filter(function(t) { return !!_savedFavorites[t.relative_path]; }).length;
-      /* markup: webui/src/rootCards.ts::favoritesCardHtml */
-      html += window._favoritesCardHtml(_favCount, IC_STAR, IC_FOLDER_PLAY);
-    }
-
-    /* Playlist pseudo-folder cards — only on root, only when playlists enabled.
-       All modification actions (Umbenennen, Regeln bearbeiten, Aktualisieren,
-       Löschen) live behind a single top-right kebab menu — consistent with
-       every other three-dot menu in the UI. The cover itself doubles as the
-       play button (centered overlay, revealed on hover). */
-    var _playlistCardsRendered = false;
-    if (isRoot && PLAYLISTS_ENABLED) {
-      _playlistCardsRendered = true;
-      _userPlaylists.forEach(function(pl) {
-        var isSmart = !!(pl.smart && pl.smart.rules);
-        var cnt = isSmart ? _evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites).length : (pl.items || []).length;
-        /* markup: webui/src/rootCards.ts::playlistCardHtml */
-        html += window._playlistCardHtml(pl, cnt, {
-          escHtml: escHtml, icPlaylist: IC_PLAYLIST, icSmartPlaylist: IC_SMART_PLAYLIST,
-          icFolderPlay: IC_FOLDER_PLAY, icDots: IC_DOTS
-        });
-      });
-      /* "+ Neue Playlist" and "Titel" are rendered in the compact tools row above. */
-    }
-
-    /* card HTML: webui/src/folderCards.ts (folderCardHtml / fileCardHtml) */
-    var _cardOpts = {
-      escHtml: escHtml, viewMode: viewMode, showOrigNames: showOrigNames, isVideo: _isVideo,
-      itemNoun: ITEM_NOUN, defaultLang: DEFAULT_LANG, audiobookDirs: AUDIOBOOK_DIRS,
-      langNames: _LANG_NAME_MAP, folderPlaceholder: FOLDER_PLACEHOLDER, filePlaceholder: FILE_PLACEHOLDER,
-      icStar: IC_STAR, icFolderPlay: IC_FOLDER_PLAY,
-      compositeFlagHtml: compositeFlagHtml, langBadgesHtml: langBadgesHtml
+    return """  /* showFolderView (folder grid, root cards, card wiring) + playlist-card kebab:
+     webui/src/folderView.ts. State via htState; DOM/config/actions via hooks. */
+  function _folderViewHooks() {
+    return {
+      folderGrid: folderGrid, itemNoun: ITEM_NOUN, defaultLang: DEFAULT_LANG,
+      playlistsEnabled: !!PLAYLISTS_ENABLED, offlineEnabled: !!OFFLINE_ENABLED, recentEnabled: !!RECENT_ENABLED,
+      playlistsApiPath: PLAYLISTS_API_PATH,
+      icons: {
+        smartPlaylist: IC_SMART_PLAYLIST, playlist: IC_PLAYLIST, dl: IC_DL, refresh: IC_REFRESH,
+        star: IC_STAR, folderPlay: IC_FOLDER_PLAY, dots: IC_DOTS, edit: IC_EDIT, trash: IC_TRASH
+      },
+      esc: escHtml, toast: showToast,
+      cardOpts: function(showOrigNames) {
+        return {
+          escHtml: escHtml, viewMode: viewMode, showOrigNames: showOrigNames, isVideo: ITEM_NOUN === 'video',
+          itemNoun: ITEM_NOUN, defaultLang: DEFAULT_LANG, audiobookDirs: AUDIOBOOK_DIRS,
+          langNames: _LANG_NAME_MAP, folderPlaceholder: FOLDER_PLACEHOLDER, filePlaceholder: FILE_PLACEHOLDER,
+          icStar: IC_STAR, icFolderPlay: IC_FOLDER_PLAY,
+          compositeFlagHtml: compositeFlagHtml, langBadgesHtml: langBadgesHtml
+        };
+      },
+      toolActive: _anyToolActive,
+      contentsAt: contentsAt,
+      destroyPlaylistDragDrop: destroyPlaylistDragDrop,
+      clearMoveGhosts: function() { _moveGhosts = {}; },
+      enterFolderGridView: _enterFolderGridView,
+      showPlaylist: showPlaylist,
+      loadRecentlyPlayed: loadRecentlyPlayed,
+      openOfflineLibrary: openOfflineLibrary,
+      updateOfflineFolderCount: updateOfflineFolderCount,
+      showUserPlaylistView: showUserPlaylistView,
+      playUserPlaylist: playUserPlaylist,
+      openSmartPlaylistEditor: openSmartPlaylistEditor,
+      refreshSmartPlaylist: refreshSmartPlaylist,
+      renameUserPlaylist: renameUserPlaylist,
+      deleteUserPlaylist: deleteUserPlaylist,
+      navigateInto: navigateInto,
+      playAllIn: playAllIn,
+      showLangPicker: showLangPicker,
+      triggerSilentRefresh: _triggerSilentRefresh
     };
-    c.folders.forEach(function(f) { html += window._folderCardHtml(f, _cardOpts); });
-    c.files.forEach(function(it, i) { html += window._fileCardHtml(it, i, _cardOpts); });
-    folderGrid.innerHTML = html;
-
-    if (isRoot && _xAliases.length) window._markExtraFolderCards(folderGrid, _xAliases);
-
-    /* Offline folder card click → open offline library */
-    var offFolderCard = document.getElementById('offline-folder-card');
-    if (offFolderCard) {
-      offFolderCard.addEventListener('click', function() { openOfflineLibrary(); });
-      updateOfflineFolderCount();
-    }
-
-    /* Playlist pseudo-folder card click handlers */
-    if (_playlistCardsRendered) {
-      folderGrid.querySelectorAll('.playlist-folder-card').forEach(function(card) {
-        var playBtn = card.querySelector('.playlist-cover-play-btn');
-        var kebabBtn = card.querySelector('.playlist-folder-kebab');
-        card.addEventListener('click', function(e) {
-          if (wasDrag(e)) return;
-          if (e.target.closest('.playlist-cover-play-btn') ||
-              e.target.closest('.playlist-folder-kebab')) return;
-          showUserPlaylistView(card.dataset.playlistId);
-        });
-        if (playBtn) playBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          if (wasDrag(e)) return;
-          playUserPlaylist(card.dataset.playlistId);
-        });
-        if (kebabBtn) kebabBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          if (wasDrag(e)) return;
-          _openPlaylistCtxMenu(kebabBtn, card.dataset.playlistId);
-        });
-      });
-      var newCard = document.getElementById('playlist-new-card');
-      if (newCard) newCard.addEventListener('click', function() {
-        var name = prompt('Playlist-Name:');
-        if (!name || !name.trim()) return;
-        fetch(PLAYLISTS_API_PATH, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim() })
-        }).then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-          })
-          .then(function(d) {
-            if (d.playlist) {
-              _userPlaylists.unshift(d.playlist);
-              showFolderView();
-              showToast('Playlist "' + d.playlist.name + '" erstellt');
-            } else {
-              showToast('Fehler beim Erstellen');
-            }
-          }).catch(function() { showToast('Fehler beim Erstellen'); });
-      });
-      var smartNewCard = document.getElementById('smart-playlist-new-card');
-      if (smartNewCard) smartNewCard.addEventListener('click', function() {
-        openSmartPlaylistEditor(null);
-      });
-    }
-
-    /* Recently played — only on root, only when catalog is loaded, only when enabled */
-    if (RECENT_ENABLED && isRoot && allItems.length > 0) {
-      loadRecentlyPlayed();
-    } else {
-      var rs = document.getElementById('recent-section');
-      if (rs) rs.hidden = true;
-    }
-
-    folderGrid.querySelectorAll('.folder-card:not(.file-card):not(.offline-folder-card):not(.playlist-folder-card):not(.playlist-new-card)').forEach(function(card) {
-      var pb = card.querySelector('.folder-play-btn');
-      var variants = card.dataset.variants ? JSON.parse(card.dataset.variants) : null;
-
-      /* Lang-select buttons: direct navigation into that variant */
-      card.querySelectorAll('.lang-select-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          if (wasDrag(e)) return;
-          var vName = btn.dataset.variantName;
-          if (vName) navigateInto(vName);
-        });
-      });
-
-      card.addEventListener('click', function(e) {
-        if (wasDrag(e)) return;
-        if (e.target.closest('.folder-play-btn')) return;
-        if (e.target.closest('.lang-select-btn')) return;
-        if (variants && variants.length > 1) {
-          /* Navigate into the DEFAULT_LANG variant, or first variant */
-          var defaultV = variants.find(function(v) { return v.lang === DEFAULT_LANG; });
-          navigateInto(defaultV ? defaultV.name : card.dataset.folder);
-        } else {
-          navigateInto(card.dataset.folder);
-        }
-      });
-      pb.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (wasDrag(e)) return;
-        if (variants && variants.length > 1) {
-          showLangPicker(card, variants, true);
-        } else {
-          playAllIn(card.dataset.folder);
-        }
-      });
-    });
-
-    var looseFiles = c.files;
-    folderGrid.querySelectorAll('.file-card').forEach(function(card) {
-      card.addEventListener('click', function(e) {
-        if (wasDrag(e)) return;
-        _triggerSilentRefresh(); /* get freshest data on playlist entry */
-        showPlaylist(looseFiles, true, Number(card.dataset.fileIdx));
-      });
-    });
-    /* breadcrumb/view-toggle/router already refreshed by
-       _enterFolderGridView() above — no trailing calls needed. */
   }
-
-  /* ── Playlist card kebab menu ──────────────────────────────────────────
-     All playlist modification actions (Umbenennen, Regeln bearbeiten,
-     Aktualisieren, Löschen) live behind the top-right three-dot menu —
-     reuses the generic _openCtxMenu() dropdown shared with other
-     kebab menus in the UI, so every three-dot menu looks/behaves alike. */
-  function _openPlaylistCtxMenu(btn, plId) {
-    var pl = _userPlaylists.find(function(p) { return p.id === plId; });
-    if (!pl) return;
-    /* items: webui/src/folderBrowseUi.ts::playlistCtxMenuItems */
-    _openCtxMenu(btn, window._playlistCtxMenuItems(pl, {
-      refresh: refreshSmartPlaylist,
-      editRules: openSmartPlaylistEditor,
-      rename: renameUserPlaylist,
-      remove: deleteUserPlaylist,
-      icEdit: IC_EDIT,
-      icTrash: IC_TRASH
-    }));
-  }
+  function showFolderView() { window._showFolderView(_folderViewHooks()); }
   /* ── Language picker for multi-language folders ── */
   /* Picker (private cleanup state) ported to webui/src/folderBrowseUi.ts. */
   function closeLangPicker() { window._closeLangPicker(); }

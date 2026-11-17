@@ -455,7 +455,7 @@ class TestJsInjection:
         `_smartEvalRule`/`_smartGetField`/`_smartCompile`/`_buildSmartPlIndex`/
         `_smartApplySort` itself."""
         js = _js()
-        assert "_evaluateSmartPlaylist(pl, allItems, _userPlaylists, _savedFavorites)" in js
+        assert "evaluateSmartPlaylist(pl, st.allItems" in _webui_src("folderView.ts")
         assert "function _smartEvalRule" not in js
         ts = _webui_src("smartPlaylist.ts")
         assert "export function smartEvalRule" in ts

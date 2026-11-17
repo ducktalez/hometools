@@ -358,6 +358,7 @@ import { openTrackPicker, emptyManualPlaylistId, emptyPlaylistHtml, isManualPlay
 import { openBpmAdjustMenu, closeBpmAdjustMenu } from "./bpmMenu";
 import { initToolsPanel, toolFlags, anyToolActive, isToolsPanelOpen, openToolsPanel, closeToolsPanel } from "./toolsPanel";
 import { renderTracks, resetRenderGuard } from "./trackRender";
+import { showFolderView, openPlaylistCtxMenu } from "./folderView";
 import { deleteUserPlaylist, renameUserPlaylist, addToPlaylist, createAndAddToPlaylist, removeFromPlaylist, refreshSmartPlaylist } from "./playlistActions";
 import {
   loadUserPlaylists,
@@ -799,6 +800,8 @@ declare global {
     _openToolsPanel: typeof openToolsPanel;
     _closeToolsPanel: typeof closeToolsPanel;
     _renderTracks: typeof renderTracks;
+    _showFolderView: typeof showFolderView;
+    _openPlaylistCtxMenu: typeof openPlaylistCtxMenu;
     _resetRenderGuard: typeof resetRenderGuard;
     _setInlineRating: typeof setInlineRating;
     _emptyPlaylistHtml: typeof emptyPlaylistHtml;
@@ -1177,6 +1180,8 @@ window._isToolsPanelOpen = isToolsPanelOpen;
 window._openToolsPanel = openToolsPanel;
 window._closeToolsPanel = closeToolsPanel;
 window._renderTracks = renderTracks;
+window._showFolderView = showFolderView;
+window._openPlaylistCtxMenu = openPlaylistCtxMenu;
 window._resetRenderGuard = resetRenderGuard;
 window._setInlineRating = setInlineRating;
 window._emptyPlaylistHtml = emptyPlaylistHtml;
