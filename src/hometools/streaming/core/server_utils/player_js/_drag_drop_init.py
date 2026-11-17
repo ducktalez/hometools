@@ -5,13 +5,7 @@ from __future__ import annotations
 
 def render_drag_drop_init_js() -> str:
     """Return the drag drop init section of the player JS."""
-    return """  /* Playlist drag-drop reorder ported to webui/src/playlistDragDrop.ts
-     (drag state private there; filteredItems via htState). Wrappers keep
-     bare-name call sites; destroyPlaylistDragDrop lives in _smart_playlists.py. */
-  function initPlaylistDragDrop() {
-    window._initPlaylistDragDrop({ reorder: reorderPlaylistItem });
-  }
-
+    return """      /* Playlist drag-drop reorder: see playlistWiring.ts (wrapper in _smart_playlists.py). */
   /* Playlist modal DOM events ported to webui/src/playlistModalEvents.ts. */
   window._initPlaylistModalEvents({
     enabled: !!PLAYLISTS_ENABLED,

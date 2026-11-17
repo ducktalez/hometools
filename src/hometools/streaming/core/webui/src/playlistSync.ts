@@ -85,6 +85,24 @@ export function stopPlaylistSync(): void {
   document.removeEventListener("visibilitychange", onVisibility);
 }
 
+/**
+ * Bind CFG values + the root re-render hook once; returns load/start.
+ * A remote update re-renders only while the root folder view is showing.
+ */
+export function bindPlaylistSync(
+  cfg: Omit<PlaylistSyncOptions, "onRemoteUpdate">,
+  showFolderView: () => void,
+): { load: () => Promise<unknown[]>; start: () => void } {
+  const opts: PlaylistSyncOptions = {
+    ...cfg,
+    onRemoteUpdate: () => {
+      const st = getState();
+      if (st && !st.inPlaylist && st.currentPath === "") showFolderView();
+    },
+  };
+  return { load: () => loadUserPlaylists(opts), start: () => startPlaylistSync(opts) };
+}
+
 /** Deep copy of the current playlists (for optimistic-UI rollback). */
 export function snapshotPlaylists(): unknown[] {
   const st = getState();

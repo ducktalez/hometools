@@ -1439,12 +1439,13 @@ def test_sync_interval_custom_injected():
 
 
 def test_optimistic_snapshot_helpers_in_js():
-    """Optimistic UI helpers _snapshotPlaylists / _restorePlaylists must be present."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js()
-    assert "_snapshotPlaylists" in js
-    assert "_restorePlaylists" in js
+    """Optimistic UI helpers snapshotPlaylists / restorePlaylists live in playlistSync.ts."""
+    ts = _webui_src("playlistSync.ts")
+    assert "export function snapshotPlaylists(" in ts
+    assert "export function restorePlaylists(" in ts
+    main = _webui_src("main.ts")
+    assert "window._snapshotPlaylists = snapshotPlaylists" in main
+    assert "window._restorePlaylists = restorePlaylists" in main
 
 
 def test_optimistic_rollback_toast_in_delete():

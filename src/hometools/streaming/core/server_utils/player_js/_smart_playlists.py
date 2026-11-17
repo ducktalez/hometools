@@ -5,85 +5,44 @@ from __future__ import annotations
 
 def render_smart_playlists_js() -> str:
     """Return the smart playlists section of the player JS."""
-    return """  /* Smart-playlist editor (state, DOM wiring, save) ported to
-     webui/src/smartEditor.ts. Wrapper keeps bare-name call sites. */
-  function openSmartPlaylistEditor(existingPl) {
-    window._openSmartPlaylistEditor(existingPl, {
-      apiPath: PLAYLISTS_SMART_PATH,
-      esc: escHtml,
-      icon: IC_SMART_PLAYLIST,
-      toast: showToast,
-      showFolderView: showFolderView
-    });
-  }
-
-  /* Playlist views (browse/play) + add-to-playlist modal ported to
-     webui/src/playlistViews.ts (state via htState incl. playlistAddPath).
-     Wrappers keep bare-name call sites. */
-  function _viewHooks() {
+    return """  /* Playlist hook wiring (views, CRUD, reorder, picker, smart editor, drag-drop):
+     webui/src/playlistWiring.ts. Deps are a thunk, resolved per call. Wrappers
+     below keep bare-name call sites. */
+  var _plw = window._createPlaylistWiring({
+    apiPath: PLAYLISTS_API_PATH,
+    smartPath: PLAYLISTS_SMART_PATH,
+    smartIcon: IC_SMART_PLAYLIST
+  }, function() {
     return {
       toast: showToast,
       esc: escHtml,
-      enterTrackListView: _enterTrackListView,
+      showFolderView: showFolderView,
       applyFilter: applyFilter,
+      enterTrackListView: _enterTrackListView,
       playTrack: playTrack,
-      savedFavorites: function() { return _pb.savedFavorites; },
       sortFavoritesByOrder: _sortFavoritesByOrder,
       loadFavoritesOrder: _loadFavoritesOrder,
       loadFavoritesOrderAsync: _loadFavoritesOrderAsync,
-      resolvePlaylist: _resolvePlaylistItems,
-      addToPlaylist: addToPlaylist
-    };
-  }
-  function showUserPlaylistView(plId) { window._showUserPlaylistView(plId, _viewHooks()); }
-  function playUserPlaylist(plId) { window._playUserPlaylist(plId, _viewHooks()); }
-  function openPlaylistModal(relativePath) { window._openPlaylistModal(relativePath, _viewHooks()); }
-  function closePlaylistModal() { window._closePlaylistModal(); }
-  /* Track picker for empty manual playlists (webui/src/trackPicker.ts). */
-  function openTrackPicker(plId) {
-    window._openTrackPicker({
-      playlistId: plId,
-      esc: escHtml,
-      addToPlaylist: function(id, rp) { window._addToPlaylist(id, rp, { apiPath: PLAYLISTS_API_PATH, toast: showToast, refreshRoot: function() {} }); },
-      refresh: function() { window._reloadPlaylistView(plId, _resolvePlaylistItems, applyFilter); }
-    });
-  }
-
-
-  /* Playlist CRUD + optimistic UI ported to webui/src/playlistActions.ts
-     (state via htState.userPlaylists). Wrappers keep bare-name call sites. */
-  function _playlistHooks() {
-    return {
-      apiPath: PLAYLISTS_API_PATH,
-      toast: showToast,
-      refreshRoot: function() { if (!_pb.currentPath && !_pb.inPlaylist) showFolderView(); },
-      closeModal: closePlaylistModal
-    };
-  }
-  function deleteUserPlaylist(plId) { window._deleteUserPlaylist(plId, _playlistHooks()); }
-  function renameUserPlaylist(plId) { window._renameUserPlaylist(plId, _playlistHooks()); }
-  function addToPlaylist(plId, relativePath) { window._addToPlaylist(plId, relativePath, _playlistHooks()); }
-  function createAndAddToPlaylist(name, relativePath) { window._createAndAddToPlaylist(name, relativePath, _playlistHooks()); }
-  /* Remove a track from the manual playlist currently shown (webui/src/playlistActions.ts). */
-  function _isManualPlaylistView() { return window._isManualPlaylistView(); }
-  function removeFromUserPlaylist(relativePath) {
-    var plId = _pb.currentPlaylistId;
-    window._removeFromPlaylist(plId, relativePath, _playlistHooks(), function() {
-      window._reloadPlaylistView(plId, _resolvePlaylistItems, applyFilter, true);
-    });
-  }
-  /* Reorder (drag & drop target) ported to webui/src/playlistReorder.ts
-     (state via htState incl. currentPlaylistId). movePlaylistItem had no callers. */
-  function reorderPlaylistItem(relativePath, toIndex) {
-    window._reorderPlaylistItem(relativePath, toIndex, {
-      apiPath: PLAYLISTS_API_PATH,
-      toast: showToast,
-      renderTracks: renderTracks,
       saveFavoritesOrder: _saveFavoritesOrder,
-      saveFolderOrder: _saveFolderOrder
-    });
-  }
-  /* Drag-drop cleanup handle is private to webui/src/playlistDragDrop.ts. */
-  function destroyPlaylistDragDrop() { window._destroyPlaylistDragDrop(); }
+      saveFolderOrder: _saveFolderOrder,
+      renderTracks: renderTracks
+    };
+  });
+  function openSmartPlaylistEditor(existingPl) { _plw.openSmartPlaylistEditor(existingPl); }
+  function refreshSmartPlaylist(plId) { _plw.refreshSmartPlaylist(plId); }
+  function showUserPlaylistView(plId) { _plw.showUserPlaylistView(plId); }
+  function playUserPlaylist(plId) { _plw.playUserPlaylist(plId); }
+  function openPlaylistModal(relativePath) { _plw.openPlaylistModal(relativePath); }
+  function closePlaylistModal() { _plw.closePlaylistModal(); }
+  function openTrackPicker(plId) { _plw.openTrackPicker(plId); }
+  function deleteUserPlaylist(plId) { _plw.deleteUserPlaylist(plId); }
+  function renameUserPlaylist(plId) { _plw.renameUserPlaylist(plId); }
+  function addToPlaylist(plId, relativePath) { _plw.addToPlaylist(plId, relativePath); }
+  function createAndAddToPlaylist(name, relativePath) { _plw.createAndAddToPlaylist(name, relativePath); }
+  function _isManualPlaylistView() { return _plw.isManualPlaylistView(); }
+  function removeFromUserPlaylist(relativePath) { _plw.removeFromUserPlaylist(relativePath); }
+  function reorderPlaylistItem(relativePath, toIndex) { _plw.reorderPlaylistItem(relativePath, toIndex); }
+  function initPlaylistDragDrop() { _plw.initPlaylistDragDrop(); }
+  function destroyPlaylistDragDrop() { _plw.destroyPlaylistDragDrop(); }
 
 """

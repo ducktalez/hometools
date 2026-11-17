@@ -585,10 +585,8 @@ class TestPlaylistSyncParity:
         audio_html = audio_client.get("/").text
         video_html = video_client.get("/").text
 
-        assert "_snapshotPlaylists" in audio_html
-        assert "_snapshotPlaylists" in video_html
-        assert "_restorePlaylists" in audio_html
-        assert "_restorePlaylists" in video_html
+        assert "_PLAYLIST_SYNC_INTERVAL" in audio_html
+        assert "_PLAYLIST_SYNC_INTERVAL" in video_html
 
     def test_both_servers_insert_position_parity(self, tmp_path, monkeypatch):
         """Both servers respect HOMETOOLS_PLAYLIST_INSERT_POSITION consistently."""

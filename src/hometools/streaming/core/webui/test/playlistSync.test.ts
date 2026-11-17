@@ -6,7 +6,27 @@ import {
   restorePlaylists,
   startPlaylistSync,
   stopPlaylistSync,
+  bindPlaylistSync,
 } from "../src/playlistSync";
+
+describe("bindPlaylistSync", () => {
+  async function run(over: { inPlaylist: boolean; currentPath: string }) {
+    installState({ ...over, playlistRevision: 1 });
+    mockFetch({ "/pl/version": { revision: 2 }, "/pl": { items: [], revision: 2 } });
+    const show = vi.fn();
+    bindPlaylistSync(opts, show).start();
+    await vi.advanceTimersByTimeAsync(1000);
+    return show;
+  }
+  it("re-renders on root folder view", async () => {
+    expect(await run({ inPlaylist: false, currentPath: "" })).toHaveBeenCalledTimes(1);
+  });
+  it("skips re-render inside a folder or playlist", async () => {
+    expect(await run({ inPlaylist: false, currentPath: "a" })).not.toHaveBeenCalled();
+    stopPlaylistSync();
+    expect(await run({ inPlaylist: true, currentPath: "" })).not.toHaveBeenCalled();
+  });
+});
 
 const opts = { enabled: true, apiPath: "/pl", versionPath: "/pl/version", intervalMs: 1000 };
 
