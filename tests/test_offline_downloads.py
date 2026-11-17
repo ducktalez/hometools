@@ -270,9 +270,9 @@ class TestTrackDownloadButtons:
         assert ".add(record)" in ts.read_text(encoding="utf-8")
 
     def test_js_download_button_has_prevent_default(self):
-        """Download button click must call preventDefault to avoid side effects."""
-        js = _js()
-        assert "e.preventDefault()" in js
+        """Download button click must call preventDefault to avoid side effects
+        (track-list delegation ported to webui/src/trackListDelegation.ts)."""
+        assert "preventDefault()" in _webui_src("trackListDelegation.ts")
 
 
 class TestOfflineLibraryUI:

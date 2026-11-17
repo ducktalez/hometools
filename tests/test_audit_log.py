@@ -589,5 +589,16 @@ def test_player_js_rating_toast_uses_entry_id():
     from hometools.streaming.core.server_utils import render_player_js
 
     js = render_player_js()
-    assert "entry_id" in js
-    assert "showRatingToastWithUndo" in js
+    ts = (
+        __import__("pathlib").Path(__file__).resolve().parent.parent
+        / "src"
+        / "hometools"
+        / "streaming"
+        / "core"
+        / "webui"
+        / "src"
+        / "rating.ts"
+    ).read_text(encoding="utf-8")
+    assert "entry_id" in ts
+    assert "showRatingToastWithUndo" in ts
+    assert "window._setInlineRating(" in js  # row rating wired to the ported module

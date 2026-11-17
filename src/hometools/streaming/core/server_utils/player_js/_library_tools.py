@@ -8,7 +8,7 @@ def render_library_tools_js() -> str:
     return """  /* Dupe index state + build/ensure/count/invalidate: webui/src/dupeState.ts. */
   function _invalidateDupeMap() {
     window._invalidateDupeIndex();
-    _rgKey = '';  /* force re-render when allItems changes */
+    window._resetRenderGuard();  /* force re-render when allItems changes */
   }
 
   /* Panel open/close/wiring: webui/src/dupePanel.ts. Row click navigates to folder + plays. */
@@ -408,7 +408,7 @@ def render_library_tools_js() -> str:
       if (p.showHidden !== undefined) showHidden = p.showHidden;
       if (p.viewMode !== undefined) viewMode = p.viewMode;
     },
-    toolsOpen: function() { return !!toolsBackdrop && !toolsBackdrop.hasAttribute('hidden'); },
+    toolsOpen: function() { return window._isToolsPanelOpen(); },
     openToolsPanel: function() { openToolsPanel(); },
     contentsAt: contentsAt, itemsUnder: itemsUnder,
     showPlaylist: showPlaylist, showFolderView: showFolderView,

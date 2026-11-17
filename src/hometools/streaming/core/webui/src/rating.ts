@@ -125,6 +125,46 @@ export function setRating(stars: number, h: RatingHooks): void {
     .catch(() => {});
 }
 
+/** Rate a list row (inline stars). Keeps the playing track located after re-sort/filter. */
+export function setInlineRating(idx: number, stars: number, h: RatingHooks): void {
+  const s = getState();
+  if (!s || !h.writeEnabled) return;
+  const t = s.filteredItems[idx];
+  if (!t) return;
+  const prevRating = t.rating || 0;
+  const playing = s.currentIndex >= 0 ? s.filteredItems[s.currentIndex] : null;
+  const playingPath = playing ? playing.relative_path : null;
+  fetch(h.ratingApiPath, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: t.relative_path, rating: stars }),
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d: { ok?: boolean; rating?: number; entry_id?: string } | null) => {
+      if (!d || !d.ok) return;
+      const rating = d.rating || 0;
+      t.rating = rating;
+      patchAllItemsRating(t.relative_path, rating);
+      armJustRated(t.relative_path, h);
+      if (s.inPlaylist) {
+        h.applyFilter(true);
+        if (playingPath) {
+          const relocated = indexOfPath(s.filteredItems, playingPath);
+          if (relocated >= 0) s.currentIndex = relocated;
+        }
+        h.markActive();
+        if (playingPath === t.relative_path) renderPlayerRating(rating, h);
+      } else {
+        updateTrackRatingBar(idx, rating, h);
+        if (s.currentIndex === idx) renderPlayerRating(rating, h);
+      }
+      if (s.shuffleMode === "weighted") h.rebuildShuffleQueue(s.currentIndex);
+      if (d.entry_id) showRatingToastWithUndo(stars, prevRating, d.entry_id, t, h);
+      else h.toast(ratingToastLabel(stars));
+    })
+    .catch(() => {});
+}
+
 export function showRatingToastWithUndo(stars: number, prevStars: number, entryId: string, t: Item, h: RatingHooks): void {
   const toast = document.getElementById("toast") as (HTMLElement & { _hideTimer?: ReturnType<typeof setTimeout> }) | null;
   const label = ratingToastLabel(stars);
@@ -184,4 +224,5 @@ export function undoRating(btn: HTMLButtonElement, entryId: string, prevStars: n
     })
     .catch(() => h.toast("Netzwerkfehler beim Rückgängig"));
 }
+
 

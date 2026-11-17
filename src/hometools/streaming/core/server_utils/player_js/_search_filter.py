@@ -112,7 +112,7 @@ def render_search_filter_js() -> str:
            Tools-panel "BPM berechnen" toggle - see _track_render.py::_applyToolState. */
         return {
           escHtml: escHtml, fmtTime: fmtTime, showOrig: _anyToolActive(), currentIndex: currentIndex,
-          bpmCalcEnabled: !!(_toolState.active && _toolState.bpmCalc),
+          bpmCalcEnabled: !!(_toolFlags().active && _toolFlags().bpmCalc),
           trackViewMode: trackViewMode, isVideoMode: isVideoMode,
           metadataEditEnabled: !!METADATA_EDIT_ENABLED, playlistsEnabled: !!PLAYLISTS_ENABLED,
           itemNoun: ITEM_NOUN, bpmMin: BPM_MIN, bpmMax: BPM_MAX,

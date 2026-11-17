@@ -131,7 +131,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
       loadCache: function() { return _loadCatalogCache(); },
       showLoadingState: function(m) { showLoadingState(m); },
       showCatalogLoadError: function(m) { showCatalogLoadError(m); },
-      autoRefreshOn: function() { return ((_toolState && _toolState.autoRefresh) || 'auto') !== 'off'; }
+      autoRefreshOn: function() { return ((_toolFlags() && _toolFlags().autoRefresh) || 'auto') !== 'off'; }
     }));
   }
   /* ── breadcrumb ──────────────────────────────────────────────────────

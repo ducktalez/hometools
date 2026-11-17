@@ -897,11 +897,12 @@ def test_shuffle_queue_rebuild_in_render_tracks():
     """JS must rebuild the shuffle queue when filteredItems changes (applyFilter)."""
     from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
-    # rebuildShuffleQueue must be called inside renderTracks
-    # filteredItems is set to realTracks (debug-mode aware) instead of plain tracks
-    assert "filteredItems = realTracks" in js
-    assert "rebuildShuffleQueue" in js
+    # renderTracks ported to webui/src/trackRender.ts: filteredItems is set to
+    # realTracks (debug-mode aware) and the shuffle queue rebuilt there.
+    ts = _webui_src("trackRender.ts")
+    assert "st.filteredItems = realTracks" in ts
+    assert "rebuildShuffleQueue" in ts
+    assert "window._renderTracks(" in render_player_js()
 
 
 def test_queue_next_logic_is_centralized_in_play_next_item():
@@ -1005,9 +1006,10 @@ def test_rating_js_has_render_and_set_functions():
 
 def test_rating_js_calls_fetch_rating_api():
     """setRating must call fetch with RATING_API_PATH and POST method."""
-    js = render_player_js()
-    assert "fetch(RATING_API_PATH" in js
-    assert "'POST'" in js
+    ts = _webui_src("rating.ts")
+    assert "fetch(h.ratingApiPath" in ts
+    assert '"POST"' in ts
+    assert "ratingApiPath: RATING_API_PATH" in render_player_js()
 
 
 def test_rating_js_calls_render_on_play():
@@ -1070,7 +1072,7 @@ def test_undo_rating_patches_all_items():
 def test_rating_toast_zero_stars_label():
     """setRating with 0 stars must produce 'Bewertung entfernt' label (not '0 Sterne vergeben')."""
     assert "Bewertung entfernt" in _webui_src("catalogQuery.ts")
-    assert "window._ratingToastLabel(stars)" in render_player_js()
+    assert "ratingToastLabel(stars)" in _webui_src("rating.ts")
 
 
 def test_rating_star_tooltip_hints_toggle():
@@ -1935,7 +1937,7 @@ def test_js_toast_ported_to_ts():
 def test_js_toast_call_sites_still_present():
     """The ported showToast must still be called by the legacy script."""
     js = _js()
-    assert js.count("showToast(") >= 10
+    assert js.count("showToast(") >= 5
 
 
 def test_js_folder_cache_ported_to_ts():
@@ -2020,7 +2022,8 @@ class TestHtStateBridge:
 
     def test_shuffle_call_sites_still_present(self):
         js = _js()
-        assert js.count("rebuildShuffleQueue(") >= 2
+        assert "rebuildShuffleQueue: rebuildShuffleQueue" in js  # hook wiring (legacy)
+        assert "rebuildShuffleQueue(st.currentIndex" in _webui_src("trackRender.ts")
         assert "rebuildShuffleQueue(startIdx || 0)" in _webui_src("playAll.ts")
         assert "h.rebuildShuffleQueue(0)" in _webui_src("dupePanel.ts")  # playDuplicates
         assert "nextIndex()" in _webui_src("playNext.ts")

@@ -114,7 +114,6 @@ def render_core_js(waveform_js) -> str:
      the undo-toast window elapses. See applyFilter()/setRating()/
      setInlineRating() — bugfix for "rating crosses filter, song vanishes". */
   var _justRatedPath  = null;
-  var _justRatedTimer = null;
   /* Combined "Filtern" popover (Bewertung + Favorit + Genre) — see
      docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2. */
   var folderGrid   = document.getElementById('folder-grid');
@@ -171,11 +170,9 @@ def render_core_js(waveform_js) -> str:
      each subsequent batch as the user scrolls down.  This keeps the initial
      render near-instant even for 6000-item playlists.
 
-     _rgKey  — render-guard fingerprint.  If it matches the last render, the
-               DOM rebuild is skipped entirely (e.g. navigating away and back
-               to the same "Alle Titel" view).                                */
+     _rgKey  — render-guard fingerprint, now private to webui/src/trackRender.ts
+               (reset via window._resetRenderGuard()).                          */
   var _RENDER_BATCH_SIZE  = 100;
-  var _rgKey              = '';   /* render-guard key from last completed renderTracks call */
 
   /* ── Catalog cache (localStorage, stale-while-revalidate) ──────────────────
      Ported to webui/src/catalogCache.ts (_saveCatalogCache/_loadCatalogCache/

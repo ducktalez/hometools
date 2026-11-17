@@ -308,7 +308,7 @@ import { initModeButtons } from "./modeButtons";
 import { initPlayerEvents } from "./playerEvents";
 import { getBgAudio, bgAudioIsActive, stopBgSync, startBgMirror } from "./bgAudio";
 import { initEditModalRatingEvents, openEditModal, closeEditModal, submitEditModal } from "./editModal";
-import { renderPlayerRating, patchAllItemsRating, updateTrackRatingBar, setRating, undoRating } from "./rating";
+import { renderPlayerRating, patchAllItemsRating, updateTrackRatingBar, setRating, setInlineRating, undoRating } from "./rating";
 import { recentCardsHtml, recentPlayContext, loadRecentlyPlayed } from "./recentlyPlayed";
 import {
   initDownloadDB,
@@ -355,6 +355,9 @@ import { stopRenderObserver, appendTrackBatch, ensureRenderedTo, markActive, sta
 import { updateFilterChips, applyFilter } from "./filterApply";
 import { showUserPlaylistView, playUserPlaylist, openPlaylistModal, closePlaylistModal } from "./playlistViews";
 import { openTrackPicker, emptyManualPlaylistId, emptyPlaylistHtml, isManualPlaylistView, reloadPlaylistView, ADD_BTN_ID } from "./trackPicker";
+import { openBpmAdjustMenu, closeBpmAdjustMenu } from "./bpmMenu";
+import { initToolsPanel, toolFlags, anyToolActive, isToolsPanelOpen, openToolsPanel, closeToolsPanel } from "./toolsPanel";
+import { renderTracks, resetRenderGuard } from "./trackRender";
 import { deleteUserPlaylist, renameUserPlaylist, addToPlaylist, createAndAddToPlaylist, removeFromPlaylist, refreshSmartPlaylist } from "./playlistActions";
 import {
   loadUserPlaylists,
@@ -787,6 +790,17 @@ declare global {
     _emptyManualPlaylistId: typeof emptyManualPlaylistId;
     _isManualPlaylistView: typeof isManualPlaylistView;
     _reloadPlaylistView: typeof reloadPlaylistView;
+    _openBpmAdjustMenu: typeof openBpmAdjustMenu;
+    _closeBpmAdjustMenu: typeof closeBpmAdjustMenu;
+    _initToolsPanel: typeof initToolsPanel;
+    _toolFlags: typeof toolFlags;
+    _anyToolActive: typeof anyToolActive;
+    _isToolsPanelOpen: typeof isToolsPanelOpen;
+    _openToolsPanel: typeof openToolsPanel;
+    _closeToolsPanel: typeof closeToolsPanel;
+    _renderTracks: typeof renderTracks;
+    _resetRenderGuard: typeof resetRenderGuard;
+    _setInlineRating: typeof setInlineRating;
     _emptyPlaylistHtml: typeof emptyPlaylistHtml;
     _TRACK_PICKER_BTN_ID: string;
     _closeLangPicker: typeof closeLangPicker;
@@ -1154,6 +1168,17 @@ window._openTrackPicker = openTrackPicker;
 window._emptyManualPlaylistId = emptyManualPlaylistId;
 window._isManualPlaylistView = isManualPlaylistView;
 window._reloadPlaylistView = reloadPlaylistView;
+window._openBpmAdjustMenu = openBpmAdjustMenu;
+window._closeBpmAdjustMenu = closeBpmAdjustMenu;
+window._initToolsPanel = initToolsPanel;
+window._toolFlags = toolFlags;
+window._anyToolActive = anyToolActive;
+window._isToolsPanelOpen = isToolsPanelOpen;
+window._openToolsPanel = openToolsPanel;
+window._closeToolsPanel = closeToolsPanel;
+window._renderTracks = renderTracks;
+window._resetRenderGuard = resetRenderGuard;
+window._setInlineRating = setInlineRating;
 window._emptyPlaylistHtml = emptyPlaylistHtml;
 window._TRACK_PICKER_BTN_ID = ADD_BTN_ID;
 window._closeLangPicker = closeLangPicker;
