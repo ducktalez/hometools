@@ -1,219 +1,77 @@
-"""JS fragment: search filter (split from the former monolithic _player_js.py)."""
+"""JS fragment: search/filter wrappers (logic in webui/src/searchFilterWiring.ts)."""
 
 from __future__ import annotations
 
 
 def render_search_filter_js() -> str:
     """Return the search filter section of the player JS."""
-    return """  /* Global-search view (globalSearch/renderSearchResults/navigate/exit) ported
-     to webui/src/searchView.ts; data in search.ts, rows in trackRows.ts. Shared
-     state via htState, view effects via hooks. Wrappers keep bare names. */
-  function _searchHooks() {
+    return """  /* Global search, filter pipeline/chips/popover, windowed render, row select,
+     player-bar nav/actions, track-list delegation, inline edit:
+     webui/src/searchFilterWiring.ts. State via htState; DOM via dom.ts; legacy
+     callbacks via the deps thunk (resolved per call). Wrappers keep bare names. */
+  var _sfw = window._createSearchFilterWiring({
+    itemNoun: ITEM_NOUN, filePlaceholder: FILE_PLACEHOLDER,
+    icons: {
+      folderPlay: IC_FOLDER_PLAY, filter: IC_FILTER, eye: IC_EYE,
+      starFilled: IC_STAR_FILLED, starEmpty: IC_STAR_EMPTY,
+      trash: IC_TRASH, dl: IC_DL, pin: IC_PIN, edit: IC_EDIT,
+      playlist: IC_PLAYLIST, queue: IC_QUEUE, dots: IC_DOTS
+    },
+    debugFilter: DEBUG_FILTER, batchSize: _RENDER_BATCH_SIZE, isVideoMode: isVideoMode,
+    metadataEditEnabled: !!METADATA_EDIT_ENABLED, playlistsEnabled: !!PLAYLISTS_ENABLED,
+    metadataEditPath: METADATA_EDIT_PATH, bpmMin: BPM_MIN, bpmMax: BPM_MAX
+  }, function() {
     return {
       effectiveThreshold: function() { return _effectiveThreshold; },
       showHidden: function() { return _view.showHidden; },
-      itemNoun: ITEM_NOUN,
-      esc: escHtml,
-      filePlaceholder: FILE_PLACEHOLDER,
-      icFolderPlay: IC_FOLDER_PLAY,
-      trackList: function() { return trackList; },
-      enterTrackListView: _enterTrackListView,
-      showFolderView: showFolderView,
-      playItem: playItem,
-      markActive: markActive
-    };
-  }
-  function globalSearch(needle) { window._globalSearch(needle, _searchHooks()); }
-  function exitGlobalSearch() { window._exitGlobalSearch(_searchHooks()); }
-
-  /* play all items under current path */
-  function playAllCurrent() {
-    window._playAllCurrent({
-      filesAt: function(p) { return contentsAt(p).files; },
-      showPlaylist: showPlaylist
-    });
-  }
-
-  /* ── filter / sort within playlist ── */
-  /* ── Quick-filter chips ──
-     Bewertung + Favorit + Genre live in ONE combined "Filtern" popover
-     button (filter-combined) instead of three separate chips — see
-     docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2.
-     "Ausgeblendet" (filterHiddenBtn) stays its own toggle-slot chip. */
-  /* _collectPlaylistGenres: ported to webui/src/catalogQuery.ts as
-     collectGenres(items) — playlistItems now explicit param. */
-  /* Filter chips + filter/sort/render pipeline ported to webui/src/filterApply.ts
-     (chain: filterChain.ts, sort: catalogQuery.ts, chip views: filterPopover.ts).
-     Filter state/DOM/render come in via hooks. Wrappers keep bare names. */
-  function _filterApplyHooks() {
-    return {
-      combinedBtn: function() { return filterCombinedBtn; },
-      hiddenBtn: function() { return filterHiddenBtn; },
-      getFilter: function() { return { rating: _view.filterRating, fav: _view.filterFav, genre: _view.filterGenre }; },
-      icFilter: IC_FILTER,
-      icEye: IC_EYE,
-      effectiveThreshold: function() { return _effectiveThreshold; },
-      showHidden: function() { return _view.showHidden; },
-      refreshOpenPopover: function() {
-        if (document.getElementById('ht-filter-popover')) _renderFilterPopoverBody();
-      },
-      searchValue: function() { return searchInput.value; },
-      sortValue: function() { return sortField.value; },
-      locallyDeleted: function() { return _locallyDeletedPaths; },
-      debugFilter: DEBUG_FILTER,
-      justRatedPath: function() { return _pb.justRatedPath; },
-      savedFavorites: function() { return _pb.savedFavorites; },
-      hasCustomPlaylist: function() { return !!_pb.currentPlaylistId; },
-      renderTracks: renderTracks
-    };
-  }
-  function updateFilterChips() { window._updateFilterChips(_filterApplyHooks()); }
-  function applyFilter(force) { window._applyFilter(force, _filterApplyHooks()); }
-
-  /* Filter popover (wiring/lifecycle, cleanup handle private) ported to
-     webui/src/filterPopoverUi.ts; markup in filterPopover.ts. Filter state is
-     shared with this script -> read/written via hooks. */
-  function _filterPopoverHooks() {
-    return {
-      genres: function() { return _collectGenres(_pb.playlistItems); },
+      viewMode: function() { return _view.viewMode; },
+      trackViewMode: function() { return _view.trackViewMode; },
       getFilter: function() { return { rating: _view.filterRating, fav: _view.filterFav, genre: _view.filterGenre }; },
       setFilter: function(p) {
         if (p.rating !== undefined) _view.filterRating = p.rating;
         if (p.fav !== undefined) _view.filterFav = p.fav;
         if (p.genre !== undefined) _view.filterGenre = p.genre;
       },
-      icons: { starFilled: IC_STAR_FILLED, starEmpty: IC_STAR_EMPTY },
-      esc: escHtml,
-      onChange: function() {
-        updateFilterChips();
-        applyFilter();
-        if (typeof _router !== 'undefined') _router.update();
-      }
+      locallyDeleted: function() { return _locallyDeletedPaths; },
+      esc: escHtml, fmtTime: fmtTime, toast: showToast,
+      anyToolActive: _anyToolActive, toolFlags: _toolFlags,
+      currentDupeIndex: function() { return window._currentDupeIndex(); },
+      renderBpmPill: window.renderBpmPill, renderInlineRating: renderInlineRating, renderMoveWidget: renderMoveWidget,
+      showFolderView: showFolderView, showPlaylist: showPlaylist, enterTrackListView: _enterTrackListView,
+      playItem: playItem, contentsAt: contentsAt, itemsUnder: itemsUnder, renderTracks: renderTracks,
+      updateFavoriteButtons: updateFavoriteButtons, updateAllDownloadButtons: updateAllDownloadButtons,
+      updateQueueButtons: updateQueueButtons, initPlaylistDragDrop: initPlaylistDragDrop,
+      renderFilterPopoverBody: _renderFilterPopoverBody,
+      routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); },
+      getAllFolders: _getAllFolders, moveFileToFolder: moveFileToFolder,
+      deleteTrackFromList: _deleteTrackFromList, openTrackCtxMenu: _openTrackCtxMenu,
+      setInlineRating: setInlineRating, openBpmAdjustMenu: _openBpmAdjustMenu,
+      deleteTrackDownload: deleteTrackDownload, cancelDownload: cancelDownload,
+      downloadTrack: downloadTrack, toggleFavorite: toggleFavorite, openEditModal: openEditModal,
+      loadUserPlaylists: loadUserPlaylists, openPlaylistModal: openPlaylistModal,
+      removeFromQueue: removeFromQueue, addToQueue: addToQueue,
+      revealInExplorer: _revealInExplorer, playTrack: playTrack
     };
-  }
-  function _renderFilterPopoverBody() { window._renderFilterPopoverBody(_filterPopoverHooks()); }
-  function _closeFilterPopover() { window._closeFilterPopover(); }
-  function _toggleFilterPopover(btn) { window._toggleFilterPopover(btn, _filterPopoverHooks()); }
-
-  /* needsConversion()/filenameFromPath() ported to webui/src/pathUtils.ts
-     (Vite/TS migration Phase 5 opportunistic-port slice — see
-     docs/IMPLEMENTATION_PLAN.md) — bridged onto window by main.ts, bare
-     calls below still resolve via the normal JS scope chain. */
-
-  /* Windowed rendering (window state private; stop/append/ensure/markActive)
-     ported to webui/src/trackRenderWindow.ts. Render guard (_rgKey), row-context
-     building and button decoration stay here and come in via hooks. */
-  function _renderWindowHooks() {
-    return {
-      trackList: function() { return trackList; },
-      batchSize: _RENDER_BATCH_SIZE,
-      rowCtx: function() {
-        /* BPM "calculate" affordance (yellow-glow clickable "?") is gated by the
-           Tools-panel "BPM berechnen" toggle - see _track_render.py::_applyToolState. */
-        return {
-          escHtml: escHtml, fmtTime: fmtTime, showOrig: _anyToolActive(), currentIndex: _pb.currentIndex,
-          bpmCalcEnabled: !!(_toolFlags().active && _toolFlags().bpmCalc),
-          trackViewMode: _view.trackViewMode, isVideoMode: isVideoMode,
-          metadataEditEnabled: !!METADATA_EDIT_ENABLED, playlistsEnabled: !!PLAYLISTS_ENABLED,
-          itemNoun: ITEM_NOUN, bpmMin: BPM_MIN, bpmMax: BPM_MAX,
-          dupePaths: (window._currentDupeIndex() || {}).paths || null,
-          dupeSafety: (window._currentDupeIndex() || {}).safety || null,
-          filePlaceholder: FILE_PLACEHOLDER,
-          ic: { folderPlay: IC_FOLDER_PLAY, trash: IC_TRASH, dl: IC_DL, pin: IC_PIN, edit: IC_EDIT,
-                playlist: IC_PLAYLIST, queue: IC_QUEUE, dots: IC_DOTS },
-          renderBpmPill: window.renderBpmPill,
-          renderInlineRating: renderInlineRating, renderMoveWidget: renderMoveWidget
-        };
-      },
-      decorateRows: function() {
-        updateFavoriteButtons();
-        updateAllDownloadButtons();
-        updateQueueButtons();
-      },
-      maybeInitPlaylistDragDrop: function() {
-        if (PLAYLISTS_ENABLED && _pb.inPlaylist && _pb.currentPlaylistId && _view.viewMode === 'list') {
-          initPlaylistDragDrop();
-        }
-      },
-      wireDelegation: _wireTrackListDelegation
-    };
-  }
-  function _stopRenderObserver() { window._stopRenderObserver(_renderWindowHooks()); }
-  function _appendTrackBatch() { window._appendTrackBatch(_renderWindowHooks()); }
-  function _ensureRenderedTo(idx) { window._ensureRenderedTo(idx, _renderWindowHooks()); }
-  function markActive() { window._markActive(_renderWindowHooks()); }
-  function _startWindowedRender(realTracks) { window._startWindowedRender(realTracks, _renderWindowHooks()); }
-
-  /* Desktop-only row select ported to webui/src/rowSelect.ts. Playback on
-     hover devices via .track-play-btn overlay. */
-  function _selectTrackRow(idx) { window._selectTrackRow(trackList, idx); }
-
-  /* jumpToCurrentTrack + updatePlayerBarActions ported to webui/src/playerNav.ts
-     (state via htState, actions via hooks). Wrappers keep bare names. */
-  function jumpToCurrentTrack() {
-    window._jumpToCurrentTrack({
-      ensureRenderedTo: _ensureRenderedTo,
-      markActive: markActive,
-      itemsUnder: itemsUnder,
-      showPlaylist: showPlaylist
-    });
-  }
-
-  function updatePlayerBarActions() {
-    window._updatePlayerBarActions({
-      container: function() { return playerBarActions; },
-      allFolders: _getAllFolders,
-      esc: escHtml,
-      icDots: IC_DOTS,
-      icTrash: IC_TRASH,
-      moveFileToFolder: moveFileToFolder,
-      deleteTrackFromList: _deleteTrackFromList,
-      openTrackCtxMenu: _openTrackCtxMenu
-    });
-  }
-
+  });
+  function globalSearch(needle) { _sfw.globalSearch(needle); }
+  function exitGlobalSearch() { _sfw.exitGlobalSearch(); }
+  function playAllCurrent() { _sfw.playAllCurrent(); }
+  function updateFilterChips() { _sfw.updateFilterChips(); }
+  function applyFilter(force) { _sfw.applyFilter(force); }
+  function _renderFilterPopoverBody() { _sfw.renderFilterPopoverBody(); }
+  function _closeFilterPopover() { _sfw.closeFilterPopover(); }
+  function _toggleFilterPopover(btn) { _sfw.toggleFilterPopover(btn); }
+  function _stopRenderObserver() { _sfw.stopRenderObserver(); }
+  function _appendTrackBatch() { _sfw.appendTrackBatch(); }
+  function _ensureRenderedTo(idx) { _sfw.ensureRenderedTo(idx); }
+  function markActive() { _sfw.markActive(); }
+  function _startWindowedRender(realTracks) { _sfw.startWindowedRender(realTracks); }
+  function _selectTrackRow(idx) { _sfw.selectTrackRow(idx); }
+  function jumpToCurrentTrack() { _sfw.jumpToCurrentTrack(); }
+  function updatePlayerBarActions() { _sfw.updatePlayerBarActions(); }
   /* Re-render player bar actions when tool mode changes */
   function _onToolModeChange() { updatePlayerBarActions(); }
-
-  /* withMissingEpisodes: ported to webui/src/episodeGaps.ts, bridged
-     onto window by main.ts. */
-
-  /* ── Event delegation for track list ─────────────────────────────────────
-     Wired once per renderTracks call, covers all items added by future
-     _appendTrackBatch calls (windowed rendering).                           */
-  /* Track-list click/change/focusout/keydown/dblclick delegation ported to
-     webui/src/trackListDelegation.ts (handler refs private; dblclick no longer
-     stacks on re-wire). Actions come in via hooks. Called once per renderTracks. */
-  function _wireTrackListDelegation() {
-    window._wireTrackListDelegation(trackList, {
-      metadataEditEnabled: !!METADATA_EDIT_ENABLED,
-      playlistsEnabled: !!PLAYLISTS_ENABLED,
-      itemNoun: ITEM_NOUN,
-      setInlineRating: setInlineRating,
-      openBpmAdjustMenu: _openBpmAdjustMenu,
-      deleteTrackDownload: deleteTrackDownload,
-      cancelDownload: cancelDownload,
-      downloadTrack: downloadTrack,
-      toggleFavorite: toggleFavorite,
-      openEditModal: openEditModal,
-      openPlaylistModalFor: function(rp) { loadUserPlaylists().then(function() { openPlaylistModal(rp); }); },
-      removeFromQueue: removeFromQueue,
-      addToQueue: addToQueue,
-      showToast: showToast,
-      moveFileToFolder: moveFileToFolder,
-      deleteTrackFromList: _deleteTrackFromList,
-      openTrackCtxMenu: _openTrackCtxMenu,
-      revealInExplorer: _revealInExplorer,
-      playTrack: playTrack,
-      selectTrackRow: _selectTrackRow,
-      saveInlineTableEdit: _saveInlineTableEdit
-    });
-  }
-
-  /* Inline title/artist edit save ported to webui/src/inlineEdit.ts. */
-  function _saveInlineTableEdit(editable) {
-    window._saveInlineTableEdit(editable, { editPath: METADATA_EDIT_PATH, toast: showToast });
-  }
-
+  function _wireTrackListDelegation() { _sfw.wireTrackListDelegation(); }
+  function _saveInlineTableEdit(editable) { _sfw.saveInlineTableEdit(editable); }
 
 """

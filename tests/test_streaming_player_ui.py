@@ -1894,7 +1894,7 @@ def test_js_collect_genres_ported_to_ts():
     assert "export function collectGenres(" in ts
     js = _js()
     assert "function _collectPlaylistGenres" not in js
-    assert "_collectGenres(_pb.playlistItems)" in js
+    assert "collectGenres(getState()?.playlistItems" in _webui_src("searchFilterWiring.ts")
     assert "window._collectGenres = collectGenres" in _webui_src("main.ts")
 
 
@@ -2622,8 +2622,7 @@ class TestTrackDetailTableView:
         assert ".track-table-header" in css
 
     def test_hover_play_button_on_track_thumbnail(self):
-        js = render_player_js()
-        assert "track-play-btn" in js
+        assert "track-play-btn" in _webui_src("trackRows.ts")
 
     def test_folder_hover_play_button_moved_over_cover(self):
         css = _webui_src("styles/videoOverlay.css")
