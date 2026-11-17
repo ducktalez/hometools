@@ -11,7 +11,7 @@ def render_search_filter_js() -> str:
   function _searchHooks() {
     return {
       effectiveThreshold: function() { return _effectiveThreshold; },
-      showHidden: function() { return showHidden; },
+      showHidden: function() { return _view.showHidden; },
       itemNoun: ITEM_NOUN,
       esc: escHtml,
       filePlaceholder: FILE_PLACEHOLDER,
@@ -49,11 +49,11 @@ def render_search_filter_js() -> str:
     return {
       combinedBtn: function() { return filterCombinedBtn; },
       hiddenBtn: function() { return filterHiddenBtn; },
-      getFilter: function() { return { rating: filterRating, fav: filterFav, genre: filterGenre }; },
+      getFilter: function() { return { rating: _view.filterRating, fav: _view.filterFav, genre: _view.filterGenre }; },
       icFilter: IC_FILTER,
       icEye: IC_EYE,
       effectiveThreshold: function() { return _effectiveThreshold; },
-      showHidden: function() { return showHidden; },
+      showHidden: function() { return _view.showHidden; },
       refreshOpenPopover: function() {
         if (document.getElementById('ht-filter-popover')) _renderFilterPopoverBody();
       },
@@ -61,9 +61,9 @@ def render_search_filter_js() -> str:
       sortValue: function() { return sortField.value; },
       locallyDeleted: function() { return _locallyDeletedPaths; },
       debugFilter: DEBUG_FILTER,
-      justRatedPath: function() { return _justRatedPath; },
-      savedFavorites: function() { return _savedFavorites; },
-      hasCustomPlaylist: function() { return !!_currentPlaylistId; },
+      justRatedPath: function() { return _pb.justRatedPath; },
+      savedFavorites: function() { return _pb.savedFavorites; },
+      hasCustomPlaylist: function() { return !!_pb.currentPlaylistId; },
       renderTracks: renderTracks
     };
   }
@@ -75,12 +75,12 @@ def render_search_filter_js() -> str:
      shared with this script -> read/written via hooks. */
   function _filterPopoverHooks() {
     return {
-      genres: function() { return _collectGenres(playlistItems); },
-      getFilter: function() { return { rating: filterRating, fav: filterFav, genre: filterGenre }; },
+      genres: function() { return _collectGenres(_pb.playlistItems); },
+      getFilter: function() { return { rating: _view.filterRating, fav: _view.filterFav, genre: _view.filterGenre }; },
       setFilter: function(p) {
-        if (p.rating !== undefined) filterRating = p.rating;
-        if (p.fav !== undefined) filterFav = p.fav;
-        if (p.genre !== undefined) filterGenre = p.genre;
+        if (p.rating !== undefined) _view.filterRating = p.rating;
+        if (p.fav !== undefined) _view.filterFav = p.fav;
+        if (p.genre !== undefined) _view.filterGenre = p.genre;
       },
       icons: { starFilled: IC_STAR_FILLED, starEmpty: IC_STAR_EMPTY },
       esc: escHtml,
@@ -111,9 +111,9 @@ def render_search_filter_js() -> str:
         /* BPM "calculate" affordance (yellow-glow clickable "?") is gated by the
            Tools-panel "BPM berechnen" toggle - see _track_render.py::_applyToolState. */
         return {
-          escHtml: escHtml, fmtTime: fmtTime, showOrig: _anyToolActive(), currentIndex: currentIndex,
+          escHtml: escHtml, fmtTime: fmtTime, showOrig: _anyToolActive(), currentIndex: _pb.currentIndex,
           bpmCalcEnabled: !!(_toolFlags().active && _toolFlags().bpmCalc),
-          trackViewMode: trackViewMode, isVideoMode: isVideoMode,
+          trackViewMode: _view.trackViewMode, isVideoMode: isVideoMode,
           metadataEditEnabled: !!METADATA_EDIT_ENABLED, playlistsEnabled: !!PLAYLISTS_ENABLED,
           itemNoun: ITEM_NOUN, bpmMin: BPM_MIN, bpmMax: BPM_MAX,
           dupePaths: (window._currentDupeIndex() || {}).paths || null,
@@ -131,7 +131,7 @@ def render_search_filter_js() -> str:
         updateQueueButtons();
       },
       maybeInitPlaylistDragDrop: function() {
-        if (PLAYLISTS_ENABLED && inPlaylist && _currentPlaylistId && viewMode === 'list') {
+        if (PLAYLISTS_ENABLED && _pb.inPlaylist && _pb.currentPlaylistId && _view.viewMode === 'list') {
           initPlaylistDragDrop();
         }
       },

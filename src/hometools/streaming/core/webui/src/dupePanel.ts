@@ -82,6 +82,25 @@ export function openDupePanel(d: DupePanelData, h: DupePanelHooks): void {
   backdrop.removeAttribute("hidden");
 }
 
+export interface DupeRowPlayHooks {
+  itemsUnder(path: string): LegacyMediaItem[];
+  showPlaylist(items: LegacyMediaItem[], autoplay: boolean, startIdx: number): void;
+  playTrack(idx: number): void;
+}
+/** Dupe row click: open item's folder (no autoplay), then play its row. */
+export function playDupeItem(t: Item, h: DupeRowPlayHooks): void {
+  const rp = t.relative_path || "";
+  const sl = rp.lastIndexOf("/");
+  if (sl <= 0) return;
+  const st = getState();
+  if (!st) return;
+  const folder = rp.substring(0, sl);
+  st.currentPath = folder;
+  h.showPlaylist(h.itemsUnder(folder), false, 0);
+  const idx = getState()!.filteredItems.findIndex((it) => it.relative_path === rp);
+  if (idx >= 0) h.playTrack(idx);
+}
+
 export interface PlayDuplicatesHooks {
   toast(msg: string): void;
   closePanel(): void;

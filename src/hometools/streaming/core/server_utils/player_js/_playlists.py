@@ -16,7 +16,7 @@ def render_playlists_js() -> str:
       intervalMs: _PLAYLIST_SYNC_INTERVAL,
       onRemoteUpdate: function() {
         /* If we're currently looking at the folder view, re-render to show updated playlist cards */
-        if (!inPlaylist && currentPath === '') showFolderView();
+        if (!_pb.inPlaylist && _pb.currentPath === '') showFolderView();
       }
     };
   }
@@ -29,7 +29,7 @@ def render_playlists_js() -> str:
 
   function _resolvePlaylistItems(plId) {
     /* Logic ported to webui/src/smartPlaylist.ts::resolvePlaylistItems. */
-    return window._resolvePlaylistItems(plId, _userPlaylists, allItems, _savedFavorites);
+    return window._resolvePlaylistItems(plId, _pb.userPlaylists, _pb.allItems, _pb.savedFavorites);
   }
 
   /* Smart playlist evaluator: ported to webui/src/smartPlaylist.ts,

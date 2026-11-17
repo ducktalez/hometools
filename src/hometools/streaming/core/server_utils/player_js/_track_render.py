@@ -11,9 +11,9 @@ def render_track_render_js() -> str:
     return {
       itemNoun: ITEM_NOUN, debugFilter: DEBUG_FILTER,
       trackList: trackList, trackCount: trackCount, searchInput: searchInput, sortField: sortField,
-      getFilter: function() { return { rating: filterRating, fav: filterFav, genre: filterGenre }; },
+      getFilter: function() { return { rating: _view.filterRating, fav: _view.filterFav, genre: _view.filterGenre }; },
       effectiveThreshold: function() { return _effectiveThreshold; },
-      showHidden: function() { return showHidden; },
+      showHidden: function() { return _view.showHidden; },
       stopRenderObserver: _stopRenderObserver,
       startWindowedRender: _startWindowedRender,
       markActive: markActive,
@@ -35,7 +35,7 @@ def render_track_render_js() -> str:
      webui/src/offlineLibrary.ts. IndexedDB: offlineDb.ts (DB name/version = SW contract). */
   var _offlineLib = window._initOfflineLibrary({
     itemNoun: ITEM_NOUN, softLimit: OFFLINE_SOFT_LIMIT, formatBytes: formatBytes,
-    currentStreamUrl: function() { return currentStreamUrl; },
+    currentStreamUrl: function() { return _pb.currentStreamUrl; },
     updateDownloadButtons: function() { updateAllDownloadButtons(); },
     applyFilter: function() { applyFilter(); },
     showFolderView: function() { showFolderView(); },

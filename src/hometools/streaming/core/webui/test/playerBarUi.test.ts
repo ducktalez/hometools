@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { initPlayerRatingEvents, initBarFullscreen } from "../src/playerBarUi";
+import { initPlayerRatingEvents, initBarFullscreen, initHeaderHome, showVideoOnLoad } from "../src/playerBarUi";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -65,3 +65,25 @@ describe("playerBarUi fullscreen", () => {
   });
 });
 
+
+describe("playerBarUi header/video", () => {
+  it("logo click resets path then shows root", () => {
+    const calls: string[] = [];
+    const logo = node();
+    initHeaderHome(logo as unknown as HTMLElement, { setRoot: () => calls.push("root"), showFolderView: () => calls.push("show") });
+    logo.handlers.click({});
+    expect(calls).toEqual(["root", "show"]);
+  });
+  it("null logo tolerated", () => {
+    expect(() => initHeaderHome(null, { setRoot() {}, showFolderView() {} })).not.toThrow();
+  });
+  it("video shown on loadeddata only for video", () => {
+    const v = { ...node(), style: { display: "" } };
+    showVideoOnLoad(v as unknown as HTMLMediaElement, true);
+    v.handlers.loadeddata({});
+    expect(v.style.display).toBe("block");
+    const a = node();
+    showVideoOnLoad(a as unknown as HTMLMediaElement, false);
+    expect(a.handlers.loadeddata).toBeUndefined();
+  });
+});

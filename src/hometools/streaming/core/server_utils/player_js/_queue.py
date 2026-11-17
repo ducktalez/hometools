@@ -83,7 +83,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
      Vite module). Thin wrapper keeps the bare name for all existing
      call sites unchanged. */
   function itemsUnder(path) {
-    return window._itemsUnder(path, allItems);
+    return window._itemsUnder(path, _pb.allItems);
   }
 
   /* IGNORED_FOLDERS moved to webui/src/folderContents.ts with contentsAt. */
@@ -108,7 +108,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   /* contentsAt: ported to webui/src/folderContents.ts (allItems +
      LANG_GROUPS explicit). Bare-name wrapper keeps all call sites. */
   function contentsAt(path) {
-    return window._contentsAt(path, allItems, LANG_GROUPS);
+    return window._contentsAt(path, _pb.allItems, LANG_GROUPS);
   }
 
   /* leafName()/parentPath() now live in webui/src/pathUtils.ts, bridged
@@ -155,15 +155,15 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   var IC_FILENAMES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="14" y2="6"/><line x1="3" y1="12" x2="18" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><polyline points="17,15 20,18 17,21" stroke-linejoin="round"/></svg>';
   var IC_TABLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/><line x1="15" y1="10" x2="15" y2="20"/></svg>';
   /* Track-list table/rows toggle ported to webui/src/trackViewMode.ts
-     (trackViewMode itself stays here, read by rendering). */
+     (state in _view, see viewState.ts). */
   function _trackViewHooks() {
     return {
       trackList: trackList, trackView: trackView, viewToggle: viewToggle,
       isVideoMode: isVideoMode, tableHeaderHtml: window._trackTableHeaderHtml,
       icList: IC_LIST, icTable: IC_TABLE,
-      getMode: function() { return trackViewMode; },
-      setMode: function(m) { trackViewMode = m; },
-      rerender: function() { renderTracks(playlistItems.length ? playlistItems : filteredItems, true); }
+      getMode: function() { return _view.trackViewMode; },
+      setMode: function(m) { _view.trackViewMode = m; },
+      rerender: function() { renderTracks(_pb.playlistItems.length ? _pb.playlistItems : _pb.filteredItems, true); }
     };
   }
   function _toggleTrackViewMode() { window._toggleTrackViewMode(_trackViewHooks()); }
@@ -178,7 +178,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     }
     window._applyFolderViewMode({
       folderGrid: folderGrid, viewToggle: viewToggle, icList: IC_LIST, icGrid: IC_GRID,
-      toolActive: _anyToolActive(), viewMode: viewMode
+      toolActive: _anyToolActive(), viewMode: _view.viewMode
     });
   }
 

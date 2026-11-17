@@ -13,23 +13,14 @@ def render_library_tools_js() -> str:
 
   /* Panel open/close/wiring: webui/src/dupePanel.ts. Row click navigates to folder + plays. */
   function openDupePanel() {
-    var di = window._ensureDupeIndex(allItems);
+    var di = window._ensureDupeIndex(_pb.allItems);
     window._openDupePanel(
-      { allItems: allItems, dupeMap: di.map, dupeSafety: di.safety, dupePaths: di.paths },
+      { allItems: _pb.allItems, dupeMap: di.map, dupeSafety: di.safety, dupePaths: di.paths },
       {
         escHtml: escHtml, filePlaceholder: FILE_PLACEHOLDER, icDuplicate: IC_DUPLICATE, icTrash: IC_TRASH,
         deleteDuplicate: _deleteDuplicateFile,
         playItem: function(t) {
-          var sl = (t.relative_path || '').lastIndexOf('/');
-          if (sl <= 0) return;
-          var folder = t.relative_path.substring(0, sl);
-          currentPath = folder;
-          showPlaylist(itemsUnder(folder), false, 0); /* no autoplay; playTrack below picks the row */
-          var localIdx = -1;
-          for (var j = 0; j < filteredItems.length; j++) {
-            if (filteredItems[j].relative_path === t.relative_path) { localIdx = j; break; }
-          }
-          if (localIdx >= 0) playTrack(localIdx);
+          window._playDupeItem(t, { itemsUnder: itemsUnder, showPlaylist: showPlaylist, playTrack: playTrack });
         }
       }
     );
@@ -39,7 +30,7 @@ def render_library_tools_js() -> str:
 
   /* playDuplicates: webui/src/dupePanel.ts (state via htState). */
   function playDuplicates() {
-    window._playDuplicates(window._ensureDupeIndex(allItems).map, {
+    window._playDuplicates(window._ensureDupeIndex(_pb.allItems).map, {
       toast: showToast,
       closePanel: closeDupePanel,
       destroyPlaylistDragDrop: destroyPlaylistDragDrop,
@@ -71,7 +62,7 @@ def render_library_tools_js() -> str:
      webui/src/folderCache.ts. Wrapper keeps the bare name and feeds the
      current allItems; _invalidateFolderCache resolves straight to window. */
   function _getAllFolders() {
-    return window._getAllFoldersFrom(allItems);
+    return window._getAllFoldersFrom(_pb.allItems);
   }
 
   /* _currentFolderOf() ported to webui/src/pathUtils.ts (opportunistic
@@ -164,9 +155,9 @@ def render_library_tools_js() -> str:
   function playItem(t, index) {
     window._playItem(t, index, {
       player: player,
-      setCurrentIndex: function(i) { currentIndex = i; },
-      setCurrentStreamUrl: function(u) { currentStreamUrl = u; },
-      setCurrentDuration: function(d) { _currentItemDuration = d; },
+      setCurrentIndex: function(i) { _pb.currentIndex = i; },
+      setCurrentStreamUrl: function(u) { _pb.currentStreamUrl = u; },
+      setCurrentDuration: function(d) { _pb.itemDuration = d; },
       setCurrentIntro: window._setCurrentIntro,
       beginPlayback: function(playback) {
         window._beginPlayback(playback, t.relative_path, {
@@ -201,8 +192,8 @@ def render_library_tools_js() -> str:
       routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); }
     });
   }  function playTrack(index) {
-    if (index < 0 || index >= filteredItems.length) return;
-    playItem(filteredItems[index], index);
+    if (index < 0 ||     index >= _pb.filteredItems.length) return;
+        playItem(_pb.filteredItems[index], index);
   }
 
   /* refreshMetadata: webui/src/metadataRefresh.ts */
@@ -221,7 +212,7 @@ def render_library_tools_js() -> str:
     return {
       player: player, btnPlay: btnPlay, icPlay: IC_PLAY, icPause: IC_PAUSE,
       playTrack: playTrack, startBgMirror: startBgMirror, stopBgSync: stopBgSync,
-      currentItemDuration: function() { return _currentItemDuration; }
+      currentItemDuration: function() { return _pb.itemDuration; }
     };
   }
   function togglePlay() { window._togglePlay(_transportHooks()); }
@@ -253,7 +244,7 @@ def render_library_tools_js() -> str:
   /* Rating-star hover/click ported to webui/src/playerBarUi.ts. */
   window._initPlayerRatingEvents({
     writeEnabled: !!RATING_WRITE_ENABLED,
-    currentRating: function() { return (filteredItems[currentIndex] && filteredItems[currentIndex].rating) || 0; },
+    currentRating: function() { return (_pb.filteredItems[_pb.currentIndex] && _pb.filteredItems[_pb.currentIndex].rating) || 0; },
     setRating: setRating
   });
 
@@ -288,7 +279,7 @@ def render_library_tools_js() -> str:
     clearProgressFor: clearProgressFor,
     finishCrossfade: _finishCrossfade,
     playNextItem: playNextItem,
-    currentStreamUrl: function() { return currentStreamUrl; },
+    currentStreamUrl: function() { return _pb.currentStreamUrl; },
     removeGoneTrack: _removeGoneTrack,
     showToast: showToast
   });
@@ -297,8 +288,8 @@ def render_library_tools_js() -> str:
     player: player, progressBar: progressBar, timeCur: timeCur, timeDur: timeDur,
     track: progressTrack, isVideoPlayer: isVideoPlayer, crossfadeDuration: CROSSFADE_DURATION,
     fmtTime: fmtTime,
-    getItemDuration: function() { return _currentItemDuration; },
-    setItemDuration: function(d) { _currentItemDuration = d; },
+    getItemDuration: function() { return _pb.itemDuration; },
+    setItemDuration: function(d) { _pb.itemDuration = d; },
     saveProgressNow: saveProgressNow, saveProgressDebounced: saveProgressDebounced,
     updateSkipIntroBtn: function() { window._updateSkipIntroBtn(); },
     startCrossfade: _startCrossfade
@@ -307,29 +298,21 @@ def render_library_tools_js() -> str:
   playAllBtn.addEventListener('click', playAllCurrent);
 
   /* Logo-Icon click → always navigate back to root */
-  logoHomeBtn.addEventListener('click', function() {
-    currentPath = '';
-    showFolderView();
+  /* Logo click + video show-on-load: webui/src/playerBarUi.ts */
+  window._initHeaderHome(logoHomeBtn, {
+    setRoot: function() { _pb.currentPath = ''; },
+    showFolderView: showFolderView
   });
-
-  /* Show video player element when something starts playing */
-  if (isVideoPlayer) {
-    player.addEventListener('loadeddata', function() {
-      player.style.display = 'block';
-    });
-  }
+  window._showVideoOnLoad(player, isVideoPlayer);
 
   /* ── Favoriten — speichern & teilen ── */
-  var _savedFavorites = {};
-
   /* loadFavorites/updateFavoriteButtons/toggleFavorite ported to
-     webui/src/favorites.ts; _savedFavorites stays here (many legacy readers),
-     reached from TS via htState.savedFavorites. */
+     webui/src/favorites.ts; state in _pb.savedFavorites. */
   function _favHooks() {
     return {
       apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
       toast: showToast, applyFilter: applyFilter,
-      filterFavActive: function() { return !!filterFav; }
+      filterFavActive: function() { return !!_view.filterFav; }
     };
   }
   function loadFavorites() { window._loadFavorites(_favHooks()); }
@@ -366,10 +349,10 @@ def render_library_tools_js() -> str:
     isVideoMode: isVideoMode,
     isTrackViewVisible: _isTrackViewVisible, toggleTrackViewMode: _toggleTrackViewMode,
     anyToolActive: _anyToolActive,
-    getViewMode: function() { return viewMode; },
-    setViewMode: function(m) { viewMode = m; },
-    getShowHidden: function() { return showHidden; },
-    setShowHidden: function(v) { showHidden = v; },
+    getViewMode: function() { return _view.viewMode; },
+    setViewMode: function(m) { _view.viewMode = m; },
+    getShowHidden: function() { return _view.showHidden; },
+    setShowHidden: function(v) { _view.showHidden = v; },
     applyViewMode: applyViewMode, applyFilter: applyFilter, showFolderView: showFolderView,
     toggleFilterPopover: _toggleFilterPopover, updateFilterChips: updateFilterChips,
     routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); }
@@ -399,14 +382,14 @@ def render_library_tools_js() -> str:
   /* URL routing / deep linking: webui/src/router.ts (state via htState, UI filter state via hooks). */
   var _router = window._createRouter({
     getUi: function() {
-      return { rating: filterRating, fav: filterFav, genre: filterGenre, showHidden: showHidden, viewMode: viewMode };
+      return { rating: _view.filterRating, fav: _view.filterFav, genre: _view.filterGenre, showHidden: _view.showHidden, viewMode: _view.viewMode };
     },
     setUi: function(p) {
-      if (p.rating !== undefined) filterRating = p.rating;
-      if (p.fav !== undefined) filterFav = p.fav;
-      if (p.genre !== undefined) filterGenre = p.genre;
-      if (p.showHidden !== undefined) showHidden = p.showHidden;
-      if (p.viewMode !== undefined) viewMode = p.viewMode;
+      if (p.rating !== undefined) _view.filterRating = p.rating;
+      if (p.fav !== undefined) _view.filterFav = p.fav;
+      if (p.genre !== undefined) _view.filterGenre = p.genre;
+      if (p.showHidden !== undefined) _view.showHidden = p.showHidden;
+      if (p.viewMode !== undefined) _view.viewMode = p.viewMode;
     },
     toolsOpen: function() { return window._isToolsPanelOpen(); },
     openToolsPanel: function() { openToolsPanel(); },
@@ -416,10 +399,7 @@ def render_library_tools_js() -> str:
     globalSearch: globalSearch, markActive: markActive, updateFilterChips: updateFilterChips
   });
 
-  /* ── User Playlists ── */
-  var _userPlaylists = [];
-  var _playlistAddPath = '';
-  var _currentPlaylistId = '';
+  /* ── User Playlists: state in _pb ── */
 
   /* ── Favorites custom order (server-side + localStorage fallback) ── */
   /* order loading/sorting: webui/src/customOrder.ts (server sync stays here). */
@@ -448,7 +428,7 @@ def render_library_tools_js() -> str:
   }
   function _sortByFolderOrder(folderPath, items) {
     return window._sortByOrder(items, _loadFolderOrder(folderPath));
-  }  var _playlistRevision = 0;
+  }
   var _PLAYLIST_SYNC_INTERVAL = CFG.playlistSyncIntervalMs || 30000; /* ms */
 
 """

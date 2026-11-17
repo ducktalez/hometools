@@ -62,7 +62,6 @@ export function playAllIn(name: string, hooks: FolderNavHooks): void {
 
 export interface ShowPlaylistHooks {
   destroyPlaylistDragDrop(): void;
-  clearMoveGhosts(): void;
   sortByFolderOrder(path: string, items: LegacyMediaItem[]): LegacyMediaItem[];
   enterTrackListView(opts: { backDisabled: boolean; resetIndex: boolean }): void;
   refreshFolderRatings(items: LegacyMediaItem[]): void;
@@ -86,7 +85,6 @@ export function showPlaylist(
   hooks.destroyPlaylistDragDrop();
   s.inPlaylist = true;
   s.currentPlaylistId = "__folder__";
-  hooks.clearMoveGhosts();
   s.playlistItems = hooks.sortByFolderOrder(s.currentPath, items);
 
   hooks.enterTrackListView({ backDisabled: !s.currentPath, resetIndex: true });

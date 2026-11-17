@@ -46,7 +46,6 @@ export interface FolderViewHooks {
   toolActive(): boolean;
   contentsAt(path: string): FolderContents;
   destroyPlaylistDragDrop(): void;
-  clearMoveGhosts(): void;
   enterFolderGridView(opts: { playAllDisabled?: boolean; trackCount?: string; contentHtml?: string }): void;
   showPlaylist(items: LegacyMediaItem[], autoplay: boolean, startIdx?: number): void;
   loadRecentlyPlayed(): void;
@@ -181,7 +180,6 @@ export function showFolderView(h: FolderViewHooks): void {
   st.inPlaylist = false;
   st.currentPlaylistId = "";
   st.globalSearchActive = false;
-  h.clearMoveGhosts();
   const refreshInfo = document.getElementById("refresh-info");
   if (refreshInfo) refreshInfo.textContent = "";
 

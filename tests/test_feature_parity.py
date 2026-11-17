@@ -674,7 +674,6 @@ class TestQueueParity:
 
         for html in [audio_html, video_html]:
             assert "IC_QUEUE" in html
-            assert "_userQueue" in html
             assert "addToQueue" in html
             assert "dequeueNext" in html
 

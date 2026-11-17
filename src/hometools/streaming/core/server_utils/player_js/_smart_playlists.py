@@ -27,7 +27,7 @@ def render_smart_playlists_js() -> str:
       enterTrackListView: _enterTrackListView,
       applyFilter: applyFilter,
       playTrack: playTrack,
-      savedFavorites: function() { return _savedFavorites; },
+      savedFavorites: function() { return _pb.savedFavorites; },
       sortFavoritesByOrder: _sortFavoritesByOrder,
       loadFavoritesOrder: _loadFavoritesOrder,
       loadFavoritesOrderAsync: _loadFavoritesOrderAsync,
@@ -56,7 +56,7 @@ def render_smart_playlists_js() -> str:
     return {
       apiPath: PLAYLISTS_API_PATH,
       toast: showToast,
-      refreshRoot: function() { if (!currentPath && !inPlaylist) showFolderView(); },
+      refreshRoot: function() { if (!_pb.currentPath && !_pb.inPlaylist) showFolderView(); },
       closeModal: closePlaylistModal
     };
   }
@@ -67,7 +67,7 @@ def render_smart_playlists_js() -> str:
   /* Remove a track from the manual playlist currently shown (webui/src/playlistActions.ts). */
   function _isManualPlaylistView() { return window._isManualPlaylistView(); }
   function removeFromUserPlaylist(relativePath) {
-    var plId = _currentPlaylistId;
+    var plId = _pb.currentPlaylistId;
     window._removeFromPlaylist(plId, relativePath, _playlistHooks(), function() {
       window._reloadPlaylistView(plId, _resolvePlaylistItems, applyFilter, true);
     });

@@ -19,7 +19,7 @@ def render_folder_browse_js() -> str:
       esc: escHtml, toast: showToast,
       cardOpts: function(showOrigNames) {
         return {
-          escHtml: escHtml, viewMode: viewMode, showOrigNames: showOrigNames, isVideo: ITEM_NOUN === 'video',
+          escHtml: escHtml, viewMode: _view.viewMode, showOrigNames: showOrigNames, isVideo: ITEM_NOUN === 'video',
           itemNoun: ITEM_NOUN, defaultLang: DEFAULT_LANG, audiobookDirs: AUDIOBOOK_DIRS,
           langNames: _LANG_NAME_MAP, folderPlaceholder: FOLDER_PLACEHOLDER, filePlaceholder: FILE_PLACEHOLDER,
           icStar: IC_STAR, icFolderPlay: IC_FOLDER_PLAY,
@@ -29,7 +29,6 @@ def render_folder_browse_js() -> str:
       toolActive: _anyToolActive,
       contentsAt: contentsAt,
       destroyPlaylistDragDrop: destroyPlaylistDragDrop,
-      clearMoveGhosts: function() { _moveGhosts = {}; },
       enterFolderGridView: _enterFolderGridView,
       showPlaylist: showPlaylist,
       loadRecentlyPlayed: loadRecentlyPlayed,
@@ -128,7 +127,6 @@ def render_folder_browse_js() -> str:
   function showPlaylist(items, autoplay, startIdx) {
     window._showPlaylist(items, autoplay, startIdx, {
       destroyPlaylistDragDrop: destroyPlaylistDragDrop,
-      clearMoveGhosts: function() { _moveGhosts = {}; },
       sortByFolderOrder: _sortByFolderOrder,
       enterTrackListView: _enterTrackListView,
       refreshFolderRatings: refreshFolderRatings,
@@ -152,7 +150,7 @@ def render_folder_browse_js() -> str:
       recentEnabled: RECENT_ENABLED,
       recentApiPath: RECENT_API_PATH,
       selectResume: function(idx) {
-        currentIndex = idx;
+        _pb.currentIndex = idx;
         markActive();
         var li = trackList.querySelector('[data-index="' + idx + '"]');
         if (li) li.scrollIntoView({ block: 'center', behavior: 'smooth' });

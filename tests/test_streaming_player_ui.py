@@ -639,8 +639,7 @@ def test_queue_data_ops_ported_to_ts():
     js = _js()
     assert "_userQueue.push(" not in js
     assert "_userQueue.splice(" not in js
-    # reassignment (clear) only via queueClear — declaration `var _userQueue = []` stays
-    assert not _re.search(r"(?<!var )_userQueue = \[\];", js)
+    # state owned by _pb (playbackState.ts); no legacy `_userQueue` var left
     for fn in ("addToQueue", "removeFromQueue", "playFromQueue"):
         assert f"function {fn}(" in js
 
@@ -1287,14 +1286,14 @@ def test_genre_filter_chip_in_html():
 
 
 def test_genre_filter_js_variable():
-    """The JS must declare filterGenre variable and persist in localStorage,
-    and wire the combined filter-popover trigger."""
+    """JS must read genre filter state from `_view` (persistence: viewState.ts,
+    covered by vitest) and wire the combined filter-popover trigger."""
     from hometools.streaming.core.server_utils import render_player_js
 
     js = render_player_js()
     assert "filterCombinedBtn" in js
-    assert "filterGenre" in js
-    assert "ht-filter-genre" in js
+    assert "_view.filterGenre" in js
+    assert "window._initViewState" in js
 
 
 def test_genre_filter_apply_logic():
@@ -1839,7 +1838,7 @@ def test_js_contents_at_aggregates_languages():
     ts = _webui_src("folderContents.ts")
     assert "folderLangs" in ts
     js = _js()
-    assert "window._contentsAt(path, allItems, LANG_GROUPS)" in js
+    assert "window._contentsAt(path, _pb.allItems, LANG_GROUPS)" in js
     assert "var _mergeMap" not in js
 
 
@@ -1881,7 +1880,7 @@ def test_js_items_under_ported_to_ts():
     ts = _webui_src("catalogQuery.ts")
     assert "export function itemsUnder(path: string, allItems:" in ts
     js = _js()
-    assert "window._itemsUnder(path, allItems)" in js
+    assert "window._itemsUnder(path, _pb.allItems)" in js
     assert "it.relative_path.startsWith(prefix)" not in js
     assert "window._itemsUnder = itemsUnder" in _webui_src("main.ts")
 
@@ -1893,7 +1892,7 @@ def test_js_collect_genres_ported_to_ts():
     assert "export function collectGenres(" in ts
     js = _js()
     assert "function _collectPlaylistGenres" not in js
-    assert "_collectGenres(playlistItems)" in js
+    assert "_collectGenres(_pb.playlistItems)" in js
     assert "window._collectGenres = collectGenres" in _webui_src("main.ts")
 
 
@@ -1951,7 +1950,7 @@ def test_js_folder_cache_ported_to_ts():
     js = _js()
     assert "var _allFoldersCache" not in js
     assert "function _invalidateFolderCache" not in js
-    assert "window._getAllFoldersFrom(allItems)" in js
+    assert "window._getAllFoldersFrom(_pb.allItems)" in js
     main_ts = _webui_src("main.ts")
     assert "window._getAllFoldersFrom = getAllFolders" in main_ts
     assert "window._invalidateFolderCache = invalidateFolderCache" in main_ts
@@ -1978,9 +1977,9 @@ class TestHtStateBridge:
 
     def test_core_defines_htstate_with_getter_setter_pairs(self):
         js = _js()
-        assert "window.htState = {" in js
-        # every property needs BOTH accessors — a get without set silently
-        # drops TS writes (worst kind of bug: state fork)
+        # htState IS the plain TS-owned object _pb: no accessor pairs, no state fork
+        assert "window.htState = _pb;" in js
+        ts = _webui_src("playbackState.ts")
         for name in [
             "allItems",
             "filteredItems",
@@ -1994,8 +1993,7 @@ class TestHtStateBridge:
             "shufflePos",
             "userQueue",
         ]:
-            assert f"get {name}()" in js, f"missing getter for {name}"
-            assert f"set {name}(v)" in js, f"missing setter for {name}"
+            assert f"  {name}:" in ts, f"missing field {name}"
 
     def test_state_bridge_ts_contract_matches(self):
         ts = _webui_src("stateBridge.ts")

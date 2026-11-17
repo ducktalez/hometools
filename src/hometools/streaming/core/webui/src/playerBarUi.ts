@@ -55,3 +55,20 @@ export function initBarFullscreen(player: HTMLMediaElement, isVideoPlayer: boole
   });
 }
 
+
+/** Logo click -> root folder view. `setRoot` resets legacy currentPath. */
+export function initHeaderHome(logo: HTMLElement | null, h: { setRoot(): void; showFolderView(): void }): void {
+  if (!logo) return;
+  logo.addEventListener("click", () => {
+    h.setRoot();
+    h.showFolderView();
+  });
+}
+
+/** Video element is hidden until first frame data arrives. */
+export function showVideoOnLoad(player: HTMLMediaElement, isVideoPlayer: boolean): void {
+  if (!isVideoPlayer) return;
+  player.addEventListener("loadeddata", () => {
+    (player as HTMLVideoElement).style.display = "block";
+  });
+}

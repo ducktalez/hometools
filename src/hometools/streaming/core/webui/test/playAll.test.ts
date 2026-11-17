@@ -68,7 +68,6 @@ describe("navigateInto / playAllIn", () => {
 describe("showPlaylist", () => {
   const mk = (over = {}) => ({
     destroyPlaylistDragDrop: vi.fn(),
-    clearMoveGhosts: vi.fn(),
     sortByFolderOrder: (_p: string, i: unknown[]) => i as never[],
     enterTrackListView: vi.fn(),
     refreshFolderRatings: vi.fn(),

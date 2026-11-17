@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { installState, item } from "./helpers";
-import { collectDupeItems, dupeSubtitle, playDuplicates } from "../src/dupePanel";
+import { collectDupeItems, dupeSubtitle, playDuplicates, playDupeItem } from "../src/dupePanel";
 
 describe("dupePanel helpers", () => {
   it("subtitle pluralises", () => {
@@ -58,5 +58,26 @@ describe("playDuplicates", () => {
     const h = hooks();
     playDuplicates({ k: [5] }, h);
     expect(h.closePanel).not.toHaveBeenCalled();
+  });
+});
+
+describe("playDupeItem", () => {
+  it("opens folder without autoplay, then plays matching row", () => {
+    const s = installState();
+    const showPlaylist = vi.fn(() => {
+      s.filteredItems = [item("d/a.mp3"), item("d/b.mp3")];
+    });
+    const playTrack = vi.fn();
+    const itemsUnder = vi.fn(() => [item("d/a.mp3")]);
+    playDupeItem(item("d/b.mp3"), { itemsUnder, showPlaylist, playTrack });
+    expect(s.currentPath).toBe("d");
+    expect(showPlaylist).toHaveBeenCalledWith([item("d/a.mp3")], false, 0);
+    expect(playTrack).toHaveBeenCalledWith(1);
+  });
+  it("root-level file -> no-op", () => {
+    installState();
+    const h = { itemsUnder: vi.fn(), showPlaylist: vi.fn(), playTrack: vi.fn() };
+    playDupeItem(item("a.mp3"), h);
+    expect(h.showPlaylist).not.toHaveBeenCalled();
   });
 });

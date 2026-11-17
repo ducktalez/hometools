@@ -185,10 +185,7 @@ def render_player_js() -> str:
   var INTRO_API_PATH = _apiBase() + '/intro';
   var RATING_WRITE_ENABLED = !!CFG.enableRatingWrite;
   var MIN_RATING_THRESHOLD = CFG.minRating || 0;
-  /* When ratings are enabled but no explicit threshold is configured,
-     treat 1-star tracks as "ausgeblendet" (threshold=2, used with < comparison: r < 2 hides 1★).
-     Setting min_rating=0 explicitly disables the feature entirely. */
-  var _effectiveThreshold = MIN_RATING_THRESHOLD > 0 ? MIN_RATING_THRESHOLD : (RATING_WRITE_ENABLED ? 2 : 0);
+  var _effectiveThreshold = window._computeEffectiveThreshold(MIN_RATING_THRESHOLD, RATING_WRITE_ENABLED);
   var DEBUG_FILTER = !!CFG.debugFilter;
   var RATING_API_PATH = _apiBase() + '/rating';
   var AUDIT_UNDO_PATH = _apiBase() + '/audit/undo';

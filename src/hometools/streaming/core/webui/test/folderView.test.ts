@@ -56,7 +56,6 @@ describe("showFolderView", () => {
     expect(s.currentPlaylistId).toBe("");
     expect(s.globalSearchActive).toBe(false);
     expect(h.destroyPlaylistDragDrop).toHaveBeenCalled();
-    expect(h.clearMoveGhosts).toHaveBeenCalled();
   });
 
   it("empty library -> empty hint, no playlist", () => {

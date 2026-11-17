@@ -135,9 +135,10 @@ is **done** — `_css.py`/`css/*.py` are gone, all rules live in
   `catalogQuery.ts`, `clickGuard.ts`, `toast.ts`, `folderCache.ts`,
   `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `recentlyPlayed.ts`, `folderCards.ts`, `trackRows.ts`, `inlineWidgets.ts`, `panelBodies.ts`, `playerBarHtml.ts`, `rootCards.ts`, `smartEditorModal.ts`, `renderWindow.ts`, `playlistSync.ts` (playlist load + poll sync), `extraFolders.ts` (video extra folders UI), `pip.ts` (video PiP), `playAll.ts` (play-all folder), `bgAudio.ts` (iOS bg-audio mirror), `bgPlayback.ts` (wasPlaying + visibility handler), `mediaSession.ts` (lock-screen controls), `playbackStart.ts` (playItem start chain), `nowPlaying.ts` (playItem UI update), `transport.ts` (play/pause + previous), `modeButtons.ts` (shuffle/repeat buttons), `playerEvents.ts` (player ended/error/pause/play), `catalogFetch.ts` (catalog load + refresh orchestration), `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
   cross-fragment globals still owned by the legacy script; `stateBridge.ts`
-  types `window.htState` — the live getter/setter bridge `_core.py` defines
-  over its IIFE-scoped state vars, used by ports that must *write* shared
-  state).
+  types `window.htState` — the TS-owned state object `playbackState.ts::createPlaybackState`
+  (`_pb` in `_core.py`; all core state: items, index, path, shuffle/repeat, queue,
+  playlists, favorites); `dom.ts` (DOM-ref table) and `viewState.ts` (persisted filter/view state)
+  are the other TS-owned state modules).
 - `webui/test/*.test.ts` — vitest behaviour tests for ported modules (fake
   `htState` via `test/helpers.ts`), run via `npm test` and pytest
   `tests/test_webui_unit.py`.

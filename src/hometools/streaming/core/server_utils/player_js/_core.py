@@ -9,17 +9,11 @@ def render_core_js(waveform_js) -> str:
         """  /* Language names ported to webui/src/langNames.ts. */
   var _LANG_NAME_MAP = window._LANG_NAME_MAP;
 
-  var allItems = Array.isArray(INITIAL) ? INITIAL : [];
-  var currentPath = '';
-  var playlistItems = [];
-  /* _moveGhosts kept for compat but no longer populated — ghost display removed. */
-  var _moveGhosts = {};
-  /* _deletePending moved private into webui/src/libraryOps.ts. */
-  /* Paths deleted client-side this session (file sent to trash via POST /delete).
-     Set IMMEDIATELY on user confirm (before the API call) to close the race window
-     where a concurrent silent-refresh could re-add the item while the call is in-flight.
-     Applied as a filter in every background catalog fetch so deleted items never
-     reappear before the server has rebuilt its index. Cleared on full manual refresh. */
+  /* Core state (allItems, currentPath, playlistItems, filteredItems, currentIndex,
+     inPlaylist, shuffle*, repeatMode): _pb, see playbackState.ts. */
+  /* Paths deleted client-side this session. Set on confirm (before POST /delete)
+     so a concurrent silent refresh can't re-add them; filtered in every
+     background catalog fetch; cleared on manual refresh. */
   var _locallyDeletedPaths = {};
   /* Bridge onto window — read/mutated by _applyLocalMutations() (ported to
      webui/src/catalogCache.ts, bridged via main.ts). Object reference only:
@@ -28,140 +22,80 @@ def render_core_js(waveform_js) -> str:
      with `= {}` (that would silently break the bridge — see refreshCatalog()
      in _queue.py which clears keys in place instead). */
   window._locallyDeletedPaths = _locallyDeletedPaths;
-  var filteredItems = [];
-  var currentIndex = -1;
-  var inPlaylist = false;
-  /* ── Shuffle state ── */
-  var shuffleMode = false;       /* false = off, 'normal' = random, 'weighted' = rating-weighted */
-  var repeatMode  = false;       /* false = off, 'all' = repeat playlist, 'one' = repeat single track */
-  var shuffleQueue = [];         /* pre-built queue of indices for current session */
-  var shufflePos = -1;           /* current position within shuffleQueue */
 
-  /* ── Queue (Warteschlange) state ── */
-  var _userQueue = [];           /* Array of item objects {title, artist, stream_url, relative_path, thumbnail_url, ...} */
+  /* Queue / user-playlist state lives in _pb (webui/src/playbackState.ts). */
 
-  /* ── State bridge for ported TS modules (webui/src/stateBridge.ts) ──
-     Getter/setter closures: TS reads see live values, TS writes reassign
-     the IIFE-scoped vars. Legacy mutation sites stay untouched. Extend
-     per property as ports need them — never mirror by copying values. */
-  window.htState = {
-    get allItems() { return allItems; },
-    set allItems(v) { allItems = v; },
-    get filteredItems() { return filteredItems; },
-    set filteredItems(v) { filteredItems = v; },
-    get playlistItems() { return playlistItems; },
-    set playlistItems(v) { playlistItems = v; },
-    get currentIndex() { return currentIndex; },
-    set currentIndex(v) { currentIndex = v; },
-    get currentPath() { return currentPath; },
-    set currentPath(v) { currentPath = v; },
-    get inPlaylist() { return inPlaylist; },
-    set inPlaylist(v) { inPlaylist = v; },
-    get shuffleMode() { return shuffleMode; },
-    set shuffleMode(v) { shuffleMode = v; },
-    get repeatMode() { return repeatMode; },
-    set repeatMode(v) { repeatMode = v; },
-    get shuffleQueue() { return shuffleQueue; },
-    set shuffleQueue(v) { shuffleQueue = v; },
-    get shufflePos() { return shufflePos; },
-    set shufflePos(v) { shufflePos = v; },
-    get userQueue() { return _userQueue; },
-    set userQueue(v) { _userQueue = v; },
-    get userPlaylists() { return _userPlaylists; },
-    set userPlaylists(v) { _userPlaylists = v; },
-    get playlistRevision() { return _playlistRevision; },
-    set playlistRevision(v) { _playlistRevision = v; },
-    get currentPlaylistId() { return _currentPlaylistId; },
-    set currentPlaylistId(v) { _currentPlaylistId = v; },
-    get playlistAddPath() { return _playlistAddPath; },
-    set playlistAddPath(v) { _playlistAddPath = v; },
-    get globalSearchActive() { return _globalSearchActive; },
-    set globalSearchActive(v) { _globalSearchActive = v; },
-    get savedFavorites() { return _savedFavorites; },
-    set savedFavorites(v) { _savedFavorites = v; },
-    get justRatedPath() { return _justRatedPath; },
-    set justRatedPath(v) { _justRatedPath = v; }
-  };
+  /* State bridge for ported TS modules (webui/src/stateBridge.ts): htState IS
+     the TS-owned object _pb (webui/src/playbackState.ts). */
+  var _pb = window._createPlaybackState(Array.isArray(INITIAL) ? INITIAL : []);
+  window.htState = _pb;
 
-  var player       = document.getElementById('player');
-  var btnPlay      = document.getElementById('btn-play');
-  var btnPrev      = document.getElementById('btn-prev');
-  var btnNext      = document.getElementById('btn-next');
-  var btnShuffle   = document.getElementById('btn-shuffle');
-  var btnRepeat    = document.getElementById('btn-repeat');
-  var trackList    = document.getElementById('track-list');
-  var trackCount   = document.getElementById('track-count');
-  var playerTitle  = document.getElementById('player-title');
-  var playerArtist = document.getElementById('player-artist');
-  var playerThumb  = document.getElementById('player-thumb');
-  var playerBarActions = document.getElementById('player-bar-actions');
-  var progressBar  = document.getElementById('progress-bar');
-  var timeCur      = document.getElementById('time-cur');
-  var timeDur      = document.getElementById('time-dur');
-  var searchInput  = document.getElementById('search-input');
-  var sortField    = document.getElementById('sort-field');
-  var filterCombinedBtn = document.getElementById('filter-combined');
-  var filterHiddenBtn = document.getElementById('filter-hidden');
-  /* Persisted quick-filter state */
-  var filterRating = parseInt(localStorage.getItem('ht-filter-rating') || '0', 10) || 0;
-  var filterFav    = localStorage.getItem('ht-filter-fav') === '1';
-  var filterGenre  = localStorage.getItem('ht-filter-genre') || '';
-  var showHidden   = localStorage.getItem('ht-show-hidden') !== '0'; /* default true = ausgeblendet werden ausgegraut angezeigt */
-  /* Path of the track whose rating was JUST changed (star click). Never
-     fully hidden by any filter (auto-hide threshold OR quick "Bewertung"
-     chip) while set — rendered grayed instead, so the just-applied change
-     stays visible/undoable. Cleared (and the real filter re-applied) once
-     the undo-toast window elapses. See applyFilter()/setRating()/
-     setInlineRating() — bugfix for "rating crosses filter, song vanishes". */
-  var _justRatedPath  = null;
+  /* DOM refs: webui/src/dom.ts (single id/selector table). */
+  var _dom = window._getDom();
+  var player       = _dom.player;
+  var btnPlay      = _dom.btnPlay;
+  var btnPrev      = _dom.btnPrev;
+  var btnNext      = _dom.btnNext;
+  var btnShuffle   = _dom.btnShuffle;
+  var btnRepeat    = _dom.btnRepeat;
+  var trackList    = _dom.trackList;
+  var trackCount   = _dom.trackCount;
+  var playerTitle  = _dom.playerTitle;
+  var playerArtist = _dom.playerArtist;
+  var playerThumb  = _dom.playerThumb;
+  var playerBarActions = _dom.playerBarActions;
+  var progressBar  = _dom.progressBar;
+  var timeCur      = _dom.timeCur;
+  var timeDur      = _dom.timeDur;
+  var searchInput  = _dom.searchInput;
+  var sortField    = _dom.sortField;
+  var filterCombinedBtn = _dom.filterCombinedBtn;
+  var filterHiddenBtn = _dom.filterHiddenBtn;
+  /* Persisted filter/view state: webui/src/viewState.ts. Fields: filterRating,
+     filterFav, filterGenre, showHidden (hidden items greyed), viewMode (folder
+     grid/list), trackViewMode (rows/table; audio only). */
+  var _view = window._initViewState(player.tagName === 'VIDEO');
+  /* _pb.justRatedPath: just-rated track never fully hidden by filters (see playbackState.ts). */
   /* Combined "Filtern" popover (Bewertung + Favorit + Genre) — see
      docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2. */
-  var folderGrid   = document.getElementById('folder-grid');
-  var trackView    = document.getElementById('track-view');
-  var filterBar    = document.querySelector('.filter-bar');
-  var backBtn      = document.getElementById('back-btn');
-  /* Global search state */
-  var _globalSearchActive = false;
-  var logoHomeBtn  = document.getElementById('header-logo');
-  var headerTitle  = document.getElementById('header-title');
-  var playerBar    = document.querySelector('.player-bar');
+  var folderGrid   = _dom.folderGrid;
+  var trackView    = _dom.trackView;
+  var filterBar    = _dom.filterBar;
+  var backBtn      = _dom.backBtn;
+  var logoHomeBtn  = _dom.logoHomeBtn;
+  var headerTitle  = _dom.headerTitle;
+  var playerBar    = _dom.playerBar;
   /* ── Video overlay (video-mode only) ── */
-  var videoOverlay   = document.getElementById('video-overlay');
-  var videoMiniBar   = document.getElementById('video-mini-bar');
-  var miniTitle      = document.getElementById('mini-title');
-  var miniArtist     = document.getElementById('mini-artist');
-  var miniThumb      = document.getElementById('mini-thumb');
-  var miniPlayBtn    = document.getElementById('mini-play-btn');
-  var miniExpandBtn  = document.getElementById('mini-expand-btn');
-  var videoCloseBtn  = document.getElementById('video-close-btn');
-  var videoFsBtn     = document.getElementById('video-fs-btn');
-  var videoCastBtn   = document.getElementById('video-cast-btn');
-  var videoSkipIntroBtn = document.getElementById('video-skip-intro-btn');
-  var videoOverlayTitleText = document.getElementById('video-overlay-title-text');
-  var videoFloatContainer = document.getElementById('video-float-container');
-  var videoFloatWrap   = document.getElementById('video-float-wrap');
-  var floatExpandBtn   = document.getElementById('float-expand-btn');
-  var floatCloseBtn    = document.getElementById('float-close-btn');
-  var videoWrap        = document.querySelector('.video-wrap');
+  var videoOverlay   = _dom.videoOverlay;
+  var videoMiniBar   = _dom.videoMiniBar;
+  var miniTitle      = _dom.miniTitle;
+  var miniArtist     = _dom.miniArtist;
+  var miniThumb      = _dom.miniThumb;
+  var miniPlayBtn    = _dom.miniPlayBtn;
+  var miniExpandBtn  = _dom.miniExpandBtn;
+  var videoCloseBtn  = _dom.videoCloseBtn;
+  var videoFsBtn     = _dom.videoFsBtn;
+  var videoCastBtn   = _dom.videoCastBtn;
+  var videoSkipIntroBtn = _dom.videoSkipIntroBtn;
+  var videoOverlayTitleText = _dom.videoOverlayTitleText;
+  var videoFloatContainer = _dom.videoFloatContainer;
+  var videoFloatWrap   = _dom.videoFloatWrap;
+  var floatExpandBtn   = _dom.floatExpandBtn;
+  var floatCloseBtn    = _dom.floatCloseBtn;
+  var videoWrap        = _dom.videoWrap;
   /* In video-mode the overlay controls visibility; playerBar points to
      the .player-bar INSIDE the overlay, so existing classList calls work
      on the inner controls and the overlay is managed separately. */
-  var playAllBtn   = document.getElementById('play-all-btn');
-  var downloadedPill = document.getElementById('downloaded-pill');
+  var playAllBtn   = _dom.playAllBtn;
+  var downloadedPill = _dom.downloadedPill;
   var originalTitle = headerTitle.textContent;
   /* Bridge onto window — read by the ported leafName() (webui/src/pathUtils.ts,
      bridged via main.ts). A plain `var` here is scoped to this IIFE, not a
      real global, so the .ts module (a separate closure) can't see it
      otherwise; see legacy-globals.d.ts's header comment on this pattern. */
   window.originalTitle = originalTitle;
-  var breadcrumb  = document.getElementById('breadcrumb');
-  var viewToggle  = document.getElementById('view-toggle');
-  var _savedViewMode = localStorage.getItem('ht-view-mode');
-  var viewMode    = (_savedViewMode === 'list' || _savedViewMode === 'grid') ? _savedViewMode : 'list';
-  /* Track-list "detail/table" view — independent of the folder viewMode
-     above. Audio-only feature (video keeps the classic row layout). */
-  var _savedTrackViewMode = localStorage.getItem('ht-track-view-mode');
-  var trackViewMode = (_savedTrackViewMode === 'table' && !isVideoMode) ? 'table' : 'rows';
+  var breadcrumb  = _dom.breadcrumb;
+  var viewToggle  = _dom.viewToggle;
 
   /* ── Windowed track rendering state ──────────────────────────────────────
      Instead of building one massive HTML string for all N items and setting
@@ -197,7 +131,7 @@ def render_core_js(waveform_js) -> str:
      client-side this session so they don't reappear before the server has
      rescanned. Also prunes the set once the server confirms the deletion. */
 
-  var currentStreamUrl = '';
+  /* Playback scratch state: webui/src/playbackState.ts (_pb, created above). */
   /* currentOfflineUrl: ported to webui/src/offlineUrl.ts (module-private
      state, see that file's header comment) alongside revokeOfflineUrl/
      getOfflineUrl — bridged onto window.getOfflineUrl by main.ts. */
@@ -292,7 +226,7 @@ def render_core_js(waveform_js) -> str:
      bare names used by _queue.py / _library_tools.py. */
   window._lyrics = window._initLyricsPanel({
     enabled: LYRICS_ENABLED, apiPath: LYRICS_API_PATH, escHtml: escHtml,
-    getCurrentTrack: function() { return filteredItems[currentIndex] || playlistItems[currentIndex]; }
+    getCurrentTrack: function() { return _pb.filteredItems[_pb.currentIndex] || _pb.playlistItems[_pb.currentIndex]; }
   });
   function openLyricsPanel(relativePath, trackTitle) { window._lyrics.open(relativePath, trackTitle); }
   function closeLyricsPanel() { window._lyrics.close(); }
