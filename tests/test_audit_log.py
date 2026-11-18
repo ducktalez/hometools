@@ -601,4 +601,4 @@ def test_player_js_rating_toast_uses_entry_id():
     ).read_text(encoding="utf-8")
     assert "entry_id" in ts
     assert "showRatingToastWithUndo" in ts
-    assert "window._setInlineRating(" in js  # row rating wired to the ported module
+    assert "_lw.setInlineRating(" in js  # row rating wired via libraryWiring

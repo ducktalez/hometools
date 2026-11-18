@@ -5,94 +5,40 @@ from __future__ import annotations
 
 def render_library_tools_js() -> str:
     """Return the library tools section of the player JS."""
-    return """  /* Dupe index state + build/ensure/count/invalidate: webui/src/dupeState.ts. */
-  function _invalidateDupeMap() {
-    window._invalidateDupeIndex();
-    window._resetRenderGuard();  /* force re-render when allItems changes */
-  }
-
-  /* Panel open/close/wiring: webui/src/dupePanel.ts. Row click navigates to folder + plays. */
-  function openDupePanel() {
-    var di = window._ensureDupeIndex(_pb.allItems);
-    window._openDupePanel(
-      { allItems: _pb.allItems, dupeMap: di.map, dupeSafety: di.safety, dupePaths: di.paths },
-      {
-        escHtml: escHtml, filePlaceholder: FILE_PLACEHOLDER, icDuplicate: IC_DUPLICATE, icTrash: IC_TRASH,
-        deleteDuplicate: _deleteDuplicateFile,
-        playItem: function(t) {
-          window._playDupeItem(t, { itemsUnder: itemsUnder, showPlaylist: showPlaylist, playTrack: playTrack });
-        }
-      }
-    );
-  }
-  function closeDupePanel() { window._closeDupePanel(); }
-
-
-  /* playDuplicates: webui/src/dupePanel.ts (state via htState). */
-  function playDuplicates() {
-    window._playDuplicates(window._ensureDupeIndex(_pb.allItems).map, {
-      toast: showToast,
-      closePanel: closeDupePanel,
-      destroyPlaylistDragDrop: destroyPlaylistDragDrop,
-      enterTrackListView: _enterTrackListView,
-      rebuildShuffleQueue: rebuildShuffleQueue
-    });
-  }  /* Delete/move/gone-track ported to webui/src/libraryOps.ts (_deletePending
-     private there; state via htState). Hooks bundle the legacy side effects. */
-  function _libOpsHooks() {
+    return """  /* Dupes, delete/move ops, folder list, move widget, ctx menus, rating, favorites, edit modal,
+     folder/favorites custom order: webui/src/libraryWiring.ts. State via htState; legacy callbacks
+     via the deps thunk (resolved per call). Wrappers keep bare names. */
+  var _lw = window._createLibraryWiring({
+    filePlaceholder: FILE_PLACEHOLDER, deleteApiPath: DELETE_API_PATH, moveApiPath: MOVE_API_PATH,
+    revealApiPath: REVEAL_API_PATH, ratingApiPath: RATING_API_PATH, auditUndoPath: AUDIT_UNDO_PATH,
+    folderOrderApiPath: FOLDER_ORDER_API_PATH, apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
+    ratingWriteEnabled: !!RATING_WRITE_ENABLED, metadataEditEnabled: !!METADATA_EDIT_ENABLED,
+    metadataEditPath: METADATA_EDIT_PATH, icPlay: IC_PLAY, icDuplicate: IC_DUPLICATE, icTrash: IC_TRASH,
+    icFolderOpen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+    icStarFilled: IC_STAR_FILLED, icStarEmpty: IC_STAR_EMPTY
+  }, function() {
     return {
-      deleteApiPath: DELETE_API_PATH, moveApiPath: MOVE_API_PATH, toast: showToast,
-      invalidateCaches: function() { _invalidateDupeMap(); _invalidateFolderCache(); },
-      saveCatalogCache: _saveCatalogCache,
-      applyFilter: applyFilter, showFolderView: showFolderView, playTrack: playTrack,
-      itemsUnder: itemsUnder,
-      progressRelPath: function() { return window._getProgressPath(); },
-      showPausedIcon: function() { btnPlay.innerHTML = IC_PLAY; },
-      reopenDupePanel: openDupePanel
+      esc: escHtml, toast: showToast, applyFilter: applyFilter, markActive: markActive,
+      showFolderView: showFolderView, showPlaylist: showPlaylist, playTrack: playTrack, itemsUnder: itemsUnder,
+      destroyPlaylistDragDrop: destroyPlaylistDragDrop, enterTrackListView: _enterTrackListView,
+      saveCatalogCache: _saveCatalogCache, isManualPlaylistView: _isManualPlaylistView,
+      removeFromUserPlaylist: removeFromUserPlaylist,
+      filterFavActive: function() { return !!_view.filterFav; }
     };
-  }
-  function _deleteDuplicateFile(allIndex) { window._deleteDuplicateFile(allIndex, _libOpsHooks()); }
-  function _removeGoneTrack(relativePath) { window._removeGoneTrack(relativePath, _libOpsHooks()); }
-  function _deleteTrackFromList(filteredIdx) { window._deleteTrackFromList(filteredIdx, _libOpsHooks()); }
-  /* ── File mover (move to folder) ── */
-  /* _getRecentMoveTargets()/_saveRecentMoveTarget() ported to
-     webui/src/recentMoveTargets.ts, bridged onto window by main.ts. */
-
-  /* _getAllFolders/_invalidateFolderCache + their cache var ported to
-     webui/src/folderCache.ts. Wrapper keeps the bare name and feeds the
-     current allItems; _invalidateFolderCache resolves straight to window. */
-  function _getAllFolders() {
-    return window._getAllFoldersFrom(_pb.allItems);
-  }
-
-  /* _currentFolderOf() ported to webui/src/pathUtils.ts (opportunistic
-     port, see docs/IMPLEMENTATION_PLAN.md), bridged onto window by main.ts. */
-
-  function renderMoveWidget(t, idx) {
-    /* markup: webui/src/inlineWidgets.ts::moveWidgetHtml */
-    return window._moveWidgetHtml(idx, _currentFolderOf(t), _getRecentMoveTargets(), _getAllFolders(), escHtml, IC_TRASH);
-  }
-
-  function moveFileToFolder(idx, targetFolder) { window._moveFileToFolder(idx, targetFolder, _libOpsHooks()); }
-
-  /* Generic kebab dropdown + reveal-in-explorer ported to webui/src/ctxMenu.ts
-     (cleanup handle private there). Wrappers keep bare-name call sites.
-     items: [{ icon, label, onClick, danger }] */
-  function _openCtxMenu(btn, items) { window._openCtxMenu(btn, items, escHtml); }
-  /* -- Track context menu (three-dot / kebab) -- */
-  function _openTrackCtxMenu(btn, relativePath, title) {
-    var IC_FOLDER_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-    /* items: webui/src/ctxMenu.ts::trackCtxMenuItems */
-    _openCtxMenu(btn, window._trackCtxMenuItems({
-      icFolderOpen: IC_FOLDER_OPEN, icTrash: IC_TRASH,
-      isManualPlaylist: _isManualPlaylistView(),
-      reveal: function() { _revealInExplorer(relativePath, title); },
-      removeFromPlaylist: function() { removeFromUserPlaylist(relativePath); }
-    }));
-  }
-  function _revealInExplorer(relativePath, title) {
-    window._revealInExplorer(relativePath, { apiPath: REVEAL_API_PATH, toast: showToast });
-  }
+  });
+  function _invalidateDupeMap() { _lw.invalidateDupeMap(); }
+  function openDupePanel() { _lw.openDupePanel(); }
+  function closeDupePanel() { _lw.closeDupePanel(); }
+  function playDuplicates() { _lw.playDuplicates(); }
+  function _deleteDuplicateFile(allIndex) { _lw.deleteDuplicateFile(allIndex); }
+  function _removeGoneTrack(relativePath) { _lw.removeGoneTrack(relativePath); }
+  function _deleteTrackFromList(filteredIdx) { _lw.deleteTrackFromList(filteredIdx); }
+  function _getAllFolders() { return _lw.getAllFolders(); }
+  function renderMoveWidget(t, idx) { return _lw.renderMoveWidget(t, idx); }
+  function moveFileToFolder(idx, targetFolder) { _lw.moveFileToFolder(idx, targetFolder); }
+  function _openCtxMenu(btn, items) { _lw.openCtxMenu(btn, items); }
+  function _openTrackCtxMenu(btn, relativePath, title) { _lw.openTrackCtxMenu(btn, relativePath, title); }
+  function _revealInExplorer(relativePath, title) { _lw.revealInExplorer(relativePath, title); }
 
   /* ── playback ── */
   /* Background playback for video — three layers of defence:
@@ -227,20 +173,11 @@ def render_library_tools_js() -> str:
 
   /* Shuffle/repeat buttons (cycle, persist, long-press): webui/src/modeButtons.ts */
   /* ── Rating stars (audio-only write, display-only for video) ── */
-  /* Rating stars/patch/POST/undo ported to webui/src/rating.ts; _justRatedPath
-     stays here (read by applyFilter), reached via htState.justRatedPath. */
-  function _ratingHooks() {
-    return {
-      writeEnabled: !!RATING_WRITE_ENABLED, ratingApiPath: RATING_API_PATH, auditUndoPath: AUDIT_UNDO_PATH,
-      icStarFilled: IC_STAR_FILLED, icStarEmpty: IC_STAR_EMPTY,
-      toast: showToast, applyFilter: applyFilter, markActive: markActive,
-      rebuildShuffleQueue: rebuildShuffleQueue
-    };
-  }
-  function renderPlayerRating(stars) { window._renderPlayerRating(stars, _ratingHooks()); }
-  function _patchAllItemsRating(relativePath, rating) { window._patchAllItemsRating(relativePath, rating); }
-  function _updateTrackRatingBar(idx, rating) { window._updateTrackRatingBar(idx, rating, _ratingHooks()); }
-  function setRating(stars) { window._setRating(stars, _ratingHooks()); }
+  /* Rating stars/patch/POST/undo: webui/src/rating.ts via libraryWiring.ts; _justRatedPath via htState. */
+  function renderPlayerRating(stars) { _lw.renderPlayerRating(stars); }
+  function _patchAllItemsRating(relativePath, rating) { _lw.patchAllItemsRating(relativePath, rating); }
+  function _updateTrackRatingBar(idx, rating) { _lw.updateTrackRatingBar(idx, rating); }
+  function setRating(stars) { _lw.setRating(stars); }
   /* Rating-star hover/click ported to webui/src/playerBarUi.ts. */
   window._initPlayerRatingEvents({
     writeEnabled: !!RATING_WRITE_ENABLED,
@@ -305,38 +242,14 @@ def render_library_tools_js() -> str:
   });
   window._showVideoOnLoad(player, isVideoPlayer);
 
-  /* ── Favoriten — speichern & teilen ── */
-  /* loadFavorites/updateFavoriteButtons/toggleFavorite ported to
-     webui/src/favorites.ts; state in _pb.savedFavorites. */
-  function _favHooks() {
-    return {
-      apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
-      toast: showToast, applyFilter: applyFilter,
-      filterFavActive: function() { return !!_view.filterFav; }
-    };
-  }
-  function loadFavorites() { window._loadFavorites(_favHooks()); }
-  function updateFavoriteButtons() { window._updateFavoriteButtons(); }
-  function toggleFavorite(item, btn) { window._toggleFavorite(item, btn, _favHooks()); }
-    /* ── metadata edit modal ── */
-  /* Edit modal ported to webui/src/editModal.ts (_editModalRating private there). */
-  function _editHooks() {
-    return {
-      metadataEditEnabled: !!METADATA_EDIT_ENABLED, ratingWriteEnabled: !!RATING_WRITE_ENABLED,
-      metadataEditPath: METADATA_EDIT_PATH, ratingApiPath: RATING_API_PATH,
-      icStarFilled: IC_STAR_FILLED, icStarEmpty: IC_STAR_EMPTY,
-      toast: showToast, applyFilter: applyFilter,
-      renderPlayerRating: renderPlayerRating, rebuildShuffleQueue: rebuildShuffleQueue,
-      setPlayerText: function(title, artist) {
-        if (playerTitle) playerTitle.textContent = title;
-        if (playerArtist) playerArtist.textContent = artist;
-      }
-    };
-  }
-  window._initEditModalRatingEvents(_editHooks());
-  function openEditModal(idx) { window._openEditModal(idx, _editHooks()); }
-  function closeEditModal() { window._closeEditModal(); }
-  function submitEditModal() { window._submitEditModal(_editHooks()); }
+  /* Favorites + edit modal: webui/src/libraryWiring.ts. */
+  function loadFavorites() { _lw.loadFavorites(); }
+  function updateFavoriteButtons() { _lw.updateFavoriteButtons(); }
+  function toggleFavorite(item, btn) { _lw.toggleFavorite(item, btn); }
+  _lw.initEditModalRatingEvents();
+  function openEditModal(idx) { _lw.openEditModal(idx); }
+  function closeEditModal() { _lw.closeEditModal(); }
+  function submitEditModal() { _lw.submitEditModal(); }
 
 
   /* showToast() lives in _core.py — kept as the single canonical
@@ -401,34 +314,16 @@ def render_library_tools_js() -> str:
 
   /* ── User Playlists: state in _pb ── */
 
-  /* ── Favorites custom order (server-side + localStorage fallback) ── */
-  /* order loading/sorting: webui/src/customOrder.ts (server sync stays here). */
-  function _loadFavoritesOrder() {
-    return window._loadOrder(window.FAVORITES_ORDER_KEY);
-  }
-  function _saveFavoritesOrder(paths) {
-    window._saveOrder(FOLDER_ORDER_API_PATH, window.FAVORITES_ORDER_KEY, '__favorites__', paths);
-  }
-  function _loadFavoritesOrderAsync(cb) {
-    window._loadOrderAsync(FOLDER_ORDER_API_PATH, window.FAVORITES_ORDER_KEY, '__favorites__', cb);
-  }
-  function _sortFavoritesByOrder(favItems) {
-    return window._sortByOrder(favItems, _loadFavoritesOrder());
-  }  /* ── Folder custom order (server-side + localStorage fallback) ── */
-  function _folderOrderKey(folderPath) {
-    return window._folderOrderKey(folderPath);
-  }
-  function _loadFolderOrder(folderPath) {
-    return window._loadOrder(_folderOrderKey(folderPath));
-  }  function _saveFolderOrder(folderPath, paths) {
-    window._saveOrder(FOLDER_ORDER_API_PATH, _folderOrderKey(folderPath), folderPath || '__root__', paths);
-  }
-  function _loadFolderOrderAsync(folderPath, cb) {
-    window._loadOrderAsync(FOLDER_ORDER_API_PATH, _folderOrderKey(folderPath), folderPath || '__root__', cb);
-  }
-  function _sortByFolderOrder(folderPath, items) {
-    return window._sortByOrder(items, _loadFolderOrder(folderPath));
-  }
+  /* Custom order (server sync + localStorage): webui/src/customOrder.ts via libraryWiring.ts. */
+  function _loadFavoritesOrder() { return _lw.loadFavoritesOrder(); }
+  function _saveFavoritesOrder(paths) { _lw.saveFavoritesOrder(paths); }
+  function _loadFavoritesOrderAsync(cb) { _lw.loadFavoritesOrderAsync(cb); }
+  function _sortFavoritesByOrder(favItems) { return _lw.sortFavoritesByOrder(favItems); }
+  function _folderOrderKey(folderPath) { return _lw.folderOrderKey(folderPath); }
+  function _loadFolderOrder(folderPath) { return _lw.loadFolderOrder(folderPath); }
+  function _saveFolderOrder(folderPath, paths) { _lw.saveFolderOrder(folderPath, paths); }
+  function _loadFolderOrderAsync(folderPath, cb) { _lw.loadFolderOrderAsync(folderPath, cb); }
+  function _sortByFolderOrder(folderPath, items) { return _lw.sortByFolderOrder(folderPath, items); }
   var _PLAYLIST_SYNC_INTERVAL = CFG.playlistSyncIntervalMs || 30000; /* ms */
 
 """

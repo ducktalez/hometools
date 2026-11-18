@@ -1063,9 +1063,8 @@ def test_set_rating_updates_track_rating_bar():
 
 def test_undo_rating_patches_all_items():
     """undoRating success callback must call _patchAllItemsRating."""
-    js = render_player_js()
-    # _patchAllItemsRating called in both setRating and undoRating
-    assert js.count("_patchAllItemsRating") >= 2
+    assert "patchAllItemsRating" in _webui_src("libraryWiring.ts")
+    assert _webui_src("rating.ts").count("patchAllItemsRating") >= 2
 
 
 def test_rating_toast_zero_stars_label():
@@ -1758,9 +1757,8 @@ def test_play_duplicates_uses_shared_track_list_entry_point():
     collapsed filter bar (dupe list keeps its own compact layout)."""
     js = render_player_js()
     assert "function playDuplicates()" in js
-    fn = js.split("function playDuplicates()", 1)[1]
-    body = fn.split("function _deleteDuplicateFile(", 1)[0]
-    assert "enterTrackListView: _enterTrackListView" in body
+    assert "enterTrackListView: _enterTrackListView" in js  # deps thunk of _lw
+    assert "enterTrackListView: d.enterTrackListView" in _webui_src("libraryWiring.ts")
     assert "collapseFilterBar: true" in _webui_src("dupePanel.ts")
 
 
@@ -1952,7 +1950,7 @@ def test_js_folder_cache_ported_to_ts():
     js = _js()
     assert "var _allFoldersCache" not in js
     assert "function _invalidateFolderCache" not in js
-    assert "window._getAllFoldersFrom(_pb.allItems)" in js
+    assert "getAllFolders(getState()?.allItems" in _webui_src("libraryWiring.ts")
     main_ts = _webui_src("main.ts")
     assert "window._getAllFoldersFrom = getAllFolders" in main_ts
     assert "window._invalidateFolderCache = invalidateFolderCache" in main_ts
@@ -1963,9 +1961,9 @@ def test_js_invalidate_folder_cache_call_sites_still_present():
     still happen — a stale folder list would show deleted folders as move
     targets."""
     js = _js()
-    assert js.count("_invalidateFolderCache()") >= 2
+    assert "invalidateFolderCache()" in _webui_src("libraryWiring.ts")
     # refresh/fetch paths invalidate through catalogFetch.ts's invalidateCaches hook
-    assert "invalidateCaches: function() { _invalidateDupeMap(); _invalidateFolderCache(); }" in js
+    assert "invalidateCaches:" in js
     assert _webui_src("catalogFetch.ts").count("h.invalidateCaches()") >= 6
 
 
@@ -2021,8 +2019,7 @@ class TestHtStateBridge:
             assert fn not in js, f"{fn} must live in shuffle.ts only"
 
     def test_shuffle_call_sites_still_present(self):
-        js = _js()
-        assert "rebuildShuffleQueue: rebuildShuffleQueue" in js  # hook wiring (legacy)
+        assert "rebuildShuffleQueue," in _webui_src("libraryWiring.ts")
         assert "rebuildShuffleQueue(st.currentIndex" in _webui_src("trackRender.ts")
         assert "rebuildShuffleQueue(startIdx || 0)" in _webui_src("playAll.ts")
         assert "h.rebuildShuffleQueue(0)" in _webui_src("dupePanel.ts")  # playDuplicates
