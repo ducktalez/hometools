@@ -6,55 +6,35 @@ from __future__ import annotations
 def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     """Return the queue section of the player JS."""
     return (
-        """  /* dequeueNext/playNextItem ported to webui/src/playNext.ts. */
-  var _playNextHooks = {
-    player: player,
-    playFromQueue: function(i) { playFromQueue(i); },
-    playTrack: function(i) { playTrack(i); },
-    setWasPlaying: function(v) { window._setWasPlaying(v); },
-    showStopped: function() { btnPlay.innerHTML = IC_PLAY; }
-  };
-  function dequeueNext() { return window._dequeueNext(_playNextHooks); }
-  function playNextItem() { window._playNextItem(_playNextHooks); }
-
-  /* Catalog fetch/refresh orchestration ported to webui/src/catalogFetch.ts
-     (timer + in-flight flag private). Every successful fetch must call
-     saveCache (-> _saveCatalogCache); refreshCatalog clears the cache first. */
-  var _catalogFetchHooks = {
-    apiPath: API_PATH,
-    showIndexingToast: function(d, c) { showIndexingToast(d, c); },
-    hideIndexingToast: function() { hideIndexingToast(); },
-    applyLocalMutations: function(items) { return _applyLocalMutations(items); },
-    invalidateCaches: function() { _invalidateDupeMap(); _invalidateFolderCache(); },
-    saveCache: function(items) { _saveCatalogCache(items); },
-    clearCache: function() { _clearCatalogCache(); },
-    /* Clear in place (never reassign `= {}`) - window._locallyDeletedPaths
-       must keep pointing at this same object. */
-    clearLocalDeleted: function() {
-      Object.keys(_locallyDeletedPaths).forEach(function(k) { delete _locallyDeletedPaths[k]; });
-    },
-    resetRatingRefresh: function() { window._resetRatingRefresh(); },
-    showFolderView: function() { showFolderView(); },
-    itemsUnder: function(p) { return itemsUnder(p); },
-    applyFilter: function() { applyFilter(); },
-    toast: function(m) { showToast(m); }
-  };
-  function scheduleBackgroundRefresh(delay) { window._scheduleBackgroundRefresh(_catalogFetchHooks, delay); }
-  function forceBackgroundRefresh() { window._forceBackgroundRefresh(_catalogFetchHooks); }
-  function _triggerSilentRefresh() { window._triggerSilentRefresh(_catalogFetchHooks); }
-  function _refreshPoll() { window._refreshPoll(_catalogFetchHooks); }
-  function refreshCatalog() { window._refreshCatalog(_catalogFetchHooks); }
-  /* Extra library folders (video only): webui/src/extraFolders.ts */
-  function _extraHooks() {
+        """  /* Play-next, catalog fetch/refresh, extra folders, lazy rating refresh:
+     webui/src/catalogWiring.ts (_cw). Every successful fetch saves the cache
+     (-> _saveCatalogCache); refreshCatalog clears it first. */
+  var _cw = window._createCatalogWiring({
+    apiPath: API_PATH, apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
+    isVideo: ITEM_NOUN === 'video', ratingWriteEnabled: !!RATING_WRITE_ENABLED, icPlay: IC_PLAY
+  }, function() {
     return {
-      apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
-      isVideo: ITEM_NOUN === 'video',
-      toast: showToast, refreshCatalog: refreshCatalog, showFolderView: showFolderView
+      playFromQueue: playFromQueue, playTrack: playTrack,
+      showIndexingToast: showIndexingToast, hideIndexingToast: hideIndexingToast,
+      applyLocalMutations: _applyLocalMutations,
+      invalidateDupeMap: _invalidateDupeMap, invalidateFolderCache: _invalidateFolderCache,
+      saveCatalogCache: _saveCatalogCache, clearCatalogCache: _clearCatalogCache,
+      clearLocalDeleted: function() {
+        Object.keys(_locallyDeletedPaths).forEach(function(k) { delete _locallyDeletedPaths[k]; });
+      },
+      showFolderView: showFolderView, itemsUnder: itemsUnder, applyFilter: applyFilter, toast: showToast
     };
-  }
-  function addExtraFolder() { window._addExtraFolder(_extraHooks()); }
-  function removeExtraFolder() { window._removeExtraFolder(_extraHooks()); }
-  window._loadExtraFolders(_extraHooks());
+  });
+  function dequeueNext() { return _cw.dequeueNext(); }
+  function playNextItem() { _cw.playNextItem(); }
+  function scheduleBackgroundRefresh(delay) { _cw.scheduleBackgroundRefresh(delay); }
+  function forceBackgroundRefresh() { _cw.forceBackgroundRefresh(); }
+  function _triggerSilentRefresh() { _cw.triggerSilentRefresh(); }
+  function _refreshPoll() { _cw.refreshPoll(); }
+  function refreshCatalog() { _cw.refreshCatalog(); }
+  function addExtraFolder() { _cw.addExtraFolder(); }
+  function removeExtraFolder() { _cw.removeExtraFolder(); }
+  _cw.loadExtraFolders();
 
   /* Delegated tools-row card clicks: webui/src/folderGridEvents.ts */
   window._initFolderGridEvents({
@@ -63,16 +43,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
     addExtraFolder: addExtraFolder,
     removeExtraFolder: removeExtraFolder
   });
-
-  /* ── Lazy per-folder rating refresh: webui/src/ratingRefresh.ts ── */
-  function refreshFolderRatings(folderItems) {
-    window._refreshFolderRatings(folderItems, {
-      enabled: !!RATING_WRITE_ENABLED,
-      apiBase: API_PATH.substring(0, API_PATH.lastIndexOf('/')),
-      applyFilter: function() { applyFilter(); }
-    });
-  }
-
+  function refreshFolderRatings(folderItems) { _cw.refreshFolderRatings(folderItems); }
 """
         + (waveform_setup_js)
         + (sprite_preview_js)
@@ -127,7 +98,7 @@ def render_queue_js(sprite_preview_js, waveform_setup_js) -> str:
   /* loadInitialCatalog (stale-while-revalidate startup load + retry state)
      ported to webui/src/catalogFetch.ts. */
   function loadInitialCatalog() {
-    return window._loadInitialCatalog(Object.assign({}, _catalogFetchHooks, {
+    return window._loadInitialCatalog(Object.assign({}, _cw.fetchHooks(), {
       loadCache: function() { return _loadCatalogCache(); },
       showLoadingState: function(m) { showLoadingState(m); },
       showCatalogLoadError: function(m) { showCatalogLoadError(m); },

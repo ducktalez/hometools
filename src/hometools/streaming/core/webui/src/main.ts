@@ -376,6 +376,7 @@ import { createFolderWiring } from "./folderWiring";
 import { createSearchFilterWiring } from "./searchFilterWiring";
 import { createTrackRenderWiring } from "./trackRenderWiring";
 import { createLibraryWiring } from "./libraryWiring";
+import { createCatalogWiring } from "./catalogWiring";
 
 // CSS ports: Vite bundles these into one stylesheet, _html.py links it
 // AFTER the legacy inline <style> (later wins at equal specificity).
@@ -774,6 +775,7 @@ declare global {
     _createSearchFilterWiring: typeof createSearchFilterWiring;
     _createTrackRenderWiring: typeof createTrackRenderWiring;
     _createLibraryWiring: typeof createLibraryWiring;
+    _createCatalogWiring: typeof createCatalogWiring;
     _stopPlaylistSync: typeof stopPlaylistSync;
     _snapshotPlaylists: typeof snapshotPlaylists;
     _restorePlaylists: typeof restorePlaylists;
@@ -1167,6 +1169,7 @@ window._createFolderWiring = createFolderWiring;
 window._createSearchFilterWiring = createSearchFilterWiring;
 window._createTrackRenderWiring = createTrackRenderWiring;
 window._createLibraryWiring = createLibraryWiring;
+window._createCatalogWiring = createCatalogWiring;
 window._stopPlaylistSync = stopPlaylistSync;
 window._snapshotPlaylists = snapshotPlaylists;
 window._restorePlaylists = restorePlaylists;

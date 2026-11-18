@@ -1963,7 +1963,7 @@ def test_js_invalidate_folder_cache_call_sites_still_present():
     js = _js()
     assert "invalidateFolderCache()" in _webui_src("libraryWiring.ts")
     # refresh/fetch paths invalidate through catalogFetch.ts's invalidateCaches hook
-    assert "invalidateCaches:" in js
+    assert "invalidateFolderCache: _invalidateFolderCache" in js
     assert _webui_src("catalogFetch.ts").count("h.invalidateCaches()") >= 6
 
 
@@ -2525,7 +2525,7 @@ class TestCatalogLocalStorageCache:
         fn_start = ts.index("export function scheduleBackgroundRefresh(")
         fn_body = ts[fn_start : ts.index("export function forceBackgroundRefresh(")]
         assert "h.saveCache(s.allItems)" in fn_body, "saveCache must be called inside scheduleBackgroundRefresh"
-        assert "saveCache: function(items) { _saveCatalogCache(items); }" in self._js()
+        assert "saveCatalogCache: _saveCatalogCache" in self._js()
 
     def test_refresh_poll_saves_catalog(self):
         """_refreshPoll (manual refresh polling) must persist the updated catalog."""
@@ -2543,7 +2543,7 @@ class TestCatalogLocalStorageCache:
         fn_body = ts[ts.index("export function refreshCatalog(") :]
         assert "h.clearCache()" in fn_body, "clearCache must be called inside refreshCatalog"
         assert "h.clearLocalDeleted()" in fn_body
-        assert "clearCache: function() { _clearCatalogCache(); }" in self._js()
+        assert "clearCatalogCache: _clearCatalogCache" in self._js()
 
     # ── Load function handles offline gracefully ──────────────────────────────
 
