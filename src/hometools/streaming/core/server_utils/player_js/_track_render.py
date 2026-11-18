@@ -53,6 +53,7 @@ def render_track_render_js() -> str:
   function _toolFlags() { return _trw.toolFlags(); }
   function openToolsPanel() { _trw.openToolsPanel(); }
   function closeToolsPanel() { _trw.closeToolsPanel(); }
+  _trw.start();
   function renderInlineRating(t, idx) { return _trw.renderInlineRating(t, idx); }
   /* Row rating (POST, relocate playing track, undo toast): webui/src/rating.ts::setInlineRating. */
   function setInlineRating(idx, stars) { _lw.setInlineRating(idx, stars); }

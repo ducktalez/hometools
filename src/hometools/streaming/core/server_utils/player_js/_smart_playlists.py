@@ -43,6 +43,6 @@ def render_smart_playlists_js() -> str:
   function removeFromUserPlaylist(relativePath) { _plw.removeFromUserPlaylist(relativePath); }
   function reorderPlaylistItem(relativePath, toIndex) { _plw.reorderPlaylistItem(relativePath, toIndex); }
   function initPlaylistDragDrop() { _plw.initPlaylistDragDrop(); }
-  function destroyPlaylistDragDrop() { _plw.destroyPlaylistDragDrop(); }
+  function destroyPlaylistDragDrop() { if (_plw) _plw.destroyPlaylistDragDrop(); } /* may run before _plw exists (eager factory init) */
 
 """

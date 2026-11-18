@@ -108,7 +108,7 @@ export function createTrackRenderWiring(cfg: TrackRenderCfg, deps: () => TrackRe
     };
   };
 
-  initToolsPanel({
+  const startToolsPanel = (): void => initToolsPanel({
     folderGrid: el("folderGrid"),
     showFolderView: () => deps().showFolderView(),
     applyViewMode: () => deps().applyViewMode(),
@@ -122,6 +122,8 @@ export function createTrackRenderWiring(cfg: TrackRenderCfg, deps: () => TrackRe
   });
 
   return {
+    /** Run after the legacy ar _trw = assignment (restores tool state, may re-enter via deps). */
+    start: startToolsPanel,
     renderTracks(tracks: LegacyMediaItem[], force?: boolean): void {
       const d = deps();
       renderTracks(tracks as never, force, {
