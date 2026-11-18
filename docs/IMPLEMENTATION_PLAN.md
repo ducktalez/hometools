@@ -26,6 +26,7 @@ Third pattern (since `clickGuard.ts`): if a stateful block's state is
 with the function — no bridge, no param. Check that first, it beats both
 other patterns.
 
+**Restarbeit (JS):** alle Hook-Glue-Blöcke sind in `*Wiring.ts` portiert (siehe Liste oben). Offen: (1) Composition-Root `app.ts`, der die Wirings direkt importiert/verdrahtet und die Ein-Zeiler-Wrapper in `player_js/*.py` ersetzt; (2) Init-Aufrufe (`_initPlayerEvents`/`_initTimeline`/`_initToolbar`/`_createRouter`/`_bootstrapApp`) dorthin; (3) `_core.py`, `_drag_drop_init.py`, `_player_js.py` löschen. Vorher Browser-Smoke-Test (jsdom lief sauber, echtes Playback ungetestet).
 **CSS-Teil fertig** — alle Fragmente aus `css/*.py` nach
 `webui/src/styles/*.css` portiert (`metaPill`, `root`, `toolsPanel`,
 `modals`, `playlistCards`, `playerBar`, `tableView`, `trackList`,

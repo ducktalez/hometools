@@ -1968,7 +1968,7 @@ def test_js_invalidate_folder_cache_call_sites_still_present():
 
 
 class TestHtStateBridge:
-    """window.htState — live getter/setter bridge over _core.py's IIFE vars.
+    """window.htState — the TS-owned state object (playbackState.ts) shared with the legacy IIFE.
 
     Fourth migration pattern: ported modules that read AND write shared
     reassigned globals (shuffleQueue, shufflePos, ...) go through this

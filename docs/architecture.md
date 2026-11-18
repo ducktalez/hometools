@@ -139,6 +139,15 @@ is **done** — `_css.py`/`css/*.py` are gone, all rules live in
   (`_pb` in `_core.py`; all core state: items, index, path, shuffle/repeat, queue,
   playlists, favorites); `dom.ts` (DOM-ref table) and `viewState.ts` (persisted filter/view state)
   are the other TS-owned state modules).
+  Hook glue per fragment lives in `*Wiring.ts` factories (`createXWiring(cfg, depsThunk)`,
+  bridged as `window._createXWiring`): `playlistWiring` (`_plw`), `folderWiring` (`_fw`),
+  `searchFilterWiring` (`_sfw`), `trackRenderWiring` (`_trw`), `libraryWiring` (`_lw`),
+  `catalogWiring` (`_cw`), `playbackWiring` (`_pbw`). `cfg` = constants (evaluated eagerly,
+  so every `var` it reads must already exist); `deps` = legacy closure callbacks, resolved per
+  call. The `player_js/*.py` fragments are now one-line wrappers + remaining init calls
+  (`_initPlayerEvents`, `_initTimeline`, `_initToolbar`, `_createRouter`, `_bootstrapApp`).
+  Factories must not call back into legacy during construction (use an explicit `start()`
+  after the `var _xw =` assignment, e.g. `_trw.start()`).
 - `webui/test/*.test.ts` — vitest behaviour tests for ported modules (fake
   `htState` via `test/helpers.ts`), run via `npm test` and pytest
   `tests/test_webui_unit.py`.
