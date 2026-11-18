@@ -82,96 +82,44 @@ def render_library_tools_js() -> str:
   /* Bar fullscreen button ported to webui/src/playerBarUi.ts. */
   window._initBarFullscreen(player, isVideoPlayer);
 
-  /* Bg-audio mirror ported to webui/src/bgAudio.ts (element + sync timer
-     private there). Wrappers keep bare names. */
+  /* Playback glue (playItem/playTrack, metadata refresh, transport, bg mirror,
+     media session, crossfade): webui/src/playbackWiring.ts (_pbw). */
+  var _pbw = window._createPlaybackWiring({
+    apiPath: API_PATH, itemNoun: ITEM_NOUN, isVideoMode: isVideoMode, isVideoPlayer: isVideoPlayer,
+    icPause: IC_PAUSE, icPlay: IC_PLAY, filePlaceholder: FILE_PLACEHOLDER,
+    autoResume: AUTO_RESUME_ENABLED, lyricsEnabled: !!LYRICS_ENABLED, crossfadeDuration: CROSSFADE_DURATION
+  }, function() {
+    return {
+      revokeOfflineUrl: revokeOfflineUrl, generateWaveform: generateWaveform,
+      playOfflineOrStream: playOfflineOrStream, openVideoOverlay: openVideoOverlay, syncMiniBar: _syncMiniBar,
+      markActive: markActive, renderPlayerRating: renderPlayerRating,
+      updatePlayerBarActions: updatePlayerBarActions,
+      isLyricsOpen: function() { return window._lyrics.isOpen(); },
+      openLyricsPanel: openLyricsPanel,
+      saveProgressNow: saveProgressNow, clearProgressFor: clearProgressFor,
+      saveLastPlayedLocal: _saveLastPlayedLocal, loadAndSeekProgress: loadAndSeekProgress,
+      loadSpriteData: loadSpriteData,
+      routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); },
+      applyFilter: applyFilter, playFromQueue: playFromQueue
+    };
+  });
+  _pbw.setPlayNext(function() { playNextItem(); });
   function bgAudioIsActive() { return window._bgAudioIsActive(); }
   function stopBgSync() { window._stopBgSync(); }
-  function startBgMirror() {
-    window._startBgMirror({ player: player, isVideoPlayer: isVideoPlayer, playNext: playNextItem });
-  }
-  /* activeMedia/updateMediaSession ported to webui/src/mediaSession.ts. */
-  function activeMedia() { return window._activeMedia(player); }
-  function updateMediaSession(t) {
-    window._updateMediaSession(t, {
-      player: player, itemNoun: ITEM_NOUN,
-      previousTrack: handlePreviousTrack, nextTrack: playNextItem
-    });
-  }
-  /* playItem sequencing: webui/src/playItem.ts. Legacy keeps state vars + UI side effects. */
-  function playItem(t, index) {
-    window._playItem(t, index, {
-      player: player,
-      setCurrentIndex: function(i) { _pb.currentIndex = i; },
-      setCurrentStreamUrl: function(u) { _pb.currentStreamUrl = u; },
-      setCurrentDuration: function(d) { _pb.itemDuration = d; },
-      setCurrentIntro: window._setCurrentIntro,
-      beginPlayback: function(playback) {
-        window._beginPlayback(playback, t.relative_path, {
-          player: player, btnPlay: btnPlay, icPause: IC_PAUSE, icPlay: IC_PLAY,
-          revokeOfflineUrl: revokeOfflineUrl, onStarted: startBgMirror,
-          generateWaveform: generateWaveform
-        });
-      },
-      playOfflineOrStream: playOfflineOrStream,
-      showNowPlaying: function(tr) {
-        window._showNowPlaying(tr, {
-          title: playerTitle, artist: playerArtist, thumb: playerThumb, btnPlay: btnPlay,
-          playerBar: playerBar, player: player, overlayTitle: videoOverlayTitleText
-        }, {
-          icPause: IC_PAUSE, filePlaceholder: FILE_PLACEHOLDER, isVideoMode: isVideoMode,
-          openVideoOverlay: openVideoOverlay, syncMiniBar: _syncMiniBar
-        });
-      },
-      markActive: markActive,
-      updateMediaSession: updateMediaSession,
-      renderPlayerRating: renderPlayerRating,
-      updatePlayerBarActions: updatePlayerBarActions,
-      refreshMetadata: refreshMetadata,
-      refreshLyricsIfOpen: function(tr) {
-        if (LYRICS_ENABLED && window._lyrics.isOpen()) openLyricsPanel(tr.relative_path || '', tr.title);
-      },
-      saveProgressNow: saveProgressNow,
-      saveLastPlayedLocal: _saveLastPlayedLocal,
-      autoResume: AUTO_RESUME_ENABLED,
-      loadAndSeekProgress: loadAndSeekProgress,
-      loadSpriteData: loadSpriteData,
-      routerUpdate: function() { if (typeof _router !== 'undefined') _router.update(); }
-    });
-  }  function playTrack(index) {
-    if (index < 0 ||     index >= _pb.filteredItems.length) return;
-        playItem(_pb.filteredItems[index], index);
-  }
+  function startBgMirror() { _pbw.startBgMirror(); }
+  function activeMedia() { return _pbw.activeMedia(); }
+  function updateMediaSession(t) { _pbw.updateMediaSession(t); }
+  function playItem(t, index) { _pbw.playItem(t, index); }
+  function playTrack(index) { _pbw.playTrack(index); }
+  function refreshMetadata(t) { _pbw.refreshMetadata(t); }
+  function togglePlay() { _pbw.togglePlay(); }
+  function handlePreviousTrack() { _pbw.handlePreviousTrack(); }
 
-  /* refreshMetadata: webui/src/metadataRefresh.ts */
-  function refreshMetadata(t) {
-    window._refreshMetadata(t, {
-      apiPath: API_PATH,
-      setTitle: function(s) { playerTitle.textContent = s; },
-      setArtist: function(s) { playerArtist.textContent = s; },
-      renderPlayerRating: renderPlayerRating,
-      updateMediaSession: updateMediaSession,
-      applyFilter: applyFilter,
-      markActive: markActive
-    });
-  }  /* togglePlay: webui/src/transport.ts */
-  function _transportHooks() {
-    return {
-      player: player, btnPlay: btnPlay, icPlay: IC_PLAY, icPause: IC_PAUSE,
-      playTrack: playTrack, startBgMirror: startBgMirror, stopBgSync: stopBgSync,
-      currentItemDuration: function() { return _pb.itemDuration; }
-    };
-  }
-  function togglePlay() { window._togglePlay(_transportHooks()); }
   /* ── Shuffle logic ──
      fisherYates/buildWeightedQueue/buildNormalQueue/rebuildShuffleQueue/
      nextIndex/prevIndex: ported to webui/src/shuffle.ts via the htState
      bridge (window.htState in _core.py) — they read/write
-     shuffleQueue/shufflePos live. Bare call sites unchanged. */
-
-  /* smart previous: webui/src/transport.ts */
-  function handlePreviousTrack() { window._handlePreviousTrack(_transportHooks()); }
-
-  /* Shuffle/repeat buttons (cycle, persist, long-press): webui/src/modeButtons.ts */
+     shuffleQueue/shufflePos live. Bare call sites unchanged. */  /* Shuffle/repeat buttons (cycle, persist, long-press): webui/src/modeButtons.ts */
   /* ── Rating stars (audio-only write, display-only for video) ── */
   /* Rating stars/patch/POST/undo: webui/src/rating.ts via libraryWiring.ts; _justRatedPath via htState. */
   function renderPlayerRating(stars) { _lw.renderPlayerRating(stars); }
@@ -196,18 +144,8 @@ def render_library_tools_js() -> str:
   /* Album cover click → jump to current track in list */
   if (playerThumb) playerThumb.addEventListener('click', jumpToCurrentTrack);
 
-  /* Crossfade ported to webui/src/crossfade.ts (_xfade* state private there). */
-  function _xfadeHooks() {
-    return {
-      player: player, durationSec: CROSSFADE_DURATION,
-      flushOutgoingProgress: function() { saveProgressNow(); clearProgressFor(window._getProgressPath()); },
-      playTrack: playTrack, playFromQueue: playFromQueue
-    };
-  }
-  function _startCrossfade() { window._startCrossfade(_xfadeHooks()); }
-  function _finishCrossfade() { window._finishCrossfade(_xfadeHooks()); }
-
-
+  function _startCrossfade() { _pbw.startCrossfade(); }
+  function _finishCrossfade() { _pbw.finishCrossfade(); }
   /* ended/error/pause/play handlers ported to webui/src/playerEvents.ts. */
   window._initPlayerEvents({
     player: player, btnPlay: btnPlay, icPlay: IC_PLAY, icPause: IC_PAUSE, isVideoMode: isVideoMode,

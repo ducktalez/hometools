@@ -909,7 +909,7 @@ def test_queue_next_logic_is_centralized_in_play_next_item():
     js = render_player_js()
     assert "function playNextItem()" in js
     assert "btnNext.addEventListener('click', playNextItem);" in js
-    assert "nextTrack: playNextItem" in js
+    assert "_pbw.setPlayNext(function() { playNextItem(); })" in js
     assert 'setActionHandler("nexttrack"' in _webui_src("mediaSession.ts")
     assert 'addEventListener("ended"' in _webui_src("bgAudio.ts")
     assert "playNextItem: playNextItem" in js
