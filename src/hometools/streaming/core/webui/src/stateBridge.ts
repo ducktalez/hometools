@@ -33,6 +33,7 @@ export interface HtState {
   globalSearchActive: boolean;
   savedFavorites: Record<string, boolean>;
   justRatedPath: string | null;
+  currentStreamUrl: string;
 }
 
 /** Bridge or null when the legacy script hasn't run (yet). Callers must no-op then. */

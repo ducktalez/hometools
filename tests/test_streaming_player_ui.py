@@ -901,7 +901,7 @@ def test_shuffle_queue_rebuild_in_render_tracks():
     ts = _webui_src("trackRender.ts")
     assert "st.filteredItems = realTracks" in ts
     assert "rebuildShuffleQueue" in ts
-    assert "window._renderTracks(" in render_player_js()
+    assert "_trw.renderTracks(" in render_player_js()
 
 
 def test_queue_next_logic_is_centralized_in_play_next_item():

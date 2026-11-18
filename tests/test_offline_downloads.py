@@ -235,18 +235,17 @@ class TestTrackDownloadButtons:
 
     def test_js_track_download_stores_metadata_for_offline_library(self):
         """Downloads should persist enough metadata for the offline list UI."""
-        js = _js()
         ts = _webui_src("offlineLibrary.ts") + _webui_src("downloadButtons.ts")
         for key in ("thumbnailUrl", "relativePath", "mediaType", "artist"):
             assert key in ts
-        assert "_initOfflineLibrary" in js
+        assert "initOfflineLibrary(" in _webui_src("trackRenderWiring.ts")
 
     def test_js_has_cancel_download_function(self):
         """cancelDownload must abort an active download via AbortController."""
         js = _js()
         assert "function cancelDownload" in js
         assert "controller.abort()" in _webui_src("downloadButtons.ts")
-        assert "activeDownloads" in js
+        assert "activeDownloads" in _webui_src("trackRenderWiring.ts")
         assert "AbortError" in _webui_src("downloadButtons.ts")
 
     def test_js_download_uses_abort_controller(self):
