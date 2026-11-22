@@ -1,20 +1,11 @@
 /* Playlist pseudo-folder cards, smart-playlist editor modal, tools-row.
    Ported verbatim from server_utils/css/_playlist_cards.py::render_playlist_cards_css(). */
 .playlist-folder-card { position: relative; }
-.fav-folder.playlist-folder-card,
+/* Accent frame (favorites, user playlists): one inset ring, no border/pseudo-element.
+   Same in grid and list mode; border-bottom stays free for list separators. */
+.fav-folder,
 .playlist-folder-card:not(.smart-playlist-card):not(.playlist-new-card) {
-  border: 1px solid var(--accent); border-radius: 8px;
-}
-.fav-folder.playlist-folder-card::after,
-.playlist-folder-card:not(.smart-playlist-card):not(.playlist-new-card)::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-  height: 2px; background: var(--accent); border-radius: 0 0 8px 8px;
-}
-.smart-playlist-card {
-  border: none; border-radius: 8px;
-}
-.smart-playlist-card::after {
-  display: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .playlist-folder-icon {

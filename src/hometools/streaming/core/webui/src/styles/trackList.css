@@ -180,7 +180,6 @@ body.tool-show-file-mover .track-queue-btn { display: none; }
   color: var(--accent); font-size: 1rem; line-height: 1;
   pointer-events: none; z-index: 2;
 }
-.fav-folder { border: 1px solid var(--accent); border-radius: 8px; }
 /* Language flag badges */
 .lang-badge {
   display: inline-block; width: 18px; height: 12px; vertical-align: middle;
