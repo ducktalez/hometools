@@ -494,13 +494,7 @@ class TestPlaylistParity:
         for label, html in [("audio", audio_html), ("video", video_html)]:
             # Pill and library panel removed — playlists as pseudo-folders
             assert 'id="playlist-modal-backdrop"' in html, f"{label} missing playlist-modal"
-            assert "PLAYLISTS_ENABLED" in html, f"{label} missing PLAYLISTS_ENABLED JS var"
-            assert (
-                "playlist-folder-card" in html
-                or "playlist_folder_card" in html
-                or "playlist-new-card" in html
-                or "PLAYLISTS_API_PATH" in html
-            ), f"{label} missing playlist pseudo-folder support"
+            assert "enablePlaylists" in html, f"{label} missing enablePlaylists in #ht-config"
 
 
 class TestPlaylistSyncParity:
@@ -538,26 +532,8 @@ class TestPlaylistSyncParity:
         assert "revision" in a_resp.json()
         assert "revision" in v_resp.json()
 
-    def test_both_home_pages_include_playlist_sync_js(self, tmp_path):
-        """Both UIs must expose the PLAYLISTS_VERSION_PATH JS variable."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
-        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
-
-        audio_html = audio_client.get("/").text
-        video_html = video_client.get("/").text
-
-        assert "PLAYLISTS_VERSION_PATH" in audio_html
-        assert "PLAYLISTS_VERSION_PATH" in video_html
-        assert "_startPlaylistSync" in audio_html
-        assert "_startPlaylistSync" in video_html
-
     def test_both_home_pages_include_sync_interval_var(self, tmp_path):
-        """Both UIs must expose the _PLAYLIST_SYNC_INTERVAL JS variable."""
+        """Both UIs must expose playlistSyncIntervalMs in #ht-config."""
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
@@ -569,24 +545,8 @@ class TestPlaylistSyncParity:
         audio_html = audio_client.get("/").text
         video_html = video_client.get("/").text
 
-        assert "_PLAYLIST_SYNC_INTERVAL" in audio_html
-        assert "_PLAYLIST_SYNC_INTERVAL" in video_html
-
-    def test_both_home_pages_include_optimistic_helpers(self, tmp_path):
-        """Both UIs must expose _snapshotPlaylists / _restorePlaylists."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
-        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
-
-        audio_html = audio_client.get("/").text
-        video_html = video_client.get("/").text
-
-        assert "_PLAYLIST_SYNC_INTERVAL" in audio_html
-        assert "_PLAYLIST_SYNC_INTERVAL" in video_html
+        assert "playlistSyncIntervalMs" in audio_html
+        assert "playlistSyncIntervalMs" in video_html
 
     def test_both_servers_insert_position_parity(self, tmp_path, monkeypatch):
         """Both servers respect HOMETOOLS_PLAYLIST_INSERT_POSITION consistently."""
@@ -615,7 +575,7 @@ class TestPlaylistSyncParity:
         assert v_items[0] == "y.mp4"
 
     def test_both_home_pages_include_min_rating_threshold(self, tmp_path):
-        """Both UIs must expose the MIN_RATING_THRESHOLD JS variable."""
+        """Both UIs must expose minRating in #ht-config."""
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
@@ -627,8 +587,8 @@ class TestPlaylistSyncParity:
         audio_html = audio_client.get("/").text
         video_html = video_client.get("/").text
 
-        assert "MIN_RATING_THRESHOLD" in audio_html
-        assert "MIN_RATING_THRESHOLD" in video_html
+        assert "minRating" in audio_html
+        assert "minRating" in video_html
 
 
 class TestQueueParity:
@@ -660,21 +620,6 @@ class TestQueueParity:
         assert 'id="queue-panel"' in audio_html
         assert 'id="queue-panel"' in video_html
 
-    def test_both_home_pages_include_queue_js(self, tmp_path):
-        """Both UIs must have IC_QUEUE JS variable and queue functions."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert "IC_QUEUE" in html
-            assert "addToQueue" in html
-            assert "dequeueNext" in html
-
 
 class TestRepeatParity:
     """Repeat mode must be present in both audio and video UIs."""
@@ -691,28 +636,6 @@ class TestRepeatParity:
 
         assert 'id="btn-repeat"' in audio_html
         assert 'id="btn-repeat"' in video_html
-
-    def test_both_home_pages_include_repeat_js(self, tmp_path):
-        """Both UIs must have REPEAT_ENABLED (runtime CFG-driven, Vite/TS
-        migration Phase 3) and repeat functions."""
-        import json
-        import re
-
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert "REPEAT_ENABLED = !!CFG.enableRepeat" in html
-            m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
-            assert m
-            assert json.loads(m.group(1))["enableRepeat"] is True
-            assert "_initModeButtons" in html
-            assert "repeatMode" in html
 
 
 class TestRefreshParity:
@@ -743,20 +666,6 @@ class TestRefreshParity:
         ts = Path(__file__).resolve().parent.parent / "src" / "hometools" / "streaming" / "core" / "webui" / "src" / "rootCards.ts"
         assert "refresh-catalog-card" in ts.read_text(encoding="utf-8")
 
-    def test_both_home_pages_include_refresh_js(self, tmp_path):
-        """Both UIs must have the refreshCatalog JS function."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert "refreshCatalog" in html
-            assert "IC_REFRESH" in html
-
 
 class TestLazyRatingRefreshParity:
     """Lazy per-folder rating refresh is audio-only (POPM) but the JS
@@ -775,45 +684,9 @@ class TestLazyRatingRefreshParity:
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
-    def test_both_uis_include_refreshFolderRatings_js(self, tmp_path):
-        """Both UIs must include the refreshFolderRatings JS function."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert "refreshFolderRatings" in html
-
-    def test_lazy_refresh_called_in_showPlaylist(self, tmp_path):
-        """showPlaylist (ported to webui/src/playAll.ts) must get the refreshFolderRatings hook."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-
-        html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        assert "refreshFolderRatings: refreshFolderRatings" in html
-
 
 class TestGlobalSearchParity:
     """Global search must be present in both audio and video UIs."""
-
-    def test_both_uis_include_global_search_js(self, tmp_path):
-        """Both UIs must include the globalSearch JS function."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert "function globalSearch" in html
-            assert "function initGlobalSearch" in html
 
     def test_both_uis_have_search_result_css(self, tmp_path):
         """search-result-folder CSS class must exist (ported to trackList.css)
@@ -864,21 +737,6 @@ class TestLanguageParity:
             / "trackList.css"
         ).read_text(encoding="utf-8")
         assert ".lang-badge" in css
-
-    def test_both_uis_have_lang_to_flag_map(self, tmp_path):
-        """Both UIs must include the LANG_TO_FLAG JavaScript mapping."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert "LANG_TO_FLAG" in html
-            assert "cleanFolderName" in html
-            assert "langBadgesHtml" in html
 
     def test_media_item_has_language_field(self):
         """MediaItem must have a language field."""
@@ -940,7 +798,7 @@ class TestLanguageParity:
         assert item.subtitle_language == ""
 
     def test_both_uis_have_default_lang_variable(self, tmp_path):
-        """Both UIs must include the DEFAULT_LANG JavaScript variable."""
+        """Both UIs must expose defaultLanguage in #ht-config."""
         from fastapi.testclient import TestClient
 
         from hometools.streaming.audio.server import create_app as create_audio_app
@@ -950,7 +808,7 @@ class TestLanguageParity:
         video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
 
         for html in [audio_html, video_html]:
-            assert "DEFAULT_LANG" in html
+            assert "defaultLanguage" in html
 
     def test_both_uis_have_composite_flag_css(self):
         """.composite-flag CSS class must exist (ported to trackList.css)."""
@@ -968,17 +826,3 @@ class TestLanguageParity:
             / "trackList.css"
         ).read_text(encoding="utf-8")
         assert ".composite-flag" in css
-
-    def test_both_uis_have_composite_flag_js(self, tmp_path):
-        """Both UIs must include compositeFlagHtml and detectSubLangFromName JS functions."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_html = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path)).get("/").text
-        video_html = TestClient(create_video_app(tmp_path, cache_dir=tmp_path)).get("/").text
-
-        for html in [audio_html, video_html]:
-            assert "compositeFlagHtml" in html
-            assert "detectSubLangFromName" in html

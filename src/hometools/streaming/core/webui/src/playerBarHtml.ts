@@ -1,13 +1,12 @@
 /**
  * Player-bar actions + BPM-adjust menu markup.
- * Ported from `_search_filter.py::updatePlayerBarActions` and
- * `_track_render.py::_openBpmAdjustMenu` (markup halves). Wiring stays legacy.
+ * and
  */
 
 type Esc = (s: unknown) => string;
 
 export function playerBarActionsHtml(
-  t: LegacyMediaItem,
+  t: CatalogItem,
   allFolders: string[],
   curFolder: string,
   inMoverMode: boolean,

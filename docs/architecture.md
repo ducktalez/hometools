@@ -11,16 +11,16 @@
 CLI tool collection + two local FastAPI **streaming servers** (audio &
 video) sharing one core, plus a dark-theme PWA UI and native clients.
 
-```
+``
 Input:  media library on disk (audio/video files, optional NAS mount)
 Output: browsable/streamable catalog via REST API + generated web UI
-```
+``
 
 ---
 
 ## 2. Module overview
 
-```
+``
 src/hometools/
 ├── cli.py                    # entry point (`hometools` console script)
 ├── config.py                 # HOMETOOLS_* env vars, single source of paths/ports
@@ -35,15 +35,14 @@ src/hometools/
 │   │   ├── thumbnailer.py, waveform.py, remux.py
 │   │   ├── bpm_hints.py, openapi_schema.py
 │   │   ├── server_factory.py # register_* shared routes: health, PWA, progress, shortcuts, playlists, folder-order, todos, audit list, reveal, delete-file, index list/refresh/status, thumb
-│   │   └── server_utils/     # generates HTML/CSS/JS as Python strings (legacy)
-│   │       ├── css/, player_js/   # split fragments, concatenated at render time
-│   │       └── webui/             # Vite/TypeScript migration target (in progress)
+│   │   └── server_utils/     # HTML skeleton, PWA, SVG icons, static serving (Python)
+│   │   └── webui/            # Vite/TypeScript player UI source (built to core/static/)
 │   ├── audio/                # catalog.py, server.py, sync.py (thin wrapper)
 │   ├── video/                 # catalog.py, server.py, sync.py (thin wrapper)
 │   └── channel/               # HLS "TV channel" server (own architecture)
 └── clients/                   # native apps consuming the JSON API
     └── androidtv/              # Kotlin + Compose for TV + Media3 (active)
-```
+``
 
 ---
 
@@ -64,10 +63,9 @@ src/hometools/
   faststart/remux MP4s, index snapshots, issues, logs). Original media files
   are never touched; invalidation is mtime-based.
 - **`#ht-config` bridge** — `_html.py` embeds one JSON blob (`CFG`) per page;
-  the generated JS reads config/API paths from `CFG` instead of Python
-  string-interpolating each value individually (`_apiBase()` derives every
-  `*_API_PATH` from `CFG.apiPath`). This is the seam the Vite/TS migration
-  is peeling outward from (see §7).
+  the TS app reads config/API paths/icons from it (`config.ts`) instead of
+  Python string-interpolating values; `app.ts` derives every `*_API_PATH`
+  from `cfg.apiPath` (see §7).
 - **Issue pipeline** — background scans/servers feed warnings into
   `issue_registry.py` (`issues/open_issues.json` + append-only event log);
   bundled into `todos`, exposed for monitoring/CLI only, never in the
@@ -77,7 +75,7 @@ src/hometools/
 
 ## 4. Request lifecycle (audio/video server)
 
-```
+``
 startup            → mount static assets, load cached index if fresh, start
                       background thumbnail/waveform generation (daemon threads)
 GET /               → render_media_page() (HTML skeleton + #ht-config + JS)
@@ -87,7 +85,7 @@ GET /thumb          → shadow cache lookup → background-generate if missing
                        webui/src/hoverPreview.ts cycles frames on `[data-preview-path]` hover)
 GET /video/stream   → direct file, or faststart/remux cache, or live fallback
 POST /refresh       → IndexCache.invalidate() → full rebuild
-```
+``
 
 Client side: `localStorage` catalog cache (stale-while-revalidate, 5 min) →
 instant render → silent background fetch reconciles → Service Worker caches
@@ -120,80 +118,61 @@ mirrors `MediaItem.to_dict()`.
 
 ---
 
-## 7. Vite/TypeScript migration (in progress)
+## 7. Web UI (Vite/TypeScript)
 
-Goal: replace the Python-string JS/CSS generators
-(`server_utils/_player_js.py` + `player_js/*.py`, ~6900 lines) module-by-
-module with real `.ts`, built by Vite, served as static assets. CSS side
-is **done** — `_css.py`/`css/*.py` are gone, all rules live in
-`webui/src/styles/*.css`. Backend is unaffected.
+All player JS/CSS is real TypeScript/CSS in `streaming/core/webui/` (Vite),
+built to `core/static/` and served at `/static` by `server_utils/_static.py`.
+Python only renders the HTML skeleton (`_html.py`), PWA files and SVG icons.
+Details + usage: `webui/README.md`.
 
-- `streaming/core/webui/` — Vite project (`src/main.ts` defines `PlayerConfig`
-  and hosts already-ported leaf modules: `pathUtils.ts`, `dupeUtils.ts`,
-  `metricPill.ts`, `breadcrumb.ts`, `smartPlaylist.ts`, `recentMoveTargets.ts`,
-  `catalogCache.ts`, `offlineDownloads.ts`, `langDetect.ts` (+ flag-badge HTML), `episodeGaps.ts`,
-  `catalogQuery.ts`, `clickGuard.ts`, `toast.ts`, `folderCache.ts`,
-  `shuffle.ts`, `offlineUrl.ts`, `search.ts`, `filterChain.ts`, `intro.ts`, `queue.ts`, `folderContents.ts`, `recentlyPlayed.ts`, `folderCards.ts`, `trackRows.ts`, `inlineWidgets.ts`, `panelBodies.ts`, `playerBarHtml.ts`, `rootCards.ts`, `smartEditorModal.ts`, `renderWindow.ts`, `playlistSync.ts` (playlist load + poll sync), `extraFolders.ts` (video extra folders UI), `pip.ts` (video PiP), `playAll.ts` (play-all folder), `bgAudio.ts` (iOS bg-audio mirror), `bgPlayback.ts` (wasPlaying + visibility handler), `mediaSession.ts` (lock-screen controls), `playbackStart.ts` (playItem start chain), `nowPlaying.ts` (playItem UI update), `transport.ts` (play/pause + previous), `modeButtons.ts` (shuffle/repeat buttons), `playerEvents.ts` (player ended/error/pause/play), `catalogFetch.ts` (catalog load + refresh orchestration), `offlineDb.ts` (IndexedDB; name/version = contract with SW in `_pwa.py`); `legacy-globals.d.ts` types the shared
-  cross-fragment globals still owned by the legacy script; `stateBridge.ts`
-  types `window.htState` — the TS-owned state object `playbackState.ts::createPlaybackState`
-  (`_pb` in `_core.py`; all core state: items, index, path, shuffle/repeat, queue,
-  playlists, favorites); `dom.ts` (DOM-ref table) and `viewState.ts` (persisted filter/view state)
-  are the other TS-owned state modules).
-  Hook glue per fragment lives in `*Wiring.ts` factories (`createXWiring(cfg, depsThunk)`,
-  bridged as `window._createXWiring`): `playlistWiring` (`_plw`), `folderWiring` (`_fw`),
-  `searchFilterWiring` (`_sfw`), `trackRenderWiring` (`_trw`), `libraryWiring` (`_lw`),
-  `catalogWiring` (`_cw`), `playbackWiring` (`_pbw`). `cfg` = constants (evaluated eagerly,
-  so every `var` it reads must already exist); `deps` = legacy closure callbacks, resolved per
-  call. The `player_js/*.py` fragments are now one-line wrappers + remaining init calls
-  (`_initPlayerEvents`, `_initTimeline`, `_initToolbar`, `_createRouter`, `_bootstrapApp`).
-  Factories must not call back into legacy during construction (use an explicit `start()`
-  after the `var _xw =` assignment, e.g. `_trw.start()`).
-- `webui/test/*.test.ts` — vitest behaviour tests for ported modules (fake
-  `htState` via `test/helpers.ts`), run via `npm test` and pytest
-  `tests/test_webui_unit.py`.
-- `server_utils/_static.py` mounts the Vite build output at `/static` and
-  injects its script tag right before the legacy inline `<script>` — same
-  execution order as before, zero behavior change. It also emits
-  `<link rel="stylesheet">` tags for the built CSS, placed after the inline
-  `<style>` (now empty — `render_base_css()` always returns `""`, kept only
-  for `_html.py`'s API).
-- CSS ports (`webui/src/styles/*.css`, imported by `main.ts`) — **all done**:
-  `metaPill.css`, `root.css`, `toolsPanel.css`, `modals.css`,
-  `playlistCards.css`, `playerBar.css`, `tableView.css`, `trackList.css`,
-  `videoOverlay.css`.
-- Only dependency-free leaf functions have been ported so far on the JS
-  side; the stateful fragments (`_core.py`, `_library_tools.py`, ...) are
-  blocked by cross-fragment coupling (see `docs/IMPLEMENTATION_PLAN.md` →
-  Design Discussions → "Player-JS-Modulkopplung").
-- Safety net until the JS migration is complete: `tests/test_js_syntax.py`
-  parses the concatenated legacy JS with `esprima`.
+- **Entry:** `src/main.ts` (CSS imports, click guard, hover preview) calls
+  `startApp()` in `src/app.ts`, the composition root: reads `#ht-config`
+  (`config.ts::readConfig`), builds the `create*Wiring` factories and hands
+  them thunk-style deps (late-bound, so cross-wiring cycles resolve per call).
+- **Wiring factories** (`*Wiring.ts`): `playlistWiring`, `folderWiring`,
+  `searchFilterWiring`, `trackRenderWiring`, `libraryWiring`, `catalogWiring`,
+  `playbackWiring`. `cfg` = eager constants; `deps` = callbacks resolved per
+  call. Factories must not call into deps during construction (use `start()`).
+- **State:** `playbackState.ts::createPlaybackState` (`_pb` in `app.ts`: items,
+  index, path, shuffle/repeat, queue, playlists, favorites), exposed as
+  `window.htState` (`stateBridge.ts`); `dom.ts` (DOM refs), `viewState.ts`
+  (persisted filter/view state). `window.originalTitle` is the only other
+  window global (`globals.d.ts`).
+- **Feature modules:** one file per concern (`queue.ts`, `filterChain.ts`,
+  `folderContents.ts`, `trackRows.ts`, `router.ts`, `offlineDb.ts`, ...);
+  pure ones take explicit params. `offlineDb.ts` name/version = contract with
+  the SW in `_pwa.py`.
+- **Icons:** `_svg.py` (`SVG_*`) is the single source; `_html.py` puts them in
+  `#ht-config.icons` (key = suffix, e.g. `PLAY`, `FLAG_DE`). Inline-only icons
+  stay in `app.ts` (`IC_*`).
+- **CSS:** `src/styles/*.css`, one stylesheet linked by `_static.py`.
+- **Tests:** `webui/test/*.test.ts` (vitest, `npm test`; pytest wrapper
+  `tests/test_webui_unit.py`). Typecheck: `npm run typecheck`.
 
 ---
-
 ## 8. Feature location index
 
 Quick "where does X live" lookup — one line each, grouped by area.
 
 **UI/rendering** (`server_utils/`): header `<header>` (`_html.py`, always
 zurück|Home|Breadcrumb|spacer|Tools|Suche, `renderBreadcrumb()` in
-`_queue.py` — inline in header, no separate nav row, no unicode icons) ·
-header state: `_applyHeaderState()` (`player_js/_folder_browse.py`) is the
+`breadcrumb.ts` — inline in header, no separate nav row, no unicode icons) ·
+header state: `_applyHeaderState()` (`app.ts`) is the
 ONLY writer of header controls; the two view entry points
 `_enterTrackListView()` / `_enterFolderGridView()` delegate to it, so every
 view shows the same controls (incl. global search) and differs only in
 content/enabled state · kebab menu `_openCtxMenu()`
-(`player_js/_library_tools.py`) · playlists `playlists.py` +
-`_folder_browse.py` · smart playlists `smart_playlists.py` +
-`_smart_playlists.py` · queue `_queue.py` · tools panel `localStorage['ht-tools']`
+(`ctxMenu.ts`) · playlists `playlists.py` +
+`playlistWiring.ts` · smart playlists `smart_playlists.py` +
+`smartPlaylist.ts` · queue `queue.ts` · tools panel `localStorage['ht-tools']`
 + `body.tool-*` · duplicate detection `dupeUtils.ts` · file mover
-`POST /api/audio/move-file` · windowed rendering `_track_render.py` ·
-catalog cache `localStorage` (`webui/src/catalogCache.ts`, bridged onto
-`window` by `main.ts`, TTL `CATALOG_MAX_AGE_MS`) · skip-intro
+`POST /api/audio/move-file` · windowed rendering `trackRenderWindow.ts` ·
+catalog cache `localStorage` (`webui/src/catalogCache.ts`, TTL `CATALOG_MAX_AGE_MS`) · skip-intro
 `GET/POST/DELETE /api/video/intro` · video extra folders (outside library;
 virtual top-level folder `<alias>/…`, stored `<cache>/extra_folders/video.json`)
 `core/extra_folders.py` + `GET/POST/DELETE /api/video/folders` +
 `video/catalog.py::_collect_video_entries` + `resolve_video_path_extra` +
-tools-row buttons `rootCards.ts` / `_queue.py::addExtraFolder` (no YAML overrides
+tools-row buttons `rootCards.ts` / `extraFolders.ts` (no YAML overrides
 for extra folders) · BPM `audio/metadata.py` +
 `audio/bpm.py` + `bpm_hints.py` + `metricPill.ts` · video hover preview
 (sprite frames on thumbnail hover) `webui/src/hoverPreview.ts` +
@@ -216,8 +195,7 @@ check; wired as PyCharm before-launch task) · webui JS unit tests
 by `streaming/setup.py::generate_pycharm_configs` + `hometools setup-pycharm`
 (`.idea/` is git-ignored, so nothing is committed).
 
-**Icons**: `_svg.py` (`SVG_*`, Python) ↔ `IC_*` (JS, `player_js/_core.py`
-header) — always keep 1:1, no independent literals (past bug, see git log).
+**Icons**: `_svg.py` (`SVG_*`) is the single source; delivered to the app via `#ht-config.icons` — no independent literals in TS (past bug, see git log).
 
 ---
 

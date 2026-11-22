@@ -1,6 +1,4 @@
 /**
- * Player DOM references. Ported from the `document.getElementById(...)` block in
- * `player_js/_core.py`. One lookup table: legacy binds `var x = _dom.x`, ported
  * modules can call `getDom()` instead of taking elements via hooks.
  * Missing element -> `null` (never throws).
  */

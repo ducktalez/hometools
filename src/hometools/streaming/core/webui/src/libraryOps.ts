@@ -1,6 +1,6 @@
 /**
  * Library mutations in the UI: delete (list / duplicate panel), gone-track
- * removal, move-to-folder. Ported from `player_js/_library_tools.py`
+ * removal, move-to-folder.
  * (_deleteTrackFromList, _deleteDuplicateFile, _removeGoneTrack,
  * moveFileToFolder). Player state via htState; `_deletePending` is private
  * here (only these functions read it); DOM/render side via hooks.
@@ -16,7 +16,7 @@ export interface LibraryOpsHooks {
   deleteApiPath: string;
   moveApiPath: string;
   toast(msg: string): void;
-  /** Dupe map + folder cache invalidation (legacy). */
+  /** Dupe map + folder cache invalidation (app). */
   invalidateCaches(): void;
   saveCatalogCache(items: unknown[]): void;
   applyFilter(): void;

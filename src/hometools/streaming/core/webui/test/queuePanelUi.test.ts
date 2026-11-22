@@ -39,7 +39,7 @@ describe("renderQueuePanel", () => {
       querySelectorAll: (sel: string) => (sel === ".queue-item" ? [item] : [rm]),
     } as unknown as HTMLElement;
     const clearBtn = { style: { display: "none" } } as unknown as HTMLElement;
-    const h = { ...base(), body, clearBtn, queue: [{ relative_path: "a", title: "A" } as LegacyMediaItem] };
+    const h = { ...base(), body, clearBtn, queue: [{ relative_path: "a", title: "A" } as CatalogItem] };
     renderQueuePanel(h);
     expect(clearBtn.style.display).toBe("");
     expect(h.initDnd).toHaveBeenCalled();

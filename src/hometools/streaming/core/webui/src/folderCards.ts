@@ -1,6 +1,5 @@
 /**
- * Folder-grid card HTML. Ported from `_folder_browse.py` (folder + file
- * cards in the render loop). Pure: all legacy globals come in via `opts`.
+ * Folder-grid card HTML. (folder + file
  */
 
 import type { FolderEntry } from "./folderContents";
@@ -87,7 +86,7 @@ export function folderCardHtml(f: FolderEntry, o: FolderCardOpts): string {
   );
 }
 
-export function fileCardHtml(it: LegacyMediaItem, idx: number, o: FolderCardOpts): string {
+export function fileCardHtml(it: CatalogItem, idx: number, o: FolderCardOpts): string {
   const esc = o.escHtml;
   const thumbSrc =
     o.viewMode !== "list"

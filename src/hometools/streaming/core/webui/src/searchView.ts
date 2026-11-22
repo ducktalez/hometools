@@ -1,5 +1,5 @@
 /**
- * Global-search view — ported from `player_js/_search_filter.py`
+ * Global-search view
  * (globalSearch, renderSearchResults, navigateToSearchFolder,
  * navigateToSearchResult, exitGlobalSearch). Data computation lives in
  * `search.ts`, row markup in `trackRows.ts`. Shared state (`allItems`,
@@ -27,7 +27,7 @@ export interface SearchViewHooks {
   /** `_enterTrackListView(opts)` */
   enterTrackListView(opts: Record<string, unknown>): void;
   showFolderView(): void;
-  playItem(item: LegacyMediaItem, idx: number): void;
+  playItem(item: CatalogItem, idx: number): void;
   markActive(): void;
 }
 
@@ -65,7 +65,7 @@ export function exitGlobalSearch(h: SearchViewHooks): void {
   h.showFolderView();
 }
 
-export function renderSearchResults(results: LegacyMediaItem[], folderMatches: FolderMatch[] | null, h: SearchViewHooks): void {
+export function renderSearchResults(results: CatalogItem[], folderMatches: FolderMatch[] | null, h: SearchViewHooks): void {
   const trackList = h.trackList();
   if (!trackList) return;
   const folders = folderMatches || [];

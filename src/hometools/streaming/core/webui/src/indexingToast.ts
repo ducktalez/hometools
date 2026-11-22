@@ -1,5 +1,5 @@
 /**
- * Indexing toast (library scan in progress). Ported from `_core.py`
+ * Indexing toast (library scan in progress).
  * (`showIndexingToast` / `hideIndexingToast`). Element + per-run dismissal
  * state are module-private. Dismissal persists in localStorage keyed by the
  * run's start time: survives reload, new run shows the toast again.

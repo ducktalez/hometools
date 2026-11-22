@@ -1,6 +1,6 @@
 /**
  * Catalog refresh orchestration: background index polling, silent refresh on
- * navigation, manual refresh. Ported from `player_js/_queue.py`
+ * navigation, manual refresh.
  * (scheduleBackgroundRefresh/forceBackgroundRefresh/_triggerSilentRefresh/
  * _refreshPoll/refreshCatalog). Timer + in-flight flag private; items/path via
  * htState; cache + view side effects via hooks.
@@ -16,15 +16,15 @@ export interface CatalogFetchHooks {
   apiPath: string;
   showIndexingToast(detail: string, cache: unknown): void;
   hideIndexingToast(): void;
-  applyLocalMutations(items: LegacyMediaItem[]): LegacyMediaItem[];
+  applyLocalMutations(items: CatalogItem[]): CatalogItem[];
   /** Invalidate dupe map + folder cache. */
   invalidateCaches(): void;
-  saveCache(items: LegacyMediaItem[]): void;
+  saveCache(items: CatalogItem[]): void;
   clearCache(): void;
   clearLocalDeleted(): void;
   resetRatingRefresh(): void;
   showFolderView(): void;
-  itemsUnder(path: string): LegacyMediaItem[];
+  itemsUnder(path: string): CatalogItem[];
   applyFilter(): void;
   toast(msg: string): void;
 }
@@ -44,7 +44,7 @@ function fetchJson(url: string, init?: RequestInit): Promise<any> {
   return fetch(url, init).then((r) => (r.ok ? r.json() : null));
 }
 
-function itemsOf(data: any): LegacyMediaItem[] {
+function itemsOf(data: any): CatalogItem[] {
   return data && Array.isArray(data.items) ? data.items : [];
 }
 
@@ -184,7 +184,7 @@ export function refreshCatalog(h: CatalogFetchHooks): void {
 
 
 export interface InitialCatalogHooks extends CatalogFetchHooks {
-  loadCache(): LegacyMediaItem[] | null;
+  loadCache(): CatalogItem[] | null;
   showLoadingState(msg: string): void;
   showCatalogLoadError(msg: string): void;
   /** False when the tools panel turned auto-refresh off. */
@@ -204,7 +204,7 @@ function scheduleInitialRetry(h: InitialCatalogHooks, reason: string): void {
  * Stale-while-revalidate startup load: serve a fresh localStorage snapshot
  * instantly (silent verify fetch follows), else fetch with loading state.
  */
-export function loadInitialCatalog(h: InitialCatalogHooks): Promise<LegacyMediaItem[]> {
+export function loadInitialCatalog(h: InitialCatalogHooks): Promise<CatalogItem[]> {
   const s = getState();
   if (!s) return Promise.resolve([]);
   if (s.allItems.length) {
@@ -250,7 +250,7 @@ export function loadInitialCatalog(h: InitialCatalogHooks): Promise<LegacyMediaI
         console.info("Initial catalog still building (empty):", detail);
         h.showIndexingToast(detail, data.cache);
         scheduleInitialRetry(h, detail);
-        return [] as LegacyMediaItem[];
+        return [] as CatalogItem[];
       }
       if (_retryTimer) {
         clearTimeout(_retryTimer);
@@ -275,7 +275,7 @@ export function loadInitialCatalog(h: InitialCatalogHooks): Promise<LegacyMediaI
     .catch((err) => {
       console.error("Initial catalog load failed:", err);
       h.showCatalogLoadError(err && err.message ? err.message : "Library could not be loaded.");
-      return [] as LegacyMediaItem[];
+      return [] as CatalogItem[];
     });
 }
 /** Test helper: reset retry state. */

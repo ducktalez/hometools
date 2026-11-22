@@ -1,7 +1,4 @@
 /**
- * Picture-in-Picture for the video player. Ported from
- * `player_js/_library_tools.py` (requestPiP/exitPiP + PiP wiring).
- * `_active` is module-private; legacy reads `isPipActive()` / calls `exitPip()`.
  */
 
 export interface PipHooks {
@@ -10,7 +7,7 @@ export interface PipHooks {
   button: HTMLElement | null;
   isVideoPlayer: boolean;
   isIOS: boolean;
-  /** Legacy `wasPlaying` flag: resume inline after leaving PiP. */
+  /** app `wasPlaying` flag: resume inline after leaving PiP. */
   wasPlaying(): boolean;
 }
 

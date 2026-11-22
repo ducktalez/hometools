@@ -1,34 +1,23 @@
 /**
- * Path/filename helpers — ported from `player_js/_search_filter.py`.
+ * Path/filename helpers
  *
  * Chosen as a Vite/TS migration Phase 5 "opportunistic port" slice
  * (docs/IMPLEMENTATION_PLAN.md → "Vite/TypeScript migration"): both
  * functions are pure (string in, string/boolean out), reference only the
- * `NATIVE_EXT` constant defined in the same original fragment (moved here
  * alongside them), and have zero dependency on the shared player state
- * described in `legacy-globals.d.ts` — the precondition that made
+ * described in `globals.d.ts` — the precondition that made
  * `fmtTime`/`escHtml`/`formatBytes` (main.ts) and the dupe-detection
  * helpers (dupeUtils.ts) safe to port before the bigger, stateful
- * fragments (`_core.py`, `_library_tools.py`, ...).
  *
- * `filenameFromPath` was originally declared in `_search_filter.py` but
- * called from `_track_render.py` — a concrete example of the cross-
- * fragment coupling the Design Discussion describes; it "just worked"
- * because both fragments concatenate into one shared script scope. Now
- * that it's bridged onto `window` (see main.ts), every legacy call site
  * (bare `filenameFromPath(...)`) keeps resolving unchanged through the
  * normal JS scope chain — no call-site edits needed.
  *
- * `parentPath`/`leafName` (originally in `player_js/_queue.py`, part of
  * the "UI-Template-Vereinheitlichung" header work — see
  * docs/IMPLEMENTATION_PLAN.md) were added in the same opportunistic-port
  * pass: `parentPath` is fully pure; `leafName` reads `window.originalTitle`
- * `leafName` (a read-only global set once in `_core.py`, now declared in
- * `legacy-globals.d.ts`) and calls the already-ported `cleanFolderName`
  * (breadcrumb.ts) — both preconditions the Opportunistic migration rule
  * requires before a stateful-adjacent function qualifies.
  *
- * `currentFolderOf` (originally `_currentFolderOf` in `_library_tools.py`,
  * file-mover widget) is pure and added in the same pass.
  */
 

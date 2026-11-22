@@ -1,5 +1,5 @@
 /**
- * Shared view-entry points — ported from `player_js/_folder_browse.py`
+ * Shared view-entry points
  * (`_applyHeaderState`, `_enterTrackListView`, `_enterFolderGridView`).
  *
  * `applyHeaderState` is THE single place that touches header controls: every
@@ -8,7 +8,6 @@
  * state differ). Do not set header controls anywhere else.
  *
  * State via `htState` (currentPath, allItems, currentIndex); DOM elements and
- * legacy callbacks come in through `ViewHooks` (no closure reads).
  */
 
 import { getState } from "./stateBridge";

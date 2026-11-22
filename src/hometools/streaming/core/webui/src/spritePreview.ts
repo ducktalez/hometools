@@ -1,6 +1,4 @@
 /**
- * Video scrubber sprite-sheet preview. Ported from `_player_js.py`
- * (`sprite_preview_js`). Sprite meta + image are module-private; legacy
  * calls `loadSpriteData(relPath)` (via playItem hook) after each item start.
  */
 

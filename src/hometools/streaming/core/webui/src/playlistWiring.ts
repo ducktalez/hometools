@@ -1,8 +1,6 @@
 /**
  * Playlist hook wiring. Replaces the hook-builder glue formerly in
- * `player_js/_smart_playlists.py`: binds the playlist modules (views,
  * actions, reorder, picker, editor, drag-drop) to CFG paths and to the
- * remaining legacy callbacks. `deps` is a thunk so legacy functions are
  * resolved at call time (declaration order independent).
  */
 
@@ -38,7 +36,7 @@ export interface PlaylistWiringCfg {
   smartIcon: string;
 }
 
-/** Legacy callbacks still owned by the closure script. */
+/** app callbacks still owned by the app closure. */
 export interface PlaylistWiringDeps {
   toast(msg: string): void;
   esc(s: unknown): string;
@@ -46,12 +44,12 @@ export interface PlaylistWiringDeps {
   applyFilter(force?: boolean): void;
   enterTrackListView(opts: { title: string }): void;
   playTrack(index: number): void;
-  sortFavoritesByOrder(items: LegacyMediaItem[]): LegacyMediaItem[];
+  sortFavoritesByOrder(items: CatalogItem[]): CatalogItem[];
   loadFavoritesOrder(): string[];
   loadFavoritesOrderAsync(cb: (serverOrder: string[]) => void): void;
   saveFavoritesOrder(paths: string[]): void;
   saveFolderOrder(folderPath: string, paths: string[]): void;
-  renderTracks(items: LegacyMediaItem[], force: boolean): void;
+  renderTracks(items: CatalogItem[], force: boolean): void;
 }
 
 export function createPlaylistWiring(cfg: PlaylistWiringCfg, deps: () => PlaylistWiringDeps) {

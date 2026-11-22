@@ -1,6 +1,4 @@
 /**
- * Filter chips + filter/sort/render pipeline — ported from
- * `player_js/_search_filter.py` (updateFilterChips, applyFilter). Pure parts
  * live in `filterChain.ts`, `catalogQuery.ts::sortTracks` and
  * `filterPopover.ts` (chip views). `playlistItems` via `htState`; filter
  * state, DOM elements and render via `FilterApplyHooks`.
@@ -34,7 +32,7 @@ export interface FilterApplyHooks {
   savedFavorites(): Record<string, boolean>;
   /** truthiness of `_currentPlaylistId` */
   hasCustomPlaylist(): boolean;
-  renderTracks(items: LegacyMediaItem[], force?: boolean): void;
+  renderTracks(items: CatalogItem[], force?: boolean): void;
 }
 
 function applyChip(btn: HTMLElement, v: { html: string; active: boolean; title: string }): void {
@@ -63,7 +61,7 @@ export function updateFilterChips(h: FilterApplyHooks): void {
 }
 
 /** Items to show for the current filter/search/sort settings. */
-export function computeFilteredItems(h: FilterApplyHooks): LegacyMediaItem[] {
+export function computeFilteredItems(h: FilterApplyHooks): CatalogItem[] {
   const st = getState();
   const base = st ? st.playlistItems : [];
   // Safety net: strip locally-deleted paths however playlistItems was last set.

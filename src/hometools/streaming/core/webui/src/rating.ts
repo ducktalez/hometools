@@ -1,9 +1,8 @@
 /**
  * Player/list rating: star render, local patching, POST + undo toast.
- * Ported from `player_js/_library_tools.py` (renderPlayerRating,
+ * (renderPlayerRating,
  * _patchAllItemsRating, _updateTrackRatingBar, setRating,
  * showRatingToastWithUndo, undoRating). Just-rated timer private here;
- * `justRatedPath` read by legacy filter -> `htState.justRatedPath`.
  */
 
 import { getState } from "./stateBridge";
@@ -22,7 +21,7 @@ export interface RatingHooks {
   rebuildShuffleQueue(idx: number): void;
 }
 
-type Item = LegacyMediaItem;
+type Item = CatalogItem;
 const JUST_RATED_MS = 5000;
 let _justRatedTimer: ReturnType<typeof setTimeout> | null = null;
 

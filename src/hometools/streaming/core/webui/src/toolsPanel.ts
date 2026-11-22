@@ -1,7 +1,4 @@
 /**
- * Tools panel (tool-mode toggles, header split-pill, dupe link) — ported from
- * `player_js/_track_render.py`. Tool state (`ht-tools` in localStorage) is
- * private here; legacy reads it via `toolFlags()` / `anyToolActive()`.
  * Side effects on the rest of the app come in via `ToolsPanelHooks`.
  */
 
@@ -25,7 +22,7 @@ export interface ToolsPanelHooks {
   applyViewMode(): void;
   applyFilter(force?: boolean): void;
   updatePlayerBarActions(): void;
-  /** Legacy `_invalidateDupeMap` (also resets the render guard). */
+  /** app `_invalidateDupeMap` (also resets the render guard). */
   invalidateDupeMap(): void;
   refreshCatalog(): void;
   playDuplicates(): void;

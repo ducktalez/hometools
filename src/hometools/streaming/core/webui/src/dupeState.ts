@@ -1,7 +1,6 @@
 /**
- * Lazy duplicate index cache. Ported from `player_js/_library_tools.py`
+ * Lazy duplicate index cache.
  * (_buildDuplicateMap/_ensureDupeMap/_getDupeCount/_invalidateDupeMap) and the
- * `_dupeMap/_dupePaths/_dupeSafety` vars in `_track_render.py`. State private.
  */
 
 import { buildDuplicateIndex } from "./dupeUtils";

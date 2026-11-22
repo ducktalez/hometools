@@ -1,10 +1,8 @@
 /**
  * Skip-Intro pure helpers.
  *
- * Ported from `player_js/_core.py` (`_setCurrentIntro` parse half,
+ * (`_setCurrentIntro` parse half,
  * `_updateSkipIntroBtn` mode decision, `_patchIntroLocal`). DOM updates,
- * fetch and IIFE state vars (`_introStart`/`_introEnd`/`_curIsSeries`/
- * `_introBtnMode`) stay in `_core.py`. Explicit params, no window reads.
  */
 
 export type IntroBtnMode = "" | "skip" | "set";
@@ -16,7 +14,7 @@ export interface IntroInfo {
 }
 
 /** Intro markers + series flag of an item. Missing/invalid → 0/false. */
-export function parseIntro(t: LegacyMediaItem | null | undefined): IntroInfo {
+export function parseIntro(t: CatalogItem | null | undefined): IntroInfo {
   if (!t) return { start: 0, end: 0, isSeries: false };
   const start = Math.max(0, parseFloat(String(t.intro_start)) || 0);
   const end = Math.max(0, parseFloat(String(t.intro_end)) || 0);
@@ -47,11 +45,10 @@ export function introButtonMode(
 
 /**
  * Write new markers onto every item with `relPath` in the given arrays.
- * Mutates in place on purpose — legacy arrays share item objects, so the
  * updated marker must be visible everywhere without a re-fetch.
  */
 export function patchIntroLocal(
-  arrays: Array<LegacyMediaItem[] | null | undefined>,
+  arrays: Array<CatalogItem[] | null | undefined>,
   relPath: string,
   start: number,
   end: number

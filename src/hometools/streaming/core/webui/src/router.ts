@@ -1,5 +1,5 @@
 /**
- * URL routing / deep linking. Ported from `player_js/_library_tools.py`.
+ * URL routing / deep linking.
  * The URL mirrors the current view (view/path/id/track/q + sort/filter/view-mode
  * + tools panel) so reload / bookmarks / share-links restore navigation state.
  * Shared state via htState; UI filter state + view actions via hooks.
@@ -35,9 +35,9 @@ export interface RouterHooks {
   setUi(p: Partial<UiState>): void;
   toolsOpen(): boolean;
   openToolsPanel(): void;
-  contentsAt(path: string): { files: LegacyMediaItem[] };
-  itemsUnder(path: string): LegacyMediaItem[];
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean, startIndex?: number): void;
+  contentsAt(path: string): { files: CatalogItem[] };
+  itemsUnder(path: string): CatalogItem[];
+  showPlaylist(items: CatalogItem[], autoplay: boolean, startIndex?: number): void;
   showFolderView(): void;
   showUserPlaylistView(id: string): void;
   openOfflineLibrary(): void;

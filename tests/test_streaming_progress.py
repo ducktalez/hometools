@@ -13,6 +13,7 @@ from hometools.streaming.core.progress import (
     load_progress,
     save_progress,
 )
+from tests._webui import all_ts
 
 
 def _extract_ht_config(page):
@@ -275,9 +276,8 @@ def test_recent_api_path_injected_in_js():
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
-    from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
+    js = all_ts()
     assert "RECENT_API_PATH = _apiBase() + '/recent'" in js
 
     client = TestClient(create_app())
@@ -309,9 +309,9 @@ def test_audiobook_dirs_injected_in_js():
     """AUDIOBOOK_DIRS is now sourced from CFG.audiobookDirs (Phase 3);
     verify via the real #ht-config JSON blob (populated from
     hometools.config.get_audiobook_dirs())."""
-    from hometools.streaming.core.server_utils import render_media_page, render_player_js
+    from hometools.streaming.core.server_utils import render_media_page
 
-    js = render_player_js()
+    js = all_ts()
     assert "AUDIOBOOK_DIRS = CFG.audiobookDirs" in js
 
     page = render_media_page(title="T", emoji="", items_json="[]", media_element_tag="audio", api_path="/api/audio/tracks")
@@ -322,9 +322,7 @@ def test_audiobook_dirs_injected_in_js():
 
 
 def test_load_recently_played_js_function():
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js()
+    js = all_ts()
     assert "loadRecentlyPlayed" in js
     assert "RECENT_API_PATH" in js
     from pathlib import Path

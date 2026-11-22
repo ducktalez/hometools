@@ -26,12 +26,9 @@
  *   design, via a single CSS `linear-gradient` driven by two custom
  *   properties (`--pill-fill` / `--pill-color`) set inline per pill.
  *
- * Bridge pattern: see main.ts's header comment. This module's render
  * function is pure (no DOM mutation, no fetch) — a deliberate choice
  * mirroring the Phase 5 "dependency-free leaf function" precedent
  * (fmtTime/escHtml/formatBytes). The click-to-calculate *behavior*
- * (fetch + in-memory state sync + toast) stays in the legacy
- * Python-generated script for now because it needs `filteredItems`/
  * `allItems`/`showToast` — identifiers private to that script's own
  * closure (not reachable from here) — see the Design Discussion on
  * player-JS module coupling for why that boundary is still there.
@@ -61,7 +58,7 @@ export interface MetricPillConfig {
 }
 
 export interface MetricPillOptions {
-  /** Zero-based row index — forwarded as `data-index` for the legacy click delegation handler. */
+  /** Zero-based row index — forwarded as `data-index` for the app click delegation handler. */
   index?: number;
   /** `relative_path` of the track — forwarded as `data-relative-path`. */
   relativePath?: string;
@@ -69,7 +66,7 @@ export interface MetricPillOptions {
    * — a grey "?" calculate affordance when the value is missing (`<= 0`),
    * or the normal colored pill made clickable (`.meta-pill--editable`)
    * when a value is already known, so a click opens the BPM-adjust popup
-   * (`player_js/_track_render.py::_openBpmAdjustMenu`) either way. */
+    */
   calcEnabled?: boolean;
 }
 
@@ -144,7 +141,6 @@ export function interpolateColor(stops: MetricPillColorStop[], t: number): strin
  * (not just "unknown"): when true, a *known* value also renders as a
  * `<button>` (`.meta-pill--editable`, same `data-action="calc-<key>"`
  * attribute as the "unknown" button) so the player UI's BPM-adjust popup
- * (`player_js/_track_render.py::_openBpmAdjustMenu`) can open from a
  * click on an already-analyzed pill, not only an unanalyzed one.
  */
 export function renderMetricPill(value: number | null | undefined, cfg: MetricPillConfig, opts: MetricPillOptions = {}): string {

@@ -1,6 +1,6 @@
 /**
  * Recently-played strip helpers.
- * Ported from `_track_render.py::loadRecentlyPlayed` (card HTML + click-folder pick).
+ * (card HTML + click-folder pick).
  */
 
 import { getState } from "./stateBridge";
@@ -15,7 +15,7 @@ export interface RecentItem {
   [key: string]: unknown;
 }
 
-/** Card HTML for the recent strip. `escHtml` + `placeholder` explicit (legacy globals). */
+/** Card HTML for the recent strip. `escHtml` + `placeholder` explicit (app globals). */
 export function recentCardsHtml(
   items: RecentItem[],
   escHtml: (s: unknown) => string,
@@ -44,11 +44,11 @@ export function recentCardsHtml(
 export interface RecentPlayContext {
   folder: string;
   /** Direct children of `folder`; `[found]` fallback when empty. */
-  folderItems: LegacyMediaItem[];
+  folderItems: CatalogItem[];
 }
 
 /** Folder + sibling items for a recent card click. `null` when path not in `allItems`. */
-export function recentPlayContext(path: string, allItems: LegacyMediaItem[]): RecentPlayContext | null {
+export function recentPlayContext(path: string, allItems: CatalogItem[]): RecentPlayContext | null {
   const found = allItems.find((it) => it.relative_path === path);
   if (!found) return null;
   const slash = path.lastIndexOf("/");
@@ -68,8 +68,8 @@ export interface RecentHooks {
   esc(s: unknown): string;
   placeholder: string;
   player: HTMLMediaElement;
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean): void;
-  playItem(item: LegacyMediaItem, idx: number): void;
+  showPlaylist(items: CatalogItem[], autoplay: boolean): void;
+  playItem(item: CatalogItem, idx: number): void;
 }
 
 /** Open the folder of a recent card, play it, seek to the saved position. */

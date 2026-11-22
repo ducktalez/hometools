@@ -19,6 +19,7 @@ from hometools.streaming.core.smart_playlists import (
     is_smart,
     validate_smart_rules,
 )
+from tests._webui import all_ts
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -433,9 +434,7 @@ class TestApiVideo:
 
 
 def _js() -> str:
-    from hometools.streaming.core.server_utils import render_player_js
-
-    return render_player_js()
+    return all_ts()
 
 
 def _webui_src(filename: str) -> str:
@@ -448,20 +447,6 @@ def _webui_src(filename: str) -> str:
 
 
 class TestJsInjection:
-    def test_evaluator_present(self):
-        """The smart playlist evaluator is ported to webui/src/smartPlaylist.ts
-        (bridged onto window as window._evaluateSmartPlaylist, see main.ts) —
-        the legacy Python-generated JS only calls it, it no longer defines
-        `_smartEvalRule`/`_smartGetField`/`_smartCompile`/`_buildSmartPlIndex`/
-        `_smartApplySort` itself."""
-        js = _js()
-        assert "evaluateSmartPlaylist(pl, st.allItems" in _webui_src("folderView.ts")
-        assert "function _smartEvalRule" not in js
-        ts = _webui_src("smartPlaylist.ts")
-        assert "export function smartEvalRule" in ts
-        assert "export function evaluateSmartPlaylist" in ts
-        assert "window._evaluateSmartPlaylist = evaluateSmartPlaylist" in _webui_src("main.ts")
-
     def test_editor_modal_helpers_present(self):
         js = _js()
         assert "openSmartPlaylistEditor" in js

@@ -1,19 +1,15 @@
 /**
- * Duplicate-detection formatting/key helpers — ported from
- * `player_js/_track_render.py`. Same "opportunistic port" rationale as
  * `pathUtils.ts` (see that file's header comment): all five functions are
  * pure and reference only each other, not any shared player state.
  *
  * `_dupeKey()`/`_normalizeStem()` build the `Map<key, [indices]>` used by
  * the client-side-only duplicate detection feature (docs/architecture.md
  * → "Duplicate detection"); `_fmtDuration`/`_fmtFileSize`/`_fmtDate` format
- * the dupe-panel's per-item metadata. Bridged onto `window` in main.ts —
- * legacy call sites in `player_js/_library_tools.py` (dupe panel rendering)
  * keep working unchanged via the scope-chain lookup.
  */
 
 /** Minimal shape needed for duplicate-key computation — see
- * `legacy-globals.d.ts`'s `LegacyMediaItem` for the full contract. */
+ * `globals.d.ts`'s `CatalogItem` for the full contract. */
 export interface DupeKeyItem {
   title?: string;
   artist?: string;
@@ -143,8 +139,6 @@ export interface DuplicateIndex {
   safety: Record<string, boolean>;
 }
 /**
- * Group `items` by `_dupeKey`, keep groups of 2+. Ported from
- * `_library_tools.py::_buildDuplicateMap` (allItems now explicit; legacy
  * assigns the result to _dupeMap/_dupePaths/_dupeSafety).
  */
 export function buildDuplicateIndex(items: Array<DupeKeyItem & DupeSafetyItem>): DuplicateIndex {

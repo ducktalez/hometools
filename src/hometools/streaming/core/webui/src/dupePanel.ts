@@ -1,8 +1,5 @@
 /**
- * Duplicate panel (open/close/wiring + item collection) — ported from
- * `player_js/_library_tools.py` (openDupePanel, closeDupePanel,
  * playDuplicates' collection step). Dupe state (`_dupeMap` etc.) stays in
- * legacy (read by track rendering) and is passed in; actions via hooks.
  */
 
 import { dupePanelBodyHtml } from "./panelBodies";
@@ -83,8 +80,8 @@ export function openDupePanel(d: DupePanelData, h: DupePanelHooks): void {
 }
 
 export interface DupeRowPlayHooks {
-  itemsUnder(path: string): LegacyMediaItem[];
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean, startIdx: number): void;
+  itemsUnder(path: string): CatalogItem[];
+  showPlaylist(items: CatalogItem[], autoplay: boolean, startIdx: number): void;
   playTrack(idx: number): void;
 }
 /** Dupe row click: open item's folder (no autoplay), then play its row. */
@@ -127,7 +124,7 @@ export function playDuplicates(dupeMap: DupeMap, h: PlayDuplicatesHooks): void {
   st.inPlaylist = true;
   st.currentPlaylistId = "__duplicates__";
   st.currentPath = "";
-  st.playlistItems = dupeItems as unknown as LegacyMediaItem[];
+  st.playlistItems = dupeItems as unknown as CatalogItem[];
   h.enterTrackListView({
     title: "Duplikate (" + keys.length + " Gruppen)",
     playAllDisabled: true,

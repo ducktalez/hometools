@@ -1,5 +1,5 @@
 /**
- * "Play all" for the current folder. Ported from `player_js/_search_filter.py`
+ * "Play all" for the current folder.
  * (`playAllCurrent`). State via `htState`, view effects via hooks.
  */
 
@@ -8,9 +8,9 @@ import { itemsUnder } from "./catalogQuery";
 import { rebuildShuffleQueue } from "./shuffle";
 
 export interface PlayAllHooks {
-  /** Direct files of a folder (legacy `contentsAt(path).files`). */
-  filesAt(path: string): LegacyMediaItem[];
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean): void;
+  /** Direct files of a folder (app `contentsAt(path).files`). */
+  filesAt(path: string): CatalogItem[];
+  showPlaylist(items: CatalogItem[], autoplay: boolean): void;
 }
 
 export function playAllCurrent(hooks: PlayAllHooks): void {
@@ -26,7 +26,7 @@ export interface FolderNavHooks {
   triggerSilentRefresh(): void;
   /** Last played item (localStorage), or null. */
   loadLastPlayedLocal(): { path?: string } | null;
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean, startIdx?: number): void;
+  showPlaylist(items: CatalogItem[], autoplay: boolean, startIdx?: number): void;
 }
 
 /** Descend into subfolder `name`; always fetch fresh catalog. */
@@ -62,9 +62,9 @@ export function playAllIn(name: string, hooks: FolderNavHooks): void {
 
 export interface ShowPlaylistHooks {
   destroyPlaylistDragDrop(): void;
-  sortByFolderOrder(path: string, items: LegacyMediaItem[]): LegacyMediaItem[];
+  sortByFolderOrder(path: string, items: CatalogItem[]): CatalogItem[];
   enterTrackListView(opts: { backDisabled: boolean; resetIndex: boolean }): void;
-  refreshFolderRatings(items: LegacyMediaItem[]): void;
+  refreshFolderRatings(items: CatalogItem[]): void;
   playTrack(idx: number): void;
   restoreLastEpisode(): void;
   loadFolderOrderAsync(path: string, cb: (order: string[]) => void): void;
@@ -75,7 +75,7 @@ export interface ShowPlaylistHooks {
 
 /** Folder-leaf playlist view (+ optional autoplay). State via htState. */
 export function showPlaylist(
-  items: LegacyMediaItem[],
+  items: CatalogItem[],
   autoplay: boolean | undefined,
   startIdx: number | undefined,
   hooks: ShowPlaylistHooks,

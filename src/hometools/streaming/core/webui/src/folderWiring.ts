@@ -1,9 +1,7 @@
 /**
  * Folder-browse hook wiring. Replaces the hook-builder glue formerly in
- * `player_js/_folder_browse.py`: folder view, language picker, folder
  * navigation, view-entry/header state, folder playlist, resume, back and
  * global-search wiring. The modules reference each other directly here, so
- * only the remaining legacy callbacks come in via `deps` (a thunk, resolved
  * per call, so declaration order in the closure script does not matter).
  */
 
@@ -204,7 +202,7 @@ export function createFolderWiring(cfg: FolderWiringCfg, deps: () => FolderWirin
     });
   }
 
-  function showPlaylistW(items: LegacyMediaItem[], autoplay?: boolean, startIdx?: number): void {
+  function showPlaylistW(items: CatalogItem[], autoplay?: boolean, startIdx?: number): void {
     const d = deps();
     showPlaylist(items, autoplay, startIdx, {
       destroyPlaylistDragDrop: d.destroyPlaylistDragDrop,

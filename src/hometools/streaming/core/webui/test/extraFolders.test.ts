@@ -26,7 +26,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("loadExtraFolders", () => {
   it("stores aliases, re-renders root when changed", async () => {
-    installState({ allItems: [{ relative_path: "a/b.mp4" } as LegacyMediaItem] });
+    installState({ allItems: [{ relative_path: "a/b.mp4" } as CatalogItem] });
     vi.stubGlobal("fetch", vi.fn(() => res(true, { items: [{ alias: "xham" }] })));
     const h = hooks();
     await loadExtraFolders(h);

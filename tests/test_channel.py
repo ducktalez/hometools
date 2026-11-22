@@ -1322,8 +1322,8 @@ class TestSessionEndpoint:
         s2 = c2.get("/api/channel/session").json()["session"]
         assert s1 != s2
 
-    def test_session_check_in_player_js(self, tmp_path):
-        """Player JS should periodically check for server restarts."""
+    def test_session_check_in_page(self, tmp_path):
+        """Page should periodically check for server restarts."""
         app = _create_test_app_with_content(tmp_path)
         client = TestClient(app)
         html = client.get("/").text

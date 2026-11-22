@@ -1,6 +1,6 @@
 /**
  * Desktop row click: select/highlight without starting playback.
- * Ported from `player_js/_search_filter.py`. Zustandslos.
+ * Zustandslos.
  */
 
 export function selectTrackRow(trackList: ParentNode, idx: number): void {

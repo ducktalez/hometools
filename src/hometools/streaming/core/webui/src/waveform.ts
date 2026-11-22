@@ -1,8 +1,5 @@
 /**
- * Player-bar waveform (audio) / progress indicator (video). Ported from
- * `_player_js.py` (classic layout). Peaks come from the server-side cache
  * (`GET <api>/waveform?path=`), never from decoding the audio client-side.
- * Peak state + abort controller are module-private; legacy calls
  * `drawWaveform(frac)` / `generateWaveform(url, relPath)` through window.
  */
 

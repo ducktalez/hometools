@@ -1,14 +1,9 @@
 /**
  * Click-distance guard: suppress click handlers when pointer moved (drag).
  *
- * Ported from `player_js/_core.py` (`_mdX`/`_mdY`/`CLICK_MOVE_THRESHOLD` +
+ * (`_mdX`/`_mdY`/`CLICK_MOVE_THRESHOLD` +
  * the two capture-phase listeners + `wasDrag`). Whole unit moved, not just
- * the function: the state is private to this block, no other fragment
- * touches `_mdX`/`_mdY` — so no bridging of mutable state needed, only
- * `wasDrag` goes onto `window` (10 call sites in `_folder_browse.py` /
- * `_search_filter.py` keep the bare name).
  *
- * Listeners now install at bundle load instead of legacy-script eval —
  * still long before any user input, no behavior change.
  */
 

@@ -1,7 +1,6 @@
 /**
- * Track-list detail/table view toggle. Ported from `player_js/_queue.py`
+ * Track-list detail/table view toggle.
  * (_toggleTrackViewMode/_applyTrackViewMode/_isTrackViewVisible).
- * `trackViewMode` stays legacy (read by rendering) -> get/set via hooks.
  */
 
 import { viewToggleView } from "./chromeHtml";

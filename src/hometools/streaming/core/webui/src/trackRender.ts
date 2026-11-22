@@ -1,5 +1,5 @@
 /**
- * renderTracks — ported from `player_js/_track_render.py`. Sets
+ * renderTracks Sets
  * `htState.filteredItems`, updates the count label, applies the render guard
  * (skips the DOM rebuild when nothing visible changed) and hands over to the
  * windowed renderer. Render-guard key private here; reset via
@@ -29,12 +29,12 @@ export interface RenderTracksHooks {
   effectiveThreshold(): number;
   showHidden(): boolean;
   stopRenderObserver(): void;
-  startWindowedRender(realTracks: LegacyMediaItem[]): void;
+  startWindowedRender(realTracks: CatalogItem[]): void;
   markActive(): void;
   openTrackPicker(playlistId: string): void;
 }
 
-type Track = LegacyMediaItem & { _debugReason?: string; _hiddenShown?: boolean };
+type Track = CatalogItem & { _debugReason?: string; _hiddenShown?: boolean };
 
 let _rgKey = "";
 

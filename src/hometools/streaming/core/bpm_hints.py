@@ -5,7 +5,7 @@ half or double the true tempo (an "octave error") — e.g. a 170 BPM track
 gets reported as 85 BPM. When a user corrects this via the "Langsamer"/
 "Schneller" BPM-adjust actions in the streaming UI (see
 ``streaming/audio/server.py``'s ``/api/audio/bpm/adjust`` endpoint and
-``player_js/_track_render.py``'s ``_openBpmAdjustMenu``), the correction
+``webui/src/bpmMenu.ts``), the correction
 *factor* is persisted per-track here so that a **later** "neu berechnen"
 (recalculate, ``/api/audio/bpm/calculate``) applies the same octave
 correction to the fresh raw estimate instead of reproducing the same

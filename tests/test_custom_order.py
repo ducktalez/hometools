@@ -282,19 +282,3 @@ class TestCustomOrderFeatureParity:
         assert audio_resp.status_code == 200
         assert video_resp.status_code == 200
         assert audio_resp.json().keys() == video_resp.json().keys()
-
-    def test_both_home_pages_include_folder_order_api_path(self, tmp_path: Path):
-        """Both UIs must expose the FOLDER_ORDER_API_PATH JS variable."""
-        from fastapi.testclient import TestClient
-
-        from hometools.streaming.audio.server import create_app as create_audio_app
-        from hometools.streaming.video.server import create_app as create_video_app
-
-        audio_client = TestClient(create_audio_app(tmp_path, cache_dir=tmp_path))
-        video_client = TestClient(create_video_app(tmp_path, cache_dir=tmp_path))
-
-        audio_html = audio_client.get("/").text
-        video_html = video_client.get("/").text
-
-        assert "FOLDER_ORDER_API_PATH" in audio_html
-        assert "FOLDER_ORDER_API_PATH" in video_html

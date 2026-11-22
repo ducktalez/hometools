@@ -1,7 +1,5 @@
 /**
  * Catalog/queue hook wiring. Replaces the hook-builder glue formerly in
- * `player_js/_queue.py`: play-next, catalog fetch/refresh, extra folders and
- * lazy folder rating refresh. Legacy callbacks come in via `deps` (thunk,
  * resolved per call).
  */
 
@@ -32,15 +30,15 @@ export interface CatalogDeps {
   playTrack(i: number): void;
   showIndexingToast(detail: string, cache: unknown): void;
   hideIndexingToast(): void;
-  applyLocalMutations(items: LegacyMediaItem[]): LegacyMediaItem[];
+  applyLocalMutations(items: CatalogItem[]): CatalogItem[];
   invalidateDupeMap(): void;
   invalidateFolderCache(): void;
-  saveCatalogCache(items: LegacyMediaItem[]): void;
+  saveCatalogCache(items: CatalogItem[]): void;
   clearCatalogCache(): void;
   /** Clear in place: window._locallyDeletedPaths must keep its identity. */
   clearLocalDeleted(): void;
   showFolderView(): void;
-  itemsUnder(path: string): LegacyMediaItem[];
+  itemsUnder(path: string): CatalogItem[];
   applyFilter(): void;
   toast(msg: string): void;
 }

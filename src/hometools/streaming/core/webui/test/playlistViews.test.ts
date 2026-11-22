@@ -15,10 +15,10 @@ const hooks = (over: Record<string, unknown> = {}) => ({
   applyFilter: vi.fn(),
   playTrack: vi.fn(),
   savedFavorites: () => ({}) as Record<string, boolean>,
-  sortFavoritesByOrder: (x: LegacyMediaItem[]) => x,
+  sortFavoritesByOrder: (x: CatalogItem[]) => x,
   loadFavoritesOrder: () => [] as string[],
   loadFavoritesOrderAsync: vi.fn(),
-  resolvePlaylist: () => null as { pl: { name?: string }; resolved: LegacyMediaItem[] } | null,
+  resolvePlaylist: () => null as { pl: { name?: string }; resolved: CatalogItem[] } | null,
   addToPlaylist: vi.fn(),
   ...over,
 });

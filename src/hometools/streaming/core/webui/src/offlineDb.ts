@@ -1,10 +1,9 @@
 /**
  * Offline-download IndexedDB data layer ("hometools-downloads" / "downloads").
  *
- * Ported 1:1 from `player_js/_track_render.py` (initDownloadDB,
+ * (initDownloadDB,
  * getDownloadByStreamUrl, getAllDownloads, deleteDownloadById,
  * deleteDownloadByStreamUrl). The `downloadDB` handle was only touched by
- * these functions → moved as module-private state (no bridge needed).
  *
  * CONTRACT: DB_NAME/DB_VERSION must match the Service Worker's
  * `indexedDB.open(...)` in `server_utils/_pwa.py` (it reads blobs for
@@ -66,7 +65,7 @@ export function closeDownloadDB(): void {
   downloadDB = null;
 }
 
-/** True once initDownloadDB succeeded (legacy `if (!downloadDB)` guards). */
+/** True once initDownloadDB succeeded (app `if (!downloadDB)` guards). */
 export function isDownloadDbReady(): boolean {
   return downloadDB !== null;
 }
@@ -130,8 +129,6 @@ export function deleteDownloadById(id: number): Promise<boolean> {
  * Free space for `requiredBytes` by deleting oldest "ready" downloads
  * (never `protectedStreamUrl`). true = fits now. false = cannot fit even
  * after evicting everything → nothing deleted. Sequential deletes (same
- * as legacy chain). Ported from `_track_render.py::pruneOldDownloads`;
- * UI refresh stays in legacy wrapper.
  */
 export function evictForBudget(
   requiredBytes: number,

@@ -1,7 +1,6 @@
 /**
- * Lyrics side panel. Ported from `player_js/_core.py` (open/close/render,
+ * Lyrics side panel. (open/close/render,
  * cache, button wiring). State is private to this module (cache + open
- * flag + DOM refs) — only `isOpen()` is read by the legacy script, so it
  * moved along (same pattern as `clickGuard.ts`).
  */
 
@@ -9,7 +8,7 @@ export interface LyricsCfg {
   enabled: boolean;
   apiPath: string;
   escHtml: (s: unknown) => string;
-  /** Currently playing track (legacy reads filteredItems/playlistItems). */
+  /** Currently playing track (app reads filteredItems/playlistItems). */
   getCurrentTrack: () => { relative_path: string; title?: string } | null | undefined;
 }
 

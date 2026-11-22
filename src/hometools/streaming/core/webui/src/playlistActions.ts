@@ -1,11 +1,8 @@
 /**
- * Playlist CRUD actions with optimistic UI — ported from
- * `player_js/_smart_playlists.py` (deleteUserPlaylist, renameUserPlaylist,
  * addToPlaylist, createAndAddToPlaylist).
  *
  * State via `htState.userPlaylists/playlistRevision` (see stateBridge.ts);
  * view/DOM side effects come in through `PlaylistHooks` so this module stays
- * free of legacy closure reads.
  */
 
 import { getState } from "./stateBridge";

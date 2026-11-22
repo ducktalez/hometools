@@ -1,6 +1,4 @@
 /**
- * Playlist item reorder (drag & drop target) — ported from
- * `player_js/_smart_playlists.py` (reorderPlaylistItem, _applyPlaylistUpdate).
  * `movePlaylistItem` (up/down) had no callers and was dropped.
  *
  * State via `htState` (allItems, playlistItems, filteredItems, currentIndex,
@@ -17,7 +15,7 @@ export interface ReorderHooks {
   /** `PLAYLISTS_API_PATH` */
   apiPath: string;
   toast(msg: string): void;
-  renderTracks(items: LegacyMediaItem[], force: boolean): void;
+  renderTracks(items: CatalogItem[], force: boolean): void;
   saveFavoritesOrder(paths: string[]): void;
   saveFolderOrder(folderPath: string, paths: string[]): void;
 }
@@ -33,7 +31,7 @@ export function reorderPaths(paths: string[], rp: string, toIndex: number): stri
 }
 
 /** Show `resolved` as the current list, keeping the playing track's index. */
-function showResolved(resolved: LegacyMediaItem[], h: ReorderHooks): void {
+function showResolved(resolved: CatalogItem[], h: ReorderHooks): void {
   const st = getState();
   if (!st) return;
   const playing = st.currentIndex >= 0 && st.filteredItems[st.currentIndex] ? st.filteredItems[st.currentIndex].relative_path : null;
@@ -50,7 +48,7 @@ function showResolved(resolved: LegacyMediaItem[], h: ReorderHooks): void {
 export function applyPlaylistUpdate(pl: PlaylistLike, h: ReorderHooks): void {
   const st = getState();
   if (!st) return;
-  const resolved: LegacyMediaItem[] = [];
+  const resolved: CatalogItem[] = [];
   (pl.items || []).forEach((rp) => {
     const m = st.allItems.find((it) => it.relative_path === rp);
     if (m) resolved.push(m);
@@ -64,13 +62,12 @@ export function reorderPlaylistItem(relativePath: string, toIndex: number, h: Re
   const curId = st.currentPlaylistId;
   if (curId === "__alltitles__") return; // read-only union
 
-  // Favorites / folder: client-side order (localStorage + server sync in legacy hooks)
   if (curId === "__favorites__" || curId === "__folder__") {
     const paths = reorderPaths(st.playlistItems.map((it) => it.relative_path), relativePath, toIndex);
     if (!paths) return;
     if (curId === "__favorites__") h.saveFavoritesOrder(paths);
     else h.saveFolderOrder(st.currentPath, paths);
-    const byPath: Record<string, LegacyMediaItem> = {};
+    const byPath: Record<string, CatalogItem> = {};
     st.playlistItems.forEach((it) => (byPath[it.relative_path] = it));
     showResolved(paths.map((rp) => byPath[rp]).filter(Boolean), h);
     return;

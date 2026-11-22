@@ -1,10 +1,8 @@
 /**
  * Combined "Filtern" popover (rating + favorite + genre) wiring/lifecycle —
- * ported from `player_js/_search_filter.py` (_wireFilterPopoverBody,
+ * (_wireFilterPopoverBody,
  * _renderFilterPopoverBody, _closeFilterPopover, _toggleFilterPopover).
  * Markup lives in `filterPopover.ts`. The cleanup handle (was
- * `_filterPopoverCleanup` in `_core.py`) is module-private; filter state is
- * shared with the legacy script, so it is read/written through hooks.
  */
 
 import { filterPopoverBodyHtml } from "./filterPopover";
@@ -14,7 +12,7 @@ export interface FilterPopoverHooks {
   /** `_collectGenres(playlistItems)` */
   genres(): string[];
   getFilter(): FilterPopoverState;
-  /** Assign legacy `filterRating/filterFav/filterGenre` (only given keys). */
+  /** Assign app `filterRating/filterFav/filterGenre` (only given keys). */
   setFilter(p: Partial<FilterPopoverState>): void;
   icons: FilterPopoverIcons;
   esc(s: unknown): string;

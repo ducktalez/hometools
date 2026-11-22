@@ -1,6 +1,6 @@
 /**
  * Player-bar wiring: rating-star hover/click + bar fullscreen button.
- * Ported from `player_js/_library_tools.py`. Zustandslos.
+ * Zustandslos.
  */
 
 export interface RatingEventsOpts {
@@ -56,7 +56,7 @@ export function initBarFullscreen(player: HTMLMediaElement, isVideoPlayer: boole
 }
 
 
-/** Logo click -> root folder view. `setRoot` resets legacy currentPath. */
+/** Logo click -> root folder view. `setRoot` resets app currentPath. */
 export function initHeaderHome(logo: HTMLElement | null, h: { setRoot(): void; showFolderView(): void }): void {
   if (!logo) return;
   logo.addEventListener("click", () => {

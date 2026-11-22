@@ -1,6 +1,4 @@
 /**
- * Inline title/artist edit save (table/detail view) — ported from
- * `player_js/_search_filter.py::_saveInlineTableEdit`. Reuses the metadata
  * edit endpoint; reverts the cell on error or Escape-cancel. `filteredItems`/
  * `allItems` via `htState`.
  */
@@ -25,7 +23,7 @@ export function saveInlineTableEdit(editable: HTMLElement, h: InlineEditHooks): 
   const cancelled = editable.dataset.cancelled === "1";
   delete editable.dataset.cancelled;
   const st = getState();
-  const rec = (it: LegacyMediaItem) => it.relative_path === rp;
+  const rec = (it: CatalogItem) => it.relative_path === rp;
   const t = (st && (st.filteredItems.find(rec) || (st.allItems || []).find(rec))) as Record<string, unknown> | undefined;
   const oldVal = t ? String(t[field] || "") : "";
   const newVal = normalizeCellText(editable.textContent);

@@ -1,7 +1,6 @@
 /**
- * `playItem` orchestration. Ported from `player_js/_library_tools.py::playItem`.
+ * `playItem` orchestration.
  * Sequencing only: TS helpers (shuffle sync, bg audio, crossfade, progress,
- * offline URL) are called directly; legacy-owned state (currentIndex,
  * currentStreamUrl, duration, intro) and UI side effects come in via hooks.
  */
 
@@ -23,12 +22,12 @@ export interface PlayItemTrack {
 
 export interface PlayItemHooks {
   player: { volume: number };
-  /** Legacy-owned state. */
+  /** App-owned state. */
   setCurrentIndex(i: number): void;
   setCurrentStreamUrl(url: string): void;
   setCurrentDuration(sec: number): void;
   setCurrentIntro(t: PlayItemTrack): void;
-  /** Start playback (offline blob or stream) — `_beginPlayback` with legacy hooks bound. */
+  /** Start playback (offline blob or stream) — `_beginPlayback` with app hooks bound. */
   beginPlayback(p: Playback): void;
   playOfflineOrStream(url: string): Promise<Playback>;
   showNowPlaying(t: PlayItemTrack): void;

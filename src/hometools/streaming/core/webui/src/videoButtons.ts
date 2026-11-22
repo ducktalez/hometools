@@ -1,5 +1,5 @@
 /**
- * Video header buttons: fullscreen + cast. Ported from `player_js/_core.py`.
+ * Video header buttons: fullscreen + cast.
  * Fullscreen targets the overlay div (iOS falls back to the video element).
  * Cast uses the standard Remote Playback API (Chromium) or the WebKit
  * AirPlay picker (iOS Safari); the button stays hidden without support.

@@ -1,8 +1,5 @@
 /**
- * Generic kebab/context dropdown + "reveal in explorer" — ported from
- * `player_js/_library_tools.py` (_closeCtxMenu, _openCtxMenu,
  * _revealInExplorer). `_ctxMenuCleanup` is module-private (no other
- * fragment read it). Markup via panelBodies.ts::ctxMenuHtml.
  */
 
 import { ctxMenuHtml } from "./panelBodies";

@@ -1,8 +1,7 @@
 /**
- * Playback-progress helpers. Ported from `player_js/_core.py`
+ * Playback-progress helpers.
  * (`_progressApiBase`, guard + payload of `saveProgressNow`).
  * Pure helpers first; below them the stateful save/load chain
- * (`_progressRelPath` + debounce timer are module-private; legacy uses
  * `getProgressPath`/`setProgressPath`/`cancelProgressTimer`).
  */
 

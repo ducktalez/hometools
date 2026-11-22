@@ -1,20 +1,16 @@
 /**
- * Client-side localStorage caches used by the legacy player script:
  * - full catalog snapshot (stale-while-revalidate, 5 min TTL)
  * - last-played position (30 day TTL)
  * - `_locallyDeletedPaths` filtering for background/silent catalog fetches
  *
- * Ported from `player_js/_core.py` — see
+ * — see
  * `.github/instructions/streaming.instructions.md` → "Catalog caching —
  * stale-while-revalidate" for the exact behavioral contract these functions
  * must keep (backed by `tests/test_streaming_player_ui.py::TestCatalogLocalStorageCache`).
  *
  * Pure: cache keys are derived from an explicit `apiPath` parameter — this
  * module never reads `window.API_PATH` (that identifier is a `var` scoped to
- * the still-Python-generated legacy IIFE, not a real global). `main.ts`
- * bridges these functions onto `window` under their original legacy names,
  * closing over the already-parsed `#ht-config` `apiPath`, so every existing
- * call site in `player_js/*.py` (`_saveCatalogCache(items)`,
  * `_loadCatalogCache()`, `_clearCatalogCache()`, `_saveLastPlayedLocal(rp,
  * pos)`, `_loadLastPlayedLocal()`, `_applyLocalMutations(items)`) keeps
  * working unchanged.
@@ -27,7 +23,7 @@ function keyFor(prefix: string, apiPath: string): string {
   return prefix + apiPath.replace(/\W+/g, "_");
 }
 
-export function saveCatalogCache(items: LegacyMediaItem[], apiPath: string): void {
+export function saveCatalogCache(items: CatalogItem[], apiPath: string): void {
   if (!items || !items.length) return;
   try {
     localStorage.setItem(
@@ -39,7 +35,7 @@ export function saveCatalogCache(items: LegacyMediaItem[], apiPath: string): voi
   }
 }
 
-export function loadCatalogCache(apiPath: string): LegacyMediaItem[] | null {
+export function loadCatalogCache(apiPath: string): CatalogItem[] | null {
   const key = keyFor("ht-catalog-", apiPath);
   try {
     const raw = localStorage.getItem(key);
@@ -106,16 +102,12 @@ export function loadLastPlayedLocal(apiPath: string): LastPlayedEntry | null {
  * comment). Mutates `locallyDeletedPaths` in place — prunes any key the
  * server no longer returns (confirmed deletion, safe to stop tracking) —
  * mirroring the original function's direct mutation of the shared
- * `_locallyDeletedPaths` closure variable in `_core.py`. The caller (bridged
- * via `main.ts`) passes `window._locallyDeletedPaths`, now bridged onto
- * `window` by `_core.py` (see `legacy-globals.d.ts`) so this object
  * reference stays the single source of truth shared with the rest of the
- * still-Python-generated script.
  */
 export function applyLocalMutations(
-  items: LegacyMediaItem[],
+  items: CatalogItem[],
   locallyDeletedPaths: Record<string, boolean>
-): LegacyMediaItem[] {
+): CatalogItem[] {
   if (!items || !items.length) return items;
   const deletedKeys = Object.keys(locallyDeletedPaths);
   if (!deletedKeys.length) return items;

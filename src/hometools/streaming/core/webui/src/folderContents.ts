@@ -2,9 +2,8 @@
  * Folder-grid contents of one path level: direct sub-folders (aggregated,
  * multi-language variants merged) + loose files.
  *
- * Ported 1:1 from `player_js/_queue.py::contentsAt(path)`. Explicit params:
+ *(path)`. Explicit params:
  * `allItems` (was closure read via itemsUnder) and `langGroups`
- * (was `LANG_GROUPS = CFG.languageGroups`). Legacy keeps a bare-name
  * wrapper `contentsAt(path)` so its call sites stay unchanged.
  */
 
@@ -38,12 +37,12 @@ export interface FolderEntry {
 
 export interface FolderContents {
   folders: FolderEntry[];
-  files: LegacyMediaItem[];
+  files: CatalogItem[];
 }
 
 export function contentsAt(
   path: string,
-  allItems: LegacyMediaItem[],
+  allItems: CatalogItem[],
   langGroups: Record<string, string>
 ): FolderContents {
   const items = itemsUnder(path, allItems);
@@ -52,7 +51,7 @@ export function contentsAt(
   const folderThumbLg: Record<string, string> = {};
   const folderLangs: Record<string, Record<string, boolean>> = {};
   const folderSubLangs: Record<string, string> = {};
-  const files: LegacyMediaItem[] = [];
+  const files: CatalogItem[] = [];
   const off = path ? path.length + 1 : 0;
 
   items.forEach((it) => {

@@ -1,6 +1,6 @@
 /**
  * Offline-download counters (folder card badge + "Downloaded (n)" pill).
- * Ported from `player_js/_track_render.py::updateOfflineFolderCount`.
+ *
  */
 import { getAllDownloads } from "./offlineDb";
 export interface OfflinePill {

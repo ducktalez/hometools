@@ -1,5 +1,5 @@
 /**
- * Lazy per-folder rating refresh. Ported from `player_js/_queue.py`
+ * Lazy per-folder rating refresh.
  * (refreshFolderRatings + `_ratingRefreshPath`, reset in refreshCatalog).
  * Dedupe state private; items/path via htState, side effects via hooks.
  */

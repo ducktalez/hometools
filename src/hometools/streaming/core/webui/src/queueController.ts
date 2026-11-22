@@ -1,8 +1,6 @@
 /**
  * Queue (Warteschlange) controller: owns panel DOM lookup, open flag, user
  * height, wiring (close/clear/resize/peek/DnD) and badge/button sync.
- * Replaces the queue state/wrappers formerly in `player_js/_core.py` and
- * `_queue.py`. DOM nodes are looked up lazily (never stale).
  */
 
 import { addToQueue, removeFromQueue, clearQueueAction, playFromQueue, queueMove } from "./queue";
@@ -29,13 +27,13 @@ export interface QueueControllerCfg {
   icRemove: string;
   esc(s: unknown): string;
   toast(msg: string): void;
-  playItem(item: LegacyMediaItem, index: number): void;
+  playItem(item: CatalogItem, index: number): void;
   lyricsOpen(): boolean;
   closeLyrics(): void;
 }
 
 export interface QueueController {
-  add(item: LegacyMediaItem | null | undefined): void;
+  add(item: CatalogItem | null | undefined): void;
   remove(index: number): void;
   clear(): void;
   playFrom(index: number): void;
@@ -69,7 +67,7 @@ export function initQueueController(cfg: QueueControllerCfg): QueueController {
   let isOpenFlag = false;
   let userHeight: number | null = loadUserHeight();
 
-  const queue = (): LegacyMediaItem[] => {
+  const queue = (): CatalogItem[] => {
     const s = getState();
     return s ? s.userQueue : [];
   };

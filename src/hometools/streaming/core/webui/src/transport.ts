@@ -1,6 +1,4 @@
 /**
- * Transport controls: play/pause toggle + smart "previous". Ported from
- * `player_js/_library_tools.py` (togglePlay/handlePreviousTrack).
  */
 
 import { getState } from "./stateBridge";

@@ -2,7 +2,7 @@
  * Offline library controller (downloaded items as a virtual playlist):
  * refresh/open, storage budget + prune, persistent storage, play stored
  * download, SW message listener, pill/close/sort/persist/prune wiring.
- * Ported from `player_js/_track_render.py`. Shared state via htState.
+ * Shared state via htState.
  */
 
 import { getState } from "./stateBridge";
@@ -30,7 +30,7 @@ export interface OfflineLibrary {
 }
 
 /** Download record -> playlist item. */
-export function downloadToItem(d: OfflineDownload, itemNoun: string): LegacyMediaItem {
+export function downloadToItem(d: OfflineDownload, itemNoun: string): CatalogItem {
   return {
     title: d.title || "Offline-Download",
     artist: d.artist || "",
@@ -39,11 +39,11 @@ export function downloadToItem(d: OfflineDownload, itemNoun: string): LegacyMedi
     thumbnail_url: d.thumbnailUrl || "",
     media_type: (d.mediaType as string | undefined) || itemNoun,
     rating: 0,
-  } as LegacyMediaItem;
+  } as CatalogItem;
 }
 
 /** Ready downloads sorted per the offline sort select. */
-export function readyItems(downloads: OfflineDownload[], sortBy: string, itemNoun: string): { ready: OfflineDownload[]; items: LegacyMediaItem[] } {
+export function readyItems(downloads: OfflineDownload[], sortBy: string, itemNoun: string): { ready: OfflineDownload[]; items: CatalogItem[] } {
   const ready = downloads.filter((d) => d.status === "ready");
   return { ready, items: sortDownloads(ready, sortBy).map((d) => downloadToItem(d, itemNoun)) };
 }

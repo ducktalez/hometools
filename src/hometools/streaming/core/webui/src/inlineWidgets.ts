@@ -1,7 +1,6 @@
 /**
  * Per-row inline widgets HTML: star rating + move-to-folder widget.
- * Ported from `_track_render.py::renderInlineRating` and
- * `_library_tools.py::renderMoveWidget`. Pure; legacy globals passed in.
+ * and
  */
 
 type Esc = (s: unknown) => string;

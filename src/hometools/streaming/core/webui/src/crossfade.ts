@@ -1,8 +1,7 @@
 /**
  * Audio crossfade: second hidden <audio>, sine-eased volume ramp, then hand
- * over to the main player. Ported from `player_js/_library_tools.py`
+ * over to the main player.
  * (_xfadeCleanup/_startCrossfade/_finishCrossfade). All `_xfade*` state is
- * module-private; legacy reads only `isCrossfading()`.
  */
 
 import { getState } from "./stateBridge";
@@ -22,7 +21,7 @@ export interface CrossfadeHooks {
 let _audio: HTMLAudioElement | null = null;
 let _active = false;
 let _timer: ReturnType<typeof setInterval> | null = null;
-let _nextItem: LegacyMediaItem | null = null;
+let _nextItem: CatalogItem | null = null;
 let _nextIndex = -1;
 let _commit: (() => void) | null = null;
 

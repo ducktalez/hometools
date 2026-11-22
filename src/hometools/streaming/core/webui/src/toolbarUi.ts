@@ -1,7 +1,5 @@
 /**
  * Toolbar + edit-modal event wiring (view toggle, debounced search, sort,
- * filter popover/hidden chips, edit-modal buttons/keys). Ported from
- * `player_js/_library_tools.py`. Folder viewMode + showHidden stay legacy
  * state -> get/set hooks; inPlaylist via htState.
  */
 

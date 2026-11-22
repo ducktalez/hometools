@@ -1,8 +1,7 @@
 /**
  * Hidden muted <audio> mirroring the video source so iOS keeps audio alive in
- * the background. Ported from `player_js/_library_tools.py`
+ * the background.
  * (ensureBgAudio/bgAudioIsActive/startBgMirror/stopBgSync). Element + sync
- * timer are module-private; legacy reads them via `getBgAudio()`.
  */
 
 export interface BgMirrorHooks {

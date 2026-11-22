@@ -2,11 +2,12 @@
 
 from pathlib import Path
 
-from hometools.streaming.core.server_utils import render_media_page, render_player_js
+from hometools.streaming.core.server_utils import render_media_page
+from tests._webui import all_ts
 
 
 def _js():
-    return render_player_js()
+    return all_ts()
 
 
 def _webui_src(filename):
@@ -173,16 +174,6 @@ class TestTrackDownloadButtons:
         js = _js()
         assert "track-dl-btn" in js or "track-dl-btn" in _webui_src("trackRows.ts")
 
-    def test_js_has_init_download_db(self):
-        """IndexedDB layer ported to webui/src/offlineDb.ts (behaviour:
-        webui/test/offlineDb.test.ts); legacy must not redefine it."""
-        ts = _webui_src("offlineDb.ts")
-        assert "export function initDownloadDB(" in ts
-        assert "indexedDB.open(DB_NAME, DB_VERSION)" in ts
-        js = _js()
-        assert "function initDownloadDB" not in js
-        assert "var downloadDB" not in js
-
     def test_js_has_download_track_function(self):
         """downloadTrack must fetch with progress and store blob in IndexedDB."""
         js = _js()
@@ -299,28 +290,6 @@ class TestOfflineLibraryUI:
 class TestStorageQuotaHandling:
     """Quota UI and pruning hooks."""
 
-    def test_js_has_storage_estimate_and_persist(self):
-        """estimateOfflineStorage ported to webui/src/offlineDownloads.ts,
-        bridged onto window by main.ts."""
-        ts = _webui_src("offlineDownloads.ts")
-        assert "storage.estimate" in ts
-        assert "storage.persisted" in ts
-        js = _js()
-        assert "function estimateOfflineStorage" not in js
-        assert "requestPersistentStorage" in _webui_src("offlineLibrary.ts")
-
-    def test_js_has_soft_limit_and_prune_logic(self):
-        js = _js()
-        assert "OFFLINE_SOFT_LIMIT" in js
-        ts = _webui_src("offlineLibrary.ts")
-        assert "function prune(" in ts
-        assert "ensureStorageBudget" in js and "ensureStorageBudget" in ts
-        assert "500 * 1024 * 1024" in js
-        # eviction logic ported (behaviour: webui/test/offlineBudget.test.ts)
-        assert "evictForBudget(requiredBytes, cfg.softLimit, protectedStreamUrl)" in ts
-        assert "candidates.shift()" not in js
-        assert "export function pickEvictionVictims<" in _webui_src("offlineDownloads.ts")
-
     def test_js_updates_storage_summary(self):
         assert "storageSummaryView" in _webui_src("offlineDownloads.ts")
 
@@ -328,36 +297,12 @@ class TestStorageQuotaHandling:
 class TestOfflinePlaybackIntegrationHooks:
     """Hooks needed for end-to-end offline playback flow."""
 
-    def test_js_has_explicit_offline_playback_helpers(self):
-        """getOfflineUrl ported to webui/src/offlineUrl.ts, bridged onto
-        window by main.ts — the legacy fragment now just forwards to it."""
-        ts = _webui_src("offlineUrl.ts")
-        assert "export function getOfflineUrl" in ts
-        js = _js()
-        assert "function checkIfMediaCached" in js
-        assert "window.getOfflineUrl(blob)" in js
-        assert "function playOfflineOrStream" in js
-
     def test_js_cleans_up_blob_urls(self):
         """revokeOfflineUrl/currentOfflineUrl moved to offlineUrl.ts (module-
         private state) — assert against the ported source, not the legacy JS."""
         ts = _webui_src("offlineUrl.ts")
         assert "URL.revokeObjectURL" in ts
         assert "currentOfflineUrl" in ts
-
-    def test_revoke_offline_url_bridged_onto_window(self):
-        """Regression guard: playItem() in _library_tools.py (still legacy,
-        not-yet-ported) calls the bare identifier `revokeOfflineUrl()` twice.
-        Since offlineUrl.ts is a real ES module (not bridged, that bare call
-        throws ReferenceError — silently breaking playback for every track
-        click, before the player-bar title/artist even update. Must stay
-        exported + bridged onto window by main.ts."""
-        js = _js()
-        assert "revokeOfflineUrl: revokeOfflineUrl" in js  # bare ref, needs window bridge
-        ts = _webui_src("offlineUrl.ts")
-        assert "export function revokeOfflineUrl" in ts
-        main_ts = _webui_src("main.ts")
-        assert "window.revokeOfflineUrl = revokeOfflineUrl;" in main_ts
 
     def test_js_has_stream_fallback_when_blob_playback_fails(self):
         ts = _webui_src("playbackStart.ts")

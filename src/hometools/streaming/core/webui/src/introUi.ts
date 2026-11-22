@@ -1,9 +1,7 @@
 /**
- * Skip-intro button UI. Ported from `player_js/_core.py`
+ * Skip-intro button UI.
  * (`_setCurrentIntro`, `_updateSkipIntroBtn`, `_saveIntroMarker`, button
  * click/long-press wiring). Intro state (`_introStart` etc.) is
- * module-private; legacy calls `setCurrentIntro` / `updateSkipIntroBtn`
- * via window bridge. Pure decisions live in `intro.ts`.
  */
 
 import { parseIntro, introButtonMode, patchIntroLocal } from "./intro";
@@ -37,7 +35,7 @@ function hide(): void {
 }
 
 /** Reset intro state from an item; hides the button. */
-export function setCurrentIntro(t: LegacyMediaItem | null | undefined): void {
+export function setCurrentIntro(t: CatalogItem | null | undefined): void {
   const info = parseIntro(t);
   _start = info.start;
   _end = info.end;

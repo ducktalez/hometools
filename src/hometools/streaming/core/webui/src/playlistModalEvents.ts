@@ -1,6 +1,4 @@
 /**
- * Add-to-playlist modal DOM events — ported from
- * `player_js/_drag_drop_init.py` ("playlist event wiring"). Installed once;
  * `playlistAddPath` via `htState`, actions via hooks.
  */
 

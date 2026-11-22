@@ -1,5 +1,5 @@
 /**
- * Auto-advance decision chain. Ported from `player_js/_queue.py`
+ * Auto-advance decision chain.
  * (dequeueNext/playNextItem). State via htState; side effects via hooks.
  */
 

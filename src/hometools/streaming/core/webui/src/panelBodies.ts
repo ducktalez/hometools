@@ -1,7 +1,6 @@
 /**
  * Panel-body HTML: duplicate groups + queue list.
- * Ported from `_library_tools.py::openDupePanel` (markup half) and
- * `_core.py::renderQueuePanel` (markup half). DOM wiring stays legacy.
+ * (markup half) and
  */
 
 import { _fmtDuration, _fmtFileSize, _fmtDate } from "./dupeUtils";
@@ -16,7 +15,7 @@ export interface DupePanelOpts {
 }
 
 export function dupePanelBodyHtml(
-  allItems: LegacyMediaItem[],
+  allItems: CatalogItem[],
   dupeMap: Record<string, number[]>,
   dupeSafety: Record<string, boolean> | null,
   o: DupePanelOpts
@@ -75,7 +74,7 @@ export function dupePanelBodyHtml(
 
 /** Queue panel body. Empty queue -> empty-state div (caller hides clear btn). */
 export function queuePanelHtml(
-  queue: LegacyMediaItem[],
+  queue: CatalogItem[],
   esc: Esc,
   filePlaceholder: string,
   icRemove: string
@@ -102,7 +101,7 @@ export interface CtxMenuEntry {
   icon?: string;
   danger?: boolean;
 }
-/** Buttons of the generic context menu. Ported from `_library_tools.py::_openCtxMenu`. */
+/** Buttons of the generic context menu. */
 export function ctxMenuHtml(items: CtxMenuEntry[], esc: Esc): string {
   return items
     .map(

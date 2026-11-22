@@ -1,6 +1,4 @@
 /**
- * Folder-grid view (`showFolderView`) — ported from
- * `player_js/_folder_browse.py`. State via htState (inPlaylist,
  * currentPlaylistId, globalSearchActive, currentPath, allItems, userPlaylists,
  * savedFavorites); DOM container, config flags and cross-view actions via
  * `FolderViewHooks`.
@@ -47,7 +45,7 @@ export interface FolderViewHooks {
   contentsAt(path: string): FolderContents;
   destroyPlaylistDragDrop(): void;
   enterFolderGridView(opts: { playAllDisabled?: boolean; trackCount?: string; contentHtml?: string }): void;
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean, startIdx?: number): void;
+  showPlaylist(items: CatalogItem[], autoplay: boolean, startIdx?: number): void;
   loadRecentlyPlayed(): void;
   openOfflineLibrary(): void;
   updateOfflineFolderCount(): void;

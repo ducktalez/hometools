@@ -1,7 +1,6 @@
 /**
  * Windowed track-list rendering math + jump-to-track target.
- * Ported from `_search_filter.py` (`_appendTrackBatch`, `_ensureRenderedTo`,
- * `jumpToCurrentTrack`). Pure; DOM + state writes stay legacy.
+ * (`_appendTrackBatch`, `_ensureRenderedTo`,
  */
 
 /** End (exclusive) of the next batch; `<= offset` means nothing left. */

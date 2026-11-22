@@ -2,11 +2,10 @@
  * Rating/favorite/genre/search filter chain applied to a playlist before
  * rendering.
  *
- * Ported from `player_js/_search_filter.py`'s `applyFilter()` — the pure
+ *'s `applyFilter()` — the pure
  * filter/annotate chain (both the normal-mode and `DEBUG_FILTER`-mode
  * branches) split out from the DOM reads at the top of that function
  * (`searchInput.value`/`sortField.value`) and the final `renderTracks()`
- * call, which stay in `_search_filter.py`. Explicit-parameter pattern: every
  * value `applyFilter()` used to read from closure/module-scope globals
  * (`showHidden`, `filterRating`, `filterFav`, `filterGenre`,
  * `_effectiveThreshold`, `_justRatedPath`, `_savedFavorites`, `DEBUG_FILTER`)
@@ -14,7 +13,6 @@
  *
  * `_hiddenShown`/`_debugReason` annotations are added via a shallow object
  * spread clone (never mutates an item already in `playlistItems`) — same
- * behavior as the legacy `for...in hasOwnProperty` copy loops.
  */
 
 export interface FilterChainOptions {
@@ -29,7 +27,7 @@ export interface FilterChainOptions {
   savedFavorites: Record<string, boolean>;
 }
 
-function matchesNeedle(t: LegacyMediaItem, needle: string): boolean {
+function matchesNeedle(t: CatalogItem, needle: string): boolean {
   return (
     (t.title || "").toLowerCase().indexOf(needle) >= 0 ||
     (t.artist || "").toLowerCase().indexOf(needle) >= 0 ||
@@ -37,7 +35,7 @@ function matchesNeedle(t: LegacyMediaItem, needle: string): boolean {
   );
 }
 
-export function applyFilterChain(items: LegacyMediaItem[], opts: FilterChainOptions): LegacyMediaItem[] {
+export function applyFilterChain(items: CatalogItem[], opts: FilterChainOptions): CatalogItem[] {
   const {
     needle,
     debugFilter,

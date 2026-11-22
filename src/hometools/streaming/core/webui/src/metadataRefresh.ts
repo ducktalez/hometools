@@ -1,6 +1,4 @@
 /**
- * Late metadata refresh for the playing track. Ported from
- * `player_js/_library_tools.py::refreshMetadata`. Fetches `<base>/metadata`
  * and patches title/artist/rating in place. Stale responses (track switched
  * meanwhile) are dropped via the progress-path guard.
  */

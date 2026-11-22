@@ -1,5 +1,5 @@
 /** File-mover MRU folder list (localStorage). Ported from
- * `player_js/_library_tools.py` — self-contained, no shared-state deps. */
+  */
 
 const KEY = "ht-move-recent";
 

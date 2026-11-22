@@ -3,8 +3,8 @@
 INSTRUCTIONS (local):
 - ``render_media_page()`` is the SINGLE HTML skeleton for all media types.
   Do NOT duplicate it in audio/video servers. Pass differences as parameters.
-- CSS and JS are plain strings (no f-strings) to avoid Python escaping issues.
-- ``render_player_js`` reads the ``items`` key from API responses. All API
+- CSS is a plain string (no f-strings) to avoid Python escaping issues.
+- The TS app (``webui/src``) reads the ``items`` key from API responses. All API
   endpoints must return ``{ "items": [...] }`` — not ``tracks`` or ``videos``.
 - ``resolve_media_path`` validates path traversal + suffix. Always use it
   instead of manual path joins in server endpoints.
@@ -28,7 +28,6 @@ from ._library import (  # noqa: F401
     render_error_page,
 )
 from ._paths import resolve_media_path, safe_resolve  # noqa: F401
-from ._player_js import render_player_js  # noqa: F401
 from ._pwa import (  # noqa: F401
     render_pwa_head_tags,
     render_pwa_icon_png,

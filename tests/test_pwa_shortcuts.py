@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from tests._webui import all_ts
+
 # ---------------------------------------------------------------------------
 # Core shortcuts module
 # ---------------------------------------------------------------------------
@@ -187,11 +189,7 @@ class TestDeepLinking:
         from pathlib import Path
 
         import hometools
-        from hometools.streaming.audio.server import render_audio_index_html
 
-        html = render_audio_index_html([])
-        assert "_router" in html
-        assert "_createRouter" in html
         ts = Path(hometools.__file__).parent / "streaming/core/webui/src/router.ts"
         assert "popstate" in ts.read_text(encoding="utf-8")
 
@@ -200,9 +198,8 @@ class TestDeepLinking:
         from pathlib import Path
 
         import hometools
-        from hometools.streaming.core.server_utils import render_player_js
 
-        js = render_player_js()
+        js = all_ts()
         # pin-button class handling moved to webui/src/favorites.ts
         ts = Path(hometools.__file__).parent / "streaming/core/webui/src/favorites.ts"
         assert "track-pin-btn" in ts.read_text(encoding="utf-8")

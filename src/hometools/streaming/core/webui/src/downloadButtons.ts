@@ -1,7 +1,6 @@
 /**
- * Download button state. Ported from `player_js/_track_render.py`
+ * Download button state.
  * (`updateAllDownloadButtons`, `cancelDownload`). The in-flight controller map
- * (`activeDownloads`) stays legacy (shared with `downloadTrack`) and is passed in.
  */
 import {
   getAllDownloads,
@@ -79,7 +78,7 @@ export interface DownloadHooks {
   /** Per-file cap (OFFLINE_SOFT_LIMIT). */
   softLimit: number;
   formatBytes(n: number): string;
-  /** Evict old downloads if needed; false = no room. Legacy (UI refresh inside). */
+  /** Evict old downloads if needed; false = no room. app (UI refresh inside). */
   ensureStorageBudget(requiredBytes: number, protectedStreamUrl: string): Promise<boolean>;
   toast(msg: string): void;
   refreshLibrary(): void;

@@ -1,6 +1,6 @@
 /**
  * Root folder-grid extras: tools row, favorites card, playlist cards.
- * Ported from `_folder_browse.py::showFolderView` (markup only).
+ * (markup only).
  */
 
 type Esc = (s: unknown) => string;

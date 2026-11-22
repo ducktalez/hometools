@@ -1,6 +1,6 @@
 /** Insert placeholder rows for missing episodes between two present
- * episodes of the same season. Ported from player_js/_search_filter.py.
- * Pure — no window reads. Bridged onto window by main.ts. */
+ * episodes of the same season.
+  */
 
 export interface EpisodeGapPlaceholder {
   _missing: true;

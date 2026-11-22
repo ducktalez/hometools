@@ -1,6 +1,4 @@
 /**
- * Playback start helpers for `playItem`. Ported from
- * `player_js/_library_tools.py` (shuffle sync + beginPlayback/retry chain).
  */
 
 import { getState } from "./stateBridge";

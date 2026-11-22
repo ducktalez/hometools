@@ -1,6 +1,4 @@
 /**
- * Custom item order (favorites + per-folder). Ported from
- * `player_js/_library_tools.py` (`_loadFavoritesOrder`, `_folderOrderKey`,
  * `_loadFolderOrder`, `_sortFavoritesByOrder`, `_sortByFolderOrder`).
  * Pure + localStorage reads (try/catch, [] on failure). Server sync (`saveOrder`/`loadOrderAsync`, fetch) included.
  */

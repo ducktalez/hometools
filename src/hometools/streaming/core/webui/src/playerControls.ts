@@ -1,9 +1,8 @@
 /**
- * Player-bar control state views. Ported from `player_js/_library_tools.py`
+ * Player-bar control state views.
  * (cycleShuffle/cycleRepeat mode transitions, updateShuffleBtn/
  * updateRepeatBtn labels, renderPlayerRating star data, rating-bar width).
  * Pure: modes/icons explicit params. DOM writes, localStorage and queue
- * rebuilds stay legacy.
  */
 export type ShuffleModeValue = false | "normal" | "weighted";
 export type RepeatModeValue = false | "all" | "one";

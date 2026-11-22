@@ -1,6 +1,5 @@
-/** Offline-download helpers. Ported from player_js/_track_render.py.
- * Pure — no window reads, no DOM. Bridged onto window by main.ts under
- * same names; call sites in _track_render.py unchanged. */
+/** Offline-download helpers.
+  */
 
 export interface OfflineDownload {
   status?: string;
@@ -45,7 +44,7 @@ export function getAppDownloadUsage(downloads: OfflineDownload[]): number {
  * played). Returns [] if already fits, null if impossible even after
  * evicting all candidates (caller must then delete nothing).
  *
- * Ported from `_track_render.py::pruneOldDownloads` (selection half).
+ * (selection half).
  */
 export function pickEvictionVictims<T extends OfflineDownload>(
   downloads: T[],
@@ -76,7 +75,7 @@ export interface OfflineStorageInfo {
 }
 
 /** Estimate app + browser storage usage. softLimit passed in (was
- * OFFLINE_SOFT_LIMIT constant in _track_render.py). */
+  */
 export function estimateOfflineStorage(downloads: OfflineDownload[], softLimit: number): Promise<OfflineStorageInfo> {
   const list = downloads || [];
   const info: OfflineStorageInfo = {
@@ -114,7 +113,7 @@ export function estimateOfflineStorage(downloads: OfflineDownload[], softLimit: 
 }
 
 /** Set (as object) of streamUrls with a fully downloaded ("ready") entry.
- * Ported from `_track_render.py::updateAllDownloadButtons`. */
+ * */
 export function readyStreamUrls(downloads: OfflineDownload[]): Record<string, true> {
   const cached: Record<string, true> = {};
   (downloads || []).forEach((d) => {
@@ -131,7 +130,7 @@ export interface StorageSummaryView {
   pill: string;
   hasDownloads: boolean;
 }
-/** Texts/flags for the offline-storage summary. DOM writes stay legacy;
+/** Texts/flags for the offline-storage summary. DOM writes stay app;
  * formatBytes passed in (lives in main.ts). */
 export function storageSummaryView(info: OfflineStorageInfo, formatBytes: (n: number) => string): StorageSummaryView {
   const n = info.downloads.length;

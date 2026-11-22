@@ -1,6 +1,4 @@
 /**
- * Playlist views + add-to-playlist modal — ported from
- * `player_js/_smart_playlists.py` (showUserPlaylistView, playUserPlaylist,
  * openPlaylistModal, closePlaylistModal, renderPlaylistModalList).
  *
  * State via `htState` (allItems, playlistItems, inPlaylist, currentPath,
@@ -21,11 +19,11 @@ export interface PlaylistViewHooks {
   playTrack(index: number): void;
   /** `_savedFavorites` (relative_path -> true) */
   savedFavorites(): Record<string, boolean>;
-  sortFavoritesByOrder(items: LegacyMediaItem[]): LegacyMediaItem[];
+  sortFavoritesByOrder(items: CatalogItem[]): CatalogItem[];
   loadFavoritesOrder(): string[];
   loadFavoritesOrderAsync(cb: (serverOrder: string[]) => void): void;
   /** `_resolvePlaylistItems(plId)` -> `{pl, resolved}` or null */
-  resolvePlaylist(plId: string): { pl: { name?: string }; resolved: LegacyMediaItem[] } | null;
+  resolvePlaylist(plId: string): { pl: { name?: string }; resolved: CatalogItem[] } | null;
   /** `addToPlaylist(plId, relativePath)` */
   addToPlaylist(plId: string, relativePath: string): void;
 }
@@ -34,7 +32,7 @@ export interface PlaylistViewHooks {
 export function showUserPlaylistView(plId: string, h: PlaylistViewHooks): void {
   const st = getState();
   if (!st) return;
-  const enter = (id: string, items: LegacyMediaItem[], title: string) => {
+  const enter = (id: string, items: CatalogItem[], title: string) => {
     st.currentPlaylistId = id;
     st.playlistItems = items;
     st.inPlaylist = true;

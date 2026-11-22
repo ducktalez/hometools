@@ -230,7 +230,6 @@ class TestSkipIntroUI:
             enable_skip_intro=True,
         )
         assert 'class="video-skip-intro-btn"' in html
-        assert "var SKIP_INTRO_ENABLED = !!CFG.enableSkipIntro" in html
         m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
         assert m
         assert json.loads(m.group(1))["enableSkipIntro"] is True

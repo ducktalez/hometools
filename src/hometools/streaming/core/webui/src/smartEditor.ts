@@ -1,6 +1,4 @@
 /**
- * Smart-playlist editor modal (state + DOM wiring + save) — ported from
- * `player_js/_smart_playlists.py` (openSmartPlaylistEditor, _smartRenderEditor,
  * _smartWireEditor, _smartCollectFromDom, _smartSubmit).
  *
  * `_smartEditorState` was private to those functions -> module state here.

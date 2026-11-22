@@ -1,19 +1,17 @@
 /**
- * Folder-name cleanup + breadcrumb markup — ported from `player_js/_queue.py`.
+ * Folder-name cleanup + breadcrumb markup
  *
  * Vite/TS migration Phase 5 opportunistic-port slice
  * (docs/IMPLEMENTATION_PLAN.md → "Vite/TypeScript migration" /
  * "UI-Template-Vereinheitlichung"). `cleanFolderName` and the breadcrumb
  * segment/markup builders are pure (string/array in, string out) — no
- * dependency on the shared player state described in `legacy-globals.d.ts`.
+ * dependency on the shared player state described in `globals.d.ts`.
  *
  * `renderBreadcrumb(hooks)` is the DOM-wiring half (visibility toggling,
  * click handlers); `currentPath` via `htState`, DOM refs/`showFolderView`
  * via hooks.
  *
- * `cleanFolderName` was previously declared as a legacy-owned function in
- * `legacy-globals.d.ts` (typed for future consumers) — now that it's a
- * real ported implementation, that ambient entry was removed there.
+ * `globals.d.ts` (typed for future consumers) — now that it's a
  */
 
 import { getState } from "./stateBridge";

@@ -3,9 +3,7 @@
  * library root, shown as virtual top-level folders (alias = folder name).
  * Backend: `core/extra_folders.py` + `/api/video/folders`.
  *
- * Ported from `player_js/_queue.py` (_loadExtraFolders/addExtraFolder/
- * removeExtraFolder) + `_folder_browse.py` (root placeholders + badge).
- * Alias list is private state here; legacy reads it via `extraFolderAliases()`.
+ * (_loadExtraFolders/addExtraFolder/
  */
 
 import { getState } from "./stateBridge";

@@ -1,7 +1,7 @@
 /**
  * Background-tab resume (audio + video). Browsers may pause media when a tab
  * gets hidden; remember whether it was running and resume on visible.
- * Ported from `player_js/_core.py`. Flag private.
+ * Flag private.
  */
 
 export interface TabResumeHooks {

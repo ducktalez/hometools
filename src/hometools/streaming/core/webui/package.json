@@ -2,7 +2,7 @@
   "name": "hometools-streaming-webui",
   "private": true,
   "version": "0.0.1",
-  "description": "Vite/TypeScript build for the hometools streaming player UI. Builds static JS/CSS consumed by the FastAPI server_utils HTML skeleton. See README.md for migration status.",
+  "description": "Vite/TypeScript build for the hometools streaming player UI (static JS/CSS served by FastAPI).",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",

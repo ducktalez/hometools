@@ -1,7 +1,6 @@
 /**
- * Track-list row HTML. Ported from `_search_filter.py::_appendTrackBatch`
+ * Track-list row HTML.
  * (missing / debug-filtered / normal rows) and `renderSearchResults`
- * (folder + result rows). Pure: legacy globals come in via `ctx`.
  */
 
 import { filenameFromPath, needsConversion } from "./pathUtils";
@@ -28,13 +27,13 @@ export interface TrackRowCtx {
     folderPlay: string; trash: string; dl: string; pin: string;
     edit: string; playlist: string; queue: string; dots: string;
   };
-  /** undefined when metricPill bridge missing (legacy `typeof` guard). */
+  /** undefined when metricPill bridge missing (app `typeof` guard). */
   renderBpmPill?: (bpm: number | undefined, min: number, max: number, opts: Record<string, unknown>) => string;
-  renderInlineRating: (t: LegacyMediaItem, idx: number) => string;
-  renderMoveWidget: (t: LegacyMediaItem, idx: number) => string;
+  renderInlineRating: (t: CatalogItem, idx: number) => string;
+  renderMoveWidget: (t: CatalogItem, idx: number) => string;
 }
 
-type RowItem = LegacyMediaItem & { _missing?: boolean; _debugReason?: string; _hiddenShown?: boolean };
+type RowItem = CatalogItem & { _missing?: boolean; _debugReason?: string; _hiddenShown?: boolean };
 
 const pad2 = (n: unknown) => String(n).padStart(2, "0");
 const ratingBarHtml = (r: number | undefined) =>
@@ -187,7 +186,7 @@ export function searchFolderRowHtml(fm: FolderMatch, esc: Esc, filePlaceholder: 
 }
 
 /** Inner HTML of a search result row (`i` = 0-based position). */
-export function searchResultRowHtml(t: LegacyMediaItem, i: number, esc: Esc, filePlaceholder: string): string {
+export function searchResultRowHtml(t: CatalogItem, i: number, esc: Esc, filePlaceholder: string): string {
   const thumbSrc = t.thumbnail_url || filePlaceholder;
   const rp = t.relative_path || "";
   const lastSlash = rp.lastIndexOf("/");

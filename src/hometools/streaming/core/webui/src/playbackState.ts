@@ -1,6 +1,4 @@
 /**
- * Current-playback scratch state. Ported from `var currentStreamUrl` in
- * `player_js/_core.py` and the formerly undeclared (implicit global)
  * `_currentItemDuration`. One object, exposed as `window._playback`.
  */
 
@@ -15,9 +13,9 @@ export interface PlaybackState {
   savedFavorites: Record<string, boolean>;
   /** Path whose rating was just changed; never fully hidden by filters. */
   justRatedPath: string | null;
-  allItems: LegacyMediaItem[];
-  filteredItems: LegacyMediaItem[];
-  playlistItems: LegacyMediaItem[];
+  allItems: CatalogItem[];
+  filteredItems: CatalogItem[];
+  playlistItems: CatalogItem[];
   currentIndex: number;
   currentPath: string;
   inPlaylist: boolean;
@@ -29,7 +27,7 @@ export interface PlaybackState {
   shuffleQueue: number[];
   shufflePos: number;
   /** Up-next queue. */
-  userQueue: LegacyMediaItem[];
+  userQueue: CatalogItem[];
   userPlaylists: unknown[];
   playlistRevision: number;
   currentPlaylistId: string;
@@ -45,7 +43,7 @@ export function computeEffectiveThreshold(minRating: number, ratingWriteEnabled:
   return ratingWriteEnabled ? 2 : 0;
 }
 
-export function createPlaybackState(initialItems: LegacyMediaItem[] = []): PlaybackState {
+export function createPlaybackState(initialItems: CatalogItem[] = []): PlaybackState {
   return {
     currentStreamUrl: "",
     itemDuration: 0,

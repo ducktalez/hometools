@@ -1,7 +1,6 @@
 /**
  * Core <video>/<audio> element event handlers: ended, error, pause, play.
- * Ported from `player_js/_library_tools.py`. (timeupdate/loadedmetadata stay
- * legacy for now.)
+ * (timeupdate/loadedmetadata stay
  */
 
 import { bgAudioIsActive, getBgAudio, stopBgSync } from "./bgAudio";
@@ -20,7 +19,7 @@ export interface PlayerEventsHooks {
   clearProgressFor(rp: string): void;
   finishCrossfade(): void;
   playNextItem(): void;
-  /** Legacy `currentStreamUrl`. */
+  /** app `currentStreamUrl`. */
   currentStreamUrl(): string;
   removeGoneTrack(rp: string): void;
   showToast(msg: string): void;

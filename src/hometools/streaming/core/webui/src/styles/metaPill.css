@@ -35,7 +35,7 @@
   50%      { box-shadow: 0 0 9px 3px rgba(255,214,0,0.8); }
 }
 /* Known-value pill as <button> when Tools "BPM berechnen" active — opens
-   BPM-adjust popup (player_js/_track_render.py::_openBpmAdjustMenu). No
+   BPM-adjust popup (`bpmMenu.ts`). No
    glow (that means "unknown, click to calculate"), hover brighten only. */
 .meta-pill--editable {
   cursor: pointer; -webkit-tap-highlight-color: transparent;

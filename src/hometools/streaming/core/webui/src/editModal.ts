@@ -1,6 +1,6 @@
 /**
  * Metadata edit modal (title/artist/album + rating stars).
- * Ported from `player_js/_library_tools.py` (renderEditModalRating,
+ * (renderEditModalRating,
  * _initEditModalRatingEvents, openEditModal, closeEditModal, submitEditModal).
  * `_editModalRating` was private to this block -> module-private here.
  */
@@ -134,12 +134,12 @@ export function submitEditModal(h: EditModalHooks): void {
         return;
       }
       const ratingOk = !!(rd && rd.ok);
-      const updates: Partial<LegacyMediaItem> = { title, artist };
+      const updates: Partial<CatalogItem> = { title, artist };
       if (ratingOk) updates.rating = rd!.rating;
-      if (s.filteredItems[idx]) s.filteredItems[idx] = { ...s.filteredItems[idx], ...updates } as LegacyMediaItem;
+      if (s.filteredItems[idx]) s.filteredItems[idx] = { ...s.filteredItems[idx], ...updates } as CatalogItem;
       for (let i = 0; i < s.allItems.length; i++) {
         if (s.allItems[i].relative_path === path) {
-          s.allItems[i] = { ...s.allItems[i], ...updates } as LegacyMediaItem;
+          s.allItems[i] = { ...s.allItems[i], ...updates } as CatalogItem;
           break;
         }
       }

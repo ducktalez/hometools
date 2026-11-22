@@ -15,7 +15,7 @@ Run from repo root. Venv: `hometools-env/`. No CI — validation is pre-commit (
 - **Entry point:** `src/hometools/cli.py` → `hometools = hometools.cli:main`
 - **Config:** `config.py` — paths/ports from `HOMETOOLS_*` env vars, never hardcode.
 - **Streaming:** `streaming/core/` shared, `streaming/audio/` + `streaming/video/` thin wrappers (`catalog.py`, `server.py`, `sync.py` each).
-- **UI:** `streaming/core/server_utils/` generates all HTML/CSS/JS as Python strings — no separate frontend files. `_svg.py` (icons/flags), `_css.py` (`render_base_css`), `_player_js.py` (`render_player_js`), `_html.py` (`render_media_page`), `_pwa.py` (manifest/SW/icons), `_audit.py` (`render_audit_panel_html`), `_library.py` (status/error pages), `_paths.py` (path validation). `__init__.py` re-exports all.
+- **UI:** `streaming/core/webui/` = Vite/TypeScript source (`src/app.ts` composition root, `*Wiring.ts`, `styles/*.css`), built to `core/static/`. `streaming/core/server_utils/` = Python: `_html.py` (`render_media_page`, HTML skeleton + `#ht-config` JSON incl. `icons`), `_svg.py` (icons/flags, single source), `_pwa.py` (manifest/SW/icons), `_audit.py` (`render_audit_panel_html`), `_library.py` (status/error pages), `_paths.py` (path validation), `_static.py` (`/static` mount). `__init__.py` re-exports.
 - **Native clients:** `clients/` (Android TV active, `android/`/`ios/` reserved) — thin API clients, never re-implement backend logic. Admin tools (rating/tag/move/delete/playlists) web-only; clients get read/playback subset only. Contract = `clients/shared/openapi/*.json`, regen via `hometools export-openapi --server {video,audio}`. See `.github/instructions/clients*.instructions.md`.
 
 ## Architecture Rules
@@ -27,12 +27,12 @@ Run from repo root. Venv: `hometools-env/`. No CI — validation is pre-commit (
 5. **Robust exceptions.** Public functions return sensible defaults on failure (`None`/`False`/`[]`). Never crash caller.
 6. **No blocking.** Thumbnails, network I/O, file scans → background threads. Server startup instant.
 7. **Shadow cache** (`.hometools-cache/`, override `HOMETOOLS_CACHE_DIR`) mirrors library. Never touch original media files. MTime-based invalidation. Failure registry (`thumbnail_failures.json`) stops infinite retries.
-8. **Caching coordination.** Shadow cache, Service Worker/IndexedDB, PWA stay in sync. API shape change → update `server_utils.py` JS + Service Worker together.
+8. **Caching coordination.** Shadow cache, Service Worker/IndexedDB, PWA stay in sync. API shape change → update `webui/src` TS + Service Worker together.
 9. **Renames proposed, never auto-applied.** User confirms.
 10. **Sync only on explicit CLI command.** No auto-pull from NAS.
 11. **Logging, not print.** `logging.getLogger(__name__)`.
 12. **ffmpeg/ffprobe optional.** Always handle `FileNotFoundError`.
-13. **No Unicode/Emoji for UI controls.** Inline SVGs only (`SVG_*` in `server_utils.py`, `IC_*` JS vars). No chars like `▶ ◄ ► ⏸ ⊞ ↓`, no entities like `&#9733;`.
+13. **No Unicode/Emoji for UI controls.** Inline SVGs only (`SVG_*` in `_svg.py`, `IC_*` TS vars). No chars like `▶ ◄ ► ⏸ ⊞ ↓`, no entities like `&#9733;`.
 14. **Event-listener lifecycle.** `document`-level/long-lived listeners (e.g. Drag-and-Drop) need cleanup/destroy via `removeEventListener` (named handlers, not anonymous). Call cleanup before re-init and on view leave (`showFolderView`, `showPlaylist`). Pattern: `var _cleanup = null; function init() { destroy(); ... _cleanup = function() { removeEventListener(...); }; } function destroy() { if (_cleanup) { _cleanup(); _cleanup = null; } }`. Instances: `initPlaylistDragDrop`/`destroyPlaylistDragDrop`/`_dndCleanup`, `initQueueDragDrop`/`destroyQueueDragDrop`/`_queueDndCleanup`.
 
 ## Working Behaviour

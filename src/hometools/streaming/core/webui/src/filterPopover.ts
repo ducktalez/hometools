@@ -1,8 +1,6 @@
 /**
- * Filter-popover markup. Ported from `player_js/_search_filter.py`
+ * Filter-popover markup.
  * (`_filterPopoverBodyHtml`). Pure: filter state, genre list, star icons and
- * escHtml are explicit params (legacy IIFE vars / main.ts). Wiring
- * (`_wireFilterPopoverBody`) stays legacy — it mutates filter state.
  */
 export interface FilterPopoverState {
   rating: number;

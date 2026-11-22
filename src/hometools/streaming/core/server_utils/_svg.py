@@ -12,8 +12,8 @@ SVG_PREV = '<svg viewBox="0 0 24 24"><polygon points="18,3 8,12 18,21"/><rect x=
 SVG_NEXT = '<svg viewBox="0 0 24 24"><polygon points="6,3 16,12 6,21"/><rect x="16" y="3" width="3" height="18"/></svg>'
 SVG_PIP = '<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11" y="11" width="10" height="8" rx="1"/></svg>'
 SVG_BACK = '<svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-# View-toggle icons. Must stay byte-identical to IC_LIST/IC_GRID in
-# player_js/_queue.py (SVG_* ↔ IC_* 1:1 rule) — the button is rendered
+# View-toggle icons. Must stay byte-identical to IC_LIST/IC_GRID in webui/src/app.ts
+# (SVG_* ↔ IC_* 1:1 rule) — the button is rendered
 # server-side with one of these and then swapped client-side by
 # applyViewMode(). SVG_LIST carries leading bullets on purpose: a plain
 # three-line icon is indistinguishable from a hamburger menu button, which
@@ -45,7 +45,7 @@ SVG_FILTER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 SVG_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>'
 # Double-chevron icons for the BPM-adjust popup ("Langsamer"/"Schneller" —
 # halve/double a mis-detected value by one octave, see
-# player_js/_track_render.py::_openBpmAdjustMenu).
+# webui/src/bpmMenu.ts).
 SVG_CHEVRONS_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7,7 12,12 17,7"/><polyline points="7,13 12,18 17,13"/></svg>'
 SVG_CHEVRONS_UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7,17 12,12 17,17"/><polyline points="7,11 12,6 17,11"/></svg>'
 SVG_DUPLICATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'

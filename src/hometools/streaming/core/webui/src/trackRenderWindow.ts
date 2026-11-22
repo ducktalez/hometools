@@ -1,10 +1,7 @@
 /**
- * Windowed track-list rendering — ported from `player_js/_search_filter.py`
+ * Windowed track-list rendering
  * (_stopRenderObserver, _appendTrackBatch, _ensureRenderedTo, markActive) and
- * the windowing setup of `_track_render.py::renderTracks`. The window state
  * (display items, real-index map, batch offset, sentinel, observer; formerly
- * `_render*` vars in `_core.py`) is module-private. The render guard
- * (`_rgKey`), filter vars and row-context building stay legacy and come in
  * via `RenderWindowHooks`. `currentIndex` via `htState`.
  */
 
@@ -19,7 +16,7 @@ export interface RenderWindowHooks {
   trackList(): HTMLElement;
   /** `_RENDER_BATCH_SIZE` */
   batchSize: number;
-  /** Build the per-batch row context (legacy globals, tool state, icons). */
+  /** Build the per-batch row context (app globals, tool state, icons). */
   rowCtx(): TrackRowCtx;
   /** updateFavoriteButtons / updateAllDownloadButtons / updateQueueButtons */
   decorateRows(): void;
@@ -29,7 +26,7 @@ export interface RenderWindowHooks {
   wireDelegation(): void;
 }
 
-type DisplayItem = LegacyMediaItem & { _missing?: boolean; _debugReason?: string };
+type DisplayItem = CatalogItem & { _missing?: boolean; _debugReason?: string };
 
 let _displayItems: DisplayItem[] = [];
 let _realIdxMap: number[] = [];
@@ -102,9 +99,9 @@ export function markActive(h: RenderWindowHooks): void {
  * Reset the window for `realTracks` (episode-gap placeholders added), insert
  * the sentinel, render the first batch and set up lazy loading.
  */
-export function startWindowedRender(realTracks: LegacyMediaItem[], h: RenderWindowHooks): void {
+export function startWindowedRender(realTracks: CatalogItem[], h: RenderWindowHooks): void {
   const tl = h.trackList();
-  _displayItems = withMissingEpisodes(realTracks as Array<LegacyMediaItem & { season?: number; episode?: number }>) as DisplayItem[];
+  _displayItems = withMissingEpisodes(realTracks as Array<CatalogItem & { season?: number; episode?: number }>) as DisplayItem[];
   _realIdxMap = buildRealIdxMap(_displayItems);
   _batchOffset = 0;
 

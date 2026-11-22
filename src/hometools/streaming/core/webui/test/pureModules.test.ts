@@ -4,7 +4,7 @@ import { itemsUnder, collectGenres, sortTracks, replaceItemFields } from "../src
 import { parseIntro, introButtonMode, patchIntroLocal } from "../src/intro";
 import { buildFolderMatches, searchItems } from "../src/search";
 
-const rps = (xs: LegacyMediaItem[]) => xs.map((x) => x.relative_path);
+const rps = (xs: CatalogItem[]) => xs.map((x) => x.relative_path);
 
 describe("catalogQuery", () => {
   const all = [item("A/x.mp3"), item("A/B/y.mp3"), item("AB/z.mp3")];

@@ -1,4 +1,4 @@
-/** Language code -> native display name (lang picker). Ported from `player_js/_core.py`. */
+/** Language code -> native display name (lang picker). */
 export const LANG_NAME_MAP: Record<string, string> = {
   de: "Deutsch",
   en: "English",

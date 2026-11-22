@@ -1,9 +1,7 @@
 /**
- * Queue panel layout + resize + peek handle — ported from `player_js/_queue.py`
+ * Queue panel layout + resize + peek handle
  * (_syncQueueBottom, _initQueueResize, _initQueuePeekHandle). Drag state is
  * private; DOM nodes, `_queueOpen`, `_queueUserHeight` and open/toggle
- * actions come in as args/hooks (state is shared with `_core.py`).
- * Also: updateQueueBadge / updateQueueButtons (from `_core.py`).
  */
 
 import { queueIndexOf } from "./queue";
@@ -12,7 +10,7 @@ import { queuePanelHtml } from "./panelBodies";
 export interface QueueRenderHooks {
   body: HTMLElement | null;
   clearBtn: HTMLElement | null;
-  queue: LegacyMediaItem[];
+  queue: CatalogItem[];
   esc(s: unknown): string;
   filePlaceholder: string;
   icRemove: string;
@@ -82,7 +80,7 @@ export interface QueueResizeOptions {
   minH: number;
   heightKey: string;
   isOpen(): boolean;
-  /** Persisted height -> legacy `_queueUserHeight`. */
+  /** Persisted height -> app `_queueUserHeight`. */
   setUserHeight(h: number): void;
 }
 
@@ -238,7 +236,7 @@ export function updateQueueBadge(badge: HTMLElement | null, peekHandle: HTMLElem
 }
 
 /** Sync `.track-queue-btn` state (in-queue class + title) with the queue. */
-export function updateQueueButtons(queue: LegacyMediaItem[] | null | undefined): void {
+export function updateQueueButtons(queue: CatalogItem[] | null | undefined): void {
   document.querySelectorAll<HTMLElement>(".track-queue-btn").forEach((btn) => {
     const inQ = queueIndexOf(queue, btn.dataset.relativePath || "") >= 0;
     btn.classList.toggle("in-queue", inQ);

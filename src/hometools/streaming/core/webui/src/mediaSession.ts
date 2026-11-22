@@ -1,6 +1,4 @@
 /**
- * Media Session API (lock-screen controls) + active-media selection. Ported
- * from `player_js/_library_tools.py` (updateMediaSession/activeMedia).
  */
 
 import { getBgAudio, bgAudioIsActive } from "./bgAudio";

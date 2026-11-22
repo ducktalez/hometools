@@ -113,7 +113,7 @@ describe("scheduleBackgroundRefresh", () => {
 });
 
 
-function initHooks(cache: LegacyMediaItem[] | null = null): InitialCatalogHooks {
+function initHooks(cache: CatalogItem[] | null = null): InitialCatalogHooks {
   return {
     ...hooks(),
     loadCache: () => cache,

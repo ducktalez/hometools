@@ -1,11 +1,7 @@
 /**
- * Playlist load + cross-device sync polling — ported from
- * `player_js/_playlists.py` (loadUserPlaylists, _startPlaylistSync,
  * _stopPlaylistSync, _onPlaylistVisibility, _pollPlaylistVersion,
  * _snapshotPlaylists, _restorePlaylists).
  *
- * State: `_userPlaylists`/`_playlistRevision` are shared with other legacy
- * fragments -> accessed via `htState` (userPlaylists/playlistRevision).
  * The sync timer was private to these functions -> moved in as module state.
  * CFG-derived values + the "re-render root" callback come in as `opts`.
  */

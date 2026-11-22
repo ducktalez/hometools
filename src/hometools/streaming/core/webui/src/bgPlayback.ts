@@ -1,8 +1,7 @@
 /**
  * Background-playback intent flag + visibilitychange handler for the video
- * player. Ported from `player_js/_library_tools.py`. `wasPlaying` is set on
+ * player. `wasPlaying` is set on
  * the `playing` event and cleared only by intentional user pause (browser
- * auto-pause on mobile does NOT clear it). Legacy reads/writes it through
  * `wasPlaying()` / `setWasPlaying()`.
  */
 

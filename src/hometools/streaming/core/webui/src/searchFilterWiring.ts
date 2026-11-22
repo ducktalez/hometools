@@ -1,9 +1,7 @@
 /**
  * Search/filter/track-list hook wiring. Replaces the hook-builder glue formerly
- * in `player_js/_search_filter.py`: global search, filter pipeline + chips,
  * filter popover, windowed rendering, row select, player-bar nav/actions,
- * track-list delegation, inline edit. Legacy callbacks come in via `deps`
- * (thunk, resolved per call, so declaration order in the closure script does
+ * (thunk, resolved per call, so declaration order in the app closure does
  * not matter).
  */
 
@@ -61,7 +59,7 @@ export interface SearchFilterCfg {
   bpmMax: number;
 }
 
-/** Legacy closure functions/values the wiring still needs. */
+/** app closure functions/values the wiring still needs. */
 export interface SearchFilterDeps {
   effectiveThreshold(): number;
   showHidden(): boolean;
@@ -83,7 +81,7 @@ export interface SearchFilterDeps {
   showPlaylist: JumpHooks["showPlaylist"];
   enterTrackListView: SearchViewHooks["enterTrackListView"];
   playItem: SearchViewHooks["playItem"];
-  contentsAt(path: string): { files: LegacyMediaItem[] };
+  contentsAt(path: string): { files: CatalogItem[] };
   itemsUnder: JumpHooks["itemsUnder"];
   renderTracks: FilterApplyHooks["renderTracks"];
   updateFavoriteButtons(): void;
@@ -290,7 +288,7 @@ export function createSearchFilterWiring(cfg: SearchFilterCfg, deps: () => Searc
     appendTrackBatch: () => appendTrackBatch(renderWindowHooks()),
     ensureRenderedTo: (idx: number) => ensureRenderedTo(idx, renderWindowHooks()),
     markActive: markActiveW,
-    startWindowedRender: (tracks: LegacyMediaItem[]) => startWindowedRender(tracks, renderWindowHooks()),
+    startWindowedRender: (tracks: CatalogItem[]) => startWindowedRender(tracks, renderWindowHooks()),
     selectTrackRow: (idx: number) => selectTrackRow(el("trackList"), idx),
     jumpToCurrentTrack: () => {
       const d = deps();

@@ -1,9 +1,8 @@
 /**
  * Video overlay, auto-hiding controls, mini bar and draggable float player.
- * Ported from `player_js/_core.py` (open/closeVideoOverlay, _show/_hide/
+ * (open/closeVideoOverlay, _show/_hide/
  * _toggleVidControls, enter/exitFloatPlayer, _syncMiniBar/_syncMiniPlayBtn,
  * float drag, fullscreen-exit + Escape -> float). `_isFloating` and the
- * control-hide timer are module-private; legacy calls the exported
  * functions through window bridges. No-op in audio mode (elements absent).
  */
 

@@ -1,14 +1,12 @@
 /**
  * Global-search data computation (folder matches + item matches).
  *
- * Ported from `player_js/_search_filter.py`'s `globalSearch(needle)` — split
+ *'s `globalSearch(needle)` — split
  * the pure computation (this file) from the DOM/state-mutation half that
- * stays in `_search_filter.py` (sets `playlistItems`/`filteredItems`/
  * `inPlaylist`, calls `_enterTrackListView`/`renderSearchResults`/
  * `rebuildShuffleQueue`). Explicit-parameter pattern: `allItems`/
  * `hiddenActive`/`_effectiveThreshold` were closure reads, now params.
  * `cleanFolderName` (breadcrumb.ts) is imported directly — same bundle,
- * no window-bridge needed for an already-ported module.
  */
 
 import { cleanFolderName } from "./breadcrumb";
@@ -29,7 +27,7 @@ export interface FolderMatch {
  * sorted shallowest-first then by descendant count then display name.
  */
 export function buildFolderMatches(
-  allItems: LegacyMediaItem[],
+  allItems: CatalogItem[],
   needleLower: string,
   hiddenActive: boolean,
   effectiveThreshold: number
@@ -86,11 +84,11 @@ export function buildFolderMatches(
 
 /** Individual item matches: title/artist/relative_path contains `needleLower`. */
 export function searchItems(
-  allItems: LegacyMediaItem[],
+  allItems: CatalogItem[],
   needleLower: string,
   hiddenActive: boolean,
   effectiveThreshold: number
-): LegacyMediaItem[] {
+): CatalogItem[] {
   return allItems.filter((t) => {
     const r = t.rating || 0;
     if (hiddenActive && r > 0 && r < effectiveThreshold) return false;

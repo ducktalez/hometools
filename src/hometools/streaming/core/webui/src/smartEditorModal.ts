@@ -1,7 +1,6 @@
 /**
  * Smart-playlist editor modal shell + "add to playlist" modal list.
- * Ported from `_smart_playlists.py::_smartRenderEditor` (markup half) and
- * `renderPlaylistModalList` (markup half). Wiring stays legacy.
+ * (markup half) and
  */
 
 import { smartRenderRuleRow } from "./smartPlaylist";

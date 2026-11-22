@@ -14,7 +14,7 @@ const base: FilterChainOptions = {
   savedFavorites: {},
 };
 const opts = (o: Partial<FilterChainOptions>) => ({ ...base, ...o });
-const rps = (xs: LegacyMediaItem[]) => xs.map((x) => x.relative_path);
+const rps = (xs: CatalogItem[]) => xs.map((x) => x.relative_path);
 
 const items = [
   item("u", { rating: 0, genre: "Rock" }),

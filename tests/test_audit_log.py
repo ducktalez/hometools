@@ -14,6 +14,7 @@ from hometools.streaming.core.audit_log import (
     mark_undone,
     new_entry,
 )
+from tests._webui import all_ts
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -551,17 +552,16 @@ def test_render_audit_panel_has_back_link():
 # ---------------------------------------------------------------------------
 
 
-def test_player_js_has_undo_rating_function():
-    from hometools.streaming.core.server_utils import render_player_js
+def test_ts_has_undo_rating_function():
     from tests.test_streaming_player_ui import _webui_src
 
     ts = _webui_src("rating.ts")
     assert "undoRating" in ts
     assert "showRatingToastWithUndo" in ts
-    assert "AUDIT_UNDO_PATH" in render_player_js()
+    assert "AUDIT_UNDO_PATH" in all_ts()
 
 
-def test_player_js_audit_undo_path_injected():
+def test_ts_audit_undo_path_injected():
     """AUDIT_UNDO_PATH is now derived at runtime from CFG.apiPath via
     _apiBase() (Vite/TS migration Phase 3) instead of a Python-interpolated
     literal path. Verify the derivation expression is present, and that a
@@ -573,9 +573,8 @@ def test_player_js_audit_undo_path_injected():
     from fastapi.testclient import TestClient
 
     from hometools.streaming.audio.server import create_app
-    from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
+    js = all_ts()
     assert "AUDIT_UNDO_PATH = _apiBase() + '/audit/undo'" in js
 
     client = TestClient(create_app())
@@ -585,10 +584,8 @@ def test_player_js_audit_undo_path_injected():
     assert json.loads(m.group(1))["apiPath"] == "/api/audio/tracks"
 
 
-def test_player_js_rating_toast_uses_entry_id():
-    from hometools.streaming.core.server_utils import render_player_js
-
-    js = render_player_js()
+def test_ts_rating_toast_uses_entry_id():
+    js = all_ts()
     ts = (
         __import__("pathlib").Path(__file__).resolve().parent.parent
         / "src"

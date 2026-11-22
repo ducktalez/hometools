@@ -37,7 +37,7 @@ describe("pickerMatches", () => {
   const items = [
     { ...item("a/one.mp3"), title: "One", artist: "Zed" },
     { ...item("a/two.mp3"), title: "Two", artist: "Yan" },
-  ] as LegacyMediaItem[];
+  ] as CatalogItem[];
   it("filters by title/artist/path, case-insensitive", () => {
     expect(pickerMatches(items, "zed").shown).toHaveLength(1);
     expect(pickerMatches(items, "TWO").shown[0].title).toBe("Two");

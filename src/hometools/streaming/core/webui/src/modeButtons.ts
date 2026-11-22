@@ -1,6 +1,6 @@
 /**
  * Shuffle / repeat buttons: mode cycling, persistence, long-press for
- * weighted shuffle. Ported from `player_js/_library_tools.py`
+ * weighted shuffle.
  * (cycleShuffle/activateWeightedShuffle/updateShuffleBtn/cycleRepeat/
  * updateRepeatBtn + init + button wiring). Long-press state is private.
  */

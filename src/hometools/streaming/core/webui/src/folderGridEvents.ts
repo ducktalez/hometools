@@ -1,7 +1,5 @@
 /**
  * Delegated click handler on the folder grid for the dynamically rendered
- * tools-row cards (refresh catalog / add / remove extra folder). Ported from
- * `player_js/_queue.py`. Installed once at startup; the grid element lives
  * for the whole page, so no cleanup is needed.
  */
 

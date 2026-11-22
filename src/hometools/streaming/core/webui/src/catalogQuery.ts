@@ -1,17 +1,13 @@
 /**
  * Catalog filtering by path prefix.
  *
- * Ported from `player_js/_queue.py`'s `itemsUnder(path)`. Legacy version
- * read the mutable `allItems` global straight from its enclosing IIFE
  * scope (not reachable from here — see main.ts header). Explicit-parameter
- * pattern, same as `smartPlaylist.ts`/`catalogCache.ts`: `_queue.py` keeps
  * a thin bare-name wrapper `itemsUnder(path)` that forwards to
  * `window._itemsUnder(path, allItems)`, so all 13 existing call sites
- * across the other `player_js/*.py` fragments stay untouched.
  */
 
 /** Items whose `relative_path` sits under `path` (recursive). Empty/falsy `path` = all items. */
-export function itemsUnder(path: string, allItems: LegacyMediaItem[]): LegacyMediaItem[] {
+export function itemsUnder(path: string, allItems: CatalogItem[]): CatalogItem[] {
   if (!path) return allItems;
   const prefix = path + "/";
   return allItems.filter((it) => it.relative_path.startsWith(prefix));
@@ -20,11 +16,11 @@ export function itemsUnder(path: string, allItems: LegacyMediaItem[]): LegacyMed
 /**
  * Distinct, sorted genres of `items` (feeds the filter popover's `<select>`).
  *
- * Ported from `_search_filter.py`'s `_collectPlaylistGenres()` — read the
+ *'s `_collectPlaylistGenres()` — read the
  * mutable `playlistItems` global, now an explicit param (call site passes
  * it through).
  */
-export function collectGenres(items: LegacyMediaItem[] | null | undefined): string[] {
+export function collectGenres(items: CatalogItem[] | null | undefined): string[] {
   const genres: Record<string, boolean> = {};
   (items || []).forEach((t) => {
     if (t.genre) genres[t.genre] = true;
@@ -38,18 +34,18 @@ export function collectGenres(items: LegacyMediaItem[] | null | undefined): stri
  * reference (filter() copies refs), so all must be patched individually —
  * patching allItems alone left playlistItems stale (rating-filter bug).
  *
- * Ported from `_library_tools.py::_patchAllItemsRating` (arrays now explicit).
+ * (arrays now explicit).
  */
 export function replaceItemFields(
-  arrays: Array<LegacyMediaItem[] | null | undefined>,
+  arrays: Array<CatalogItem[] | null | undefined>,
   relPath: string,
-  fields: Partial<LegacyMediaItem>
+  fields: Partial<CatalogItem>
 ): void {
   arrays.forEach((arr) => {
     if (!arr) return;
     for (let i = 0; i < arr.length; i++) {
       if (arr[i] && arr[i].relative_path === relPath) {
-        arr[i] = { ...arr[i], ...fields } as LegacyMediaItem;
+        arr[i] = { ...arr[i], ...fields } as CatalogItem;
       }
     }
   });
@@ -58,17 +54,16 @@ export function replaceItemFields(
 /**
  * Sort the track list by the active `#sort-field` selection. Pure copy
  * (`items.slice().sort(...)`), byte-for-byte port of the comparator inline
- * in `_search_filter.py::applyFilter()`.
  *
  * Explicit-parameter pattern: `sortBy` was `sortField.value` (DOM read) and
  * `hasCustomPlaylist` was the truthiness of the mutable `_currentPlaylistId`
  * global — both now passed in by the caller instead of read from closure.
  */
 export function sortTracks(
-  items: LegacyMediaItem[],
+  items: CatalogItem[],
   sortBy: string,
   hasCustomPlaylist: boolean
-): LegacyMediaItem[] {
+): CatalogItem[] {
   return items.slice().sort((a, b) => {
     const sa = (a.season as number) || 0;
     const sb = (b.season as number) || 0;
@@ -111,9 +106,9 @@ export function sortTracks(
 /** Item for a stream URL: prefers `filteredItems` (index >= 0), falls back to `allItems` (index -1). */
 export function findItemByStreamUrl(
   streamUrl: string,
-  filteredItems: LegacyMediaItem[],
-  allItems: LegacyMediaItem[]
-): { item: LegacyMediaItem; index: number } | null {
+  filteredItems: CatalogItem[],
+  allItems: CatalogItem[]
+): { item: CatalogItem; index: number } | null {
   const idx = filteredItems.findIndex((it) => it.stream_url === streamUrl);
   if (idx >= 0) return { item: filteredItems[idx], index: idx };
   for (let i = 0; i < allItems.length; i++) {
@@ -122,7 +117,7 @@ export function findItemByStreamUrl(
   return null;
 }
 /** Index of the first item with `relative_path === path`, or -1. */
-export function indexOfPath(items: LegacyMediaItem[] | null | undefined, path: string | null | undefined): number {
+export function indexOfPath(items: CatalogItem[] | null | undefined, path: string | null | undefined): number {
   if (!items || !path) return -1;
   return items.findIndex((it) => it && it.relative_path === path);
 }
@@ -130,7 +125,7 @@ export function indexOfPath(items: LegacyMediaItem[] | null | undefined, path: s
 export function ratingToastLabel(stars: number): string {
   return stars === 0 ? "Bewertung entfernt" : stars + (stars === 1 ? " Stern" : " Sterne") + " vergeben";
 }/** New array without the entries whose `relative_path === path`. */
-export function withoutPath(items: LegacyMediaItem[], path: string): LegacyMediaItem[] {
+export function withoutPath(items: CatalogItem[], path: string): CatalogItem[] {
   return items.filter((it) => it.relative_path !== path);
 }
 /**
@@ -138,7 +133,7 @@ export function withoutPath(items: LegacyMediaItem[], path: string): LegacyMedia
  * shift the playing index after a removal). Index `currentIndex` itself and
  * beyond do not count; negative `currentIndex` -> false.
  */
-export function isBeforeIndex(items: LegacyMediaItem[], path: string, currentIndex: number): boolean {
+export function isBeforeIndex(items: CatalogItem[], path: string, currentIndex: number): boolean {
   if (currentIndex < 0) return false;
   for (let i = 0; i < currentIndex && i < items.length; i++) {
     if (items[i].relative_path === path) return true;

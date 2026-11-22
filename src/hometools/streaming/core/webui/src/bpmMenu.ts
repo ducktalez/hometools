@@ -1,6 +1,4 @@
 /**
- * BPM adjust popup (Tools-panel "BPM berechnen") — ported from
- * `player_js/_track_render.py` (_openBpmAdjustMenu, _closeBpmAdjustMenu,
  * _patchAllItemsBpm). Cleanup handle private. State via htState; paths,
  * icons and toast via `BpmMenuHooks`.
  */

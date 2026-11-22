@@ -1,7 +1,7 @@
 /** Test helpers: fake window.htState + item factory (node env, no DOM). */
 import type { HtState } from "../src/stateBridge";
 
-export type Item = LegacyMediaItem;
+export type Item = CatalogItem;
 
 export function item(rp: string, extra: Partial<Item> = {}): Item {
   return { relative_path: rp, title: rp, artist: "", ...extra } as Item;

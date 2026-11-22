@@ -1,18 +1,15 @@
 /**
  * User queue ("Warteschlange") data operations.
  *
- * Ported from `player_js/_core.py` (data half of addToQueue/removeFromQueue/
- * clearQueue/playFromQueue). `_userQueue` is read in several fragments and
- * reassigned by clearQueue, so access goes through the htState bridge
+ * (data half of addToQueue/removeFromQueue/
  * (pattern 4). Badge/buttons/panel rendering, toasts and playItem stay in
- * the legacy script — these functions only mutate the queue and report back.
  */
 
 import { getState } from "./stateBridge";
 import { peekNextIndex } from "./shuffle";
 
 export interface NextTarget {
-  item: LegacyMediaItem;
+  item: CatalogItem;
   /** filteredItems index; -1 when the item comes from the user queue. */
   index: number;
   fromQueue: boolean;
@@ -26,7 +23,7 @@ export interface NextTarget {
  * caller commits (crossfade: in _finishCrossfade, so an aborted crossfade
  * doesn't skip a shuffle track).
  *
- * Ported from `_library_tools.py::_resolveNextForCrossfade`.
+ *
  */
 export function resolveNext(): NextTarget | null {
   const s = getState();
@@ -43,7 +40,7 @@ export function resolveNext(): NextTarget | null {
 export type QueueAddResult = "added" | "duplicate" | "invalid";
 
 /** Index of `relPath` in `queue`, -1 if absent. */
-export function queueIndexOf(queue: LegacyMediaItem[] | null | undefined, relPath: string): number {
+export function queueIndexOf(queue: CatalogItem[] | null | undefined, relPath: string): number {
   if (!queue) return -1;
   for (let i = 0; i < queue.length; i++) {
     if (queue[i].relative_path === relPath) return i;
@@ -52,7 +49,7 @@ export function queueIndexOf(queue: LegacyMediaItem[] | null | undefined, relPat
 }
 
 /** Slim copy stored in the queue — only fields the queue panel/playback need. */
-export function queueEntry(item: LegacyMediaItem, defaultMediaType: string): LegacyMediaItem {
+export function queueEntry(item: CatalogItem, defaultMediaType: string): CatalogItem {
   return {
     title: item.title || "",
     artist: item.artist || "",
@@ -66,7 +63,7 @@ export function queueEntry(item: LegacyMediaItem, defaultMediaType: string): Leg
 }
 
 /** Append `item` unless invalid or already queued. */
-export function queueAdd(item: LegacyMediaItem | null | undefined, defaultMediaType: string): QueueAddResult {
+export function queueAdd(item: CatalogItem | null | undefined, defaultMediaType: string): QueueAddResult {
   const s = getState();
   if (!s || !item || !item.relative_path) return "invalid";
   if (queueIndexOf(s.userQueue, item.relative_path) >= 0) return "duplicate";
@@ -75,13 +72,13 @@ export function queueAdd(item: LegacyMediaItem | null | undefined, defaultMediaT
 }
 
 /** Remove entry at `index`; returns it, or null when out of range. */
-export function queueRemoveAt(index: number): LegacyMediaItem | null {
+export function queueRemoveAt(index: number): CatalogItem | null {
   const s = getState();
   if (!s || index < 0 || index >= s.userQueue.length) return null;
   return s.userQueue.splice(index, 1)[0];
 }
 
-/** Empty the queue (reassigns, like the legacy `_userQueue = []`). */
+/** Empty the queue (reassigns, like the app `_userQueue = []`). */
 export function queueClear(): void {
   const s = getState();
   if (s) s.userQueue = [];
@@ -102,7 +99,7 @@ export function queueMove(fromIdx: number, toIdx: number): void {
 
 export interface QueueActionHooks {
   onChanged(): void;
-  playItem(item: LegacyMediaItem, index: number): void;
+  playItem(item: CatalogItem, index: number): void;
 }
 
 /** Remove entry, refresh UI via hook. */
@@ -136,7 +133,7 @@ export interface AddToQueueHooks {
   itemNoun: string;
 }
 /** Add to queue with toasts: duplicate -> notice, added -> refresh + confirmation. */
-export function addToQueue(item: LegacyMediaItem | null | undefined, h: AddToQueueHooks): void {
+export function addToQueue(item: CatalogItem | null | undefined, h: AddToQueueHooks): void {
   h.ensureDom();
   const res = queueAdd(item, h.itemNoun);
   if (res === "invalid" || !item) return;

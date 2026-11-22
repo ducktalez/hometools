@@ -1,7 +1,6 @@
 /**
- * Catalog refresh decisions — ported from `player_js/_queue.py`
+ * Catalog refresh decisions
  * (_triggerSilentRefresh, loadInitialCatalog cache-verify, _refreshPoll,
- * refreshFolderRatings). Pure: fetch/cache/render orchestration stays legacy
  * (see streaming.instructions.md "Catalog caching").
  */
 

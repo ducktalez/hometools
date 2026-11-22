@@ -1,10 +1,9 @@
 /**
- * Track-list event delegation — ported from `player_js/_search_filter.py`
+ * Track-list event delegation
  * (_wireTrackListDelegation). Handler refs are module-private; re-wiring
  * (called once per renderTracks) removes the previous listeners first.
  * `filteredItems`/`userQueue` via `htState`; every action via `TrackListHooks`.
  *
- * Behaviour fix vs. legacy: the dblclick listener was an anonymous function
  * and piled up on every re-wire (playTrack fired N times). Now named + removed.
  */
 
@@ -21,12 +20,12 @@ export interface TrackListHooks {
   deleteTrackDownload(url: string, btn: HTMLElement): void;
   cancelDownload(url: string, btn: HTMLElement): void;
   downloadTrack(url: string, title: string | undefined, btn: HTMLElement, meta: Record<string, string>): void;
-  toggleFavorite(item: LegacyMediaItem, btn: HTMLElement): void;
+  toggleFavorite(item: CatalogItem, btn: HTMLElement): void;
   openEditModal(index: number): void;
   /** `loadUserPlaylists().then(() => openPlaylistModal(rp))` */
   openPlaylistModalFor(relativePath: string): void;
   removeFromQueue(index: number): void;
-  addToQueue(item: LegacyMediaItem): void;
+  addToQueue(item: CatalogItem): void;
   showToast(msg: string): void;
   moveFileToFolder(index: number, target: string): void;
   deleteTrackFromList(index: number): void;

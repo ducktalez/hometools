@@ -1,8 +1,7 @@
 /**
  * Favorites (server-side "shortcuts"): load, pin-button sync, toggle.
- * Ported from `player_js/_library_tools.py` (loadFavorites,
+ * (loadFavorites,
  * updateFavoriteButtons, toggleFavorite). The `_savedFavorites` object is
- * shared with many legacy readers -> lives in legacy, accessed via
  * `htState.savedFavorites` (getter/setter pair).
  */
 

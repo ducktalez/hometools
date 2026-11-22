@@ -1,5 +1,5 @@
 /**
- * Folder-browse UI helpers — ported from `player_js/_folder_browse.py`:
+ * Folder-browse UI helpers
  * language picker, filter-bar scroll reveal, global-search wiring and the
  * playlist-card kebab menu items.
  *

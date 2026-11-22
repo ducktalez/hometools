@@ -1,17 +1,14 @@
 /**
  * Single canonical toast (bottom-center, auto-hide).
  *
- * Ported from `player_js/_core.py`. State lives on the `#ht-toast` element
+ * State lives on the `#ht-toast` element
  * itself (lazily created, hide timer) — nothing outside read it, so it
  * moved along with the function (same pattern as `clickGuard.ts`).
  *
- * History: this was accidentally duplicated in `_library_tools.py` /
- * `_track_render.py` during the fragment split; the later top-level
  * `function showToast(...)` silently shadowed the real one and callers'
  * custom `durationMs` was ignored. Keeping the implementation here — one
  * module, one export — makes that class of bug impossible.
  * `tests/test_js_syntax.py::test_no_duplicate_top_level_function_declarations`
- * still guards the remaining legacy script.
  */
 
 const DEFAULT_DURATION_MS = 3500;

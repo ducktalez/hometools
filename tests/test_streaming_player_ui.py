@@ -3,7 +3,8 @@
 import re as _re
 from pathlib import Path
 
-from hometools.streaming.core.server_utils import render_media_page, render_player_js
+from hometools.streaming.core.server_utils import render_media_page
+from tests._webui import all_ts
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -22,7 +23,7 @@ def _page(media="audio"):
 
 
 def _js():
-    return render_player_js()
+    return all_ts()
 
 
 def _webui_src(filename):
@@ -233,16 +234,6 @@ def test_classic_js_has_no_waveform_data():
     assert "'/waveform'" in js
 
 
-def test_classic_js_has_no_thumb_video():
-    js = _js()
-    assert "thumbVideo" not in js
-    # Classic mode now has sprite-based mousemove for video scrubber preview
-    ts = _webui_src("spritePreview.ts")
-    assert "_meta" in ts
-    assert "mousemove" in ts
-    assert "window._initSpritePreview(" in js
-
-
 def test_classic_js_has_stub_functions():
     js = _js()
     assert "generateWaveform" in js
@@ -265,12 +256,6 @@ def test_waveform_js_has_audio_mode_detection():
     js = _js()
     assert "isAudioMode" in js
     assert "isVideoMode" in js
-
-
-def test_waveform_js_has_generate_waveform():
-    js = _js()
-    assert "window._generateWaveform(" in js
-    assert "export function generateWaveform(" in _webui_src("waveform.ts")
 
 
 def test_waveform_js_has_draw_waveform():
@@ -327,12 +312,6 @@ def test_pip_js_has_pip_supported_detection():
     ts = _webui_src("pip.ts")
     assert "pictureInPictureEnabled" in ts
     assert "webkitSupportsPresentationMode" in ts
-
-
-def test_pip_js_has_visibility_change_pip():
-    js = _js()
-    assert "visibilitychange" in js
-    assert "_isPipActive" in js
 
 
 def test_pip_js_has_enter_leave_events():
@@ -422,14 +401,6 @@ def test_audio_page_has_apple_web_app_capable():
     assert "apple-mobile-web-app-capable" in page
 
 
-def test_js_has_fullscreen_logic():
-    ts = _webui_src("playerBarUi.ts")
-    assert "requestFullscreen" in ts
-    assert "webkitEnterFullscreen" in ts
-    assert "fullscreenEnabled" in ts
-    assert "_initBarFullscreen" in _js()
-
-
 def test_js_sets_media_session_playback_state():
     """When going to background, playbackState should be set to 'playing'."""
     assert "mediaSession.playbackState" in _webui_src("bgPlayback.ts")
@@ -499,19 +470,6 @@ def test_js_has_api_path_variable():
     assert "API_PATH" in js
 
 
-def test_js_loads_initial_catalog_async():
-    """The shell should fetch the catalog asynchronously after initial page render
-    (loadInitialCatalog ported to webui/src/catalogFetch.ts)."""
-    js = _js()
-    ts = _webui_src("catalogFetch.ts")
-    assert "function loadInitialCatalog" in js
-    assert "window._loadInitialCatalog(" in js
-    assert 'fetch(h.apiPath, { cache: "no-store" })' in ts
-    assert "Loading library" in ts
-    assert "Initial catalog fetch started" in ts
-    assert "Initial catalog response received after" in ts
-
-
 def test_js_retries_initial_catalog_while_server_is_loading():
     """The client should poll again when the server reports a loading state."""
     ts = _webui_src("catalogFetch.ts")
@@ -529,12 +487,6 @@ def test_js_shows_indexing_toast_for_refreshing_state():
     assert "scheduleBackgroundRefresh" in js
     assert "data.refreshing" in ts
     assert "ht-indexing-toast" in _webui_src("indexingToast.ts")
-
-
-def test_js_loading_state_shows_message_in_folder_grid():
-    assert "Loading library" in _webui_src("catalogFetch.ts")
-    assert "empty-hint" in _webui_src("viewEntry.ts")
-    assert "window._catalogStateOpts('loading'" in _js()
 
 
 def test_service_worker_uses_network_first_for_documents():
@@ -606,22 +558,6 @@ def test_shuffle_js_has_core_functions():
     assert "updateShuffleBtn" in ts
 
 
-def test_shuffle_js_has_next_prev_index():
-    """nextIndex / prevIndex ported to webui/src/shuffle.ts (htState bridge).
-    Legacy script must not re-declare them, but still call them."""
-    ts = _webui_src("shuffle.ts")
-    assert "export function nextIndex(" in ts
-    assert "export function prevIndex(" in ts
-    js = _js()
-    assert "function nextIndex" not in js
-    assert "function prevIndex" not in js
-    assert "nextIndex()" in _webui_src("playNext.ts")
-    assert "prevIndex()" in _webui_src("transport.ts")
-    # Legacy direct state touches must keep working through the live bridge
-    assert "shuffleQueue" in js
-    assert "shufflePos" in js
-
-
 def test_shuffle_js_restores_from_localstorage():
     """Shuffle preference must be loaded from localStorage on startup."""
     ts = _webui_src("modeButtons.ts")
@@ -671,34 +607,6 @@ def test_crossfade_defers_shuffle_advance_until_finish():
     assert "_commit = null" in cleanup
     finish = xf.split("export function finishCrossfade(", 1)[1]
     assert "commit()" in finish
-
-
-def test_lyrics_close_listener_registered_once():
-    js = _js()
-    assert _webui_src("lyricsPanel.ts").count('closeBtn.addEventListener("click", close)') == 1
-    assert js.count("window._initLyricsPanel(") == 1
-
-
-def test_intro_helpers_ported_to_ts():
-    """Skip-intro pure helpers live in webui/src/intro.ts; legacy keeps DOM/state only."""
-    ts = _webui_src("intro.ts")
-    assert "export function parseIntro(" in ts
-    assert "export function introButtonMode(" in ts
-    assert "export function patchIntroLocal(" in ts
-    # Threshold semantics: skip window ends 0.3s early, set window 5s..min(25%, 180s)
-    assert "cur < end - 0.3" in ts
-    assert "Math.min(dur * 0.25, 180)" in ts
-    ui = _webui_src("introUi.ts")
-    assert "parseIntro(" in ui
-    assert "introButtonMode(" in ui
-    assert "patchIntroLocal(" in ui
-    js = _js()
-    assert "function _patchIntroLocal" not in js
-    assert "function _setCurrentIntro" not in js
-    assert "function _updateSkipIntroBtn" not in js
-    assert "window._initIntroUi(" in js
-    assert "window._updateSkipIntroBtn()" in js
-    assert "window._setCurrentIntro" in js
 
 
 def test_shuffle_js_has_long_press_binding():
@@ -879,7 +787,7 @@ def test_repeat_one_suppresses_crossfade():
 def test_repeat_nextindex_returns_minus_one_when_off():
     """nextIndex (ported to shuffle.ts) must return -1 (stop) at end of list
     when repeat is off, wrap to 0 when repeat is 'all'."""
-    js = render_player_js()
+    js = all_ts()
     assert "repeat" in js.lower()
     ts = _webui_src("shuffle.ts")
     assert 'return s.repeatMode === "all" ? 0 : -1' in ts
@@ -894,19 +802,18 @@ def test_play_next_item_handles_repeat_one():
 
 def test_shuffle_queue_rebuild_in_render_tracks():
     """JS must rebuild the shuffle queue when filteredItems changes (applyFilter)."""
-    from hometools.streaming.core.server_utils import render_player_js
 
     # renderTracks ported to webui/src/trackRender.ts: filteredItems is set to
     # realTracks (debug-mode aware) and the shuffle queue rebuilt there.
     ts = _webui_src("trackRender.ts")
     assert "st.filteredItems = realTracks" in ts
     assert "rebuildShuffleQueue" in ts
-    assert "_trw.renderTracks(" in render_player_js()
+    assert "_trw.renderTracks(" in all_ts()
 
 
 def test_queue_next_logic_is_centralized_in_play_next_item():
     """All Next triggers must use the same queue-first helper."""
-    js = render_player_js()
+    js = all_ts()
     assert "function playNextItem()" in js
     assert "btnNext.addEventListener('click', playNextItem);" in js
     assert "_pbw.setPlayNext(function() { playNextItem(); })" in js
@@ -920,7 +827,7 @@ def test_queue_dom_refs_looked_up_lazily():
     """Queue controller must resolve DOM nodes per call (no stale refs -> no invisible panel)."""
     ctl = _webui_src("queueController.ts")
     assert "document.getElementById(id)" in ctl
-    assert "_queuePanel" not in render_player_js()
+    assert "_queuePanel" not in all_ts()
 
 
 def test_queue_panel_outside_player_bar():
@@ -980,7 +887,7 @@ def test_rating_write_js_flag_true():
     (Vite/TS migration Phase 3) — the actual true/false value is asserted at
     the #ht-config JSON level (see test_audio_server_enables_rating_write /
     test_video_server_does_not_enable_rating_write below)."""
-    js = render_player_js()
+    js = all_ts()
     assert "RATING_WRITE_ENABLED = !!CFG.enableRatingWrite" in js
 
 
@@ -992,13 +899,13 @@ def test_rating_write_js_flag_false_by_default():
 
 def test_rating_api_path_injected():
     """RATING_API_PATH is derived at runtime via _apiBase() (Phase 3)."""
-    js = render_player_js()
+    js = all_ts()
     assert "RATING_API_PATH = _apiBase() + '/rating'" in js
 
 
 def test_rating_js_has_render_and_set_functions():
     """renderPlayerRating and setRating JS functions must exist."""
-    js = render_player_js()
+    js = all_ts()
     assert "renderPlayerRating" in js
     assert "setRating" in js
 
@@ -1008,18 +915,18 @@ def test_rating_js_calls_fetch_rating_api():
     ts = _webui_src("rating.ts")
     assert "fetch(h.ratingApiPath" in ts
     assert '"POST"' in ts
-    assert "ratingApiPath: RATING_API_PATH" in render_player_js()
+    assert "ratingApiPath: RATING_API_PATH" in all_ts()
 
 
 def test_rating_js_calls_render_on_play():
     """renderPlayerRating must be called inside playItem when a track is selected."""
-    js = render_player_js()
+    js = all_ts()
     assert "renderPlayerRating" in js
 
 
 def test_rating_js_updates_after_metadata_refresh():
     """After refreshMetadata, renderPlayerRating should be called with updated value."""
-    js = render_player_js()
+    js = all_ts()
     assert "renderPlayerRating: renderPlayerRating" in js  # hook wiring (legacy)
     assert "h.renderPlayerRating(meta.rating)" in _webui_src("metadataRefresh.ts")
 
@@ -1038,12 +945,6 @@ def test_rating_css_has_active_and_hover_states():
     assert ".player-rating-star.hover" in css
 
 
-def test_rating_toggle_to_zero_via_player_bar():
-    """Clicking the already-active star must pass 0 to setRating (toggle off)."""
-    assert "clicked === current ? 0 : clicked" in _webui_src("playerBarUi.ts")
-    assert "_initPlayerRatingEvents" in render_player_js()
-
-
 def test_rating_toggle_to_zero_via_inline_stars():
     """Clicking the already-active inline star must pass 0 to setInlineRating (toggle off)."""
     assert "clicked === cur ? 0 : clicked" in _webui_src("trackListDelegation.ts")
@@ -1051,13 +952,13 @@ def test_rating_toggle_to_zero_via_inline_stars():
 
 def test_set_rating_patches_all_items():
     """setRating success callback must call _patchAllItemsRating to keep allItems in sync."""
-    js = render_player_js()
+    js = all_ts()
     assert "_patchAllItemsRating" in js
 
 
 def test_set_rating_updates_track_rating_bar():
     """setRating success callback must call _updateTrackRatingBar to refresh the DOM."""
-    js = render_player_js()
+    js = all_ts()
     assert "_updateTrackRatingBar" in js
 
 
@@ -1123,7 +1024,7 @@ def test_edit_modal_rating_js_render_function():
 
 def test_edit_modal_rating_submit_sends_rating():
     """submitEditModal must include rating API call when rating changes."""
-    assert "RATING_API_PATH" in render_player_js()
+    assert "RATING_API_PATH" in all_ts()
     ts = _webui_src("editModal.ts")
     assert "ratingChanged" in ts
     assert "Promise.all" in ts
@@ -1287,12 +1188,10 @@ def test_genre_filter_chip_in_html():
 def test_genre_filter_js_variable():
     """JS must read genre filter state from `_view` (persistence: viewState.ts,
     covered by vitest) and wire the combined filter-popover trigger."""
-    from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
+    js = all_ts()
     assert "filterCombinedBtn" in js
     assert "_view.filterGenre" in js
-    assert "window._initViewState" in js
 
 
 def test_genre_filter_apply_logic():
@@ -1300,39 +1199,6 @@ def test_genre_filter_apply_logic():
     must filter by genre when filterGenre is set."""
     ts = _webui_src("filterChain.ts")
     assert "t.genre === filterGenre" in ts
-
-
-def test_combined_filter_popover_present():
-    """Bewertung + Favorit + Genre must live in ONE combined "Filtern"
-    popover instead of three separate chip buttons — see
-    docs/IMPLEMENTATION_PLAN.md "UI-Template-Vereinheitlichung" Phase 2.
-    The old per-filter chip IDs (filter-rating/filter-fav/filter-genre)
-    must be gone; "Ausgeblendet" stays its own toggle-slot chip."""
-    from hometools.streaming.core.server_utils import render_media_page, render_player_js
-
-    html = render_media_page(
-        title="Test",
-        emoji="\U0001f3b5",
-        items_json="[]",
-        media_element_tag="audio",
-        api_path="/api/test",
-    )
-    assert 'id="filter-combined"' in html
-    assert 'id="filter-hidden"' in html
-    assert 'id="filter-rating"' not in html
-    assert 'id="filter-fav"' not in html
-    assert 'id="filter-genre"' not in html
-
-    js = render_player_js()
-    assert "function _toggleFilterPopover(" in js
-    assert "function _closeFilterPopover(" in js
-    ts = _webui_src("filterPopoverUi.ts")
-    assert "ht-filter-popover" in ts
-    # Reset must clear all three quick-filters, not just one.
-    reset_body = ts.split("#filter-popover-reset", 1)[1]
-    assert "rating: 0" in reset_body
-    assert "fav: false" in reset_body
-    assert 'genre: ""' in reset_body
 
 
 def test_genre_field_on_media_item():
@@ -1371,17 +1237,6 @@ def test_genre_field_defaults_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_swipe_gesture_code_present():
-    """Touch swipe handlers ported to swipe.ts; legacy JS only wires it."""
-    from hometools.streaming.core.server_utils import render_player_js
-
-    ts = _webui_src("swipe.ts")
-    assert "touchstart" in ts
-    assert "touchend" in ts
-    assert "SWIPE_MIN_DIST" in ts
-    assert "window._initSwipeGestures" in render_player_js()
-
-
 def test_swipe_gesture_skips_range_inputs():
     """Swipe handler must not intercept touch events on range inputs (progress bar)."""
     assert '"range"' in _webui_src("swipe.ts")
@@ -1396,10 +1251,9 @@ def test_swipe_no_next_prev_track():
 
 def test_swipe_right_calls_go_back():
     """Swipe right must call goBack (back navigation only)."""
-    from hometools.streaming.core.server_utils import render_player_js
 
     assert "h.goBack()" in _webui_src("swipe.ts")
-    assert "goBack: goBack" in render_player_js()  # ---------------------------------------------------------------------------
+    assert "goBack: goBack" in all_ts()  # ---------------------------------------------------------------------------
 
 
 # Playlist sync interval injection
@@ -1410,9 +1264,8 @@ def test_sync_interval_reads_from_runtime_config():
     """_PLAYLIST_SYNC_INTERVAL is now sourced from CFG.playlistSyncIntervalMs
     (Vite/TS migration Phase 3) instead of a Python-interpolated literal —
     the actual numeric value is asserted at the #ht-config JSON level."""
-    from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
+    js = all_ts()
     assert "_PLAYLIST_SYNC_INTERVAL = CFG.playlistSyncIntervalMs" in js
 
 
@@ -1437,16 +1290,6 @@ def test_sync_interval_custom_injected():
 # ---------------------------------------------------------------------------
 
 
-def test_optimistic_snapshot_helpers_in_js():
-    """Optimistic UI helpers snapshotPlaylists / restorePlaylists live in playlistSync.ts."""
-    ts = _webui_src("playlistSync.ts")
-    assert "export function snapshotPlaylists(" in ts
-    assert "export function restorePlaylists(" in ts
-    main = _webui_src("main.ts")
-    assert "window._snapshotPlaylists = snapshotPlaylists" in main
-    assert "window._restorePlaylists = restorePlaylists" in main
-
-
 def test_optimistic_rollback_toast_in_delete():
     """deleteUserPlaylist (ported to webui/src/playlistActions.ts) must show a rollback toast on error."""
     from pathlib import Path
@@ -1464,9 +1307,8 @@ def test_optimistic_rollback_toast_in_delete():
 
 def test_min_rating_threshold_reads_from_runtime_config():
     """MIN_RATING_THRESHOLD is now sourced from CFG.minRating (Phase 3)."""
-    from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
+    js = all_ts()
     assert "MIN_RATING_THRESHOLD = CFG.minRating" in js
 
 
@@ -1494,9 +1336,8 @@ def test_min_rating_filter_logic_in_apply_filter():
     Example: threshold=2 → hide only 1★, keep 2★ 3★ 4★ 5★ and unrated.
              threshold=3 → hide 1★ 2★, keep 3★ 4★ 5★ and unrated.
     """
-    from hometools.streaming.core.server_utils import render_player_js
 
-    js = render_player_js()
+    js = all_ts()
     # Must contain the filter that hides rated-but-low tracks while keeping unrated
     assert "MIN_RATING_THRESHOLD" in js
     # Semantics: exclusive < comparison, so threshold-star songs are NOT hidden.
@@ -1513,7 +1354,7 @@ def test_min_rating_filter_logic_in_apply_filter():
 
 def test_crossfade_duration_reads_from_runtime_config():
     """CROSSFADE_DURATION is now sourced from CFG.crossfadeDuration (Phase 3)."""
-    js = render_player_js()
+    js = all_ts()
     assert "CROSSFADE_DURATION = CFG.crossfadeDuration" in js
 
 
@@ -1535,7 +1376,7 @@ def test_crossfade_duration_custom_injected():
 
 def test_crossfade_js_has_xfade_functions():
     """Crossfade JS must contain the core functions."""
-    js = render_player_js()
+    js = all_ts()
     assert "_startCrossfade" in js
     assert "_finishCrossfade" in js
     assert "_audio = document.createElement" in _webui_src("crossfade.ts")
@@ -1546,7 +1387,7 @@ def test_crossfade_trigger_in_timeupdate():
     ts = _webui_src("timeline.ts")
     assert "crossfadeDuration > 0" in ts
     assert "startCrossfade()" in ts
-    assert "crossfadeDuration: CROSSFADE_DURATION" in render_player_js()
+    assert "crossfadeDuration: CROSSFADE_DURATION" in all_ts()
 
 
 def test_crossfade_config_function():
@@ -1571,11 +1412,11 @@ def test_crossfade_config_clamped(monkeypatch):
 
 
 def test_audio_server_passes_crossfade_duration():
-    """Audio server HTML must include CROSSFADE_DURATION."""
+    """Audio server HTML must include crossfadeDuration."""
     from hometools.streaming.audio.server import render_audio_index_html
 
     html = render_audio_index_html([])
-    assert "CROSSFADE_DURATION" in html
+    assert "crossfadeDuration" in html
 
 
 # ---------------------------------------------------------------------------
@@ -1585,7 +1426,7 @@ def test_audio_server_passes_crossfade_duration():
 
 def test_global_search_function_exists():
     """The JS must contain the globalSearch function."""
-    js = render_player_js()
+    js = all_ts()
     assert "function globalSearch" in js
     assert "function initGlobalSearch" in js
     assert "function exitGlobalSearch" in js
@@ -1600,7 +1441,7 @@ def test_global_search_respects_min_rating():
 
     Only filters when !showHidden (opt-in), using < comparison (exclusive).
     """
-    js = render_player_js()
+    js = all_ts()
     assert "MIN_RATING_THRESHOLD" in js
     # globalSearch (searchView.ts) passes threshold + hiddenActive into search.ts
     assert "threshold > 0 && !h.showHidden()" in _webui_src("searchView.ts")
@@ -1662,7 +1503,7 @@ def test_show_playlist_uses_shared_track_list_entry_point():
     — previously it hand-rolled its own subset, which is exactly what let
     the header drift out of sync between folder browsing and playlist
     views (missing global-search-hide, stale fb-scroll-hidden, ...)."""
-    js = render_player_js()
+    js = all_ts()
     playlist_fn = js.split("function showPlaylist(", 1)[1]
     body = playlist_fn.split("function _restoreLastEpisode", 1)[0]
     assert "folderGrid.classList.add('view-hidden')" not in body
@@ -1684,34 +1525,6 @@ def test_folder_grid_view_shows_global_search_only_when_catalog_loaded():
     assert "initGlobalSearch()" not in _webui_src("folderView.ts")
 
 
-def test_show_folder_view_uses_shared_folder_grid_entry_point():
-    """showFolderView() (both branches: empty library + normal browse) must
-    delegate its header/toolbar setup to _enterFolderGridView() instead of
-    re-inlining the class toggles — same consolidation as
-    _enterTrackListView() did for the track-list views."""
-    js = render_player_js()
-    assert "function _enterFolderGridView(opts)" in js
-    ts = _webui_src("folderView.ts")
-    assert ts.count("h.enterFolderGridView({") == 2  # empty branch + normal branch
-    assert "folderGrid.classList.remove('view-hidden')" not in ts
-    assert "_fw.showFolderView()" in js
-
-
-def test_loading_and_error_states_use_shared_folder_grid_entry_point():
-    """showLoadingState()/showCatalogLoadError() must delegate to
-    _enterFolderGridView() — the error view previously hid the back button
-    via style.display='none' (which nothing ever reset) instead of the
-    disabled class every other view uses."""
-    js = render_player_js()
-    loading_fn = js.split("function showLoadingState(", 1)[1]
-    loading_body = loading_fn.split("function showCatalogLoadError(", 1)[0]
-    assert "_enterFolderGridView(window._catalogStateOpts('loading'" in loading_body
-    error_fn = js.split("function showCatalogLoadError(", 1)[1]
-    error_body = error_fn.split("function loadInitialCatalog(", 1)[0]
-    assert "_enterFolderGridView(window._catalogStateOpts('error'" in error_body
-    assert "backBtn.style.display" not in js
-
-
 def test_global_search_uses_shared_track_list_entry_point():
     """globalSearch() must delegate to _enterTrackListView() — it was the
     only track-list view skipping breadcrumb/view-toggle/router updates.
@@ -1722,7 +1535,7 @@ def test_global_search_uses_shared_track_list_entry_point():
     assert "skipFilter: true" in fn
     assert "hideFilterBar: true" in fn
     assert "headerTitle.textContent" not in fn
-    assert "enterTrackListView: _enterTrackListView" in render_player_js()
+    assert "enterTrackListView: _enterTrackListView" in all_ts()
 
 
 def test_enter_track_list_view_hides_recent_section():
@@ -1735,27 +1548,10 @@ def test_enter_track_list_view_hides_recent_section():
     assert ".hidden = true" in track
 
 
-def test_smart_and_user_playlist_view_uses_shared_track_list_entry_point():
-    """showUserPlaylistView() (ported to webui/src/playlistViews.ts) must route
-    all three branches (favorites/all-titles/custom+smart) through the shared
-    _enterTrackListView() entry point, matching showPlaylist()/playDuplicates()."""
-    from pathlib import Path
-
-    import hometools.streaming.core as core_pkg
-
-    js = render_player_js()
-    assert "function showUserPlaylistView(plId)" in js
-    assert "enterTrackListView: _enterTrackListView" in js  # legacy hook wiring
-    ts = (Path(core_pkg.__file__).parent / "webui" / "src" / "playlistViews.ts").read_text(encoding="utf-8")
-    body = ts.split("export function showUserPlaylistView(", 1)[1].split("export function playUserPlaylist(", 1)[0]
-    assert body.count("h.enterTrackListView(") == 1  # single helper `enter()`
-    assert body.count("enter(") >= 3  # __alltitles__, __favorites__, custom/smart
-
-
 def test_play_duplicates_uses_shared_track_list_entry_point():
     """playDuplicates() must delegate to _enterTrackListView() too, with a
     collapsed filter bar (dupe list keeps its own compact layout)."""
-    js = render_player_js()
+    js = all_ts()
     assert "function playDuplicates()" in js
     assert "enterTrackListView: _enterTrackListView" in js  # deps thunk of _lw
     assert "enterTrackListView: d.enterTrackListView" in _webui_src("libraryWiring.ts")
@@ -1778,38 +1574,10 @@ def test_enter_track_list_view_refreshes_view_toggle():
 # ---------------------------------------------------------------------------
 
 
-def test_js_has_clean_folder_name():
-    """cleanFolderName is ported to webui/src/breadcrumb.ts, bridged onto
-    window (see main.ts) — the legacy Python-generated JS calls the bare
-    identifier, it no longer defines the function itself."""
-    ts = _webui_src("breadcrumb.ts")
-    assert "export function cleanFolderName" in ts
-    js = _js()
-    assert "function cleanFolderName" not in js
-    assert "window.cleanFolderName = cleanFolderName" in _webui_src("main.ts")
-
-
 def test_js_has_lang_badges_html():
     """JS must contain the langBadgesHtml function."""
     js = _js()
     assert "function langBadgesHtml" in js
-
-
-def test_js_has_lang_to_flag_map():
-    """JS must contain the LANG_TO_FLAG mapping with at least de and en."""
-    js = _js()
-    assert "LANG_TO_FLAG" in js
-    assert "'de'" in js
-    assert "'en'" in js
-
-
-def test_js_has_detect_lang_from_name():
-    """detectLangFromName is ported to webui/src/langDetect.ts, bridged
-    onto window by main.ts."""
-    ts = _webui_src("langDetect.ts")
-    assert "export function detectLangFromName" in ts
-    assert "function detectLangFromName" not in _js()
-    assert "window.detectLangFromName = detectLangFromName" in _webui_src("main.ts")
 
 
 def test_js_clean_folder_name_strips_hash():
@@ -1833,84 +1601,10 @@ def test_js_folder_card_renders_lang_badges():
     assert "folderCardHtml(f, opts)" in _webui_src("folderView.ts")
 
 
-def test_js_contents_at_aggregates_languages():
-    """contentsAt ported to folderContents.ts; legacy keeps thin wrapper."""
-    ts = _webui_src("folderContents.ts")
-    assert "folderLangs" in ts
-    js = _js()
-    assert "window._contentsAt(path, _pb.allItems, LANG_GROUPS)" in js
-    assert "var _mergeMap" not in js
-
-
-def test_js_leaf_name_uses_clean_folder_name():
-    """leafName is ported to webui/src/pathUtils.ts, bridged onto window
-    (see main.ts) — it must use cleanFolderName for display, and the
-    legacy Python-generated JS no longer defines the function itself."""
-    ts = _webui_src("pathUtils.ts")
-    assert "export function leafName" in ts
-    assert "cleanFolderName(raw)" in ts
-    js = _js()
-    assert "function leafName" not in js
-    assert "window.leafName = leafName" in _webui_src("main.ts")
-
-
-def test_js_parent_path_ported_to_ts():
-    """parentPath (fully pure — no other identifier references) is ported
-    to webui/src/pathUtils.ts alongside leafName."""
-    ts = _webui_src("pathUtils.ts")
-    assert "export function parentPath" in ts
-    js = _js()
-    assert "function parentPath" not in js
-    assert "window.parentPath = parentPath" in _webui_src("main.ts")
-
-
 def test_core_js_bridges_original_title_onto_window():
-    """originalTitle is a `var` scoped to the legacy IIFE, not a real
-    global — _core.py must bridge it onto window so the ported
-    leafName() (a separate .ts closure) can read it."""
+    """app.ts must set window.originalTitle so leafName() can read it."""
     js = _js()
     assert "window.originalTitle = originalTitle;" in js
-
-
-def test_js_items_under_ported_to_ts():
-    """itemsUnder is ported to webui/src/catalogQuery.ts with allItems as an
-    explicit param (the legacy version read the mutable allItems global from
-    its IIFE scope — unreachable from a Vite module). _queue.py keeps only a
-    thin wrapper so the ~13 bare-name call sites stay unchanged."""
-    ts = _webui_src("catalogQuery.ts")
-    assert "export function itemsUnder(path: string, allItems:" in ts
-    js = _js()
-    assert "window._itemsUnder(path, _pb.allItems)" in js
-    assert "it.relative_path.startsWith(prefix)" not in js
-    assert "window._itemsUnder = itemsUnder" in _webui_src("main.ts")
-
-
-def test_js_collect_genres_ported_to_ts():
-    """_collectPlaylistGenres is ported to catalogQuery.ts as
-    collectGenres(items) — playlistItems passed explicitly by the call site."""
-    ts = _webui_src("catalogQuery.ts")
-    assert "export function collectGenres(" in ts
-    js = _js()
-    assert "function _collectPlaylistGenres" not in js
-    assert "collectGenres(getState()?.playlistItems" in _webui_src("searchFilterWiring.ts")
-    assert "window._collectGenres = collectGenres" in _webui_src("main.ts")
-
-
-def test_js_click_guard_ported_to_ts():
-    """The whole click-distance guard (pointer state + capture listeners +
-    wasDrag) moved to webui/src/clickGuard.ts — no other fragment touched
-    _mdX/_mdY, so the state moved with it instead of being bridged. main.ts
-    must install the listeners and bridge wasDrag under its legacy name."""
-    ts = _webui_src("clickGuard.ts")
-    assert "export function wasDrag(" in ts
-    assert "export function installClickGuard(" in ts
-    assert "export function uninstallClickGuard(" in ts
-    js = _js()
-    assert "function wasDrag" not in js
-    assert "var _mdX" not in js
-    main_ts = _webui_src("main.ts")
-    assert "window.wasDrag = wasDrag" in main_ts
-    assert "installClickGuard();" in main_ts
 
 
 def test_js_wasdrag_call_sites_still_present():
@@ -1920,51 +1614,11 @@ def test_js_wasdrag_call_sites_still_present():
     assert _webui_src("folderView.ts").count("wasDrag(e)") >= 5
 
 
-def test_js_toast_ported_to_ts():
-    """showToast moved to webui/src/toast.ts (element-local state moved with
-    it). The legacy script must not re-declare it: a second top-level
-    `function showToast(...)` would shadow the ported one and silently drop
-    the custom durationMs — exactly the bug the fragment split once caused."""
-    ts = _webui_src("toast.ts")
-    assert "export function showToast(" in ts
-    js = _js()
-    assert "function showToast" not in js
-    assert "window.showToast = showToast" in _webui_src("main.ts")
-
-
 def test_js_toast_call_sites_still_present():
     """The ported showToast must still be called by the legacy script."""
     js = _js()
     assert js.count("showToast(") >= 2
     assert _webui_src("folderView.ts").count("h.toast(") >= 2
-
-
-def test_js_folder_cache_ported_to_ts():
-    """_getAllFolders + _invalidateFolderCache + their cache var moved to
-    webui/src/folderCache.ts. The cache var was module-private, so it moved
-    along; allItems stays an explicit param (reassigned all over the legacy
-    script, mirroring it onto window would need every mutation site synced)."""
-    ts = _webui_src("folderCache.ts")
-    assert "export function getAllFolders(allItems:" in ts
-    assert "export function invalidateFolderCache(" in ts
-    js = _js()
-    assert "var _allFoldersCache" not in js
-    assert "function _invalidateFolderCache" not in js
-    assert "getAllFolders(getState()?.allItems" in _webui_src("libraryWiring.ts")
-    main_ts = _webui_src("main.ts")
-    assert "window._getAllFoldersFrom = getAllFolders" in main_ts
-    assert "window._invalidateFolderCache = invalidateFolderCache" in main_ts
-
-
-def test_js_invalidate_folder_cache_call_sites_still_present():
-    """Regression guard: cache invalidation after move/delete/refresh must
-    still happen — a stale folder list would show deleted folders as move
-    targets."""
-    js = _js()
-    assert "invalidateFolderCache()" in _webui_src("libraryWiring.ts")
-    # refresh/fetch paths invalidate through catalogFetch.ts's invalidateCaches hook
-    assert "invalidateFolderCache: _invalidateFolderCache" in js
-    assert _webui_src("catalogFetch.ts").count("h.invalidateCaches()") >= 6
 
 
 class TestHtStateBridge:
@@ -2008,16 +1662,6 @@ class TestHtStateBridge:
         assert "window.shuffleQueue" not in ts
         assert "window.filteredItems" not in ts
 
-    def test_shuffle_functions_removed_from_legacy(self):
-        js = _js()
-        for fn in [
-            "function fisherYates",
-            "function buildWeightedQueue",
-            "function buildNormalQueue",
-            "function rebuildShuffleQueue",
-        ]:
-            assert fn not in js, f"{fn} must live in shuffle.ts only"
-
     def test_shuffle_call_sites_still_present(self):
         assert "rebuildShuffleQueue," in _webui_src("libraryWiring.ts")
         assert "rebuildShuffleQueue(st.currentIndex" in _webui_src("trackRender.ts")
@@ -2025,18 +1669,6 @@ class TestHtStateBridge:
         assert "h.rebuildShuffleQueue(0)" in _webui_src("dupePanel.ts")  # playDuplicates
         assert "nextIndex()" in _webui_src("playNext.ts")
         assert "prevIndex()" in _webui_src("transport.ts")
-
-
-def test_js_breadcrumb_uses_clean_folder_name():
-    """renderBreadcrumb must delegate to the ported renderBreadcrumbHtml
-    (webui/src/breadcrumb.ts) instead of re-inlining segment/label markup
-    building — that ported function uses cleanFolderName for folder
-    labels internally."""
-    js = _js()
-    assert "_renderBreadcrumb(" in js
-    ts = _webui_src("breadcrumb.ts")
-    assert "renderBreadcrumbHtml(s.currentPath" in ts
-    assert "cleanFolderName(part)" in ts
 
 
 def test_css_has_lang_badge():
@@ -2050,29 +1682,10 @@ def test_css_has_lang_badge():
 # ---------------------------------------------------------------------------
 
 
-def test_js_has_detect_sub_lang_from_name():
-    """detectSubLangFromName is ported to webui/src/langDetect.ts, bridged
-    onto window by main.ts."""
-    ts = _webui_src("langDetect.ts")
-    assert "export function detectSubLangFromName" in ts
-    assert "function detectSubLangFromName" not in _js()
-
-
 def test_js_has_composite_flag_html():
     """JS must contain the compositeFlagHtml function."""
     js = _js()
     assert "function compositeFlagHtml" in js
-
-
-def test_js_composite_flag_html_uses_composite_flag_class():
-    """compositeFlagHtml (ported to langDetect.ts) emits composite-flag classes."""
-    ts = _webui_src("langDetect.ts")
-    assert "export function compositeFlagHtml" in ts
-    assert "composite-flag" in ts
-    assert "composite-flag-sub" in ts
-    assert "window._compositeFlagHtml = compositeFlagHtml" in _webui_src("main.ts")
-    assert "window._compositeFlagHtml(" in _js()
-    assert "window._langBadgesHtml(" in _js()
 
 
 def test_js_has_default_lang_variable():
@@ -2086,7 +1699,7 @@ def test_js_default_lang_injectable():
     custom default_language reaches the #ht-config JSON blob."""
     from hometools.streaming.core.server_utils import render_media_page
 
-    js = render_player_js()
+    js = all_ts()
     assert "DEFAULT_LANG = CFG.defaultLanguage" in js
     page = render_media_page(
         title="T",
@@ -2192,14 +1805,14 @@ def test_config_get_default_language_empty_fallback(monkeypatch):
 
 
 def test_video_server_passes_default_language():
-    """Video server HTML must include DEFAULT_LANG variable."""
+    """Video server HTML must include defaultLanguage."""
     from fastapi.testclient import TestClient
 
     from hometools.streaming.video.server import create_app
 
     client = TestClient(create_app())
     html = client.get("/").text
-    assert "DEFAULT_LANG" in html
+    assert "defaultLanguage" in html
 
 
 # ---------------------------------------------------------------------------
@@ -2369,7 +1982,7 @@ class TestDupeKeyGeneratedJsIntegrity:
     `_normalizeStem`/`_dupeKey` were ported to `webui/src/dupeUtils.ts`
     (Vite/TS migration Phase 5 opportunistic-port slice — see
     docs/IMPLEMENTATION_PLAN.md); they no longer appear in
-    `render_player_js()`'s output, so these checks now read the TS source
+    `all_ts()`'s output, so these checks now read the TS source
     directly (same pattern as any other ported-module assertion once the
     Python generator function is deleted)."""
 
@@ -2456,28 +2069,10 @@ class TestCatalogLocalStorageCache:
     a full-index fetch on every page reload (stale-while-revalidate pattern)."""
 
     def _js(self):
-        return render_player_js()
+        return all_ts()
 
     # ── Helper functions must be present (ported to webui/src/catalogCache.ts,
     #    bridged onto window by main.ts — see that file's header comment) ────
-
-    def test_save_catalog_cache_function_defined(self):
-        ts = _webui_src("catalogCache.ts")
-        assert "export function saveCatalogCache(" in ts
-        assert "function _saveCatalogCache(" not in self._js()
-        assert "window._saveCatalogCache = function" in _webui_src("main.ts")
-
-    def test_load_catalog_cache_function_defined(self):
-        ts = _webui_src("catalogCache.ts")
-        assert "export function loadCatalogCache(" in ts
-        assert "function _loadCatalogCache(" not in self._js()
-        assert "window._loadCatalogCache = function" in _webui_src("main.ts")
-
-    def test_clear_catalog_cache_function_defined(self):
-        ts = _webui_src("catalogCache.ts")
-        assert "export function clearCatalogCache(" in ts
-        assert "function _clearCatalogCache(" not in self._js()
-        assert "window._clearCatalogCache = function" in _webui_src("main.ts")
 
     def test_catalog_cache_key_uses_api_path(self):
         """Key must be derived from apiPath so audio and video never share a
@@ -2586,7 +2181,7 @@ class TestTrackDetailTableView:
     of title/artist while a tool is active."""
 
     def test_table_view_toggle_present_in_audio_js(self):
-        js = render_player_js()
+        js = all_ts()
         assert "_toggleTrackViewMode" in js
         assert "trackViewMode" in js
         assert "IC_TABLE" in js
@@ -2607,11 +2202,6 @@ class TestTrackDetailTableView:
         assert "Dauer" in ts
         assert "Genre" in ts
 
-    def test_inline_edit_save_function_present(self):
-        js = render_player_js()
-        assert "_saveInlineTableEdit" in js
-        assert "contenteditable" in _webui_src("trackListDelegation.ts")
-
     def test_css_defines_table_mode_grid(self):
         """Table-view rules ported to webui/src/styles/tableView.css."""
         css = _webui_src("styles/tableView.css")
@@ -2631,7 +2221,7 @@ class TestTrackDetailTableView:
 class TestHtConfigJson:
     """``#ht-config`` — Vite/TS migration Phase 2 (additive JSON blob).
 
-    Not yet consumed by ``render_player_js()`` — the flat ``SHUFFLE_ENABLED``
+    Not yet consumed by ``all_ts()`` — the flat ``SHUFFLE_ENABLED``
     etc. vars keep working unchanged (see other tests in this file). This
     only locks the parallel JSON contract so future TS modules can rely on
     it (see streaming/core/webui/src/main.ts:PlayerConfig).

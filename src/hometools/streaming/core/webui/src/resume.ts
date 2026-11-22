@@ -1,7 +1,6 @@
 /**
- * Auto-resume target picking. Ported from `player_js/_folder_browse.py::
+ * Auto-resume target picking.:
  * _restoreLastEpisode` (pure half). DOM (markActive/scroll), fetch and toast
- * stay legacy. estoreLastEpisode (orchestration) also lives here.
  */
 import { getState } from "./stateBridge";
 export interface ResumeHit {

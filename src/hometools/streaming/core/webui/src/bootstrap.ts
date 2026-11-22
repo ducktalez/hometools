@@ -1,6 +1,4 @@
 /**
- * App bootstrap sequence — ported from the tail of
- * `player_js/_drag_drop_init.py`. Order matters: catalog -> router init ->
  * favorites -> user playlists -> router restore -> default root view ->
  * playlist sync. All steps via hooks; `currentPath`/`inPlaylist` via `htState`.
  */

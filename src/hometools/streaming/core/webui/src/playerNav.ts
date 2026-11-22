@@ -1,11 +1,10 @@
 /**
- * Player-bar navigation helpers — ported from `player_js/_search_filter.py`
+ * Player-bar navigation helpers
  * (jumpToCurrentTrack, updatePlayerBarActions wiring). Markup/targets live in
  * `playerBarHtml.ts` / `renderWindow.ts`. Shared state (`currentIndex`,
  * `filteredItems`, `playlistItems`, `inPlaylist`, `currentPath`) via
  * `htState`; everything else via hooks.
  *
- * Behaviour fix vs. legacy: the player-bar trash button called the undefined
  * `_deleteItem(...)` (ReferenceError) after its own confirm(). It now calls
  * `deleteTrackFromList`, which asks for confirmation itself.
  */
@@ -18,12 +17,12 @@ import { currentFolderOf } from "./pathUtils";
 export interface JumpHooks {
   ensureRenderedTo(idx: number): void;
   markActive(): void;
-  itemsUnder(path: string): LegacyMediaItem[];
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean): void;
+  itemsUnder(path: string): CatalogItem[];
+  showPlaylist(items: CatalogItem[], autoplay: boolean): void;
 }
 
 /** Current track from filtered list, falling back to the playlist list. */
-function currentTrack(): LegacyMediaItem | null {
+function currentTrack(): CatalogItem | null {
   const st = getState();
   if (!st || st.currentIndex < 0) return null;
   return st.filteredItems[st.currentIndex] || st.playlistItems[st.currentIndex] || null;

@@ -1,17 +1,11 @@
 /**
  * Shuffle engine: queue building + next/prev index resolution.
  *
- * Ported from `player_js/_library_tools.py` (fisherYates,
+ * (fisherYates,
  * buildWeightedQueue, buildNormalQueue, rebuildShuffleQueue, nextIndex,
- * prevIndex). First consumer of the `htState` bridge (stateBridge.ts):
- * these read AND write shuffleQueue/shufflePos, which legacy code also
- * touches directly (_library_tools.py playTrack sync, _folder_browse.py
  * showPlaylist start pick) — explicit params can't carry writes back, so
- * the live getter/setter bridge is the right boundary here.
  *
  * Pure queue builders stay exported for tests; the three stateful entry
- * points no-op safely when the bridge is missing (bundle loads before the
- * legacy script runs).
  */
 
 import { getState, type HtState } from "./stateBridge";
@@ -28,7 +22,7 @@ export function fisherYates(arr: number[]): number[] {
 }
 
 /** Weighted queue: rating 0 = weight 1, rating 5 = weight 6. */
-export function buildWeightedQueue(items: LegacyMediaItem[]): number[] {
+export function buildWeightedQueue(items: CatalogItem[]): number[] {
   const pool: number[] = [];
   items.forEach((t, idx) => {
     const w = Math.max(1, Math.round((t.rating || 0) + 1));
@@ -38,7 +32,7 @@ export function buildWeightedQueue(items: LegacyMediaItem[]): number[] {
 }
 
 /** Uniform queue over all indices. */
-export function buildNormalQueue(items: LegacyMediaItem[]): number[] {
+export function buildNormalQueue(items: CatalogItem[]): number[] {
   return fisherYates(items.map((_, i) => i));
 }
 

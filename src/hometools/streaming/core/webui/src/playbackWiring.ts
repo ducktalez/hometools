@@ -1,8 +1,6 @@
 /**
  * Playback hook wiring. Replaces the hook-builder glue formerly in
- * `player_js/_library_tools.py`: playItem/playTrack, metadata refresh,
  * transport (toggle/previous), bg-audio mirror, media session, crossfade.
- * Legacy callbacks come in via `deps` (thunk, resolved per call).
  */
 
 import { getState } from "./stateBridge";
@@ -59,7 +57,6 @@ export function createPlaybackWiring(cfg: PlaybackCfg, deps: () => PlaybackDeps)
   const bgMirror = (): void =>
     startBgMirror({ player: player(), isVideoPlayer: cfg.isVideoPlayer, playNext: () => callPlayNext() });
 
-  // playNextItem lives in catalogWiring (legacy bare name); late-bound through this setter.
   let callPlayNext: () => void = () => {};
 
   const media = (t: { title?: string; artist?: string }): void =>
@@ -185,7 +182,7 @@ export function createPlaybackWiring(cfg: PlaybackCfg, deps: () => PlaybackDeps)
   };
 
   return {
-    /** Late-bind playNextItem (defined by catalogWiring wrapper in the legacy scope). */
+    /** Late-bind playNextItem (defined by catalogWiring wrapper in app scope). */
     setPlayNext(fn: () => void): void {
       callPlayNext = fn;
     },

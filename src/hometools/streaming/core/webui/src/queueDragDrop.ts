@@ -1,7 +1,6 @@
 /**
- * Queue panel drag & drop reorder — ported from `player_js/_queue.py`
+ * Queue panel drag & drop reorder
  * (initQueueDragDrop/destroyQueueDragDrop) + `_queueDndCleanup` var from
- * `_core.py`. Drag state + cleanup handle private; move + re-render via hooks.
  */
 
 export interface QueueDragDropHooks {

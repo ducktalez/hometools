@@ -1,6 +1,5 @@
 /**
- * Playlist drag & drop reorder — ported from `player_js/_drag_drop_init.py`
- * (initPlaylistDragDrop) + `_smart_playlists.py` (_dndCleanup/destroy).
+ * Playlist drag & drop reorder
  *
  * All drag state + listeners are private to `initPlaylistDragDrop`; the
  * cleanup handle is module-private. `filteredItems` via `htState`; the
@@ -10,7 +9,7 @@
 import { getState } from "./stateBridge";
 
 export interface DragDropHooks {
-  /** Legacy `reorderPlaylistItem(relativePath, toIndex)` wrapper. */
+  /** app `reorderPlaylistItem(relativePath, toIndex)` wrapper. */
   reorder(relativePath: string, toIndex: number): void;
 }
 

@@ -1,35 +1,26 @@
 /**
- * Smart playlist rule evaluator — ported from `player_js/_playlists.py`
- * (a client-side mirror of the server's `smart_playlists.py`, kept in sync
+ * Smart playlist rule evaluator
  * so a smart playlist re-evaluates instantly in the browser without a
  * round-trip whenever `allItems`/`_userPlaylists`/`_savedFavorites` change).
  *
  * Vite/TS migration — deliberate slice (not opportunistic), requested to
  * take priority over further header/toolbar work (see
  * docs/IMPLEMENTATION_PLAN.md → "Vite/TypeScript migration"). This is the
- * single largest *cohesive* piece of pure-ish logic left in `player_js/`:
- * every function here only touches its own parameters — the three legacy
  * globals it used to read directly (`allItems`, `_userPlaylists`,
  * `_savedFavorites`) are now explicit function arguments instead. That
- * sidesteps the `window`-bridge problem the Design Discussion
  * ("Player-JS-Modulkopplung") describes for *mutable, frequently
  * reassigned* globals: `originalTitle` (pathUtils.ts) is written once and
- * never touched again, so bridging it with a single `window.originalTitle
  * = originalTitle;` assignment works; `allItems`/`_userPlaylists`/
- * `_savedFavorites` are reassigned/mutated all over `player_js/*.py` —
  * keeping a `window` mirror in sync would need touching every one of
  * those call sites too. Passing them as parameters at the two remaining
- * legacy call sites (`_folder_browse.py`, `_playlists.py`'s own
  * `_resolvePlaylistItems`/`refreshSmartPlaylist`) is simpler and makes
  * this module verifiably pure — no `window` reads at all.
  */
 
 /** Field metadata for the smart-playlist rule editor (`_smartRenderRuleRow`
- * in `player_js/_playlists.py`, still Python — reads these bare identifiers
- * via the window bridge in `main.ts`, same scope-chain trick as everywhere
  * else in this migration). Read-only after module init, so a single
  * `window.SMART_FIELDS = SMART_FIELDS;`-style assignment is safe (see
- * `legacy-globals.d.ts` header on the read-only-global bridge pattern). */
+  */
 export const SMART_FIELDS = [
   { value: "rating", label: "Bewertung", type: "number" },
   { value: "genre", label: "Genre", type: "text" },
@@ -132,7 +123,7 @@ export function smartCompile(pat: unknown): RegExp | null {
 /** Resolve a rule's `field` against an item, handling the three
  * synthetic/derived fields (`added_at`, `is_favorite`, `in_folder`) that
  * don't exist as-is on `MediaItem`. */
-export function smartGetField(it: LegacyMediaItem, field: string, savedFavorites: Record<string, boolean>): unknown {
+export function smartGetField(it: CatalogItem, field: string, savedFavorites: Record<string, boolean>): unknown {
   if (field === "added_at") return Number(it.mtime || 0);
   if (field === "is_favorite") {
     return !!(savedFavorites && savedFavorites[it.relative_path]);
@@ -147,7 +138,7 @@ export function smartGetField(it: LegacyMediaItem, field: string, savedFavorites
 
 /** Evaluate a single rule against one item. Never throws (mirrors the
  * server-side evaluator's "unknown input -> no match" fail-safe). */
-export function smartEvalRule(rule: SmartPlaylistRule, it: LegacyMediaItem, plIndex: SmartPlIndex, savedFavorites: Record<string, boolean>): boolean {
+export function smartEvalRule(rule: SmartPlaylistRule, it: CatalogItem, plIndex: SmartPlIndex, savedFavorites: Record<string, boolean>): boolean {
   try {
     const field = String(rule.field || "");
     const op = String(rule.op || "");
@@ -247,7 +238,7 @@ export function buildSmartPlIndex(userPlaylists: UserPlaylist[]): SmartPlIndex {
 /** Sort a resolved item list per the smart playlist's `sort` key
  * (`<field>` ascending, `<field>_desc` descending, or `random`). Returns
  * the input unchanged (same array reference) for an unknown/empty key. */
-export function smartApplySort(items: LegacyMediaItem[], sortKey: string | undefined): LegacyMediaItem[] {
+export function smartApplySort(items: CatalogItem[], sortKey: string | undefined): CatalogItem[] {
   if (!sortKey) return items;
   const arr = items.slice();
   if (sortKey === "random") {
@@ -261,7 +252,7 @@ export function smartApplySort(items: LegacyMediaItem[], sortKey: string | undef
   }
   const desc = sortKey.indexOf("_desc") === sortKey.length - 5 && sortKey.length > 5;
   const base = desc ? sortKey.substring(0, sortKey.length - 5) : sortKey;
-  let keyFn: ((x: LegacyMediaItem) => string | number) | null = null;
+  let keyFn: ((x: CatalogItem) => string | number) | null = null;
   if (base === "title") keyFn = (x) => String(x.title || "").toLowerCase();
   if (base === "rating") keyFn = (x) => Number(x.rating || 0);
   if (base === "added_at") keyFn = (x) => Number(x.mtime || 0);
@@ -283,16 +274,16 @@ export function smartApplySort(items: LegacyMediaItem[], sortKey: string | undef
  * throws — mirrors every other public function in this module). */
 export function evaluateSmartPlaylist(
   pl: UserPlaylist | null | undefined,
-  allItems: LegacyMediaItem[],
+  allItems: CatalogItem[],
   userPlaylists: UserPlaylist[],
   savedFavorites: Record<string, boolean>
-): LegacyMediaItem[] {
+): CatalogItem[] {
   try {
     const smart = pl && pl.smart;
     if (!smart || !Array.isArray(smart.rules) || smart.rules.length === 0) return [];
     const match = smart.match === "any" ? "any" : "all";
     const idx = buildSmartPlIndex(userPlaylists);
-    const matched: LegacyMediaItem[] = [];
+    const matched: CatalogItem[] = [];
     (allItems || []).forEach((it) => {
       const results = smart.rules.map((r) => smartEvalRule(r, it, idx, savedFavorites));
       const keep = match === "all" ? results.every((v) => v) : results.some((v) => v);
@@ -309,14 +300,13 @@ export function evaluateSmartPlaylist(
 }
 
 /** Resolve a user playlist id to `{pl, resolved}` (smart: evaluated; manual:
- * items looked up in `allItems`). `null` when unknown/empty. Ported from
- * `player_js/_playlists.py::_resolvePlaylistItems` — globals explicit. */
+  */
 export function resolvePlaylistItems(
   plId: string,
   userPlaylists: UserPlaylist[],
-  allItems: LegacyMediaItem[],
+  allItems: CatalogItem[],
   savedFavorites: Record<string, boolean>
-): { pl: UserPlaylist; resolved: LegacyMediaItem[] } | null {
+): { pl: UserPlaylist; resolved: CatalogItem[] } | null {
   try {
     const pl = (userPlaylists || []).find((p) => p.id === plId);
     if (!pl) return null;
@@ -326,7 +316,7 @@ export function resolvePlaylistItems(
       return { pl, resolved: resolvedSmart };
     }
     if (!pl.items || pl.items.length === 0) return null;
-    const resolved: LegacyMediaItem[] = [];
+    const resolved: CatalogItem[] = [];
     pl.items.forEach((rp) => {
       const match = (allItems || []).find((it) => it.relative_path === rp);
       if (match) resolved.push(match);
@@ -339,7 +329,7 @@ export function resolvePlaylistItems(
 }
 
 /** Union of all user playlists' items (dedup, order-preserving). Ported from
- * `_smart_playlists.py::_collectAllPlaylistRelPaths`. */
+  */
 export function collectAllPlaylistRelPaths(userPlaylists: UserPlaylist[]): string[] {
   const seen: Record<string, boolean> = Object.create(null);
   const out: string[] = [];
@@ -355,12 +345,12 @@ export function collectAllPlaylistRelPaths(userPlaylists: UserPlaylist[]): strin
 }
 
 /** Items of `collectAllPlaylistRelPaths`, resolved against `allItems`. */
-export function resolveAllPlaylistItems(userPlaylists: UserPlaylist[], allItems: LegacyMediaItem[]): LegacyMediaItem[] {
-  const byPath: Record<string, LegacyMediaItem> = Object.create(null);
+export function resolveAllPlaylistItems(userPlaylists: UserPlaylist[], allItems: CatalogItem[]): CatalogItem[] {
+  const byPath: Record<string, CatalogItem> = Object.create(null);
   (allItems || []).forEach((it) => {
     if (!(it.relative_path in byPath)) byPath[it.relative_path] = it;
   });
-  const out: LegacyMediaItem[] = [];
+  const out: CatalogItem[] = [];
   collectAllPlaylistRelPaths(userPlaylists).forEach((rp) => {
     const m = byPath[rp];
     if (m) out.push(m);
@@ -378,7 +368,7 @@ export interface SmartEditorState {
 
 /** Validate editor state + build the save request. `error` set => show toast,
  * no request. Strips self-references from `in_playlist` rules (cycle guard).
- * Ported from `_smart_playlists.py::_smartSubmit`. */
+ * */
 export function buildSmartSubmit(
   s: SmartEditorState
 ): { error: string } | { method: "PUT" | "POST"; payload: Record<string, unknown> } {
@@ -397,12 +387,11 @@ export function buildSmartSubmit(
 }
 
 /** One rule-editor row's HTML (field/op selects + value input). Ported
- * from `player_js/_playlists.py`. `escHtmlFn` passed in like
  * `breadcrumb.ts::renderBreadcrumbHtml` — avoids a circular import back to
  * `main.ts` (where `escHtml` lives). `userPlaylists`/`ownId` explicit
  * params instead of reading `_userPlaylists`/`_smartEditorState` (same
  * reason as `evaluateSmartPlaylist` — those globals mutate too often for
- * a window-bridge). */
+  */
 export function smartRenderRuleRow(
   rule: SmartPlaylistRule,
   idx: number,

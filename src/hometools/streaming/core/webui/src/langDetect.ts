@@ -1,7 +1,6 @@
-/** Folder-name language/subtitle detection. Ported from player_js/_queue.py.
+/** Folder-name language/subtitle detection.
  * Regex lookups + flag HTML builders. Flag SVG map (LANG_TO_FLAG, single
- * source of truth in _svg.py) is an explicit param. Bridged onto window by
- * main.ts; legacy keeps thin bare-name wrappers. */
+  */
 
 const LANG_DETECT_MAP: [RegExp, string][] = [
   [/\(\s*engl(?:ish)?\s*(?:,\s*(?:ger|de)(?:\s*sub(?:s)?)?)?\s*\)/i, "en"],

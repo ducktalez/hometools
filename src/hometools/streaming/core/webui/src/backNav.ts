@@ -1,6 +1,4 @@
 /**
- * Back navigation + offline-library close. Ported from
- * `player_js/_folder_browse.py::goBack` and `_track_render.py::closeOfflineLibrary`.
  * State via htState (globalSearchActive, currentPath, inPlaylist); views via hooks.
  */
 

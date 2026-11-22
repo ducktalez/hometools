@@ -2,26 +2,13 @@ import { defineConfig } from "vite";
 import { resolve } from "node:path";
 
 /**
- * Builds the (future) hometools streaming player UI as static assets.
+ * Builds the streaming player UI (src/main.ts -> app.ts) as static assets.
  *
- * Output goes to ../static/ (i.e. src/hometools/streaming/core/static/),
- * from where FastAPI will serve it via StaticFiles once the HTML skeleton
- * (server_utils/_html.py) is switched from inline <script>/<style> to
- * <script src="/static/..."> / <link rel="stylesheet" href="/static/...">.
- *
- * IMPORTANT — migration status (see docs/IMPLEMENTATION_PLAN.md):
- * Phase 4 (static serving) + Phase 5 first slice (fmtTime/escHtml/
- * formatBytes ported to src/main.ts) are done. FastAPI mounts this build's
- * output at /static (see server_utils/_static.py) and _html.py injects a
- * <script src="/static/player.<hash>.js"> tag — resolved via the Vite
- * manifest.json (build.manifest below) — BEFORE the remaining Python-
- * generated inline <script>. Output format is IIFE (not an ES module) and
- * every ported symbol is explicitly attached to `window` so the legacy
- * concatenated inline script (still one shared non-strict function scope)
- * keeps resolving bare identifiers like `fmtTime` via the scope chain to
- * `window.fmtTime` — see src/main.ts's closing `Object.assign(window, ...)`.
- * Do NOT switch this to `format: "es"` without also switching every
- * `<script>` tag that consumes these globals to real ES module imports.
+ * Output goes to ../static/ (src/hometools/streaming/core/static/). FastAPI
+ * serves it at /static (server_utils/_static.py); _html.py injects
+ * <script src="/static/player.<hash>.js"> + the CSS link, resolved via the
+ * Vite manifest.json (build.manifest below). Config + icons reach the app
+ * through the `#ht-config` JSON blob (see src/config.ts).
  */
 export default defineConfig({
   root: __dirname,

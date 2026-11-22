@@ -9,7 +9,7 @@ const deps = () => ({
   applyFilter: vi.fn(),
   enterTrackListView: vi.fn(),
   playTrack: vi.fn(),
-  sortFavoritesByOrder: (i: LegacyMediaItem[]) => i,
+  sortFavoritesByOrder: (i: CatalogItem[]) => i,
   loadFavoritesOrder: () => [],
   loadFavoritesOrderAsync: vi.fn(),
   saveFavoritesOrder: vi.fn(),

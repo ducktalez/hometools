@@ -22,7 +22,7 @@ When adding or changing a feature:
    patterns, same response shapes).
 3. **Never duplicate endpoints.** `/health`, `/manifest.json`, `/sw.js`,
    `/icon-*.png`, `/thumb` — these are generic. If both servers need it,
-   it belongs in `core/server_utils.py`.
+   it belongs in `core/server_factory.py`.
 
 ## Adding a new media type
 
@@ -39,7 +39,7 @@ When adding or changing a feature:
 - **Thumbnails** are served from the shadow cache directory on disk.
   Cache-busting is handled by MTime comparison in the background worker.
 - When changing API response shapes, the Service Worker and frontend JS
-  must both be updated (they are generated strings in `server_utils.py`).
+  must both be updated (SW in `server_utils/_pwa.py`, frontend in `core/webui/src`).
 
 ## Catalog caching — stale-while-revalidate (IMPORTANT — recurring bug area)
 

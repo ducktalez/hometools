@@ -1,8 +1,7 @@
 /**
  * Player timeline: timeupdate/loadedmetadata UI, tap/drag seek on the whole
  * progress track, background-audio UI sync, progress flush on hide/unload.
- * Ported from `player_js/_library_tools.py`. Item duration (catalog fallback)
- * is shared with legacy -> get/set hooks.
+ * Item duration (catalog fallback)
  */
 
 import { getBgAudio } from "./bgAudio";

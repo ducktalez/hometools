@@ -1,7 +1,6 @@
 /**
  * Small chrome markup/text helpers: indexing toast, table header, view-toggle.
- * Ported from `_core.py::showIndexingToast` and
- * `_queue.py::_applyTrackViewMode` (markup/text halves).
+ * and
  */
 
 /** Progress percent from a cache-status object or `{percent}`; null if none. */

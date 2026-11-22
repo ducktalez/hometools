@@ -1,8 +1,6 @@
 /**
  * Library hook wiring. Replaces the hook-builder glue formerly in
- * `player_js/_library_tools.py`: duplicate detection + panel, delete/move ops,
  * folder list, move widget, context menus, rating, favorites, edit modal and
- * folder/favorites custom order. Legacy callbacks come in via `deps` (thunk,
  * resolved per call, so declaration order in the closure script does not matter).
  */
 
@@ -69,9 +67,9 @@ export interface LibraryDeps {
   applyFilter(): void;
   markActive(): void;
   showFolderView(): void;
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean, startIdx: number): void;
+  showPlaylist(items: CatalogItem[], autoplay: boolean, startIdx: number): void;
   playTrack(idx: number): void;
-  itemsUnder(path: string): LegacyMediaItem[];
+  itemsUnder(path: string): CatalogItem[];
   destroyPlaylistDragDrop(): void;
   enterTrackListView(opts: { title: string; playAllDisabled: boolean; collapseFilterBar: boolean; resetIndex: boolean }): void;
   saveCatalogCache(items: unknown[]): void;

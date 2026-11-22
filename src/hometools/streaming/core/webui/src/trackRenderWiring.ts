@@ -1,9 +1,7 @@
 /**
  * Track-render / offline / tools-panel hook wiring. Replaces the hook-builder
- * glue formerly in `player_js/_track_render.py`: renderTracks, offline library
  * (+ active-download registry), download buttons, recently played, tools panel,
- * BPM menu, inline rating markup. Legacy callbacks come in via `deps` (thunk,
- * resolved per call, so declaration order in the closure script does not matter).
+ * resolved per call, so declaration order in the app closure does not matter).
  */
 
 import { getState } from "./stateBridge";
@@ -60,8 +58,8 @@ export interface TrackRenderDeps {
   openTrackPicker: RenderTracksHooks["openTrackPicker"];
   applyFilter(force?: boolean): void;
   showFolderView(): void;
-  showPlaylist(items: LegacyMediaItem[], autoplay: boolean): void;
-  playItem(item: LegacyMediaItem, idx: number): void;
+  showPlaylist(items: CatalogItem[], autoplay: boolean): void;
+  playItem(item: CatalogItem, idx: number): void;
   enterTrackListView(o: Record<string, unknown>): void;
   destroyPlaylistDragDrop(): void;
   applyViewMode(): void;
@@ -122,9 +120,9 @@ export function createTrackRenderWiring(cfg: TrackRenderCfg, deps: () => TrackRe
   });
 
   return {
-    /** Run after the legacy ar _trw = assignment (restores tool state, may re-enter via deps). */
+    /** Run after the app ar _trw = assignment (restores tool state, may re-enter via deps). */
     start: startToolsPanel,
-    renderTracks(tracks: LegacyMediaItem[], force?: boolean): void {
+    renderTracks(tracks: CatalogItem[], force?: boolean): void {
       const d = deps();
       renderTracks(tracks as never, force, {
         itemNoun: cfg.itemNoun,

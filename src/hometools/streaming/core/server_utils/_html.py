@@ -6,28 +6,53 @@ import html
 import json
 
 from ._css import render_base_css
-from ._player_js import render_player_js
 from ._pwa import render_pwa_head_tags
 from ._static import get_static_css_tags, get_static_script_tag
 from ._svg import (
     SVG_BACK,
     SVG_BOARD,
     SVG_CAST,
+    SVG_CHECK,
+    SVG_CHEVRONS_DOWN,
+    SVG_CHEVRONS_UP,
     SVG_CLOSE_X,
+    SVG_DOTS,
+    SVG_DOWNLOAD,
+    SVG_EDIT,
     SVG_EXPAND,
+    SVG_FILTER,
+    SVG_FLAG_DE,
+    SVG_FLAG_EN,
+    SVG_FLAG_ES,
+    SVG_FLAG_FR,
+    SVG_FLAG_IT,
+    SVG_FLAG_JA,
+    SVG_FLAG_KO,
+    SVG_FLAG_PT,
+    SVG_FLAG_RU,
+    SVG_FLAG_ZH,
+    SVG_FOLDER_PLAY,
     SVG_FULLSCREEN,
     SVG_GRID,
     SVG_HISTORY,
     SVG_HOME,
     SVG_LYRICS,
     SVG_NEXT,
-    SVG_PAUSE,  # noqa: F401 — kept for completeness / future use
+    SVG_PAUSE,
+    SVG_PIN,
     SVG_PIP,
     SVG_PLAY,
+    SVG_PLAYLIST,
     SVG_PREV,
+    SVG_QUEUE,
+    SVG_REFRESH,
     SVG_REPEAT,
     SVG_SHUFFLE,
     SVG_SKIP_INTRO,
+    SVG_SMART_PLAYLIST,
+    SVG_STAR,
+    SVG_STAR_EMPTY,
+    SVG_TRASH,
 )
 
 
@@ -55,15 +80,9 @@ def _render_player_config_json(
     bpm_min: int,
     bpm_max: int,
 ) -> str:
-    """Build the ``#ht-config`` JSON blob (Vite/TS migration, Phase 2 — additive only).
+    """Build the ``#ht-config`` JSON blob read by ``webui/src/config.ts`` (``PlayerConfig``).
 
-    Mirrors the ``PlayerConfig`` TypeScript interface in
-    ``streaming/core/webui/src/main.ts``. This is currently NOT consumed by
-    ``render_player_js()`` — the existing flat top-level JS vars
-    (``SHUFFLE_ENABLED`` etc.) keep being generated exactly as before so no
-    test or runtime behaviour changes. Future TS modules read this blob
-    instead of the flat vars; once ported, the corresponding flat var is
-    dropped. See ``docs/IMPLEMENTATION_PLAN.md`` → "Vite/TypeScript migration".
+    Includes ``icons`` (``SVG_*`` from ``_svg.py``, keyed by suffix) so icons stay single-sourced.
     """
     try:
         language_groups = json.loads(language_groups_json) if language_groups_json else {}
@@ -75,6 +94,37 @@ def _render_player_config_json(
         audiobook_dirs = get_audiobook_dirs()
     except Exception:
         audiobook_dirs = []
+    icons = {
+        "PLAY": SVG_PLAY,
+        "PAUSE": SVG_PAUSE,
+        "DOWNLOAD": SVG_DOWNLOAD,
+        "CHECK": SVG_CHECK,
+        "FOLDER_PLAY": SVG_FOLDER_PLAY,
+        "PIN": SVG_PIN,
+        "STAR": SVG_STAR,
+        "STAR_EMPTY": SVG_STAR_EMPTY,
+        "REPEAT": SVG_REPEAT,
+        "FILTER": SVG_FILTER,
+        "EDIT": SVG_EDIT,
+        "PLAYLIST": SVG_PLAYLIST,
+        "SMART_PLAYLIST": SVG_SMART_PLAYLIST,
+        "QUEUE": SVG_QUEUE,
+        "TRASH": SVG_TRASH,
+        "DOTS": SVG_DOTS,
+        "REFRESH": SVG_REFRESH,
+        "CHEVRONS_DOWN": SVG_CHEVRONS_DOWN,
+        "CHEVRONS_UP": SVG_CHEVRONS_UP,
+        "FLAG_DE": SVG_FLAG_DE,
+        "FLAG_EN": SVG_FLAG_EN,
+        "FLAG_FR": SVG_FLAG_FR,
+        "FLAG_ES": SVG_FLAG_ES,
+        "FLAG_IT": SVG_FLAG_IT,
+        "FLAG_JA": SVG_FLAG_JA,
+        "FLAG_KO": SVG_FLAG_KO,
+        "FLAG_ZH": SVG_FLAG_ZH,
+        "FLAG_PT": SVG_FLAG_PT,
+        "FLAG_RU": SVG_FLAG_RU,
+    }
     config = {
         "itemNoun": item_noun,
         "fileEmoji": emoji,
@@ -98,6 +148,7 @@ def _render_player_config_json(
         "audiobookDirs": audiobook_dirs,
         "bpmMin": bpm_min,
         "bpmMax": bpm_max,
+        "icons": icons,
     }
     # "</" -> "<\/" prevents premature </script> termination; valid JSON escape.
     return json.dumps(config).replace("</", "<\\/")
@@ -169,7 +220,6 @@ def render_media_page(
         bpm_min=bpm_min,
         bpm_max=bpm_max,
     )
-    js = render_player_js()
     # Vite/TS migration Phase 4/5 (docs/IMPLEMENTATION_PLAN.md): the built
     # webui bundle (if present — see server_utils/_static.py) provides
     # already-ported symbols (fmtTime/escHtml/formatBytes, ...) as `window.*`
@@ -584,7 +634,6 @@ def render_media_page(
   <script id="ht-config" type="application/json">{config_json}</script>
   <script id="initial-data" type="application/json">{items_json}</script>
   {static_script_tag}
-  <script>{js}</script>
 {sw_register}
 </body>
 </html>

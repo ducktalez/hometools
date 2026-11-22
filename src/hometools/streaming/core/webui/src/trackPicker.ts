@@ -54,7 +54,7 @@ export function isManualPlaylistView(): boolean {
  */
 export function reloadPlaylistView(
   plId: string,
-  resolve: (id: string) => { resolved: LegacyMediaItem[] } | null,
+  resolve: (id: string) => { resolved: CatalogItem[] } | null,
   applyFilter: (force?: boolean) => void,
   force?: boolean
 ): void {
@@ -67,10 +67,10 @@ export function reloadPlaylistView(
 
 /** Library items matching `needle` (title/artist/path), capped. */
 export function pickerMatches(
-  items: LegacyMediaItem[],
+  items: CatalogItem[],
   needle: string,
   limit: number = PICKER_LIMIT
-): { shown: LegacyMediaItem[]; total: number } {
+): { shown: CatalogItem[]; total: number } {
   const n = (needle || "").trim().toLowerCase();
   const all = n
     ? items.filter((t) =>

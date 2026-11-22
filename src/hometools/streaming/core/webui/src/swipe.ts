@@ -1,6 +1,4 @@
 /**
- * Touch swipe-right = back (mobile nav) — ported from
- * `player_js/_drag_drop_init.py`. Swipe state private; `inPlaylist`/
  * `currentPath` via `htState`; `goBack` via hook. Listeners live for the
  * page lifetime (installed once).
  */

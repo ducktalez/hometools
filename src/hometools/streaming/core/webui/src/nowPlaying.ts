@@ -1,6 +1,4 @@
 /**
- * Now-playing UI update for `playItem`. Ported from
- * `player_js/_library_tools.py` (title/artist/thumb/play-icon/video overlay).
  */
 
 export interface NowPlayingItem {

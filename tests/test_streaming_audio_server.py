@@ -404,7 +404,7 @@ def test_metadata_edit_render_includes_edit_button(tmp_path):
     html = render_audio_index_html([])
     assert "edit-modal-backdrop" in html
     assert "edit-modal-title-input" in html
-    assert "METADATA_EDIT_ENABLED" in html
+    assert "enableMetadataEdit" in html
 
 
 def test_audio_recent_always_returns_empty(tmp_path):
@@ -502,7 +502,6 @@ def test_debug_filter_js_variable_injected(tmp_path, monkeypatch):
 
     monkeypatch.setenv("HOMETOOLS_DEBUG_FILTER", "true")
     html = render_audio_index_html([])
-    assert "DEBUG_FILTER = !!CFG.debugFilter" in html
     m = re.search(r'<script id="ht-config" type="application/json">(.*?)</script>', html, re.S)
     assert m
     assert json.loads(m.group(1))["debugFilter"] is True
@@ -522,7 +521,7 @@ def test_debug_filter_default_is_false(tmp_path, monkeypatch):
 
 def test_debug_filter_css_present(tmp_path, monkeypatch):
     """Debug-filtered CSS class must be present — HTML markup class from
-    render_player_js(), styling itself ported to
+    webui/src/trackRows.ts, styling in
     webui/src/styles/tableView.css."""
     from pathlib import Path
 
